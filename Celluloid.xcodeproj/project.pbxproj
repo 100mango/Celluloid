@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		DB14F7711C803608000FA15F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7701C803608000FA15F /* AppDelegate.swift */; };
 		DB14F7731C803608000FA15F /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7721C803608000FA15F /* ViewController.swift */; };
-		DB14F7761C803608000FA15F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7741C803608000FA15F /* Main.storyboard */; };
 		DB14F7781C803608000FA15F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7771C803608000FA15F /* Assets.xcassets */; };
 		DB14F77B1C803608000FA15F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7791C803608000FA15F /* LaunchScreen.storyboard */; };
 		DB14F78A1C8083A1000FA15F /* CelluloidKit.h in Headers */ = {isa = PBXBuildFile; fileRef = DB14F7891C8083A1000FA15F /* CelluloidKit.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -84,7 +83,6 @@
 		DB14F76D1C803608000FA15F /* Celluloid.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Celluloid.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DB14F7701C803608000FA15F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		DB14F7721C803608000FA15F /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
-		DB14F7751C803608000FA15F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		DB14F7771C803608000FA15F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		DB14F77A1C803608000FA15F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		DB14F77C1C803608000FA15F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -166,7 +164,6 @@
 			children = (
 				DB14F7701C803608000FA15F /* AppDelegate.swift */,
 				DB14F7721C803608000FA15F /* ViewController.swift */,
-				DB14F7741C803608000FA15F /* Main.storyboard */,
 				DB14F7771C803608000FA15F /* Assets.xcassets */,
 				DB14F7791C803608000FA15F /* LaunchScreen.storyboard */,
 				DB14F77C1C803608000FA15F /* Info.plist */,
@@ -353,7 +350,6 @@
 			files = (
 				DB14F77B1C803608000FA15F /* LaunchScreen.storyboard in Resources */,
 				DB14F7781C803608000FA15F /* Assets.xcassets in Resources */,
-				DB14F7761C803608000FA15F /* Main.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -440,14 +436,6 @@
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
-		DB14F7741C803608000FA15F /* Main.storyboard */ = {
-			isa = PBXVariantGroup;
-			children = (
-				DB14F7751C803608000FA15F /* Base */,
-			);
-			name = Main.storyboard;
-			sourceTree = "<group>";
-		};
 		DB14F7791C803608000FA15F /* LaunchScreen.storyboard */ = {
 			isa = PBXVariantGroup;
 			children = (
