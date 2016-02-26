@@ -17,6 +17,11 @@
 		DB14F7981C8083A1000FA15F /* CelluloidKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7971C8083A1000FA15F /* CelluloidKitTests.swift */; };
 		DB14F79C1C8083A1000FA15F /* CelluloidKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7871C8083A1000FA15F /* CelluloidKit.framework */; };
 		DB14F79D1C8083A1000FA15F /* CelluloidKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7871C8083A1000FA15F /* CelluloidKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		DB14F7AC1C808579000FA15F /* PhotosUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7AB1C808579000FA15F /* PhotosUI.framework */; };
+		DB14F7AE1C808579000FA15F /* Photos.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7AD1C808579000FA15F /* Photos.framework */; };
+		DB14F7B11C808579000FA15F /* PhotoEditingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7B01C808579000FA15F /* PhotoEditingViewController.swift */; };
+		DB14F7B41C808579000FA15F /* MainInterface.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7B21C808579000FA15F /* MainInterface.storyboard */; };
+		DB14F7B81C808579000FA15F /* CelluloidPhotoExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = DB14F7A91C808579000FA15F /* CelluloidPhotoExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -41,6 +46,13 @@
 			remoteGlobalIDString = DB14F7861C8083A1000FA15F;
 			remoteInfo = CelluloidKit;
 		};
+		DB14F7B61C808579000FA15F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DB14F7651C803608000FA15F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DB14F7A81C808579000FA15F;
+			remoteInfo = CelluloidPhotoExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -53,6 +65,17 @@
 				DB14F79D1C8083A1000FA15F /* CelluloidKit.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DB14F7BC1C808579000FA15F /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				DB14F7B81C808579000FA15F /* CelluloidPhotoExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -71,6 +94,12 @@
 		DB14F7901C8083A1000FA15F /* CelluloidKitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CelluloidKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DB14F7971C8083A1000FA15F /* CelluloidKitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CelluloidKitTests.swift; sourceTree = "<group>"; };
 		DB14F7991C8083A1000FA15F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		DB14F7A91C808579000FA15F /* CelluloidPhotoExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CelluloidPhotoExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		DB14F7AB1C808579000FA15F /* PhotosUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PhotosUI.framework; path = System/Library/Frameworks/PhotosUI.framework; sourceTree = SDKROOT; };
+		DB14F7AD1C808579000FA15F /* Photos.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Photos.framework; path = System/Library/Frameworks/Photos.framework; sourceTree = SDKROOT; };
+		DB14F7B01C808579000FA15F /* PhotoEditingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoEditingViewController.swift; sourceTree = "<group>"; };
+		DB14F7B31C808579000FA15F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/MainInterface.storyboard; sourceTree = "<group>"; };
+		DB14F7B51C808579000FA15F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -97,6 +126,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DB14F7A61C808579000FA15F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DB14F7AC1C808579000FA15F /* PhotosUI.framework in Frameworks */,
+				DB14F7AE1C808579000FA15F /* Photos.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -106,6 +144,8 @@
 				DB14F76F1C803608000FA15F /* Celluloid */,
 				DB14F7881C8083A1000FA15F /* CelluloidKit */,
 				DB14F7961C8083A1000FA15F /* CelluloidKitTests */,
+				DB14F7AF1C808579000FA15F /* CelluloidPhotoExtension */,
+				DB14F7AA1C808579000FA15F /* Frameworks */,
 				DB14F76E1C803608000FA15F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -116,6 +156,7 @@
 				DB14F76D1C803608000FA15F /* Celluloid.app */,
 				DB14F7871C8083A1000FA15F /* CelluloidKit.framework */,
 				DB14F7901C8083A1000FA15F /* CelluloidKitTests.xctest */,
+				DB14F7A91C808579000FA15F /* CelluloidPhotoExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -151,6 +192,25 @@
 			path = CelluloidKitTests;
 			sourceTree = "<group>";
 		};
+		DB14F7AA1C808579000FA15F /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				DB14F7AB1C808579000FA15F /* PhotosUI.framework */,
+				DB14F7AD1C808579000FA15F /* Photos.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		DB14F7AF1C808579000FA15F /* CelluloidPhotoExtension */ = {
+			isa = PBXGroup;
+			children = (
+				DB14F7B01C808579000FA15F /* PhotoEditingViewController.swift */,
+				DB14F7B21C808579000FA15F /* MainInterface.storyboard */,
+				DB14F7B51C808579000FA15F /* Info.plist */,
+			);
+			path = CelluloidPhotoExtension;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -173,11 +233,13 @@
 				DB14F76A1C803608000FA15F /* Frameworks */,
 				DB14F76B1C803608000FA15F /* Resources */,
 				DB14F7A31C8083A1000FA15F /* Embed Frameworks */,
+				DB14F7BC1C808579000FA15F /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				DB14F79B1C8083A1000FA15F /* PBXTargetDependency */,
+				DB14F7B71C808579000FA15F /* PBXTargetDependency */,
 			);
 			name = Celluloid;
 			productName = Celluloid;
@@ -221,6 +283,23 @@
 			productReference = DB14F7901C8083A1000FA15F /* CelluloidKitTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		DB14F7A81C808579000FA15F /* CelluloidPhotoExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DB14F7B91C808579000FA15F /* Build configuration list for PBXNativeTarget "CelluloidPhotoExtension" */;
+			buildPhases = (
+				DB14F7A51C808579000FA15F /* Sources */,
+				DB14F7A61C808579000FA15F /* Frameworks */,
+				DB14F7A71C808579000FA15F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CelluloidPhotoExtension;
+			productName = CelluloidPhotoExtension;
+			productReference = DB14F7A91C808579000FA15F /* CelluloidPhotoExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -241,6 +320,9 @@
 						CreatedOnToolsVersion = 7.2.1;
 						TestTargetID = DB14F76C1C803608000FA15F;
 					};
+					DB14F7A81C808579000FA15F = {
+						CreatedOnToolsVersion = 7.2.1;
+					};
 				};
 			};
 			buildConfigurationList = DB14F7681C803608000FA15F /* Build configuration list for PBXProject "Celluloid" */;
@@ -259,6 +341,7 @@
 				DB14F76C1C803608000FA15F /* Celluloid */,
 				DB14F7861C8083A1000FA15F /* CelluloidKit */,
 				DB14F78F1C8083A1000FA15F /* CelluloidKitTests */,
+				DB14F7A81C808579000FA15F /* CelluloidPhotoExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -285,6 +368,14 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DB14F7A71C808579000FA15F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DB14F7B41C808579000FA15F /* MainInterface.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -315,6 +406,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DB14F7A51C808579000FA15F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DB14F7B11C808579000FA15F /* PhotoEditingViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -333,6 +432,11 @@
 			target = DB14F7861C8083A1000FA15F /* CelluloidKit */;
 			targetProxy = DB14F79A1C8083A1000FA15F /* PBXContainerItemProxy */;
 		};
+		DB14F7B71C808579000FA15F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DB14F7A81C808579000FA15F /* CelluloidPhotoExtension */;
+			targetProxy = DB14F7B61C808579000FA15F /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
@@ -350,6 +454,14 @@
 				DB14F77A1C803608000FA15F /* Base */,
 			);
 			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		DB14F7B21C808579000FA15F /* MainInterface.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				DB14F7B31C808579000FA15F /* Base */,
+			);
+			name = MainInterface.storyboard;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */
@@ -442,6 +554,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
 				INFOPLIST_FILE = Celluloid/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = Mango.Celluloid;
@@ -453,6 +566,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
 				INFOPLIST_FILE = Celluloid/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = Mango.Celluloid;
@@ -520,6 +634,28 @@
 			};
 			name = Release;
 		};
+		DB14F7BA1C808579000FA15F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				INFOPLIST_FILE = CelluloidPhotoExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = Mango.Celluloid.CelluloidPhotoExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		DB14F7BB1C808579000FA15F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				INFOPLIST_FILE = CelluloidPhotoExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = Mango.Celluloid.CelluloidPhotoExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -554,6 +690,14 @@
 			buildConfigurations = (
 				DB14F7A01C8083A1000FA15F /* Debug */,
 				DB14F7A11C8083A1000FA15F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+		};
+		DB14F7B91C808579000FA15F /* Build configuration list for PBXNativeTarget "CelluloidPhotoExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DB14F7BA1C808579000FA15F /* Debug */,
+				DB14F7BB1C808579000FA15F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 		};
