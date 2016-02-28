@@ -1,0 +1,10 @@
+PODS:
+  - AsyncSwift (1.7.2)
+
+DEPENDENCIES:
+  - AsyncSwift
+
+SPEC CHECKSUMS:
+  AsyncSwift: 46a78bceb11f0e5bb52747f740d9692ec78d2d7c
+
+COCOAPODS: 0.39.0

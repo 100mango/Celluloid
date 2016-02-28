@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		003AFC38E302BDA507B50877 /* Pods.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA3B5D21938C80179B355304 /* Pods.framework */; };
+		4536CC8EDEF16BF2D9A7B96F /* Pods.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA3B5D21938C80179B355304 /* Pods.framework */; };
 		DB14F7711C803608000FA15F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7701C803608000FA15F /* AppDelegate.swift */; };
 		DB14F7731C803608000FA15F /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7721C803608000FA15F /* ViewController.swift */; };
 		DB14F7781C803608000FA15F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7771C803608000FA15F /* Assets.xcassets */; };
@@ -21,6 +23,7 @@
 		DB14F7B11C808579000FA15F /* PhotoEditingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7B01C808579000FA15F /* PhotoEditingViewController.swift */; };
 		DB14F7B41C808579000FA15F /* MainInterface.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7B21C808579000FA15F /* MainInterface.storyboard */; };
 		DB14F7B81C808579000FA15F /* CelluloidPhotoExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = DB14F7A91C808579000FA15F /* CelluloidPhotoExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		DB14F7BE1C831D62000FA15F /* Test.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7BD1C831D62000FA15F /* Test.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -80,6 +83,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		685EEB2FDEBD70B67B91C80D /* Pods.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Pods.debug.xcconfig; path = "Pods/Target Support Files/Pods/Pods.debug.xcconfig"; sourceTree = "<group>"; };
+		A6B0D28FE53FDC28AFCD1D5A /* Pods.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Pods.release.xcconfig; path = "Pods/Target Support Files/Pods/Pods.release.xcconfig"; sourceTree = "<group>"; };
 		DB14F76D1C803608000FA15F /* Celluloid.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Celluloid.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DB14F7701C803608000FA15F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		DB14F7721C803608000FA15F /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -98,6 +103,8 @@
 		DB14F7B01C808579000FA15F /* PhotoEditingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoEditingViewController.swift; sourceTree = "<group>"; };
 		DB14F7B31C808579000FA15F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/MainInterface.storyboard; sourceTree = "<group>"; };
 		DB14F7B51C808579000FA15F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		DB14F7BD1C831D62000FA15F /* Test.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Test.swift; sourceTree = "<group>"; };
+		FA3B5D21938C80179B355304 /* Pods.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -106,6 +113,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DB14F79C1C8083A1000FA15F /* CelluloidKit.framework in Frameworks */,
+				003AFC38E302BDA507B50877 /* Pods.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -113,6 +121,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4536CC8EDEF16BF2D9A7B96F /* Pods.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -136,6 +145,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		699FC3789DA83B1C816A619A /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				685EEB2FDEBD70B67B91C80D /* Pods.debug.xcconfig */,
+				A6B0D28FE53FDC28AFCD1D5A /* Pods.release.xcconfig */,
+			);
+			name = Pods;
+			sourceTree = "<group>";
+		};
 		DB14F7641C803608000FA15F = {
 			isa = PBXGroup;
 			children = (
@@ -145,6 +163,7 @@
 				DB14F7AF1C808579000FA15F /* CelluloidPhotoExtension */,
 				DB14F7AA1C808579000FA15F /* Frameworks */,
 				DB14F76E1C803608000FA15F /* Products */,
+				699FC3789DA83B1C816A619A /* Pods */,
 			);
 			sourceTree = "<group>";
 		};
@@ -176,6 +195,7 @@
 			children = (
 				DB14F7891C8083A1000FA15F /* CelluloidKit.h */,
 				DB14F78B1C8083A1000FA15F /* Info.plist */,
+				DB14F7BD1C831D62000FA15F /* Test.swift */,
 			);
 			path = CelluloidKit;
 			sourceTree = "<group>";
@@ -194,6 +214,7 @@
 			children = (
 				DB14F7AB1C808579000FA15F /* PhotosUI.framework */,
 				DB14F7AD1C808579000FA15F /* Photos.framework */,
+				FA3B5D21938C80179B355304 /* Pods.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -226,11 +247,14 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = DB14F77F1C803608000FA15F /* Build configuration list for PBXNativeTarget "Celluloid" */;
 			buildPhases = (
+				2791A7841537A2A7A52A126E /* Check Pods Manifest.lock */,
 				DB14F7691C803608000FA15F /* Sources */,
 				DB14F76A1C803608000FA15F /* Frameworks */,
 				DB14F76B1C803608000FA15F /* Resources */,
 				DB14F7A31C8083A1000FA15F /* Embed Frameworks */,
 				DB14F7BC1C808579000FA15F /* Embed App Extensions */,
+				B364123C19E6707E10ADDEB2 /* Embed Pods Frameworks */,
+				AF8B6BD10CE4D630E81434FD /* Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -247,10 +271,12 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = DB14F7A21C8083A1000FA15F /* Build configuration list for PBXNativeTarget "CelluloidKit" */;
 			buildPhases = (
+				1F765F78E334E5508771F52D /* Check Pods Manifest.lock */,
 				DB14F7821C8083A1000FA15F /* Sources */,
 				DB14F7831C8083A1000FA15F /* Frameworks */,
 				DB14F7841C8083A1000FA15F /* Headers */,
 				DB14F7851C8083A1000FA15F /* Resources */,
+				515D640D6FF31B29FF5DC5F2 /* Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -377,6 +403,84 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		1F765F78E334E5508771F52D /* Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Check Pods Manifest.lock";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_ROOT}/../Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [[ $? != 0 ]] ; then\n    cat << EOM\nerror: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\nEOM\n    exit 1\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+		2791A7841537A2A7A52A126E /* Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Check Pods Manifest.lock";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_ROOT}/../Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [[ $? != 0 ]] ; then\n    cat << EOM\nerror: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\nEOM\n    exit 1\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+		515D640D6FF31B29FF5DC5F2 /* Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Copy Pods Resources";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods/Pods-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		AF8B6BD10CE4D630E81434FD /* Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Copy Pods Resources";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods/Pods-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		B364123C19E6707E10ADDEB2 /* Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods/Pods-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		DB14F7691C803608000FA15F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -391,6 +495,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DB14F7BE1C831D62000FA15F /* Test.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -540,6 +645,7 @@
 		};
 		DB14F7801C803608000FA15F /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 685EEB2FDEBD70B67B91C80D /* Pods.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
@@ -552,6 +658,7 @@
 		};
 		DB14F7811C803608000FA15F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A6B0D28FE53FDC28AFCD1D5A /* Pods.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
@@ -564,7 +671,9 @@
 		};
 		DB14F79E1C8083A1000FA15F /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 685EEB2FDEBD70B67B91C80D /* Pods.debug.xcconfig */;
 			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
@@ -576,6 +685,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = Mango.CelluloidKit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				VERSIONING_SYSTEM = "apple-generic";
 				VERSION_INFO_PREFIX = "";
 			};
@@ -583,7 +693,9 @@
 		};
 		DB14F79F1C8083A1000FA15F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A6B0D28FE53FDC28AFCD1D5A /* Pods.release.xcconfig */;
 			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
 				DYLIB_COMPATIBILITY_VERSION = 1;
@@ -672,6 +784,7 @@
 				DB14F79F1C8083A1000FA15F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		DB14F7A41C8083A1000FA15F /* Build configuration list for PBXNativeTarget "CelluloidKitTests" */ = {
 			isa = XCConfigurationList;
@@ -680,6 +793,7 @@
 				DB14F7A11C8083A1000FA15F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		DB14F7B91C808579000FA15F /* Build configuration list for PBXNativeTarget "CelluloidPhotoExtension" */ = {
 			isa = XCConfigurationList;
@@ -688,6 +802,7 @@
 				DB14F7BB1C808579000FA15F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
