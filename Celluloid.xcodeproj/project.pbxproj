@@ -25,6 +25,7 @@
 		DB14F7B81C808579000FA15F /* CelluloidPhotoExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = DB14F7A91C808579000FA15F /* CelluloidPhotoExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		DB14F7C01C84348B000FA15F /* CelluloidKit.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7BF1C84348B000FA15F /* CelluloidKit.xcassets */; };
 		DB14F7C21C8437EC000FA15F /* Assets.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7C11C8437EC000FA15F /* Assets.swift */; };
+		DB14F7C61C8469F7000FA15F /* UIView-Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -106,6 +107,7 @@
 		DB14F7B51C808579000FA15F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		DB14F7BF1C84348B000FA15F /* CelluloidKit.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = CelluloidKit.xcassets; sourceTree = "<group>"; };
 		DB14F7C11C8437EC000FA15F /* Assets.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Assets.swift; sourceTree = "<group>"; };
+		DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "UIView-Extension.swift"; sourceTree = "<group>"; };
 		FA3B5D21938C80179B355304 /* Pods.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -199,6 +201,7 @@
 				DB14F78B1C8083A1000FA15F /* Info.plist */,
 				DB14F7BF1C84348B000FA15F /* CelluloidKit.xcassets */,
 				DB14F7C11C8437EC000FA15F /* Assets.swift */,
+				DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */,
 			);
 			path = CelluloidKit;
 			sourceTree = "<group>";
@@ -499,6 +502,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DB14F7C61C8469F7000FA15F /* UIView-Extension.swift in Sources */,
 				DB14F7C21C8437EC000FA15F /* Assets.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
