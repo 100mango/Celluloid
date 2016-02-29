@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		003AFC38E302BDA507B50877 /* Pods.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA3B5D21938C80179B355304 /* Pods.framework */; };
 		4536CC8EDEF16BF2D9A7B96F /* Pods.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA3B5D21938C80179B355304 /* Pods.framework */; };
+		B6EEAEDF95F9CFF681023FA0 /* Pods.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA3B5D21938C80179B355304 /* Pods.framework */; };
 		DB14F7711C803608000FA15F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7701C803608000FA15F /* AppDelegate.swift */; };
 		DB14F7731C803608000FA15F /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7721C803608000FA15F /* ViewController.swift */; };
 		DB14F7781C803608000FA15F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7771C803608000FA15F /* Assets.xcassets */; };
@@ -143,6 +144,7 @@
 			files = (
 				DB14F7AC1C808579000FA15F /* PhotosUI.framework in Frameworks */,
 				DB14F7AE1C808579000FA15F /* Photos.framework in Frameworks */,
+				B6EEAEDF95F9CFF681023FA0 /* Pods.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -316,9 +318,12 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = DB14F7B91C808579000FA15F /* Build configuration list for PBXNativeTarget "CelluloidPhotoExtension" */;
 			buildPhases = (
+				C7108747CB9FA4F846ECF72A /* Check Pods Manifest.lock */,
 				DB14F7A51C808579000FA15F /* Sources */,
 				DB14F7A61C808579000FA15F /* Frameworks */,
 				DB14F7A71C808579000FA15F /* Resources */,
+				B291C5B85AB93C80A72FBFDD /* Embed Pods Frameworks */,
+				167B96E4A110108942DA7FA3 /* Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -411,6 +416,21 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		167B96E4A110108942DA7FA3 /* Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Copy Pods Resources";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods/Pods-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		1F765F78E334E5508771F52D /* Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -471,6 +491,21 @@
 			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods/Pods-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		B291C5B85AB93C80A72FBFDD /* Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods/Pods-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		B364123C19E6707E10ADDEB2 /* Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -484,6 +519,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods/Pods-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		C7108747CB9FA4F846ECF72A /* Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Check Pods Manifest.lock";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_ROOT}/../Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [[ $? != 0 ]] ; then\n    cat << EOM\nerror: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\nEOM\n    exit 1\nfi\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -744,6 +794,7 @@
 		};
 		DB14F7BA1C808579000FA15F /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 685EEB2FDEBD70B67B91C80D /* Pods.debug.xcconfig */;
 			buildSettings = {
 				INFOPLIST_FILE = CelluloidPhotoExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
@@ -755,6 +806,7 @@
 		};
 		DB14F7BB1C808579000FA15F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A6B0D28FE53FDC28AFCD1D5A /* Pods.release.xcconfig */;
 			buildSettings = {
 				INFOPLIST_FILE = CelluloidPhotoExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
