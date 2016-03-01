@@ -22,6 +22,10 @@ public extension UIImage {
         case Think1 = "think1"
         case Think2 = "think2"
         case Think3 = "think3"
+        case Image_sticker_aside = "image_sticker_aside"
+        case Image_sticker_call = "image_sticker_call"
+        case Image_sticker_say = "image_sticker_say"
+        case Image_sticker_think = "image_sticker_think"
         
         public var image: UIImage {
             return UIImage(asset: self)
