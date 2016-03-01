@@ -1,10 +1,13 @@
 PODS:
   - AsyncSwift (1.7.2)
+  - SnapKit (0.19.1)
 
 DEPENDENCIES:
   - AsyncSwift
+  - SnapKit
 
 SPEC CHECKSUMS:
   AsyncSwift: 46a78bceb11f0e5bb52747f740d9692ec78d2d7c
+  SnapKit: eff58d6e3451bf2f482db2eccf86aecf371dc62d
 
 COCOAPODS: 0.39.0
