@@ -18,20 +18,20 @@
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
                             <view contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="hVm-Cc-sQI" customClass="EditPhotoPanel" customModule="CelluloidKit">
-                                <rect key="frame" x="0.0" y="428" width="320" height="100"/>
+                                <rect key="frame" x="0.0" y="408" width="320" height="120"/>
                                 <color key="backgroundColor" white="1" alpha="1" colorSpace="calibratedWhite"/>
                                 <constraints>
-                                    <constraint firstAttribute="height" constant="100" id="70e-iS-4FL"/>
+                                    <constraint firstAttribute="height" constant="120" id="70e-iS-4FL"/>
                                 </constraints>
                             </view>
                             <imageView userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" translatesAutoresizingMaskIntoConstraints="NO" id="XJA-iP-B5O">
-                                <rect key="frame" x="0.0" y="20" width="320" height="408"/>
+                                <rect key="frame" x="0.0" y="30" width="320" height="378"/>
                             </imageView>
                         </subviews>
                         <color key="backgroundColor" white="1" alpha="1" colorSpace="calibratedWhite"/>
                         <constraints>
                             <constraint firstItem="XJA-iP-B5O" firstAttribute="leading" secondItem="zMn-AG-sqS" secondAttribute="leading" id="59g-b9-TSt"/>
-                            <constraint firstItem="XJA-iP-B5O" firstAttribute="top" secondItem="qkL-Od-lgU" secondAttribute="bottom" id="6wo-Gg-q2r"/>
+                            <constraint firstItem="XJA-iP-B5O" firstAttribute="top" secondItem="qkL-Od-lgU" secondAttribute="bottom" constant="10" id="6wo-Gg-q2r"/>
                             <constraint firstItem="hVm-Cc-sQI" firstAttribute="leading" secondItem="zMn-AG-sqS" secondAttribute="leading" id="CbC-CC-L1D"/>
                             <constraint firstItem="n38-gi-rB5" firstAttribute="top" secondItem="XJA-iP-B5O" secondAttribute="bottom" constant="142" id="EQW-dw-ABg"/>
                             <constraint firstAttribute="trailing" secondItem="hVm-Cc-sQI" secondAttribute="trailing" id="HJL-fO-evh"/>
@@ -48,6 +48,7 @@
                     <freeformSimulatedSizeMetrics key="simulatedDestinationMetrics"/>
                     <size key="freeformSize" width="320" height="528"/>
                     <connections>
+                        <outlet property="panel" destination="hVm-Cc-sQI" id="7VV-Tx-3Ua"/>
                         <outlet property="preview" destination="XJA-iP-B5O" id="KRK-jL-SX3"/>
                     </connections>
                 </viewController>

@@ -28,6 +28,8 @@
 		DB14F7C21C8437EC000FA15F /* Assets.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7C11C8437EC000FA15F /* Assets.swift */; };
 		DB14F7C61C8469F7000FA15F /* UIView-Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */; };
 		DB14F7C91C8580C9000FA15F /* EditPhotoPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7C81C8580C9000FA15F /* EditPhotoPanel.swift */; };
+		DBA390F01C867EFC006248A4 /* BubblePickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */; };
+		DBA390F21C868172006248A4 /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390F11C868172006248A4 /* Style.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -111,6 +113,8 @@
 		DB14F7C11C8437EC000FA15F /* Assets.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Assets.swift; sourceTree = "<group>"; };
 		DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "UIView-Extension.swift"; sourceTree = "<group>"; };
 		DB14F7C81C8580C9000FA15F /* EditPhotoPanel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditPhotoPanel.swift; path = View/EditPhotoPanel.swift; sourceTree = "<group>"; };
+		DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BubblePickerViewController.swift; sourceTree = "<group>"; };
+		DBA390F11C868172006248A4 /* Style.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Style.swift; sourceTree = "<group>"; };
 		FA3B5D21938C80179B355304 /* Pods.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -202,11 +206,12 @@
 			isa = PBXGroup;
 			children = (
 				DB14F7C71C85807D000FA15F /* View */,
-				DB14F7891C8083A1000FA15F /* CelluloidKit.h */,
-				DB14F78B1C8083A1000FA15F /* Info.plist */,
-				DB14F7BF1C84348B000FA15F /* CelluloidKit.xcassets */,
-				DB14F7C11C8437EC000FA15F /* Assets.swift */,
 				DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */,
+				DB14F7C11C8437EC000FA15F /* Assets.swift */,
+				DBA390F11C868172006248A4 /* Style.swift */,
+				DB14F7BF1C84348B000FA15F /* CelluloidKit.xcassets */,
+				DB14F78B1C8083A1000FA15F /* Info.plist */,
+				DB14F7891C8083A1000FA15F /* CelluloidKit.h */,
 			);
 			path = CelluloidKit;
 			sourceTree = "<group>";
@@ -244,6 +249,7 @@
 			isa = PBXGroup;
 			children = (
 				DB14F7C81C8580C9000FA15F /* EditPhotoPanel.swift */,
+				DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */,
 			);
 			name = View;
 			sourceTree = "<group>";
@@ -563,9 +569,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DBA390F01C867EFC006248A4 /* BubblePickerViewController.swift in Sources */,
 				DB14F7C61C8469F7000FA15F /* UIView-Extension.swift in Sources */,
 				DB14F7C21C8437EC000FA15F /* Assets.swift in Sources */,
 				DB14F7C91C8580C9000FA15F /* EditPhotoPanel.swift in Sources */,
+				DBA390F21C868172006248A4 /* Style.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1,13 +1,16 @@
 PODS:
   - AsyncSwift (1.7.2)
   - SnapKit (0.19.1)
+  - UIColor_Hex_Swift (1.9)
 
 DEPENDENCIES:
   - AsyncSwift
   - SnapKit
+  - UIColor_Hex_Swift
 
 SPEC CHECKSUMS:
   AsyncSwift: 46a78bceb11f0e5bb52747f740d9692ec78d2d7c
   SnapKit: eff58d6e3451bf2f482db2eccf86aecf371dc62d
+  UIColor_Hex_Swift: 2ee747c0fed8b72b2135ef474b80a6921e489daa
 
 COCOAPODS: 0.39.0

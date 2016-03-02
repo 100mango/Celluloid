@@ -10,7 +10,7 @@ import UIKit
 import SnapKit
 
 private enum ButtonType:Int{
-    case SayBubbleButton
+    case SayBubbleButton = 0
     case ThinkBubbleButton
     case CallBubbleButton
     case AsideBubbleButton
@@ -20,28 +20,27 @@ private enum ButtonType:Int{
 
 @IBDesignable public class EditPhotoPanel:UIView{
     
-    lazy var collectionView:UICollectionView = {
-        let collectionView = UICollectionView(frame: CGRect.zero,collectionViewLayout: self.flowLayot)
-        collectionView.backgroundColor = UIColor.yellowColor()
-        collectionView.dataSource = self
-        collectionView.delegate = self
-        collectionView.registerClass(UICollectionViewCell)
-        return collectionView
-    }()
-    
-    let flowLayot:UICollectionViewFlowLayout = {
+    let collectionView:UICollectionView = {
+        
         let layout = UICollectionViewFlowLayout()
         layout.itemSize =  CGSize(width: 100, height: 100)
         layout.sectionInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 5)
         layout.minimumLineSpacing = 5
         layout.scrollDirection = .Horizontal
-        return layout
+        
+        let collectionView = UICollectionView(frame: CGRect.zero,collectionViewLayout: layout)
+        collectionView.backgroundColor = UIColor.whiteColor()
+        collectionView.registerClass(UICollectionViewCell)
+        return collectionView
     }()
+    
     
     
     //MARK: init
     private func commonInit() {
         self.addSubview(collectionView)
+        collectionView.dataSource = self
+        collectionView.delegate = self
         collectionView.snp_makeConstraints { (make) -> Void in
             make.edges.equalTo(collectionView.superview!)
         }
@@ -67,6 +66,7 @@ extension EditPhotoPanel:UICollectionViewDataSource {
     
     public func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCellWithReuseIdentifier(UICollectionViewCell.defaultReuseIdentifier, forIndexPath: indexPath)
+        cell.backgroundColor = Style.cellLightPurple
         cell.contentView.subviews.forEach {
             $0.removeFromSuperview()
         }
