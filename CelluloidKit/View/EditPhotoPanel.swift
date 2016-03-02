@@ -20,7 +20,7 @@ private enum ButtonType:Int{
 
 @IBDesignable public class EditPhotoPanel:UIView{
     
-    let collectionView:UICollectionView = {
+    let collectionView: UICollectionView = {
         
         let layout = UICollectionViewFlowLayout()
         layout.itemSize =  CGSize(width: 100, height: 100)
@@ -28,13 +28,11 @@ private enum ButtonType:Int{
         layout.minimumLineSpacing = 5
         layout.scrollDirection = .Horizontal
         
-        let collectionView = UICollectionView(frame: CGRect.zero,collectionViewLayout: layout)
+        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.backgroundColor = UIColor.whiteColor()
         collectionView.registerClass(UICollectionViewCell)
         return collectionView
     }()
-    
-    
     
     //MARK: init
     private func commonInit() {

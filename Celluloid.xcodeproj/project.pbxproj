@@ -206,9 +206,8 @@
 			isa = PBXGroup;
 			children = (
 				DB14F7C71C85807D000FA15F /* View */,
+				DBA390F31C86CD92006248A4 /* Constant */,
 				DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */,
-				DB14F7C11C8437EC000FA15F /* Assets.swift */,
-				DBA390F11C868172006248A4 /* Style.swift */,
 				DB14F7BF1C84348B000FA15F /* CelluloidKit.xcassets */,
 				DB14F78B1C8083A1000FA15F /* Info.plist */,
 				DB14F7891C8083A1000FA15F /* CelluloidKit.h */,
@@ -252,6 +251,15 @@
 				DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */,
 			);
 			name = View;
+			sourceTree = "<group>";
+		};
+		DBA390F31C86CD92006248A4 /* Constant */ = {
+			isa = PBXGroup;
+			children = (
+				DB14F7C11C8437EC000FA15F /* Assets.swift */,
+				DBA390F11C868172006248A4 /* Style.swift */,
+			);
+			path = Constant;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

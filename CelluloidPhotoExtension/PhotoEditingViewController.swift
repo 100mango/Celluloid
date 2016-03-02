@@ -10,14 +10,16 @@ import UIKit
 import Photos
 import PhotosUI
 import Async
+import CelluloidKit
 
 class PhotoEditingViewController: UIViewController, PHContentEditingController {
 
     var input: PHContentEditingInput?
     @IBOutlet weak var preview: UIImageView!
-    
+    @IBOutlet weak var panel: EditPhotoPanel!
     
     override func viewDidLoad() {
+
         super.viewDidLoad()
         // Do any additional setup after loading the view.
     }
