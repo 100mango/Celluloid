@@ -8,6 +8,8 @@
 
 import UIKit
 import SnapKit
+import MZFormSheetPresentationController
+
 
 private enum ButtonType:Int{
     case SayBubbleButton = 0
@@ -97,7 +99,10 @@ extension EditPhotoPanel:UICollectionViewDelegate {
     
     public func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
         
-        self.parentViewController?.presentViewController(BubblePickerViewController(), animated: true, completion: nil)
+        let formSheetController = MZFormSheetPresentationViewController(contentViewController: BubblePickerViewController())
+        formSheetController.presentationController?.shouldUseMotionEffect = true
+
+        self.parentViewController?.presentViewController(formSheetController, animated: true, completion: nil)
     }
 }
 
