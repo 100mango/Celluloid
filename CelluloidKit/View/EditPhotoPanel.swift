@@ -99,9 +99,10 @@ extension EditPhotoPanel:UICollectionViewDelegate {
     
     public func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
         
-        let formSheetController = MZFormSheetPresentationViewController(contentViewController: BubblePickerViewController())
+        let navigationVC = UINavigationController(rootViewController: BubblePickerViewController())
+        let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
         formSheetController.presentationController?.shouldUseMotionEffect = true
-
+        formSheetController.presentationController?.shouldCenterVertically = true
         self.parentViewController?.presentViewController(formSheetController, animated: true, completion: nil)
     }
 }

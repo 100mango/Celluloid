@@ -34,12 +34,6 @@ public class BubblePickerViewController:UIViewController {
     
     //MARK: init
     private func commonInit() {
-        view.addSubview(collectionView)
-        collectionView.snp_makeConstraints { (make) -> Void in
-            make.top.equalTo(topLayoutGuide).offset(44)
-            make.bottom.equalTo(bottomLayoutGuide)
-            make.left.right.equalTo(collectionView.superview!)
-        }
         
     }
     
@@ -57,8 +51,25 @@ public class BubblePickerViewController:UIViewController {
     //MARK: View life cycle
     public override func viewDidLoad() {
         super.viewDidLoad()
-        self.navigationController?.hidesBarsOnTap = true
         
+        view.addSubview(collectionView)
+        collectionView.snp_makeConstraints { (make) -> Void in
+            make.top.equalTo(topLayoutGuide).offset(44)
+            make.bottom.equalTo(bottomLayoutGuide)
+            make.left.right.equalTo(collectionView.superview!)
+        }
+        
+        //TODO: Swift2.2 improve #@selctor
+        let buttonItem = UIBarButtonItem(title: "取消", style: .Plain, target: self, action: Selector("dismiss"))
+        self.navigationItem.setLeftBarButtonItem(buttonItem, animated: false)
+        self.navigationItem.title = "选择气泡"
+    }
+}
+
+//MARK: Action
+private extension BubblePickerViewController {
+    @objc func dismiss(){
+        dismissViewControllerAnimated(true, completion: nil)
     }
 }
 
