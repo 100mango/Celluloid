@@ -46,12 +46,12 @@ private enum ButtonType:Int{
     
     public override init(frame: CGRect) {
         super.init(frame: frame)
-        self.commonInit()
+        commonInit()
     }
 
     public required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
-        self.commonInit()
+        commonInit()
     }
 }
 
@@ -94,6 +94,11 @@ extension EditPhotoPanel:UICollectionViewDataSource {
 
 //MARK: CollectionView delegate
 extension EditPhotoPanel:UICollectionViewDelegate {
+    
+    public func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
+        
+        self.parentViewController?.presentViewController(BubblePickerViewController(), animated: true, completion: nil)
+    }
 }
 
 

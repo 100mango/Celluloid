@@ -48,7 +48,7 @@
                     <freeformSimulatedSizeMetrics key="simulatedDestinationMetrics"/>
                     <size key="freeformSize" width="320" height="528"/>
                     <connections>
-                        <outlet property="panel" destination="hVm-Cc-sQI" id="7VV-Tx-3Ua"/>
+                        <outlet property="panel" destination="hVm-Cc-sQI" id="tFA-To-yZm"/>
                         <outlet property="preview" destination="XJA-iP-B5O" id="KRK-jL-SX3"/>
                     </connections>
                 </viewController>

@@ -205,6 +205,7 @@
 		DB14F7881C8083A1000FA15F /* CelluloidKit */ = {
 			isa = PBXGroup;
 			children = (
+				DBA390F41C86CF55006248A4 /* Bubble */,
 				DB14F7C71C85807D000FA15F /* View */,
 				DBA390F31C86CD92006248A4 /* Constant */,
 				DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */,
@@ -248,7 +249,6 @@
 			isa = PBXGroup;
 			children = (
 				DB14F7C81C8580C9000FA15F /* EditPhotoPanel.swift */,
-				DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */,
 			);
 			name = View;
 			sourceTree = "<group>";
@@ -260,6 +260,14 @@
 				DBA390F11C868172006248A4 /* Style.swift */,
 			);
 			path = Constant;
+			sourceTree = "<group>";
+		};
+		DBA390F41C86CF55006248A4 /* Bubble */ = {
+			isa = PBXGroup;
+			children = (
+				DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */,
+			);
+			name = Bubble;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

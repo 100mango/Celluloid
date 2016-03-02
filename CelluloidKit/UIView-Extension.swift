@@ -58,6 +58,19 @@ public extension UIView{
     }
 }
 
+extension UIView {
+    var parentViewController: UIViewController? {
+        var parentResponder: UIResponder? = self
+        while let responder = parentResponder {
+            parentResponder = responder.nextResponder()
+            if let viewController = parentResponder as? UIViewController {
+                return viewController
+            }
+        }
+        return nil
+    }
+}
+
 //MARK: UITableView,UITableViewCell,UICollectionView,UICollectionViewCell
 
 public extension UITableView{
