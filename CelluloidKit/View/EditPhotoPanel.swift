@@ -10,6 +10,10 @@ import UIKit
 import SnapKit
 import MZFormSheetPresentationController
 
+public protocol EditPhotoPanelDelegate:class {
+    
+    func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectBubble bubble: BubbleModel)
+}
 
 private enum ButtonType:Int{
     case SayBubbleButton = 0
@@ -19,8 +23,10 @@ private enum ButtonType:Int{
     case Count
 }
 
-
 @IBDesignable public class EditPhotoPanel:UIView{
+    
+    //MARK: Property
+    public weak var delegate: EditPhotoPanelDelegate?
     
     let collectionView: UICollectionView = {
         
@@ -99,7 +105,9 @@ extension EditPhotoPanel:UICollectionViewDelegate {
     
     public func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
         
-        let navigationVC = UINavigationController(rootViewController: BubblePickerViewController())
+        let bubblePicker = BubblePickerViewController()
+        bubblePicker.delegate = self
+        let navigationVC = UINavigationController(rootViewController: bubblePicker)
         let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
         formSheetController.presentationController?.shouldUseMotionEffect = true
         formSheetController.presentationController?.shouldCenterVertically = true
@@ -107,6 +115,12 @@ extension EditPhotoPanel:UICollectionViewDelegate {
     }
 }
 
+//MARK: BubblePickerViewControllerDelegate
+extension EditPhotoPanel:BubblePickerViewControllerDelegate {
+    public func bubblePickerViewController(bubblePickerViewController: BubblePickerViewController, didSelectBubble bubble: BubbleModel) {
+        self.delegate?.editPhotoPanel(self, didSelectBubble: bubble)
+    }
+}
 
 
 

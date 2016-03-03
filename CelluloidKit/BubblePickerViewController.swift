@@ -9,10 +9,16 @@
 import UIKit
 import SnapKit
 
+public protocol BubblePickerViewControllerDelegate: class {
+    func bubblePickerViewController(bubblePickerViewController: BubblePickerViewController, didSelectBubble bubble: BubbleModel)
+}
 
 public class BubblePickerViewController:UIViewController {
     
+    //MARK: Property
     private let bubbleImages:[UIImage.Asset] = [.Aside1,.Call1,.Call2,.Call3,.Say1,.Say2,.Say3,.Think1,.Think2,.Think3]
+    
+    public weak var delegate: BubblePickerViewControllerDelegate?
     
     lazy var collectionView: UICollectionView = {
         
@@ -107,5 +113,9 @@ extension BubblePickerViewController:UICollectionViewDataSource {
 
 //MARK: CollectionView delegate
 extension BubblePickerViewController:UICollectionViewDelegate {
+    public func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
+        let bubble = BubbleModel(bubbleImage: UIImage(asset: bubbleImages[indexPath.row]))
+        self.delegate?.bubblePickerViewController(self, didSelectBubble: bubble)
+    }
 }
 

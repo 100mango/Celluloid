@@ -28,6 +28,7 @@
 		DB14F7C21C8437EC000FA15F /* Assets.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7C11C8437EC000FA15F /* Assets.swift */; };
 		DB14F7C61C8469F7000FA15F /* UIView-Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */; };
 		DB14F7C91C8580C9000FA15F /* EditPhotoPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7C81C8580C9000FA15F /* EditPhotoPanel.swift */; };
+		DB1DE64C1C881DEB0076EE76 /* BubbleModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1DE64B1C881DEB0076EE76 /* BubbleModel.swift */; };
 		DBA390F01C867EFC006248A4 /* BubblePickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */; };
 		DBA390F21C868172006248A4 /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390F11C868172006248A4 /* Style.swift */; };
 /* End PBXBuildFile section */
@@ -113,6 +114,7 @@
 		DB14F7C11C8437EC000FA15F /* Assets.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Assets.swift; sourceTree = "<group>"; };
 		DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "UIView-Extension.swift"; sourceTree = "<group>"; };
 		DB14F7C81C8580C9000FA15F /* EditPhotoPanel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditPhotoPanel.swift; path = View/EditPhotoPanel.swift; sourceTree = "<group>"; };
+		DB1DE64B1C881DEB0076EE76 /* BubbleModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleModel.swift; path = Bubble/Model/BubbleModel.swift; sourceTree = "<group>"; };
 		DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BubblePickerViewController.swift; sourceTree = "<group>"; };
 		DBA390F11C868172006248A4 /* Style.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Style.swift; sourceTree = "<group>"; };
 		FA3B5D21938C80179B355304 /* Pods.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -253,6 +255,22 @@
 			name = View;
 			sourceTree = "<group>";
 		};
+		DB1DE6451C87EB6D0076EE76 /* Model */ = {
+			isa = PBXGroup;
+			children = (
+				DB1DE64B1C881DEB0076EE76 /* BubbleModel.swift */,
+			);
+			name = Model;
+			sourceTree = "<group>";
+		};
+		DB1DE6481C87EBC10076EE76 /* Controller */ = {
+			isa = PBXGroup;
+			children = (
+				DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */,
+			);
+			name = Controller;
+			sourceTree = "<group>";
+		};
 		DBA390F31C86CD92006248A4 /* Constant */ = {
 			isa = PBXGroup;
 			children = (
@@ -265,7 +283,8 @@
 		DBA390F41C86CF55006248A4 /* Bubble */ = {
 			isa = PBXGroup;
 			children = (
-				DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */,
+				DB1DE6481C87EBC10076EE76 /* Controller */,
+				DB1DE6451C87EB6D0076EE76 /* Model */,
 			);
 			name = Bubble;
 			sourceTree = "<group>";
@@ -590,6 +609,7 @@
 				DB14F7C21C8437EC000FA15F /* Assets.swift in Sources */,
 				DB14F7C91C8580C9000FA15F /* EditPhotoPanel.swift in Sources */,
 				DBA390F21C868172006248A4 /* Style.swift in Sources */,
+				DB1DE64C1C881DEB0076EE76 /* BubbleModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
