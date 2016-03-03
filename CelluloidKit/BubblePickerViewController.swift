@@ -9,16 +9,17 @@
 import UIKit
 import SnapKit
 
-private let bubbleImages:[UIImage.Asset] = [.Aside1,.Call1,.Call2,.Call3,.Say1,.Say2,.Say3,.Think1,.Think2,.Think3]
-
 
 public class BubblePickerViewController:UIViewController {
+    
+    private let bubbleImages:[UIImage.Asset] = [.Aside1,.Call1,.Call2,.Call3,.Say1,.Say2,.Say3,.Think1,.Think2,.Think3]
     
     lazy var collectionView: UICollectionView = {
         
         let cellMargin = CGFloat(10)
-        let cellWidth = (self.view.width - cellMargin * 4)/3
+        let cellWidth = (self.view.width - cellMargin * 3)/2
         let layout = UICollectionViewFlowLayout()
+        layout.sectionInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
         layout.itemSize = CGSize(width: cellWidth, height: cellWidth)
         layout.minimumLineSpacing = cellMargin
         layout.minimumInteritemSpacing = cellMargin
@@ -54,7 +55,7 @@ public class BubblePickerViewController:UIViewController {
         
         view.addSubview(collectionView)
         collectionView.snp_makeConstraints { (make) -> Void in
-            make.top.equalTo(topLayoutGuide).offset(44)
+            make.top.equalTo(topLayoutGuide)
             make.bottom.equalTo(bottomLayoutGuide)
             make.left.right.equalTo(collectionView.superview!)
         }
@@ -63,6 +64,13 @@ public class BubblePickerViewController:UIViewController {
         let buttonItem = UIBarButtonItem(title: "取消", style: .Plain, target: self, action: Selector("dismiss"))
         self.navigationItem.setLeftBarButtonItem(buttonItem, animated: false)
         self.navigationItem.title = "选择气泡"
+    }
+    
+    public override func viewDidLayoutSubviews() {
+        let layout = collectionView.collectionViewLayout as! UICollectionViewFlowLayout
+        let cellMargin = CGFloat(10)
+        let cellWidth = (view.width - cellMargin * 3)/2
+        layout.itemSize = CGSize(width: cellWidth, height: cellWidth)
     }
 }
 
@@ -89,6 +97,7 @@ extension BubblePickerViewController:UICollectionViewDataSource {
         
         let imageView = UIImageView()
         imageView.size = cell.size
+        imageView.contentMode = .ScaleAspectFit
         imageView.image = UIImage(asset: bubbleImages[indexPath.row])
         cell.contentView.addSubview(imageView)
         return cell
