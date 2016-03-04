@@ -43,18 +43,14 @@ public class AttachView: UIView {
         return button
     }()
     
-    /*
-    //rotateAndResize book keeping
-    var deltaAngle = CGFloat()
-    var initialBounds = CGRect.zero
-    var initialDistance = CGFloat()
-    */
-    
     //MARK: init
     private func commonInit() {
         self.addSubview(imageView)
         self.addSubview(deleteButton)
         self.addSubview(resizeButton)
+        
+        let moveGesture = UIPanGestureRecognizer(target: self, action: Selector("move:"))
+        self.addGestureRecognizer(moveGesture)
     }
     
     public override init(frame: CGRect) {
@@ -123,28 +119,27 @@ extension AttachView{
         }else{
             //do nothing
         }
-        /*
-        if gestureRecognizer.state == .Began {
-            deltaAngle = atan2(touchLocation.y - center.y, touchLocation.x - center.x) - self.transform.angle
-            initialBounds = self.bounds
-            initialDistance = CGPointGetDistance(center, touchLocation)
-        }else if gestureRecognizer.state == .Changed {
-            let ang = atan2(touchLocation.y - center.y, touchLocation.x - center.x)
-            let angleDiff = deltaAngle - ang
-            self.transform = CGAffineTransformMakeRotation(-angleDiff)
-            
-            //Finding scale between current touchPoint and previous touchPoint
-            let scale = CGPointGetDistance(center, touchLocation)/initialDistance;
-            let scaleRect = initialBounds.scaled(scale, scale)
-            
-            if scaleRect.width >= (buttonWidth + 20) && scaleRect.size.height >= (buttonWidth + 20) {
-                self.bounds = scaleRect
-            }
-            self.layoutIfNeeded()
-        }else{
-            //do nothing
-        }*/
+    }
+    
+    @objc func move (gestureRecognizer: UIPanGestureRecognizer) {
+        struct Static {
+            static var touchLocation = CGPoint.zero
+            static var beginningCenter = CGPoint.zero
+            static var beginningPoint = CGPoint.zero
+        }
         
+        func makeCenter() -> CGPoint {
+            return CGPoint(x: Static.beginningCenter.x + (Static.touchLocation.x - Static.beginningPoint.x), y: Static.beginningCenter.y+(Static.touchLocation.y-Static.beginningPoint.y))
+        }
+        
+        Static.touchLocation = gestureRecognizer.locationInView(self.superview!)
+        if gestureRecognizer.state == .Began {
+            Static.beginningCenter = self.center
+            Static.beginningPoint = Static.touchLocation
+            self.center = makeCenter()
+        }else if gestureRecognizer.state == .Changed || gestureRecognizer.state == .Ended {
+            self.center = makeCenter()
+        }
     }
 }
 
