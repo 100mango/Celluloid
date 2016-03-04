@@ -58,8 +58,8 @@ public extension UIView{
     }
 }
 
-extension UIView {
-    var parentViewController: UIViewController? {
+public extension UIView {
+    public var parentViewController: UIViewController? {
         var parentResponder: UIResponder? = self
         while let responder = parentResponder {
             parentResponder = responder.nextResponder()
@@ -68,6 +68,26 @@ extension UIView {
             }
         }
         return nil
+    }
+}
+
+//MARK: CGAffineTransform
+public extension CGAffineTransform {
+    public var angle:CGFloat { return atan2(self.b,self.a) }
+}
+
+//MARK: CGPoint
+public func CGPointGetDistance(point1:CGPoint, _ point2:CGPoint) -> CGFloat {
+    let fx = point2.x - point1.x;
+    let fy = point2.y - point1.y;
+    
+    return sqrt((fx*fx + fy*fy));
+}
+
+//MARK: CGRect
+public extension CGRect {
+    public func scaled(sx: CGFloat, _ sy: CGFloat) -> CGRect {
+        return CGRectMake(self.origin.x * sx, self.origin.y * sy, self.width * sx, self.height * sy);
     }
 }
 

@@ -28,7 +28,7 @@ private enum ButtonType:Int{
     //MARK: Property
     public weak var delegate: EditPhotoPanelDelegate?
     
-    let collectionView: UICollectionView = {
+    lazy var collectionView: UICollectionView = {
         
         let layout = UICollectionViewFlowLayout()
         layout.itemSize =  CGSize(width: 100, height: 100)
@@ -37,6 +37,8 @@ private enum ButtonType:Int{
         layout.scrollDirection = .Horizontal
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.delegate = self
+        collectionView.dataSource = self
         collectionView.backgroundColor = UIColor.whiteColor()
         collectionView.registerClass(UICollectionViewCell)
         return collectionView
@@ -45,8 +47,6 @@ private enum ButtonType:Int{
     //MARK: init
     private func commonInit() {
         self.addSubview(collectionView)
-        collectionView.dataSource = self
-        collectionView.delegate = self
         collectionView.snp_makeConstraints { (make) -> Void in
             make.edges.equalTo(collectionView.superview!)
         }

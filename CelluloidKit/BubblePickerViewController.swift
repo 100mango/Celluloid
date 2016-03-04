@@ -23,10 +23,8 @@ public class BubblePickerViewController:UIViewController {
     lazy var collectionView: UICollectionView = {
         
         let cellMargin = CGFloat(10)
-        let cellWidth = (self.view.width - cellMargin * 3)/2
         let layout = UICollectionViewFlowLayout()
         layout.sectionInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
-        layout.itemSize = CGSize(width: cellWidth, height: cellWidth)
         layout.minimumLineSpacing = cellMargin
         layout.minimumInteritemSpacing = cellMargin
         layout.scrollDirection = .Vertical

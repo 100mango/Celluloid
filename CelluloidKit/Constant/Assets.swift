@@ -12,6 +12,8 @@ let buddleIndentifier = "Mango.CelluloidKit"
 
 public extension UIImage {
     public enum Asset: String {
+        
+        //Bubble
         case Aside1 = "aside1"
         case Call1 = "call1"
         case Call2 = "call2"
@@ -26,6 +28,18 @@ public extension UIImage {
         case Image_sticker_call = "image_sticker_call"
         case Image_sticker_say = "image_sticker_say"
         case Image_sticker_think = "image_sticker_think"
+        
+        //Button
+        case Btn_icon_sticker_delete_normal = "btn_icon_sticker_delete_normal"
+        case Btn_icon_sticker_delete_pressed = "btn_icon_sticker_delete_pressed"
+        case Btn_icon_sticker_edit_normal = "btn_icon_sticker_edit_normal"
+        case Btn_icon_sticker_edit_pressed = "btn_icon_sticker_edit_pressed"
+        case Btn_icon_sticker_text_normal = "btn_icon_sticker_text_normal"
+        case Btn_icon_sticker_text_pressed = "btn_icon_sticker_text_pressed"
+        case Btn_icon_sticker_turn1_normal = "btn_icon_sticker_turn1_normal"
+        case Btn_icon_sticker_turn1_pressed = "btn_icon_sticker_turn1_pressed"
+        case Btn_icon_sticker_turn2_normal = "btn_icon_sticker_turn2_normal"
+        case Btn_icon_sticker_turn2_pressed = "btn_icon_sticker_turn2_pressed"
         
         public var image: UIImage {
             return UIImage(asset: self)
