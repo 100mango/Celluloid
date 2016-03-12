@@ -23,7 +23,6 @@ public class AttachView: UIView {
     
     lazy var deleteButton: UIButton = {
         let button = UIButton(type: .Custom)
-        //button.frame = CGRect(x: self.width - self.buttonWidth, y: 0, width: self.buttonWidth, height: self.buttonWidth)
         button.frame = CGRect(x: self.bounds.width - self.buttonWidth, y: 0, width: self.buttonWidth, height: self.buttonWidth)
         button.setImage(UIImage(asset: .Btn_icon_sticker_delete_normal), forState: .Normal)
         //TODO: Swift2.2 improve #@selctor
@@ -33,7 +32,6 @@ public class AttachView: UIView {
     
     lazy var resizeButton: UIButton = {
         let button = UIButton(type: .Custom)
-        //button.frame = CGRect(x: self.width - self.buttonWidth, y: self.height - self.buttonWidth, width: self.buttonWidth, height: self.buttonWidth)
         button.frame = CGRect(x: self.bounds.width - self.buttonWidth, y: self.bounds.height - self.buttonWidth, width: self.buttonWidth, height: self.buttonWidth)
         button.setImage(UIImage(asset: .Btn_icon_sticker_edit_normal), forState: .Normal)
         //TODO: Swift2.2 improve #@selctor

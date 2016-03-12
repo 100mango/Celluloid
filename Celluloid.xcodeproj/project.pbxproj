@@ -32,6 +32,7 @@
 		DB1DE6501C882EEC0076EE76 /* AttachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1DE64F1C882EEC0076EE76 /* AttachView.swift */; };
 		DBA390F01C867EFC006248A4 /* BubblePickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */; };
 		DBA390F21C868172006248A4 /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390F11C868172006248A4 /* Style.swift */; };
+		DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -119,6 +120,7 @@
 		DB1DE64F1C882EEC0076EE76 /* AttachView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = AttachView.swift; path = View/AttachView.swift; sourceTree = "<group>"; };
 		DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BubblePickerViewController.swift; sourceTree = "<group>"; };
 		DBA390F11C868172006248A4 /* Style.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Style.swift; sourceTree = "<group>"; };
+		DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditBubbleViewController.swift; path = Bubble/Controller/EditBubbleViewController.swift; sourceTree = "<group>"; };
 		FA3B5D21938C80179B355304 /* Pods.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -270,6 +272,7 @@
 			isa = PBXGroup;
 			children = (
 				DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */,
+				DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */,
 			);
 			name = Controller;
 			sourceTree = "<group>";
@@ -609,6 +612,7 @@
 			files = (
 				DBA390F01C867EFC006248A4 /* BubblePickerViewController.swift in Sources */,
 				DB1DE6501C882EEC0076EE76 /* AttachView.swift in Sources */,
+				DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */,
 				DB14F7C61C8469F7000FA15F /* UIView-Extension.swift in Sources */,
 				DB14F7C21C8437EC000FA15F /* Assets.swift in Sources */,
 				DB14F7C91C8580C9000FA15F /* EditPhotoPanel.swift in Sources */,
