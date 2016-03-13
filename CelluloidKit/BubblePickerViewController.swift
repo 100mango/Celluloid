@@ -110,10 +110,20 @@ extension BubblePickerViewController:UICollectionViewDataSource {
 }
 
 //MARK: CollectionView delegate
-extension BubblePickerViewController:UICollectionViewDelegate {
+extension BubblePickerViewController: UICollectionViewDelegate {
     public func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
         let bubble = BubbleModel(bubbleImage: UIImage(asset: bubbleImages[indexPath.row]))
-        self.delegate?.bubblePickerViewController(self, didSelectBubble: bubble)
+        let editBubbleViewController = EditBubbleViewController(bubbleModel: bubble)
+        editBubbleViewController.delegate = self
+        self.navigationController?.pushViewController(editBubbleViewController, animated: true)
     }
 }
+
+//MARK: EditBubbleViewController delegate
+extension BubblePickerViewController: EditBubbleViewControllerDelegate {
+    public func editBubbleViewController(editBubbleViewController: EditBubbleViewController, didEditedBubbleModel bubbleModel: BubbleModel) {
+        self.delegate?.bubblePickerViewController(self, didSelectBubble: bubbleModel)
+    }
+}
+
 
