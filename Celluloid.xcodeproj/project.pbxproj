@@ -31,6 +31,8 @@
 		DB1DE64C1C881DEB0076EE76 /* BubbleModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1DE64B1C881DEB0076EE76 /* BubbleModel.swift */; };
 		DB1DE6501C882EEC0076EE76 /* AttachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1DE64F1C882EEC0076EE76 /* AttachView.swift */; };
 		DB7A35691C9557AD00AB3283 /* BubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35681C9557AD00AB3283 /* BubbleView.swift */; };
+		DB7A356E1C958BB300AB3283 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35701C958BB300AB3283 /* Localizable.strings */; };
+		DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35721C958DA700AB3283 /* Localizable.swift */; };
 		DBA390F01C867EFC006248A4 /* BubblePickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */; };
 		DBA390F21C868172006248A4 /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390F11C868172006248A4 /* Style.swift */; };
 		DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */; };
@@ -120,6 +122,11 @@
 		DB1DE64B1C881DEB0076EE76 /* BubbleModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleModel.swift; path = Bubble/Model/BubbleModel.swift; sourceTree = "<group>"; };
 		DB1DE64F1C882EEC0076EE76 /* AttachView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = AttachView.swift; path = View/AttachView.swift; sourceTree = "<group>"; };
 		DB7A35681C9557AD00AB3283 /* BubbleView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleView.swift; path = Bubble/View/BubbleView.swift; sourceTree = "<group>"; };
+		DB7A356C1C958A6D00AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/LaunchScreen.strings"; sourceTree = "<group>"; };
+		DB7A356D1C958A6D00AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/MainInterface.strings"; sourceTree = "<group>"; };
+		DB7A356F1C958BB300AB3283 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		DB7A35711C958BB600AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		DB7A35721C958DA700AB3283 /* Localizable.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Localizable.swift; sourceTree = "<group>"; };
 		DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BubblePickerViewController.swift; sourceTree = "<group>"; };
 		DBA390F11C868172006248A4 /* Style.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Style.swift; sourceTree = "<group>"; };
 		DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditBubbleViewController.swift; path = Bubble/Controller/EditBubbleViewController.swift; sourceTree = "<group>"; };
@@ -292,6 +299,8 @@
 			children = (
 				DB14F7C11C8437EC000FA15F /* Assets.swift */,
 				DBA390F11C868172006248A4 /* Style.swift */,
+				DB7A35721C958DA700AB3283 /* Localizable.swift */,
+				DB7A35701C958BB300AB3283 /* Localizable.strings */,
 			);
 			path = Constant;
 			sourceTree = "<group>";
@@ -435,6 +444,7 @@
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hans",
 			);
 			mainGroup = DB14F7641C803608000FA15F;
 			productRefGroup = DB14F76E1C803608000FA15F /* Products */;
@@ -464,6 +474,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DB14F7C01C84348B000FA15F /* CelluloidKit.xcassets in Resources */,
+				DB7A356E1C958BB300AB3283 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -623,6 +634,7 @@
 			files = (
 				DBA390F01C867EFC006248A4 /* BubblePickerViewController.swift in Sources */,
 				DB1DE6501C882EEC0076EE76 /* AttachView.swift in Sources */,
+				DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */,
 				DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */,
 				DB7A35691C9557AD00AB3283 /* BubbleView.swift in Sources */,
 				DB14F7C61C8469F7000FA15F /* UIView-Extension.swift in Sources */,
@@ -679,6 +691,7 @@
 			isa = PBXVariantGroup;
 			children = (
 				DB14F77A1C803608000FA15F /* Base */,
+				DB7A356C1C958A6D00AB3283 /* zh-Hans */,
 			);
 			name = LaunchScreen.storyboard;
 			sourceTree = "<group>";
@@ -687,8 +700,18 @@
 			isa = PBXVariantGroup;
 			children = (
 				DB14F7B31C808579000FA15F /* Base */,
+				DB7A356D1C958A6D00AB3283 /* zh-Hans */,
 			);
 			name = MainInterface.storyboard;
+			sourceTree = "<group>";
+		};
+		DB7A35701C958BB300AB3283 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				DB7A356F1C958BB300AB3283 /* en */,
+				DB7A35711C958BB600AB3283 /* zh-Hans */,
+			);
+			name = Localizable.strings;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */

@@ -30,7 +30,7 @@ public class EditBubbleViewController: UIViewController {
     
     private lazy var rightBarButtonItem: UIBarButtonItem = {
         //TODO: Swift2.2 improve #@selctor
-        let rightBarButtonItem = UIBarButtonItem(title: "完成", style: .Plain, target: self, action: Selector("done"))
+        let rightBarButtonItem = UIBarButtonItem(title: tr(.Done), style: .Plain, target: self, action: Selector("done"))
         return rightBarButtonItem
     }()
     
