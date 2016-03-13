@@ -4,4 +4,3 @@ pod "AsyncSwift"
 pod 'SnapKit' 
 pod 'UIColor_Hex_Swift'
 pod 'MZFormSheetPresentationController'
-pod 'Bond'
