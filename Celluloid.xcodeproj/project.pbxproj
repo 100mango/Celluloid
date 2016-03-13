@@ -33,7 +33,7 @@
 		DB7A35691C9557AD00AB3283 /* BubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35681C9557AD00AB3283 /* BubbleView.swift */; };
 		DB7A356E1C958BB300AB3283 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35701C958BB300AB3283 /* Localizable.strings */; };
 		DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35721C958DA700AB3283 /* Localizable.swift */; };
-		DBA390F01C867EFC006248A4 /* BubblePickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */; };
+		DB7A35871C9596C200AB3283 /* BubblePickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35861C9596C200AB3283 /* BubblePickerViewController.swift */; };
 		DBA390F21C868172006248A4 /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390F11C868172006248A4 /* Style.swift */; };
 		DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */; };
 /* End PBXBuildFile section */
@@ -127,7 +127,7 @@
 		DB7A356F1C958BB300AB3283 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		DB7A35711C958BB600AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		DB7A35721C958DA700AB3283 /* Localizable.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Localizable.swift; sourceTree = "<group>"; };
-		DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BubblePickerViewController.swift; sourceTree = "<group>"; };
+		DB7A35861C9596C200AB3283 /* BubblePickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubblePickerViewController.swift; path = Bubble/Controller/BubblePickerViewController.swift; sourceTree = "<group>"; };
 		DBA390F11C868172006248A4 /* Style.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Style.swift; sourceTree = "<group>"; };
 		DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditBubbleViewController.swift; path = Bubble/Controller/EditBubbleViewController.swift; sourceTree = "<group>"; };
 		FA3B5D21938C80179B355304 /* Pods.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -280,7 +280,7 @@
 		DB1DE6481C87EBC10076EE76 /* Controller */ = {
 			isa = PBXGroup;
 			children = (
-				DBA390EF1C867EFC006248A4 /* BubblePickerViewController.swift */,
+				DB7A35861C9596C200AB3283 /* BubblePickerViewController.swift */,
 				DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */,
 			);
 			name = Controller;
@@ -632,7 +632,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DBA390F01C867EFC006248A4 /* BubblePickerViewController.swift in Sources */,
+				DB7A35871C9596C200AB3283 /* BubblePickerViewController.swift in Sources */,
 				DB1DE6501C882EEC0076EE76 /* AttachView.swift in Sources */,
 				DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */,
 				DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */,
