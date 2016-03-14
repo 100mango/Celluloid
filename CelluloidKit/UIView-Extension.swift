@@ -91,6 +91,26 @@ public extension CGRect {
     }
 }
 
+//MARK: imageView
+public extension UIImageView {
+    public var imageRect: CGRect {
+        guard self.contentMode == .ScaleAspectFit && self.width != 0 && self.height != 0 else {
+            return self.bounds
+        }
+        
+        if let image = self.image {
+            let size = image.size
+            let imageScale = CGFloat(fminf(Float(self.bounds.width/size.width), Float(self.bounds.height/size.height)))
+            let scaledImageSize = CGSize(width: size.width*imageScale, height: size.height*imageScale)
+            let imageRect = CGRectMake(round(CGFloat(0.5)*(CGRectGetWidth(self.bounds)-scaledImageSize.width)), round(CGFloat(0.5)*(CGRectGetHeight(self.bounds)-scaledImageSize.height)), round(scaledImageSize.width), round(scaledImageSize.height));
+            return imageRect
+        }else{
+            return self.bounds
+        }
+        
+    }
+}
+
 //MARK: UITableView,UITableViewCell,UICollectionView,UICollectionViewCell
 
 public extension UITableView{

@@ -35,6 +35,7 @@
 		DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35721C958DA700AB3283 /* Localizable.swift */; };
 		DB7A35871C9596C200AB3283 /* BubblePickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35861C9596C200AB3283 /* BubblePickerViewController.swift */; };
 		DB7A35AE1C965D2100AB3283 /* bubble.json in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35AD1C965D2100AB3283 /* bubble.json */; };
+		DB7A35B01C969FFA00AB3283 /* BubbleLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */; };
 		DBA390F21C868172006248A4 /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390F11C868172006248A4 /* Style.swift */; };
 		DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */; };
 /* End PBXBuildFile section */
@@ -130,6 +131,7 @@
 		DB7A35721C958DA700AB3283 /* Localizable.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Localizable.swift; sourceTree = "<group>"; };
 		DB7A35861C9596C200AB3283 /* BubblePickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubblePickerViewController.swift; path = Bubble/Controller/BubblePickerViewController.swift; sourceTree = "<group>"; };
 		DB7A35AD1C965D2100AB3283 /* bubble.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = bubble.json; sourceTree = "<group>"; };
+		DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleLabel.swift; path = Bubble/View/BubbleLabel.swift; sourceTree = "<group>"; };
 		DBA390F11C868172006248A4 /* Style.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Style.swift; sourceTree = "<group>"; };
 		DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditBubbleViewController.swift; path = Bubble/Controller/EditBubbleViewController.swift; sourceTree = "<group>"; };
 		FA3B5D21938C80179B355304 /* Pods.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -292,6 +294,7 @@
 			isa = PBXGroup;
 			children = (
 				DB7A35681C9557AD00AB3283 /* BubbleView.swift */,
+				DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */,
 			);
 			name = View;
 			sourceTree = "<group>";
@@ -646,6 +649,7 @@
 			files = (
 				DB7A35871C9596C200AB3283 /* BubblePickerViewController.swift in Sources */,
 				DB1DE6501C882EEC0076EE76 /* AttachView.swift in Sources */,
+				DB7A35B01C969FFA00AB3283 /* BubbleLabel.swift in Sources */,
 				DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */,
 				DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */,
 				DB7A35691C9557AD00AB3283 /* BubbleView.swift in Sources */,
