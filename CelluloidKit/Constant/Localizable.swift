@@ -24,8 +24,7 @@ extension L10n: CustomStringConvertible {
     }
     
     private static func tr(key: String, _ args: CVarArgType...) -> String {
-        let bundle = NSBundle(identifier: buddleIndentifier)!
-        let format = NSLocalizedString(key, bundle: bundle, comment: "")
+        let format = NSLocalizedString(key, bundle: extensionBundle, comment: "")
         return String(format: format, arguments: args)
     }
 }

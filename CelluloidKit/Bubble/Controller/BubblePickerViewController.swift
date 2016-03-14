@@ -16,8 +16,6 @@ public protocol BubblePickerViewControllerDelegate: class {
 public class BubblePickerViewController:UIViewController {
     
     //MARK: Property
-    private let bubbleImages:[UIImage.Asset] = [.Aside1,.Call1,.Call2,.Call3,.Say1,.Say2,.Say3,.Think1,.Think2,.Think3]
-    
     public weak var delegate: BubblePickerViewControllerDelegate?
     
     lazy var collectionView: UICollectionView = {
@@ -89,7 +87,7 @@ private extension BubblePickerViewController {
 extension BubblePickerViewController:UICollectionViewDataSource {
     
     public func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        return bubbleImages.count
+        return BubbleModel.bubbles.count
     }
     
     public func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
@@ -102,7 +100,7 @@ extension BubblePickerViewController:UICollectionViewDataSource {
         let imageView = UIImageView()
         imageView.size = cell.size
         imageView.contentMode = .ScaleAspectFit
-        imageView.image = UIImage(asset: bubbleImages[indexPath.row])
+        imageView.image = BubbleModel.bubbles[indexPath.row].bubbleImage
         cell.contentView.addSubview(imageView)
         return cell
     }
@@ -112,7 +110,7 @@ extension BubblePickerViewController:UICollectionViewDataSource {
 //MARK: CollectionView delegate
 extension BubblePickerViewController: UICollectionViewDelegate {
     public func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
-        let bubble = BubbleModel(bubbleImage: UIImage(asset: bubbleImages[indexPath.row]))
+        let bubble = BubbleModel.bubbles[indexPath.row]
         let editBubbleViewController = EditBubbleViewController(bubbleModel: bubble)
         editBubbleViewController.delegate = self
         self.navigationController?.pushViewController(editBubbleViewController, animated: true)

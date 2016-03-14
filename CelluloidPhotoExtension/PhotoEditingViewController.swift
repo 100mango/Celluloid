@@ -34,10 +34,8 @@ class PhotoEditingViewController: UIViewController {
 extension PhotoEditingViewController: EditPhotoPanelDelegate {
     func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectBubble bubble: BubbleModel) {
         
-        //let view = AttachView(frame: CGRect(x: 40, y: 100, width: 100, height: 100))
         let view = BubbleView(bubbleModel: bubble)
         view.frame = CGRect(x: 40, y: 100, width: 100, height: 100)
-        //view.imageView.image = bubble.bubbleImage
         self.view.addSubview(view)
     }
 }

@@ -9,6 +9,7 @@
 import Foundation
 
 let buddleIndentifier = "Mango.CelluloidKit"
+let extensionBundle = NSBundle(identifier: buddleIndentifier)!
 
 public extension UIImage {
     public enum Asset: String {
