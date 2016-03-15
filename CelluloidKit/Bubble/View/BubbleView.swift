@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import MZFormSheetPresentationController
 
 public class BubbleView: AttachView {
     //MARK: Property
@@ -18,10 +19,18 @@ public class BubbleView: AttachView {
         return editTextButton
     }()
     
+    var bubbleModel: BubbleModel {
+        didSet {
+            bubbleLabel.text = bubbleModel.content
+            bubbleLabel.adjustFrame()
+        }
+    }
+    
     let bubbleLabel: BubbleLabel
     
     //MARK: init
     public init(bubbleModel:BubbleModel) {
+        self.bubbleModel = bubbleModel
         self.bubbleLabel = BubbleLabel(model: bubbleModel)
         super.init(frame: CGRect.zero)
         self.addSubview(editTextBubbton)
@@ -45,5 +54,19 @@ public class BubbleView: AttachView {
 //MARK: Action
 extension BubbleView {
     @objc func editText() {
+        let editBubbleVC = EditBubbleViewController(bubbleModel: self.bubbleModel)
+        editBubbleVC.delegate = self
+        let navigationVC = UINavigationController(rootViewController: editBubbleVC)
+        let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
+        formSheetController.presentationController?.shouldUseMotionEffect = true
+        formSheetController.presentationController?.shouldCenterVertically = true
+        self.parentViewController?.presentViewController(formSheetController, animated: true, completion: nil)
+    }
+}
+
+//MARK: EditBubbleViewController delegate
+extension BubbleView: EditBubbleViewControllerDelegate {
+    public func editBubbleViewController(editBubbleViewController: EditBubbleViewController, didEditedBubbleModel bubbleModel: BubbleModel) {
+        self.bubbleModel = bubbleModel
     }
 }

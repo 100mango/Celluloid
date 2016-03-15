@@ -28,7 +28,9 @@ public class BubbleLabel: UILabel {
     }
     
     //MARK: layout
-    // call this method in superView's layoutSubViews method to adjust label frame
+    /**
+    call this method in superView's layoutSubViews method to adjust label frame and font size
+    */
     public func adjustFrame() {
         if let superview = self.superview as? UIImageView {
             let imageRect = superview.imageRect
@@ -57,6 +59,12 @@ private extension UILabel {
             textSize = self.sizeThatFits(constrainSize)
             maxFontSize -= 1
         } while maxFontSize > minFontSize && textSize.height >= self.height
-
+        
+        //如果只有一行则居中
+        if (floor((textSize.height / self.font.lineHeight)) == 1) {
+            self.textAlignment = .Center;
+        }else{
+            self.textAlignment = .Left;
+        }
     }
 }
