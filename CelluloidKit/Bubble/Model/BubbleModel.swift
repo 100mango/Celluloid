@@ -8,24 +8,31 @@
 
 import Foundation
 
-public struct BubbleModel {
-    public var bubbleImage:UIImage
+
+public struct BubbleModel: StructCoding{
+    
+    public typealias structType = BubbleModel
+    
+    public var bubbleImage:UIImage {
+        return UIImage(asset: self.asset)
+    }
     public var content:String
     public let area:[CGFloat]
+    let asset: UIImage.Asset
     
     public static let bubbles: [BubbleModel] = {
         var bubbles = [BubbleModel]()
         for asset in bubbleAssets {
-            let bubble = BubbleModel(assest: asset)
+            let bubble = BubbleModel(asset: asset)
             bubbles.append(bubble)
         }
         return bubbles
     }()
     
-    private init(assest:UIImage.Asset){
-        self.bubbleImage = UIImage(asset: assest)
+    private init(asset:UIImage.Asset){
+        self.asset = asset
         self.content = ""
-        self.area = areaDic[assest.rawValue]!
+        self.area = areaDic[asset.rawValue]!
     }
     
 }
