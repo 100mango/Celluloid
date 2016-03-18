@@ -14,10 +14,13 @@ import CelluloidKit
 
 class PhotoEditingViewController: UIViewController {
 
+    //MARK: Property
     var input: PHContentEditingInput?
     @IBOutlet weak var preview: UIImageView!
     @IBOutlet weak var panel: EditPhotoPanel!
     
+    
+    //MARK: View Lift Cycle
     override func viewDidLoad() {
         super.viewDidLoad()
         
@@ -30,23 +33,26 @@ class PhotoEditingViewController: UIViewController {
     }
 }
 
-// MARK: - EditPhotoPanelDelegate
+// MARK: - EditPhotoPane lDelegate
 extension PhotoEditingViewController: EditPhotoPanelDelegate {
     func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectBubble bubble: BubbleModel) {
         
         let view = BubbleView(bubbleModel: bubble)
         view.frame = CGRect(x: 40, y: 100, width: 100, height: 100)
-        self.view.addSubview(view)
+        self.preview.addSubview(view)
     }
 }
 
-// MARK: - PHContentEditingController
+// MARK: - PHContentEditingController Protocol
 extension PhotoEditingViewController: PHContentEditingController{
     
     func canHandleAdjustmentData(adjustmentData: PHAdjustmentData?) -> Bool {
-        // Inspect the adjustmentData to determine whether your extension can work with past edits.
-        // (Typically, you use its formatIdentifier and formatVersion properties to do this.)
-        return false
+        
+        if let adjustmentData = adjustmentData {
+            return AdjustmentData.supportIdentifier(adjustmentData.formatIdentifier, version: adjustmentData.formatVersion)
+        }else{
+            return false
+        }
     }
     
     func startContentEditingWithInput(contentEditingInput: PHContentEditingInput?, placeholderImage: UIImage) {
