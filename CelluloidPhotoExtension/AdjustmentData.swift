@@ -9,7 +9,7 @@
 import Foundation
 import CelluloidKit
 
-public struct AdjustmentData: StructCoding {
+public class AdjustmentData: NSObject, NSCoding {
     
     //conform StructCoding
     public typealias structType = AdjustmentData
@@ -22,6 +22,33 @@ public struct AdjustmentData: StructCoding {
     }
     
     //state restoration property
-    var bubbles = [BubbleModel]()
+    var bubbles: [BubbleModel] = {
+        return BubbleModel.bubbles
+    }()
     
+    //MARK: NSCoding
+    static public func decode(data: NSData) -> AdjustmentData? {
+        return NSKeyedUnarchiver.unarchiveObjectWithData(data) as? AdjustmentData
+    }
+    
+    public func encode() -> NSData {
+        return NSKeyedArchiver.archivedDataWithRootObject(self)
+    }
+    
+    public convenience required init?(coder aDecoder: NSCoder) {
+        if let bubbles = aDecoder.decodeObjectForKey(PropertyKey.bubbles.rawValue){
+            self.init()
+            self.bubbles = bubbles as! [BubbleModel]
+        }else{
+            return nil
+        }
+    }
+    
+    public func encodeWithCoder(aCoder: NSCoder) {
+        aCoder.encodeObject(bubbles, forKey: PropertyKey.bubbles.rawValue)
+    }
+}
+
+private enum PropertyKey: String {
+    case bubbles
 }

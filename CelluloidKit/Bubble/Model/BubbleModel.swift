@@ -9,17 +9,17 @@
 import Foundation
 
 
-public struct BubbleModel: StructCoding{
-    
-    public typealias structType = BubbleModel
+public class BubbleModel: NSObject, NSCoding {
     
     public var bubbleImage:UIImage {
         return UIImage(asset: self.asset)
     }
-    public var content:String
-    public let area:[CGFloat]
+    public var area:[CGFloat] {
+        return areaDic[asset.rawValue]!
+    }
     let asset: UIImage.Asset
-    
+    public var content:String
+
     public static let bubbles: [BubbleModel] = {
         var bubbles = [BubbleModel]()
         for asset in bubbleAssets {
@@ -29,12 +29,32 @@ public struct BubbleModel: StructCoding{
         return bubbles
     }()
     
-    private init(asset:UIImage.Asset){
+    private init(asset: UIImage.Asset){
         self.asset = asset
         self.content = ""
-        self.area = areaDic[asset.rawValue]!
     }
     
+    public required convenience init?(coder aDecoder: NSCoder) {
+        guard let content = aDecoder.decodeObjectForKey(PropertyKey.content.rawValue) as? String,
+        let asset = UIImage.Asset(rawValue: aDecoder.decodeObjectForKey(PropertyKey.asset.rawValue) as? String ?? "")
+            else {
+                return nil
+        }
+        self.init(asset: asset)
+        self.content = content
+    }
+    
+    
+    public func encodeWithCoder(aCoder: NSCoder) {
+        aCoder.encodeObject(content, forKey: PropertyKey.content.rawValue)
+        aCoder.encodeObject(asset.rawValue, forKey: PropertyKey.asset.rawValue)
+    }
+    
+}
+
+private enum PropertyKey: String {
+    case content
+    case asset
 }
 
 private let bubbleAssets:[UIImage.Asset] = [.Aside1,.Call1,.Call2,.Call3,.Say1,.Say2,.Say3,.Think1,.Think2,.Think3]

@@ -18,6 +18,7 @@ class PhotoEditingViewController: UIViewController {
     var input: PHContentEditingInput?
     @IBOutlet weak var preview: UIImageView!
     @IBOutlet weak var panel: EditPhotoPanel!
+    var adjustmentData = AdjustmentData()
     
     
     //MARK: View Lift Cycle
@@ -39,7 +40,8 @@ extension PhotoEditingViewController: EditPhotoPanelDelegate {
         
         let view = BubbleView(bubbleModel: bubble)
         view.frame = CGRect(x: 40, y: 100, width: 100, height: 100)
-        self.preview.addSubview(view)
+        self.view.addSubview(view)
+        self.adjustmentData.bubbles.append(bubble)
     }
 }
 
@@ -61,6 +63,11 @@ extension PhotoEditingViewController: PHContentEditingController{
         // If you returned false, the contentEditingInput has past edits "baked in".
         preview.image = placeholderImage
         input = contentEditingInput
+        if let adjustmentData = contentEditingInput?.adjustmentData {
+            if let adjustmentData = AdjustmentData.decode(adjustmentData.data){
+                self.adjustmentData = adjustmentData
+            }
+        }
     }
     
     func finishContentEditingWithCompletionHandler(completionHandler: ((PHContentEditingOutput!) -> Void)!) {
@@ -75,6 +82,9 @@ extension PhotoEditingViewController: PHContentEditingController{
             // output.adjustmentData = <#new adjustment data#>
             // let renderedJPEGData = <#output JPEG#>
             // renderedJPEGData.writeToURL(output.renderedContentURL, atomically: true)
+            output.adjustmentData = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: AdjustmentData.formatVersion, data: self.adjustmentData.encode())
+            let renderedJPEGData = NSData(contentsOfURL: (self.input?.fullSizeImageURL)!)
+            renderedJPEGData!.writeToURL(output.renderedContentURL, atomically: true)
             
             // Call completion handler to commit edit to Photos.
             completionHandler?(output)
