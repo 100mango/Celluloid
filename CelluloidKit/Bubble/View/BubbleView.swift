@@ -19,7 +19,7 @@ public class BubbleView: AttachView {
         return editTextButton
     }()
     
-    var bubbleModel: BubbleModel {
+    public var bubbleModel: BubbleModel {
         didSet {
             bubbleLabel.text = bubbleModel.content
             bubbleLabel.adjustFrame()

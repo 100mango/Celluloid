@@ -18,15 +18,18 @@ class PhotoEditingViewController: UIViewController {
     var input: PHContentEditingInput?
     @IBOutlet weak var preview: UIImageView!
     @IBOutlet weak var panel: EditPhotoPanel!
-    var adjustmentData = AdjustmentData() {
-        didSet {
-            for bubble in adjustmentData.bubbles {
-                let view = BubbleView(bubbleModel: bubble)
-                self.view.addSubview(view)
+    //Computed property
+    var adjustmentData:AdjustmentData {
+        let adjustmentData = AdjustmentData()
+        var bubbles = [BubbleModel]()
+        for view in self.view.subviews {
+            if let bubbleView = view as? BubbleView {
+                bubbles.append(bubbleView.bubbleModel)
             }
         }
+        adjustmentData.bubbles = bubbles
+        return adjustmentData
     }
-    
     
     //MARK: View Lift Cycle
     override func viewDidLoad() {
@@ -39,6 +42,7 @@ class PhotoEditingViewController: UIViewController {
         super.didReceiveMemoryWarning()
         // Dispose of any resources that can be recreated.
     }
+    
 }
 
 // MARK: - EditPhotoPane lDelegate
@@ -47,7 +51,6 @@ extension PhotoEditingViewController: EditPhotoPanelDelegate {
         
         let view = BubbleView(bubbleModel: bubble)
         self.view.addSubview(view)
-        self.adjustmentData.bubbles.append(bubble)
     }
 }
 
@@ -71,7 +74,11 @@ extension PhotoEditingViewController: PHContentEditingController{
         input = contentEditingInput
         if let adjustmentData = contentEditingInput?.adjustmentData {
             if let adjustmentData = AdjustmentData.decode(adjustmentData.data){
-                self.adjustmentData = adjustmentData
+                //state restoration
+                for bubble in adjustmentData.bubbles {
+                    let view = BubbleView(bubbleModel: bubble)
+                    self.view.addSubview(view)
+                }
             }
         }
     }
@@ -88,6 +95,7 @@ extension PhotoEditingViewController: PHContentEditingController{
             // output.adjustmentData = <#new adjustment data#>
             // let renderedJPEGData = <#output JPEG#>
             // renderedJPEGData.writeToURL(output.renderedContentURL, atomically: true)
+            
             output.adjustmentData = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: AdjustmentData.formatVersion, data: self.adjustmentData.encode())
             let renderedJPEGData = NSData(contentsOfURL: (self.input?.fullSizeImageURL)!)
             renderedJPEGData!.writeToURL(output.renderedContentURL, atomically: true)

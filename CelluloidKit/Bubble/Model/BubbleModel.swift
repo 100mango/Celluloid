@@ -11,6 +11,7 @@ import Foundation
 
 public class BubbleModel: NSObject, NSCoding {
     
+    //MARK: Property
     //Stored property
     let asset: UIImage.Asset
     public var content: String
