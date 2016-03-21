@@ -22,9 +22,7 @@ public class AdjustmentData: NSObject, NSCoding {
     }
     
     //state restoration property
-    var bubbles: [BubbleModel] = {
-        return BubbleModel.bubbles
-    }()
+    var bubbles = [BubbleModel]()
     
     //MARK: NSCoding
     static public func decode(data: NSData) -> AdjustmentData? {

@@ -18,7 +18,14 @@ class PhotoEditingViewController: UIViewController {
     var input: PHContentEditingInput?
     @IBOutlet weak var preview: UIImageView!
     @IBOutlet weak var panel: EditPhotoPanel!
-    var adjustmentData = AdjustmentData()
+    var adjustmentData = AdjustmentData() {
+        didSet {
+            for bubble in adjustmentData.bubbles {
+                let view = BubbleView(bubbleModel: bubble)
+                self.view.addSubview(view)
+            }
+        }
+    }
     
     
     //MARK: View Lift Cycle
@@ -39,7 +46,6 @@ extension PhotoEditingViewController: EditPhotoPanelDelegate {
     func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectBubble bubble: BubbleModel) {
         
         let view = BubbleView(bubbleModel: bubble)
-        view.frame = CGRect(x: 40, y: 100, width: 100, height: 100)
         self.view.addSubview(view)
         self.adjustmentData.bubbles.append(bubble)
     }

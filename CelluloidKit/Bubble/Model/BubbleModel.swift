@@ -11,15 +11,22 @@ import Foundation
 
 public class BubbleModel: NSObject, NSCoding {
     
+    //Stored property
+    let asset: UIImage.Asset
+    public var content: String
+    public var transform = CGAffineTransformIdentity
+    public var bounds = CGRect(x: 0, y: 0, width: 100, height: 100)
+    public var center = CGPoint(x: 100, y: 100)
+    //Computed property
     public var bubbleImage:UIImage {
         return UIImage(asset: self.asset)
     }
     public var area:[CGFloat] {
         return areaDic[asset.rawValue]!
     }
-    let asset: UIImage.Asset
-    public var content:String
 
+    
+    //MARK: init
     public static let bubbles: [BubbleModel] = {
         var bubbles = [BubbleModel]()
         for asset in bubbleAssets {
@@ -34,27 +41,50 @@ public class BubbleModel: NSObject, NSCoding {
         self.content = ""
     }
     
+    //MARK: NSCoding
+    
     public required convenience init?(coder aDecoder: NSCoder) {
-        guard let content = aDecoder.decodeObjectForKey(PropertyKey.content.rawValue) as? String,
-        let asset = UIImage.Asset(rawValue: aDecoder.decodeObjectForKey(PropertyKey.asset.rawValue) as? String ?? "")
-            else {
-                return nil
+        guard let content = aDecoder.decodeObjectForKey(PropertyKey.content.rawValue) as? String else {
+            return nil
         }
+        guard let asset = UIImage.Asset(rawValue: aDecoder.decodeObjectForKey(PropertyKey.asset.rawValue) as? String ?? "" )else {
+            return nil
+        }
+        guard let transform = (aDecoder.decodeObjectForKey(PropertyKey.transform.rawValue) as? NSValue)?.CGAffineTransformValue() else {
+            return nil
+        }
+        guard let bounds = (aDecoder.decodeObjectForKey(PropertyKey.bounds.rawValue) as? NSValue)?.CGRectValue() else {
+            return nil
+        }
+        guard let center = (aDecoder.decodeObjectForKey(PropertyKey.center.rawValue) as? NSValue)?.CGPointValue() else {
+            return nil
+        }
+        
         self.init(asset: asset)
         self.content = content
+        self.transform = transform
+        self.bounds = bounds
+        self.center = center
     }
-    
     
     public func encodeWithCoder(aCoder: NSCoder) {
         aCoder.encodeObject(content, forKey: PropertyKey.content.rawValue)
         aCoder.encodeObject(asset.rawValue, forKey: PropertyKey.asset.rawValue)
+        aCoder.encodeObject(NSValue(CGAffineTransform: transform), forKey: PropertyKey.transform.rawValue)
+        aCoder.encodeObject(NSValue(CGRect: bounds), forKey: PropertyKey.bounds.rawValue)
+        aCoder.encodeObject(NSValue(CGPoint: center), forKey: PropertyKey.center.rawValue)
     }
     
 }
 
+
+//MARK: Constant
 private enum PropertyKey: String {
     case content
     case asset
+    case transform
+    case bounds
+    case center
 }
 
 private let bubbleAssets:[UIImage.Asset] = [.Aside1,.Call1,.Call2,.Call3,.Say1,.Say2,.Say3,.Think1,.Think2,.Think3]

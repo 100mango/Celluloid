@@ -28,11 +28,33 @@ public class BubbleView: AttachView {
     
     let bubbleLabel: BubbleLabel
     
+    //Property observers
+    public override var transform: CGAffineTransform {
+        didSet {
+            self.bubbleModel.transform = transform
+        }
+    }
+    
+    public override var bounds: CGRect {
+        didSet {
+            self.bubbleModel.bounds = bounds
+        }
+    }
+    
+    public override var center: CGPoint {
+        didSet {
+            self.bubbleModel.center = center
+        }
+    }
+    
     //MARK: init
     public init(bubbleModel:BubbleModel) {
         self.bubbleModel = bubbleModel
         self.bubbleLabel = BubbleLabel(model: bubbleModel)
         super.init(frame: CGRect.zero)
+        self.transform = bubbleModel.transform
+        self.bounds = bubbleModel.bounds
+        self.center = bubbleModel.center
         self.addSubview(editTextBubbton)
         self.imageView.image = bubbleModel.bubbleImage
         self.imageView.addSubview(bubbleLabel)
