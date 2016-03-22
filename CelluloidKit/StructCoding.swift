@@ -9,7 +9,7 @@
 import Foundation
 
 public protocol StructCoding {
-    typealias structType
+    associatedtype structType
     
     mutating func encode() -> NSData
     
