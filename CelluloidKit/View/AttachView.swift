@@ -25,7 +25,7 @@ public class AttachView: UIView {
         let button = UIButton(type: .Custom)
         button.frame = CGRect(x: self.bounds.width - self.buttonWidth, y: 0, width: self.buttonWidth, height: self.buttonWidth)
         button.setImage(UIImage(asset: .Btn_icon_sticker_delete_normal), forState: .Normal)
-        button.addTarget(self, action: #selector(AttachView.removeSelf), forControlEvents: .TouchUpInside)
+        button.addTarget(self, action: #selector(removeSelf), forControlEvents: .TouchUpInside)
         return button
     }()
     
@@ -33,7 +33,7 @@ public class AttachView: UIView {
         let button = UIButton(type: .Custom)
         button.frame = CGRect(x: self.bounds.width - self.buttonWidth, y: self.bounds.height - self.buttonWidth, width: self.buttonWidth, height: self.buttonWidth)
         button.setImage(UIImage(asset: .Btn_icon_sticker_edit_normal), forState: .Normal)
-        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(AttachView.rotateAndResize(_:)))
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(rotateAndResize(_:)))
         button.addGestureRecognizer(panGesture)
         
         return button
@@ -59,7 +59,7 @@ public class AttachView: UIView {
         self.addSubview(deleteButton)
         self.addSubview(resizeButton)
         
-        let moveGesture = UIPanGestureRecognizer(target: self, action: #selector(AttachView.move(_:)))
+        let moveGesture = UIPanGestureRecognizer(target: self, action: #selector(move(_:)))
         self.addGestureRecognizer(moveGesture)
     }
     

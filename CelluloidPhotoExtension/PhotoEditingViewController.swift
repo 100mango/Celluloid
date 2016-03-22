@@ -18,23 +18,18 @@ class PhotoEditingViewController: UIViewController {
     var input: PHContentEditingInput?
     @IBOutlet weak var preview: UIImageView!
     @IBOutlet weak var panel: EditPhotoPanel!
+    lazy var overlayView: ImageOverlayView = ImageOverlayView.makeViewOverlaysImageView(self.preview)
+    
     //Computed property
     var adjustmentData:AdjustmentData {
         let adjustmentData = AdjustmentData()
-        var bubbles = [BubbleModel]()
-        for view in self.view.subviews {
-            if let bubbleView = view as? BubbleView {
-                bubbles.append(bubbleView.bubbleModel)
-            }
-        }
-        adjustmentData.bubbles = bubbles
+        adjustmentData.bubbles = overlayView.bubbleModels
         return adjustmentData
     }
     
     //MARK: View Lift Cycle
     override func viewDidLoad() {
         super.viewDidLoad()
-        
         panel.delegate = self
     }
 
@@ -42,14 +37,15 @@ class PhotoEditingViewController: UIViewController {
         super.didReceiveMemoryWarning()
     }
     
+    override func viewDidLayoutSubviews() {
+        overlayView.adjustFrame()
+    }
 }
 
-// MARK: - EditPhotoPane lDelegate
+// MARK: - EditPhotoPanel Delegate
 extension PhotoEditingViewController: EditPhotoPanelDelegate {
     func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectBubble bubble: BubbleModel) {
-        
-        let view = BubbleView(bubbleModel: bubble)
-        self.view.addSubview(view)
+        self.overlayView.addBubble(bubble)
     }
 }
 
@@ -66,18 +62,13 @@ extension PhotoEditingViewController: PHContentEditingController{
     }
     
     func startContentEditingWithInput(contentEditingInput: PHContentEditingInput?, placeholderImage: UIImage) {
-        // Present content for editing, and keep the contentEditingInput for use when closing the edit session.
-        // If you returned true from canHandleAdjustmentData:, contentEditingInput has the original image and adjustment data.
-        // If you returned false, the contentEditingInput has past edits "baked in".
+        
         preview.image = placeholderImage
         input = contentEditingInput
         if let adjustmentData = contentEditingInput?.adjustmentData {
             if let adjustmentData = AdjustmentData.decode(adjustmentData.data){
                 //state restoration
-                for bubble in adjustmentData.bubbles {
-                    let view = BubbleView(bubbleModel: bubble)
-                    self.view.addSubview(view)
-                }
+                adjustmentData.bubbles.forEach({ self.overlayView.addBubble($0) })
             }
         }
     }

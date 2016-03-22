@@ -17,10 +17,47 @@ public class ImageOverlayView: UIView {
     var bubbles: [BubbleView] {
         return self.subviews.flatMap({ $0 as? BubbleView })
     }
+    
+    //MARK: init
+    private func commonInit() {
+        self.backgroundColor = UIColor.clearColor()
+        let tap = UITapGestureRecognizer(target: self, action: #selector(touch))
+        self.addGestureRecognizer(tap)
+    }
+    public override init(frame: CGRect) {
+        super.init(frame: frame)
+        self.commonInit()
+    }
+    
+    public required init?(coder aDecoder: NSCoder) {
+        super.init(coder: aDecoder)
+        self.commonInit()
+    }
+    
+    public static func makeViewOverlaysImageView(imageView: UIImageView) -> ImageOverlayView {
+        let overlayView = ImageOverlayView()
+        imageView.addSubview(overlayView)
+        overlayView.frame = imageView.imageRect
+        return overlayView
+    }
+    
+    //MARK: layout
+    public func adjustFrame() {
+        if let imageView = self.superview as? UIImageView {
+            self.frame = imageView.imageRect
+        }
+    }
+    
+    public func addBubble(bubbleModel: BubbleModel) {
+        let bubble = BubbleView(bubbleModel: bubbleModel)
+        self.addSubview(bubble)
+    }
+    
+    
 }
 
 extension ImageOverlayView {
     @objc func touch() {
-        
+        bubbles.forEach({$0.hideButtonEnable = !$0.hideButtonEnable})
     }
 }

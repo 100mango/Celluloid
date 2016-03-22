@@ -63,7 +63,7 @@ public class BubblePickerViewController:UIViewController {
         }
         
         //TODO: Swift2.2 improve #@selctor
-        let buttonItem = UIBarButtonItem(title: "取消", style: .Plain, target: self, action: #selector(BubblePickerViewController.dismiss))
+        let buttonItem = UIBarButtonItem(title: "取消", style: .Plain, target: self, action: #selector(dismiss))
         self.navigationItem.setLeftBarButtonItem(buttonItem, animated: false)
         self.navigationItem.title = "选择气泡"
     }
