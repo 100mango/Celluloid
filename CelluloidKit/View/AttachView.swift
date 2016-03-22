@@ -41,6 +41,20 @@ public class AttachView: UIView {
         return button
     }()
     
+    public var hideButtonEnable:Bool = false {
+        didSet {
+            imageView.layer.borderWidth = hideButtonEnable ? 0 : 1
+            imageView.layer.borderColor = UIColor.whiteColor().colorWithAlphaComponent(0.6).CGColor
+            UIView.animateWithDuration(0.3, animations: {
+                for view in self.subviews {
+                    if let button = view as? UIButton {
+                        button.hidden = self.hideButtonEnable
+                    }
+                }
+            })
+        }
+    }
+    
     //MARK: init
     private func commonInit() {
         self.addSubview(imageView)

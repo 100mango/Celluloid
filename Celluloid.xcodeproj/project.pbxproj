@@ -30,6 +30,7 @@
 		DB14F7C91C8580C9000FA15F /* EditPhotoPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7C81C8580C9000FA15F /* EditPhotoPanel.swift */; };
 		DB1DE64C1C881DEB0076EE76 /* BubbleModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1DE64B1C881DEB0076EE76 /* BubbleModel.swift */; };
 		DB1DE6501C882EEC0076EE76 /* AttachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1DE64F1C882EEC0076EE76 /* AttachView.swift */; };
+		DB5D9A1B1CA023540045E49B /* ImageOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */; };
 		DB7A35691C9557AD00AB3283 /* BubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35681C9557AD00AB3283 /* BubbleView.swift */; };
 		DB7A356E1C958BB300AB3283 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35701C958BB300AB3283 /* Localizable.strings */; };
 		DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35721C958DA700AB3283 /* Localizable.swift */; };
@@ -125,6 +126,7 @@
 		DB14F7C81C8580C9000FA15F /* EditPhotoPanel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditPhotoPanel.swift; path = View/EditPhotoPanel.swift; sourceTree = "<group>"; };
 		DB1DE64B1C881DEB0076EE76 /* BubbleModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleModel.swift; path = Bubble/Model/BubbleModel.swift; sourceTree = "<group>"; };
 		DB1DE64F1C882EEC0076EE76 /* AttachView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = AttachView.swift; path = View/AttachView.swift; sourceTree = "<group>"; };
+		DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ImageOverlayView.swift; path = View/ImageOverlayView.swift; sourceTree = "<group>"; };
 		DB7A35681C9557AD00AB3283 /* BubbleView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleView.swift; path = Bubble/View/BubbleView.swift; sourceTree = "<group>"; };
 		DB7A356C1C958A6D00AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/LaunchScreen.strings"; sourceTree = "<group>"; };
 		DB7A356D1C958A6D00AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/MainInterface.strings"; sourceTree = "<group>"; };
@@ -275,6 +277,7 @@
 			children = (
 				DB14F7C81C8580C9000FA15F /* EditPhotoPanel.swift */,
 				DB1DE64F1C882EEC0076EE76 /* AttachView.swift */,
+				DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */,
 			);
 			name = View;
 			sourceTree = "<group>";
@@ -661,6 +664,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DB5D9A1B1CA023540045E49B /* ImageOverlayView.swift in Sources */,
 				DB7A35871C9596C200AB3283 /* BubblePickerViewController.swift in Sources */,
 				DB1DE6501C882EEC0076EE76 /* AttachView.swift in Sources */,
 				DB7A35B01C969FFA00AB3283 /* BubbleLabel.swift in Sources */,
