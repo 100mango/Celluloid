@@ -9,6 +9,6 @@
 import Foundation
 import UIColor_Hex_Swift
 
-public struct Style {
-    public static let cellLightPurple = UIColor(hex6: 0xeff1ff)
+public extension UIColor {
+    @nonobjc public static let cellLightPurple = UIColor(hex6: 0xeff1ff)
 }

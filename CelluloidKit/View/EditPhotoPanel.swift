@@ -72,7 +72,7 @@ extension EditPhotoPanel:UICollectionViewDataSource {
     
     public func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCellWithReuseIdentifier(UICollectionViewCell.defaultReuseIdentifier, forIndexPath: indexPath)
-        cell.backgroundColor = Style.cellLightPurple
+        cell.backgroundColor = .cellLightPurple
         cell.contentView.subviews.forEach {
             $0.removeFromSuperview()
         }
