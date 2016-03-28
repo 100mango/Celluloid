@@ -9,7 +9,7 @@
 import Foundation
 
 
-public class BubbleModel: NSObject, NSCoding {
+public class BubbleModel: NSObject, NSCoding, NSCopying {
     
     //MARK: Property
     //Stored property
@@ -18,6 +18,8 @@ public class BubbleModel: NSObject, NSCoding {
     public var transform = CGAffineTransformIdentity
     public var bounds = CGRect(x: 0, y: 0, width: 100, height: 100)
     public var center = CGPoint(x: 100, y: 100)
+    public var superViewSize = CGSize.zero
+    
     //Computed property
     public var bubbleImage:UIImage {
         return UIImage(asset: self.asset)
@@ -60,12 +62,16 @@ public class BubbleModel: NSObject, NSCoding {
         guard let center = (aDecoder.decodeObjectForKey(PropertyKey.center.rawValue) as? NSValue)?.CGPointValue() else {
             return nil
         }
+        guard let superViewSize = (aDecoder.decodeObjectForKey(PropertyKey.superViewSize.rawValue) as? NSValue)?.CGSizeValue() else {
+            return nil
+        }
         
         self.init(asset: asset)
         self.content = content
         self.transform = transform
         self.bounds = bounds
         self.center = center
+        self.superViewSize = superViewSize
     }
     
     public func encodeWithCoder(aCoder: NSCoder) {
@@ -74,8 +80,18 @@ public class BubbleModel: NSObject, NSCoding {
         aCoder.encodeObject(NSValue(CGAffineTransform: transform), forKey: PropertyKey.transform.rawValue)
         aCoder.encodeObject(NSValue(CGRect: bounds), forKey: PropertyKey.bounds.rawValue)
         aCoder.encodeObject(NSValue(CGPoint: center), forKey: PropertyKey.center.rawValue)
+        aCoder.encodeObject(NSValue(CGSize: superViewSize), forKey: PropertyKey.superViewSize.rawValue)
     }
     
+    //MARK: NSCoping
+    public func copyWithZone(zone: NSZone) -> AnyObject {
+        let copy = BubbleModel(asset: asset)
+        copy.content = content
+        copy.transform = transform
+        copy.bounds = bounds
+        copy.center = center
+        return copy
+    }
 }
 
 
@@ -86,6 +102,7 @@ private enum PropertyKey: String {
     case transform
     case bounds
     case center
+    case superViewSize
 }
 
 private let bubbleAssets:[UIImage.Asset] = [.Aside1,.Call1,.Call2,.Call3,.Say1,.Say2,.Say3,.Think1,.Think2,.Think3]

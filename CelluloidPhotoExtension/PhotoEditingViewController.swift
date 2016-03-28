@@ -21,10 +21,36 @@ class PhotoEditingViewController: UIViewController {
     lazy var overlayView: ImageOverlayView = ImageOverlayView.makeViewOverlaysImageView(self.preview)
     
     //Computed property
-    var adjustmentData:AdjustmentData {
+    var adjustmentData: AdjustmentData {
         let adjustmentData = AdjustmentData()
         adjustmentData.bubbles = overlayView.bubbleModels
         return adjustmentData
+    }
+    
+    var outputImage: UIImage? {
+        if let fullSizeImage = UIImage(contentsOfFile: input?.fullSizeImageURL?.path ?? "") {
+            let fullSizeImageView = UIImageView()
+            fullSizeImageView.image = fullSizeImage
+            fullSizeImageView.size = fullSizeImage.size
+            let scale = fullSizeImage.size.width / preview.imageRect.width
+            
+            let bubbles: [BubbleModel] = self.adjustmentData.bubbles.map({
+                let new = $0.copy() as! BubbleModel
+                //new.bounds = CGRect(x: 0,y: 0, width: scale * $0.bounds.width, height: scale * $0.bounds.height)
+                new.center = CGPoint(x: scale * $0.center.x, y: scale * $0.center.y)
+                new.transform = CGAffineTransformScale($0.transform, scale, scale)
+                return new
+            })
+            
+            bubbles.forEach({
+                let bubbleView = BubbleView(bubbleModel: $0)
+                fullSizeImageView.addSubview(bubbleView)
+            })
+            let outputImage = fullSizeImageView.render()
+            return outputImage
+        }else{
+            return nil
+        }
     }
     
     //MARK: View Lift Cycle
@@ -87,8 +113,13 @@ extension PhotoEditingViewController: PHContentEditingController{
             // renderedJPEGData.writeToURL(output.renderedContentURL, atomically: true)
             
             output.adjustmentData = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: AdjustmentData.formatVersion, data: self.adjustmentData.encode())
-            let renderedJPEGData = NSData(contentsOfURL: (self.input?.fullSizeImageURL)!)
-            renderedJPEGData!.writeToURL(output.renderedContentURL, atomically: true)
+            let renderedJPEGData: NSData
+            if let outputImage = self.outputImage {
+                renderedJPEGData = UIImageJPEGRepresentation(outputImage, 1.0)!
+            }else{
+                renderedJPEGData = NSData(contentsOfURL: (self.input?.fullSizeImageURL)!)!
+            }
+            renderedJPEGData.writeToURL(output.renderedContentURL, atomically: true)
             
             // Call completion handler to commit edit to Photos.
             completionHandler?(output)
