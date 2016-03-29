@@ -89,8 +89,8 @@ extension PhotoEditingViewController: PHContentEditingController{
     
     func startContentEditingWithInput(contentEditingInput: PHContentEditingInput?, placeholderImage: UIImage) {
         
-        preview.image = placeholderImage
         input = contentEditingInput
+        preview.image = input?.displaySizeImage
         if let adjustmentData = contentEditingInput?.adjustmentData {
             if let adjustmentData = AdjustmentData.decode(adjustmentData.data){
                 //state restoration
