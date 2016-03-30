@@ -37,6 +37,7 @@
 		DB7A35871C9596C200AB3283 /* BubblePickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35861C9596C200AB3283 /* BubblePickerViewController.swift */; };
 		DB7A35AE1C965D2100AB3283 /* bubble.json in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35AD1C965D2100AB3283 /* bubble.json */; };
 		DB7A35B01C969FFA00AB3283 /* BubbleLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */; };
+		DB80D6641CAB9EF6006B2F60 /* Filter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB80D6631CAB9EF6006B2F60 /* Filter.swift */; };
 		DBA390F21C868172006248A4 /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390F11C868172006248A4 /* Style.swift */; };
 		DBC81CCB1C996CA700423098 /* StructCoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBC81CCA1C996CA700423098 /* StructCoding.swift */; };
 		DBC81CCE1C9BE3A800423098 /* AdjustmentData.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBC81CCD1C9BE3A800423098 /* AdjustmentData.swift */; };
@@ -136,6 +137,7 @@
 		DB7A35861C9596C200AB3283 /* BubblePickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubblePickerViewController.swift; path = Bubble/Controller/BubblePickerViewController.swift; sourceTree = "<group>"; };
 		DB7A35AD1C965D2100AB3283 /* bubble.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = bubble.json; sourceTree = "<group>"; };
 		DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleLabel.swift; path = Bubble/View/BubbleLabel.swift; sourceTree = "<group>"; };
+		DB80D6631CAB9EF6006B2F60 /* Filter.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Filter.swift; path = Filter/Filter.swift; sourceTree = "<group>"; };
 		DBA390F11C868172006248A4 /* Style.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Style.swift; sourceTree = "<group>"; };
 		DBC81CCA1C996CA700423098 /* StructCoding.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = StructCoding.swift; sourceTree = "<group>"; };
 		DBC81CCD1C9BE3A800423098 /* AdjustmentData.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AdjustmentData.swift; sourceTree = "<group>"; };
@@ -230,6 +232,7 @@
 		DB14F7881C8083A1000FA15F /* CelluloidKit */ = {
 			isa = PBXGroup;
 			children = (
+				DB80D6601CAB9EB3006B2F60 /* Filter */,
 				DBA390F41C86CF55006248A4 /* Bubble */,
 				DB14F7C71C85807D000FA15F /* View */,
 				DBA390F31C86CD92006248A4 /* Constant */,
@@ -315,6 +318,14 @@
 				DB14F7BF1C84348B000FA15F /* CelluloidKit.xcassets */,
 			);
 			name = Resources;
+			sourceTree = "<group>";
+		};
+		DB80D6601CAB9EB3006B2F60 /* Filter */ = {
+			isa = PBXGroup;
+			children = (
+				DB80D6631CAB9EF6006B2F60 /* Filter.swift */,
+			);
+			name = Filter;
 			sourceTree = "<group>";
 		};
 		DBA390F31C86CD92006248A4 /* Constant */ = {
@@ -671,6 +682,7 @@
 				DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */,
 				DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */,
 				DB7A35691C9557AD00AB3283 /* BubbleView.swift in Sources */,
+				DB80D6641CAB9EF6006B2F60 /* Filter.swift in Sources */,
 				DB14F7C61C8469F7000FA15F /* UIView-Extension.swift in Sources */,
 				DB14F7C21C8437EC000FA15F /* Assets.swift in Sources */,
 				DB14F7C91C8580C9000FA15F /* EditPhotoPanel.swift in Sources */,
