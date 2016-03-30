@@ -97,7 +97,7 @@ extension PhotoEditingViewController: PHContentEditingController{
                 adjustmentData.bubbles.forEach({ self.overlayView.addBubble($0) })
             }
         }
-        preview.image = preview.image?.filteredImage(Filters.Sepia())
+        preview.image = preview.image?.filteredImage(Filters.blurAndSepia())
     }
     
     func finishContentEditingWithCompletionHandler(completionHandler: ((PHContentEditingOutput!) -> Void)!) {
