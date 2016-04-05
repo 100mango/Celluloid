@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import CoreImage
 
 public typealias Filter = CIImage -> CIImage
 

@@ -7,18 +7,19 @@
 //
 
 import Foundation
+import JSONCodable
 
 
-public class BubbleModel: NSObject, NSCoding, NSCopying {
+public struct BubbleModel {
     
     //MARK: Property
     //Stored property
     let asset: UIImage.Asset
-    public var content: String
+    public var content = ""
     public var transform = CGAffineTransformIdentity
     public var bounds = CGRect(x: 0, y: 0, width: 100, height: 100)
     public var center = CGPoint(x: 100, y: 100)
-    public var superViewSize = CGSize.zero
+    //public var superViewSize = CGSize.zero
     
     //Computed property
     public var bubbleImage:UIImage {
@@ -27,7 +28,6 @@ public class BubbleModel: NSObject, NSCoding, NSCopying {
     public var area:[CGFloat] {
         return areaDic[asset.rawValue]!
     }
-
     
     //MARK: init
     public static let bubbles: [BubbleModel] = {
@@ -41,59 +41,57 @@ public class BubbleModel: NSObject, NSCoding, NSCopying {
     
     private init(asset: UIImage.Asset){
         self.asset = asset
-        self.content = ""
     }
     
-    //MARK: NSCoding
-    
-    public required convenience init?(coder aDecoder: NSCoder) {
-        guard let content = aDecoder.decodeObjectForKey(PropertyKey.content.rawValue) as? String else {
-            return nil
+    /*
+    public func toJSON() -> AnyObject {
+        do {
+            return try JSONEncoder.create({ encoder in
+                try encoder.encode(asset, key: PropertyKey.asset.rawValue)
+                try encoder.encode(content, key: PropertyKey.content.rawValue)
+                encoder.encode(transform, key: PropertyKey.transform.rawValue)
+                encoder.encode(bounds, key: PropertyKey.bounds.rawValue)
+                encoder.encode(center, key: PropertyKey.center.rawValue)
+            })
+        }catch{
+            fatalError("\(error)")
         }
-        guard let asset = UIImage.Asset(rawValue: aDecoder.decodeObjectForKey(PropertyKey.asset.rawValue) as? String ?? "" )else {
-            return nil
+    }*/
+}
+
+//MARK: JSONCodable
+
+
+extension BubbleModel: JSONEncodable {
+    public func toJSON() -> AnyObject {
+        do {
+            return try JSONEncoder.create({ encoder in
+                try encoder.encode(asset, key: PropertyKey.asset.rawValue)
+                try encoder.encode(content, key: PropertyKey.content.rawValue)
+                encoder.encode(transform, key: PropertyKey.transform.rawValue)
+                encoder.encode(bounds, key: PropertyKey.bounds.rawValue)
+                encoder.encode(center, key: PropertyKey.center.rawValue)
+            })
+        }catch{
+            fatalError("\(error)")
         }
-        guard let transform = (aDecoder.decodeObjectForKey(PropertyKey.transform.rawValue) as? NSValue)?.CGAffineTransformValue() else {
-            return nil
-        }
-        guard let bounds = (aDecoder.decodeObjectForKey(PropertyKey.bounds.rawValue) as? NSValue)?.CGRectValue() else {
-            return nil
-        }
-        guard let center = (aDecoder.decodeObjectForKey(PropertyKey.center.rawValue) as? NSValue)?.CGPointValue() else {
-            return nil
-        }
-        guard let superViewSize = (aDecoder.decodeObjectForKey(PropertyKey.superViewSize.rawValue) as? NSValue)?.CGSizeValue() else {
-            return nil
-        }
-        
-        self.init(asset: asset)
-        self.content = content
-        self.transform = transform
-        self.bounds = bounds
-        self.center = center
-        self.superViewSize = superViewSize
-    }
-    
-    public func encodeWithCoder(aCoder: NSCoder) {
-        aCoder.encodeObject(content, forKey: PropertyKey.content.rawValue)
-        aCoder.encodeObject(asset.rawValue, forKey: PropertyKey.asset.rawValue)
-        aCoder.encodeObject(NSValue(CGAffineTransform: transform), forKey: PropertyKey.transform.rawValue)
-        aCoder.encodeObject(NSValue(CGRect: bounds), forKey: PropertyKey.bounds.rawValue)
-        aCoder.encodeObject(NSValue(CGPoint: center), forKey: PropertyKey.center.rawValue)
-        aCoder.encodeObject(NSValue(CGSize: superViewSize), forKey: PropertyKey.superViewSize.rawValue)
-    }
-    
-    //MARK: NSCoping
-    public func copyWithZone(zone: NSZone) -> AnyObject {
-        let copy = BubbleModel(asset: asset)
-        copy.content = content
-        copy.transform = transform
-        copy.bounds = bounds
-        copy.center = center
-        return copy
     }
 }
 
+extension BubbleModel: JSONDecodable {
+    public init(object: JSONObject) {
+        do {
+            let decoder = JSONDecoder(object: object)
+            asset = try decoder.decode(PropertyKey.asset.rawValue)
+            content = try decoder.decode(PropertyKey.content.rawValue)
+            transform = try decoder.decode(PropertyKey.transform.rawValue)
+            bounds = try decoder.decode(PropertyKey.bounds.rawValue)
+            center = try decoder.decode(PropertyKey.center.rawValue)
+        }catch{
+            fatalError("\(error)")
+        }
+    }
+}
 
 //MARK: Constant
 private enum PropertyKey: String {

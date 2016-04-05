@@ -22,7 +22,7 @@ class PhotoEditingViewController: UIViewController {
     
     //Computed property
     var adjustmentData: AdjustmentData {
-        let adjustmentData = AdjustmentData()
+        var adjustmentData = AdjustmentData()
         adjustmentData.bubbles = overlayView.bubbleModels
         return adjustmentData
     }
@@ -35,8 +35,7 @@ class PhotoEditingViewController: UIViewController {
             let scale = fullSizeImage.size.width / preview.imageRect.width
             
             let bubbles: [BubbleModel] = self.adjustmentData.bubbles.map({
-                let new = $0.copy() as! BubbleModel
-                //new.bounds = CGRect(x: 0,y: 0, width: scale * $0.bounds.width, height: scale * $0.bounds.height)
+                var new = $0
                 new.center = CGPoint(x: scale * $0.center.x, y: scale * $0.center.y)
                 new.transform = CGAffineTransformScale($0.transform, scale, scale)
                 return new
@@ -92,12 +91,11 @@ extension PhotoEditingViewController: PHContentEditingController{
         input = contentEditingInput
         preview.image = input?.displaySizeImage
         if let adjustmentData = contentEditingInput?.adjustmentData {
-            if let adjustmentData = AdjustmentData.decode(adjustmentData.data){
-                //state restoration
-                adjustmentData.bubbles.forEach({ self.overlayView.addBubble($0) })
-            }
+            let adjustmentData = AdjustmentData.decode(adjustmentData.data)
+            //state restoration
+            adjustmentData.bubbles.forEach({ self.overlayView.addBubble($0) })
         }
-        preview.image = preview.image?.filteredImage(Filters.blurAndSepia())
+        //preview.image = preview.image?.filteredImage(Filters.blurAndSepia())
     }
     
     func finishContentEditingWithCompletionHandler(completionHandler: ((PHContentEditingOutput!) -> Void)!) {
