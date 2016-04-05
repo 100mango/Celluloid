@@ -42,6 +42,14 @@ public extension UIImage {
         case Btn_icon_sticker_turn2_normal = "btn_icon_sticker_turn2_normal"
         case Btn_icon_sticker_turn2_pressed = "btn_icon_sticker_turn2_pressed"
         
+        //Filter
+        case Image_icon_filter = "image_icon_filter"
+        case Chrome = "chrome"
+        case Instant = "instant"
+        case Invert = "invert"
+        case Posterize = "posterize"
+        case Sepia = "sepia"
+        
         public var image: UIImage {
             return UIImage(asset: self)
         }
