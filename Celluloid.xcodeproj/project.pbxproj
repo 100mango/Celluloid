@@ -40,7 +40,6 @@
 		DB7A35B01C969FFA00AB3283 /* BubbleLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */; };
 		DB80D6641CAB9EF6006B2F60 /* Filter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB80D6631CAB9EF6006B2F60 /* Filter.swift */; };
 		DBA390F21C868172006248A4 /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390F11C868172006248A4 /* Style.swift */; };
-		DBC81CCB1C996CA700423098 /* StructCoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBC81CCA1C996CA700423098 /* StructCoding.swift */; };
 		DBC81CCE1C9BE3A800423098 /* AdjustmentData.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBC81CCD1C9BE3A800423098 /* AdjustmentData.swift */; };
 		DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */; };
 /* End PBXBuildFile section */
@@ -141,7 +140,6 @@
 		DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleLabel.swift; path = Bubble/View/BubbleLabel.swift; sourceTree = "<group>"; };
 		DB80D6631CAB9EF6006B2F60 /* Filter.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Filter.swift; path = Filter/Filter.swift; sourceTree = "<group>"; };
 		DBA390F11C868172006248A4 /* Style.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Style.swift; sourceTree = "<group>"; };
-		DBC81CCA1C996CA700423098 /* StructCoding.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = StructCoding.swift; sourceTree = "<group>"; };
 		DBC81CCD1C9BE3A800423098 /* AdjustmentData.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AdjustmentData.swift; sourceTree = "<group>"; };
 		DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditBubbleViewController.swift; path = Bubble/Controller/EditBubbleViewController.swift; sourceTree = "<group>"; };
 		FA3B5D21938C80179B355304 /* Pods.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -242,7 +240,6 @@
 				DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */,
 				DB14F78B1C8083A1000FA15F /* Info.plist */,
 				DB14F7891C8083A1000FA15F /* CelluloidKit.h */,
-				DBC81CCA1C996CA700423098 /* StructCoding.swift */,
 				DB2875AB1CB394F800CB8977 /* JSONCodableExtension.swift */,
 			);
 			path = CelluloidKit;
@@ -691,7 +688,6 @@
 				DB14F7C91C8580C9000FA15F /* EditPhotoPanel.swift in Sources */,
 				DBA390F21C868172006248A4 /* Style.swift in Sources */,
 				DB2875AC1CB394F800CB8977 /* JSONCodableExtension.swift in Sources */,
-				DBC81CCB1C996CA700423098 /* StructCoding.swift in Sources */,
 				DB1DE64C1C881DEB0076EE76 /* BubbleModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
