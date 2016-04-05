@@ -1,5 +1,6 @@
 PODS:
   - AsyncSwift (1.7.2)
+  - JSONCodable (2.1)
   - MZAppearance (1.1.6)
   - MZFormSheetPresentationController (2.3.0):
     - MZAppearance
@@ -8,12 +9,14 @@ PODS:
 
 DEPENDENCIES:
   - AsyncSwift
+  - JSONCodable
   - MZFormSheetPresentationController
   - SnapKit
   - UIColor_Hex_Swift
 
 SPEC CHECKSUMS:
   AsyncSwift: 46a78bceb11f0e5bb52747f740d9692ec78d2d7c
+  JSONCodable: d3bb8d1323bb4cbc381b16219046c5282565a4f1
   MZAppearance: 0c06d3fa9cc55142f1da14bc8631fbe8fd6e19d5
   MZFormSheetPresentationController: 076391ba3f6474b4ef75eaaef2380991524d8be4
   SnapKit: eff58d6e3451bf2f482db2eccf86aecf371dc62d
