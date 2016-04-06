@@ -42,25 +42,9 @@ public struct BubbleModel {
     private init(asset: UIImage.Asset){
         self.asset = asset
     }
-    
-    /*
-    public func toJSON() -> AnyObject {
-        do {
-            return try JSONEncoder.create({ encoder in
-                try encoder.encode(asset, key: PropertyKey.asset.rawValue)
-                try encoder.encode(content, key: PropertyKey.content.rawValue)
-                encoder.encode(transform, key: PropertyKey.transform.rawValue)
-                encoder.encode(bounds, key: PropertyKey.bounds.rawValue)
-                encoder.encode(center, key: PropertyKey.center.rawValue)
-            })
-        }catch{
-            fatalError("\(error)")
-        }
-    }*/
 }
 
 //MARK: JSONCodable
-
 
 extension BubbleModel: JSONEncodable {
     public func toJSON() -> AnyObject {

@@ -24,43 +24,29 @@ extension JSONEncoder {
 }
 
 extension JSONDecoder {
-    func decode(key: String) throws -> CGAffineTransform {
+    
+    func decode(key: String, type: Any.Type) throws -> NSValue {
         guard let value = get(key) else {
             throw JSONDecodableError.MissingTypeError(key: key)
         }
         guard let compatible = value as? NSValue else {
             throw JSONDecodableError.IncompatibleTypeError(key: key, elementType: value.dynamicType, expectedType: NSValue.self)
         }
-        guard let type = String.fromCString(compatible.objCType) where type.containsString("CGAffineTransform") else {
-            throw JSONDecodableError.IncompatibleTypeError(key: key, elementType: value.dynamicType, expectedType: CGAffineTransform.self)
+        guard let objcType = String.fromCString(compatible.objCType) where objcType.containsString("\(type)") else {
+            throw JSONDecodableError.IncompatibleTypeError(key: key, elementType: value.dynamicType, expectedType: type)
         }
-        return compatible.CGAffineTransformValue()
+        return compatible
+    }
+    
+    func decode(key: String) throws -> CGAffineTransform {
+        return try decode(key, type: CGAffineTransform.self).CGAffineTransformValue()
     }
     
     func decode(key: String) throws -> CGRect {
-        guard let value = get(key) else {
-            throw JSONDecodableError.MissingTypeError(key: key)
-        }
-        guard let compatible = value as? NSValue else {
-            throw JSONDecodableError.IncompatibleTypeError(key: key, elementType: value.dynamicType, expectedType: NSValue.self)
-        }
-        guard let type = String.fromCString(compatible.objCType) where type.containsString("CGRect") else {
-            throw JSONDecodableError.IncompatibleTypeError(key: key, elementType: value.dynamicType, expectedType: CGRect.self)
-        }
-        return compatible.CGRectValue()
+        return try decode(key, type: CGRect.self).CGRectValue()
     }
     
-    
     func decode(key: String) throws -> CGPoint {
-        guard let value = get(key) else {
-            throw JSONDecodableError.MissingTypeError(key: key)
-        }
-        guard let compatible = value as? NSValue else {
-            throw JSONDecodableError.IncompatibleTypeError(key: key, elementType: value.dynamicType, expectedType: NSValue.self)
-        }
-        guard let type = String.fromCString(compatible.objCType) where type.containsString("CGPoint") else {
-            throw JSONDecodableError.IncompatibleTypeError(key: key, elementType: value.dynamicType, expectedType: CGPoint.self)
-        }
-        return compatible.CGPointValue()
+        return try decode(key, type: CGPoint.self).CGPointValue()
     }
 }
