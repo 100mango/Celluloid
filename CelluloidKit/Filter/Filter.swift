@@ -16,6 +16,7 @@ func >>> (filter1: Filter, filter2: Filter) -> Filter {
 }
 
 public enum FilterType: String {
+    case Original
     case Sepia
     case Chrome
     case Fade
@@ -37,6 +38,8 @@ public struct Filters {
             return invert()
         case .Posterize:
             return posterize()
+        default:
+            return sepia()
         }
     }
     

@@ -19,11 +19,24 @@ class PhotoEditingViewController: UIViewController {
     @IBOutlet weak var preview: UIImageView!
     @IBOutlet weak var panel: EditPhotoPanel!
     lazy var overlayView: ImageOverlayView = ImageOverlayView.makeViewOverlaysImageView(self.preview)
+    var filterType = FilterType.Original {
+        didSet {
+            guard filterType != oldValue else {
+                return
+            }
+            if filterType == .Original {
+                self.preview.image = input?.displaySizeImage
+            }else{
+                self.preview.image = input?.displaySizeImage?.filteredImage(Filters.filter(filterType))
+            }
+        }
+    }
     
     //Computed property
     var adjustmentData: AdjustmentData {
         var adjustmentData = AdjustmentData()
         adjustmentData.bubbles = overlayView.bubbleModels
+        adjustmentData.filterType = filterType
         return adjustmentData
     }
     
@@ -34,6 +47,10 @@ class PhotoEditingViewController: UIViewController {
             fullSizeImageView.size = fullSizeImage.size
             let scale = fullSizeImage.size.width / preview.imageRect.width
             
+            //filter
+            fullSizeImageView.image = fullSizeImage.filteredImage(Filters.filter(filterType))
+            
+            //bubbles
             let bubbles: [BubbleModel] = self.adjustmentData.bubbles.map({
                 var new = $0
                 new.center = CGPoint(x: scale * $0.center.x, y: scale * $0.center.y)
@@ -45,6 +62,7 @@ class PhotoEditingViewController: UIViewController {
                 let bubbleView = BubbleView(bubbleModel: $0)
                 fullSizeImageView.addSubview(bubbleView)
             })
+            
             let outputImage = fullSizeImageView.render()
             return outputImage
         }else{
@@ -67,6 +85,15 @@ class PhotoEditingViewController: UIViewController {
     }
 }
 
+
+// MARK: - Private
+private extension PhotoEditingViewController {
+    func restoreFromData(data: AdjustmentData) {
+        filterType = data.filterType
+        data.bubbles.forEach({ self.overlayView.addBubble($0) })
+    }
+}
+
 // MARK: - EditPhotoPanel Delegate
 extension PhotoEditingViewController: EditPhotoPanelDelegate {
     func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectBubble bubble: BubbleModel) {
@@ -74,6 +101,7 @@ extension PhotoEditingViewController: EditPhotoPanelDelegate {
     }
     
     func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectFilter filter: FilterType) {
+        filterType = filter
     }
 }
 
@@ -96,9 +124,8 @@ extension PhotoEditingViewController: PHContentEditingController{
         if let adjustmentData = contentEditingInput?.adjustmentData {
             let adjustmentData = AdjustmentData.decode(adjustmentData.data)
             //state restoration
-            adjustmentData.bubbles.forEach({ self.overlayView.addBubble($0) })
+            restoreFromData(adjustmentData)
         }
-        //preview.image = preview.image?.filteredImage(Filters.blurAndSepia())
     }
     
     func finishContentEditingWithCompletionHandler(completionHandler: ((PHContentEditingOutput!) -> Void)!) {
