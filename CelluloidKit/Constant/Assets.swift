@@ -31,6 +31,7 @@ public extension UIImage {
         case Image_sticker_think = "image_sticker_think"
         
         //Button
+        case Btn_icon_back_normal = "btn_icon_back_normal"
         case Btn_icon_sticker_delete_normal = "btn_icon_sticker_delete_normal"
         case Btn_icon_sticker_delete_pressed = "btn_icon_sticker_delete_pressed"
         case Btn_icon_sticker_edit_normal = "btn_icon_sticker_edit_normal"

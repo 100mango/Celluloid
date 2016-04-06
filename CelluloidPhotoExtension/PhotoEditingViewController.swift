@@ -72,6 +72,9 @@ extension PhotoEditingViewController: EditPhotoPanelDelegate {
     func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectBubble bubble: BubbleModel) {
         self.overlayView.addBubble(bubble)
     }
+    
+    func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectFilter filter: FilterType) {
+    }
 }
 
 // MARK: - PHContentEditingController Protocol

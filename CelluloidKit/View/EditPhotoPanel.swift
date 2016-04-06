@@ -10,17 +10,35 @@ import UIKit
 import SnapKit
 import MZFormSheetPresentationController
 
-public protocol EditPhotoPanelDelegate:class {
+public protocol EditPhotoPanelDelegate: class {
     
     func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectBubble bubble: BubbleModel)
+    
+    func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectFilter filter: FilterType)
 }
 
-private enum ButtonType:Int{
-    case SayBubbleButton = 0
+private enum ButtonCellType: Int {
+    case FilterButton = 0
+    case SayBubbleButton
     case ThinkBubbleButton
     case CallBubbleButton
     case AsideBubbleButton
     case Count
+}
+
+private enum FilterCellType: Int {
+    case BackButton = 0
+    case Sepia
+    case Chrome
+    case Fade
+    case Invert
+    case Posterize
+    case Count
+}
+
+private enum PanelType {
+    case FilterType
+    case ButtonType
 }
 
 @IBDesignable public class EditPhotoPanel:UIView{
@@ -44,6 +62,9 @@ private enum ButtonType:Int{
         return collectionView
     }()
     
+    private var panelType = PanelType.ButtonType
+    
+    
     //MARK: init
     private func commonInit() {
         self.addSubview(collectionView)
@@ -63,14 +84,10 @@ private enum ButtonType:Int{
     }
 }
 
-//MARK: CollectionView Data Source
-extension EditPhotoPanel:UICollectionViewDataSource {
-    
-    public func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        return ButtonType.Count.rawValue
-    }
-    
-    public func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
+//MARK: View
+private extension EditPhotoPanel {
+    func makeButtonCell(indexPath: NSIndexPath) -> UICollectionViewCell {
+        
         let cell = collectionView.dequeueReusableCellWithReuseIdentifier(UICollectionViewCell.defaultReuseIdentifier, forIndexPath: indexPath)
         cell.backgroundColor = .cellLightPurple
         cell.contentView.subviews.forEach {
@@ -81,8 +98,10 @@ extension EditPhotoPanel:UICollectionViewDataSource {
         imageView.size = cell.size
         cell.contentView.addSubview(imageView)
         
-        if let buttonType = ButtonType(rawValue: indexPath.row){
+        if let buttonType = ButtonCellType(rawValue: indexPath.row){
             switch buttonType{
+            case .FilterButton:
+                imageView.image = UIImage(asset: .Image_icon_filter)
             case .SayBubbleButton:
                 imageView.image = UIImage(asset: .Image_sticker_say)
             case .AsideBubbleButton:
@@ -98,6 +117,101 @@ extension EditPhotoPanel:UICollectionViewDataSource {
         return cell
     }
     
+    func makeFilterCell(indexPath: NSIndexPath) ->  UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCellWithReuseIdentifier(UICollectionViewCell.defaultReuseIdentifier, forIndexPath: indexPath)
+        cell.backgroundColor = .cellLightPurple
+        cell.contentView.subviews.forEach {
+            $0.removeFromSuperview()
+        }
+        
+        let imageView = UIImageView()
+        imageView.size = cell.size
+        cell.contentView.addSubview(imageView)
+        
+        if let cellType = FilterCellType(rawValue: indexPath.row){
+            switch cellType {
+            case .BackButton:
+                imageView.image = UIImage(asset: .Btn_icon_back_normal)
+            case .Sepia:
+                imageView.image = UIImage(asset: .Sepia)
+            case .Chrome:
+                imageView.image = UIImage(asset: .Chrome)
+            case .Fade:
+                imageView.image = UIImage(asset: .Instant)
+            case .Invert:
+                imageView.image = UIImage(asset: .Invert)
+            case .Posterize:
+                imageView.image = UIImage(asset: .Posterize)
+            case .Count:
+                break
+            }
+        }
+        return cell
+    }
+}
+
+//MARK: Actions
+private extension EditPhotoPanel {
+    func handleSelectButton(type: ButtonCellType) {
+        
+        switch type {
+        case .FilterButton:
+            panelType = .FilterType
+            collectionView.reloadData()
+        default:
+            let bubblePicker = BubblePickerViewController()
+            bubblePicker.delegate = self
+            let navigationVC = UINavigationController(rootViewController: bubblePicker)
+            let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
+            formSheetController.presentationController?.shouldUseMotionEffect = true
+            formSheetController.presentationController?.shouldCenterVertically = true
+            self.parentViewController?.presentViewController(formSheetController, animated: true, completion: nil)
+        }
+    }
+    
+    func handleSelectFilter(type: FilterCellType) {
+        
+        switch type {
+        case .BackButton:
+            panelType = .ButtonType
+            collectionView.reloadData()
+        case .Sepia:
+            self.delegate?.editPhotoPanel(self, didSelectFilter: .Sepia)
+        case .Chrome:
+            self.delegate?.editPhotoPanel(self, didSelectFilter: .Chrome)
+        case .Fade:
+            self.delegate?.editPhotoPanel(self, didSelectFilter: .Fade)
+        case .Invert:
+            self.delegate?.editPhotoPanel(self, didSelectFilter: .Invert)
+        case .Posterize:
+            self.delegate?.editPhotoPanel(self, didSelectFilter: .Posterize)
+        case .Count:
+            break
+        }
+    }
+}
+
+//MARK: CollectionView Data Source
+extension EditPhotoPanel:UICollectionViewDataSource {
+    
+    public func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        if panelType == .ButtonType {
+            return ButtonCellType.Count.rawValue
+        }else if panelType == .FilterType {
+            return FilterCellType.Count.rawValue
+        }
+        return 0
+    }
+    
+    public func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
+        if panelType == .ButtonType {
+            return makeButtonCell(indexPath)
+        }else if panelType == .FilterType {
+            return makeFilterCell(indexPath)
+        }
+        return UICollectionViewCell()
+    }
+    
 }
 
 //MARK: CollectionView delegate
@@ -105,13 +219,15 @@ extension EditPhotoPanel:UICollectionViewDelegate {
     
     public func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
         
-        let bubblePicker = BubblePickerViewController()
-        bubblePicker.delegate = self
-        let navigationVC = UINavigationController(rootViewController: bubblePicker)
-        let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
-        formSheetController.presentationController?.shouldUseMotionEffect = true
-        formSheetController.presentationController?.shouldCenterVertically = true
-        self.parentViewController?.presentViewController(formSheetController, animated: true, completion: nil)
+        if panelType == .ButtonType {
+            if let type = ButtonCellType(rawValue: indexPath.row) {
+                handleSelectButton(type)
+            }
+        }else if panelType == .FilterType {
+            if let type = FilterCellType(rawValue: indexPath.row) {
+                handleSelectFilter(type)
+            }
+        }
     }
 }
 
