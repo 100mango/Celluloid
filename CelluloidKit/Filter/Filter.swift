@@ -108,6 +108,20 @@ public struct Filters {
         }
     }
     
+    static func makeRadialGradientCImage(inputRadius0 inputRadius0: CGFloat,
+                               inputRadius1: CGFloat,
+                               inputColor0: CIColor,
+                               inputColor1: CIColor,
+                               inputCenter: CIVector) -> CIImage? {
+        let parameters = ["inputRadius0": inputRadius0,
+                          "inputRadius1": inputRadius1,
+                          "inputColor0": inputColor0,
+                          "inputColor1": inputColor1,
+                          kCIInputCenterKey: inputCenter]
+        let radialGradient = CIFilter(name: "CIRadialGradient", withInputParameters: parameters)
+        return radialGradient?.outputImage
+    }
+    
     public static func pixellateFace() -> Filter {
         return { image in
             
@@ -118,14 +132,14 @@ public struct Filters {
             }
             
             let mask = faces.flatMap({ face in
+                
                 let radius = min(face.bounds.width, face.bounds.height / 1.5)
-                let parameters = ["inputRadius0": radius,
-                    "inputRadius1": radius + 1,
-                    "inputColor0": CIColor(red: 0, green: 1, blue: 0, alpha: 1),
-                    "inputColor1": CIColor(red: 0, green: 0, blue: 0, alpha: 0),
-                    kCIInputCenterKey: CIVector(x: face.bounds.midX, y: face.bounds.midY)]
-                let radialGradient = CIFilter(name: "CIRadialGradient", withInputParameters: parameters)
-                return radialGradient?.outputImage
+                return self.makeRadialGradientCImage(inputRadius0: radius,
+                    inputRadius1:radius + 1,
+                    inputColor0: CIColor(red: 0, green: 1, blue: 0, alpha: 1),
+                    inputColor1: CIColor(red: 0, green: 0, blue: 0, alpha: 0),
+                    inputCenter: CIVector(x: face.bounds.midX, y: face.bounds.midY))
+
             }).reduce(CIImage(), combine: { sourceOver($0)($1) })
             
             let pixellatedImage = pixellate()(image)
@@ -163,7 +177,7 @@ public struct Filters {
 
 private let context = CIContext()
 extension UIImage {
-    //TODO: 添加旋转信息
+    
     public func filteredImage(filter: Filter) -> UIImage {
         let inputImage = self.CIImage ?? CoreImage.CIImage(CGImage: self.CGImage!)
         let outputImage = filter(inputImage)
