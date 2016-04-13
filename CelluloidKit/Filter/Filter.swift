@@ -170,4 +170,12 @@ extension UIImage {
         let cgImage = context.createCGImage(outputImage, fromRect: inputImage.extent)
         return UIImage(CGImage: cgImage)
     }
+    
+    public func filteredImage(orientation: Int32, filter: Filter) -> UIImage {
+        var inputImage = self.CIImage ?? CoreImage.CIImage(CGImage: self.CGImage!)
+        inputImage = inputImage.imageByApplyingOrientation(orientation)
+        let outputImage = filter(inputImage)
+        let cgImage = context.createCGImage(outputImage, fromRect: inputImage.extent)
+        return UIImage(CGImage: cgImage)
+    }
 }

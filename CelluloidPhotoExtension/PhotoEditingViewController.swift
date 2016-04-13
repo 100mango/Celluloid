@@ -48,8 +48,8 @@ class PhotoEditingViewController: UIViewController {
             let scale = fullSizeImage.size.width / preview.imageRect.width
             
             //filter
-            fullSizeImageView.image = fullSizeImage.filteredImage(Filters.filter(filterType))
-            
+            fullSizeImageView.image = fullSizeImage.filteredImage(input!.fullSizeImageOrientation, filter: Filters.filter(filterType))
+                        
             //bubbles
             let bubbles: [BubbleModel] = self.adjustmentData.bubbles.map({
                 var new = $0
