@@ -28,6 +28,7 @@ private enum ButtonCellType: Int {
 
 private enum FilterCellType: Int {
     case BackButton = 0
+    case Original
     case Sepia
     case Chrome
     case Fade
@@ -133,6 +134,8 @@ private extension EditPhotoPanel {
             switch cellType {
             case .BackButton:
                 imageView.image = UIImage(asset: .Btn_icon_back_normal)
+            case .Original:
+                imageView.image = UIImage(asset: .Sepia)
             case .Sepia:
                 imageView.image = UIImage(asset: .Sepia)
             case .Chrome:
@@ -178,6 +181,8 @@ private extension EditPhotoPanel {
         case .BackButton:
             panelType = .ButtonType
             collectionView.reloadData()
+        case .Original:
+            self.delegate?.editPhotoPanel(self, didSelectFilter: .Original)
         case .Sepia:
             self.delegate?.editPhotoPanel(self, didSelectFilter: .Sepia)
         case .Chrome:
