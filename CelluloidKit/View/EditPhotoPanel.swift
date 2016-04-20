@@ -19,6 +19,7 @@ public protocol EditPhotoPanelDelegate: class {
 
 private enum ButtonCellType: Int {
     case FilterButton = 0
+    case StickerButton
     case SayBubbleButton
     case ThinkBubbleButton
     case CallBubbleButton
@@ -103,6 +104,8 @@ private extension EditPhotoPanel {
         if let buttonType = ButtonCellType(rawValue: indexPath.row){
             switch buttonType{
             case .FilterButton:
+                imageView.image = UIImage(asset: .Image_icon_filter)
+            case .StickerButton:
                 imageView.image = UIImage(asset: .Image_icon_filter)
             case .SayBubbleButton:
                 imageView.image = UIImage(asset: .Image_sticker_say)

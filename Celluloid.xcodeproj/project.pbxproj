@@ -32,6 +32,8 @@
 		DB1DE6501C882EEC0076EE76 /* AttachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1DE64F1C882EEC0076EE76 /* AttachView.swift */; };
 		DB2875AC1CB394F800CB8977 /* JSONCodableExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2875AB1CB394F800CB8977 /* JSONCodableExtension.swift */; };
 		DB5D9A1B1CA023540045E49B /* ImageOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */; };
+		DB6A158E1CC5DD3C00DFF71E /* StickerPickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */; };
+		DB6A15921CC7461500DFF71E /* BasePickerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6A15911CC7461500DFF71E /* BasePickerController.swift */; };
 		DB7A35691C9557AD00AB3283 /* BubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35681C9557AD00AB3283 /* BubbleView.swift */; };
 		DB7A356E1C958BB300AB3283 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35701C958BB300AB3283 /* Localizable.strings */; };
 		DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35721C958DA700AB3283 /* Localizable.swift */; };
@@ -129,6 +131,8 @@
 		DB1DE64F1C882EEC0076EE76 /* AttachView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = AttachView.swift; path = View/AttachView.swift; sourceTree = "<group>"; };
 		DB2875AB1CB394F800CB8977 /* JSONCodableExtension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = JSONCodableExtension.swift; sourceTree = "<group>"; };
 		DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ImageOverlayView.swift; path = View/ImageOverlayView.swift; sourceTree = "<group>"; };
+		DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = StickerPickerViewController.swift; path = Sticker/Controller/StickerPickerViewController.swift; sourceTree = "<group>"; };
+		DB6A15911CC7461500DFF71E /* BasePickerController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BasePickerController.swift; path = Controller/BasePickerController.swift; sourceTree = "<group>"; };
 		DB7A35681C9557AD00AB3283 /* BubbleView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleView.swift; path = Bubble/View/BubbleView.swift; sourceTree = "<group>"; };
 		DB7A356C1C958A6D00AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/LaunchScreen.strings"; sourceTree = "<group>"; };
 		DB7A356D1C958A6D00AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/MainInterface.strings"; sourceTree = "<group>"; };
@@ -232,15 +236,16 @@
 		DB14F7881C8083A1000FA15F /* CelluloidKit */ = {
 			isa = PBXGroup;
 			children = (
+				DB6A158B1CC5DB4D00DFF71E /* Sticker */,
 				DB80D6601CAB9EB3006B2F60 /* Filter */,
 				DBA390F41C86CF55006248A4 /* Bubble */,
 				DB14F7C71C85807D000FA15F /* View */,
+				DB6A158F1CC7458A00DFF71E /* Controller */,
 				DBA390F31C86CD92006248A4 /* Constant */,
 				DB7A35AC1C965CEB00AB3283 /* Resources */,
-				DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */,
+				DB6A15901CC745E100DFF71E /* Extension */,
 				DB14F78B1C8083A1000FA15F /* Info.plist */,
 				DB14F7891C8083A1000FA15F /* CelluloidKit.h */,
-				DB2875AB1CB394F800CB8977 /* JSONCodableExtension.swift */,
 			);
 			path = CelluloidKit;
 			sourceTree = "<group>";
@@ -300,6 +305,39 @@
 				DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */,
 			);
 			name = Controller;
+			sourceTree = "<group>";
+		};
+		DB6A158B1CC5DB4D00DFF71E /* Sticker */ = {
+			isa = PBXGroup;
+			children = (
+				DB6A158C1CC5DCC100DFF71E /* Controller */,
+			);
+			name = Sticker;
+			sourceTree = "<group>";
+		};
+		DB6A158C1CC5DCC100DFF71E /* Controller */ = {
+			isa = PBXGroup;
+			children = (
+				DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */,
+			);
+			name = Controller;
+			sourceTree = "<group>";
+		};
+		DB6A158F1CC7458A00DFF71E /* Controller */ = {
+			isa = PBXGroup;
+			children = (
+				DB6A15911CC7461500DFF71E /* BasePickerController.swift */,
+			);
+			name = Controller;
+			sourceTree = "<group>";
+		};
+		DB6A15901CC745E100DFF71E /* Extension */ = {
+			isa = PBXGroup;
+			children = (
+				DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */,
+				DB2875AB1CB394F800CB8977 /* JSONCodableExtension.swift */,
+			);
+			name = Extension;
 			sourceTree = "<group>";
 		};
 		DB7A35671C95578800AB3283 /* View */ = {
@@ -677,12 +715,14 @@
 			files = (
 				DB5D9A1B1CA023540045E49B /* ImageOverlayView.swift in Sources */,
 				DB7A35871C9596C200AB3283 /* BubblePickerViewController.swift in Sources */,
+				DB6A15921CC7461500DFF71E /* BasePickerController.swift in Sources */,
 				DB1DE6501C882EEC0076EE76 /* AttachView.swift in Sources */,
 				DB7A35B01C969FFA00AB3283 /* BubbleLabel.swift in Sources */,
 				DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */,
 				DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */,
 				DB7A35691C9557AD00AB3283 /* BubbleView.swift in Sources */,
 				DB80D6641CAB9EF6006B2F60 /* Filter.swift in Sources */,
+				DB6A158E1CC5DD3C00DFF71E /* StickerPickerViewController.swift in Sources */,
 				DB14F7C61C8469F7000FA15F /* UIView-Extension.swift in Sources */,
 				DB14F7C21C8437EC000FA15F /* Assets.swift in Sources */,
 				DB14F7C91C8580C9000FA15F /* EditPhotoPanel.swift in Sources */,
