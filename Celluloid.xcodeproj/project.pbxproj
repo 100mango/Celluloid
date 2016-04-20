@@ -43,6 +43,8 @@
 		DB80D6641CAB9EF6006B2F60 /* Filter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB80D6631CAB9EF6006B2F60 /* Filter.swift */; };
 		DBA390F21C868172006248A4 /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390F11C868172006248A4 /* Style.swift */; };
 		DBC81CCE1C9BE3A800423098 /* AdjustmentData.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBC81CCD1C9BE3A800423098 /* AdjustmentData.swift */; };
+		DBDC81E71CC7506C0036F18E /* StickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDC81E61CC7506C0036F18E /* StickerModel.swift */; };
+		DBDC81EA1CC75BDF0036F18E /* StickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDC81E91CC75BDF0036F18E /* StickerView.swift */; };
 		DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */; };
 /* End PBXBuildFile section */
 
@@ -145,6 +147,8 @@
 		DB80D6631CAB9EF6006B2F60 /* Filter.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Filter.swift; path = Filter/Filter.swift; sourceTree = "<group>"; };
 		DBA390F11C868172006248A4 /* Style.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Style.swift; sourceTree = "<group>"; };
 		DBC81CCD1C9BE3A800423098 /* AdjustmentData.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AdjustmentData.swift; sourceTree = "<group>"; };
+		DBDC81E61CC7506C0036F18E /* StickerModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = StickerModel.swift; path = Sticker/Model/StickerModel.swift; sourceTree = "<group>"; };
+		DBDC81E91CC75BDF0036F18E /* StickerView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = StickerView.swift; path = Sticker/View/StickerView.swift; sourceTree = "<group>"; };
 		DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditBubbleViewController.swift; path = Bubble/Controller/EditBubbleViewController.swift; sourceTree = "<group>"; };
 		FA3B5D21938C80179B355304 /* Pods.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -310,6 +314,8 @@
 		DB6A158B1CC5DB4D00DFF71E /* Sticker */ = {
 			isa = PBXGroup;
 			children = (
+				DBDC81E81CC75B910036F18E /* View */,
+				DBDC81E51CC7504B0036F18E /* Model */,
 				DB6A158C1CC5DCC100DFF71E /* Controller */,
 			);
 			name = Sticker;
@@ -393,6 +399,22 @@
 				DBC81CCD1C9BE3A800423098 /* AdjustmentData.swift */,
 			);
 			name = Model;
+			sourceTree = "<group>";
+		};
+		DBDC81E51CC7504B0036F18E /* Model */ = {
+			isa = PBXGroup;
+			children = (
+				DBDC81E61CC7506C0036F18E /* StickerModel.swift */,
+			);
+			name = Model;
+			sourceTree = "<group>";
+		};
+		DBDC81E81CC75B910036F18E /* View */ = {
+			isa = PBXGroup;
+			children = (
+				DBDC81E91CC75BDF0036F18E /* StickerView.swift */,
+			);
+			name = View;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -727,8 +749,10 @@
 				DB14F7C21C8437EC000FA15F /* Assets.swift in Sources */,
 				DB14F7C91C8580C9000FA15F /* EditPhotoPanel.swift in Sources */,
 				DBA390F21C868172006248A4 /* Style.swift in Sources */,
+				DBDC81EA1CC75BDF0036F18E /* StickerView.swift in Sources */,
 				DB2875AC1CB394F800CB8977 /* JSONCodableExtension.swift in Sources */,
 				DB1DE64C1C881DEB0076EE76 /* BubbleModel.swift in Sources */,
+				DBDC81E71CC7506C0036F18E /* StickerModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

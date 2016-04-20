@@ -14,6 +14,8 @@ public protocol EditPhotoPanelDelegate: class {
     
     func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectBubble bubble: BubbleModel)
     
+    func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectSticker sticker: StickerModel)
+    
     func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectFilter filter: FilterType)
 }
 
@@ -163,18 +165,26 @@ private extension EditPhotoPanel {
 private extension EditPhotoPanel {
     func handleSelectButton(type: ButtonCellType) {
         
-        switch type {
-        case .FilterButton:
-            panelType = .FilterType
-            collectionView.reloadData()
-        default:
-            let bubblePicker = BubblePickerViewController()
-            bubblePicker.delegate = self
-            let navigationVC = UINavigationController(rootViewController: bubblePicker)
+        func presentViewControllerFromSheet(vc: UIViewController) {
+            let navigationVC = UINavigationController(rootViewController: vc)
             let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
             formSheetController.presentationController?.shouldUseMotionEffect = true
             formSheetController.presentationController?.shouldCenterVertically = true
             self.parentViewController?.presentViewController(formSheetController, animated: true, completion: nil)
+        }
+        
+        switch type {
+        case .FilterButton:
+            panelType = .FilterType
+            collectionView.reloadData()
+        case .StickerButton:
+            let stickerPicker = StickerPickerViewController()
+            stickerPicker.delegate = self
+            presentViewControllerFromSheet(stickerPicker)
+        default:
+            let bubblePicker = BubblePickerViewController()
+            bubblePicker.delegate = self
+            presentViewControllerFromSheet(bubblePicker)
         }
     }
     
@@ -245,16 +255,18 @@ extension EditPhotoPanel:UICollectionViewDelegate {
 }
 
 //MARK: BubblePickerViewControllerDelegate
-extension EditPhotoPanel:BubblePickerViewControllerDelegate {
+extension EditPhotoPanel: BubblePickerViewControllerDelegate {
     public func bubblePickerViewController(bubblePickerViewController: BubblePickerViewController, didSelectBubble bubble: BubbleModel) {
         self.delegate?.editPhotoPanel(self, didSelectBubble: bubble)
     }
 }
 
-
-
-
-
+//MARK: StickerPickerViewControllerDelegate
+extension EditPhotoPanel: StickerPickerViewControllerDelegate {
+    public func stickerPickerViewController(stickerPickerViewController: StickerPickerViewController, didSelectSticker sticker: StickerModel) {
+        self.delegate?.editPhotoPanel(self, didSelectSticker: sticker)
+    }
+}
 
 
 

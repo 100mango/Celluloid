@@ -18,6 +18,14 @@ public class ImageOverlayView: UIView {
         return self.subviews.flatMap({ $0 as? BubbleView })
     }
     
+    public var stickerModels: [StickerModel] {
+        return stickers.map({ $0.stickerModel })
+    }
+    
+    var stickers: [StickerView] {
+        return self.subviews.flatMap({ $0 as? StickerView })
+    }
+    
     //MARK: init
     private func commonInit() {
         self.backgroundColor = UIColor.clearColor()
@@ -53,6 +61,10 @@ public class ImageOverlayView: UIView {
         self.addSubview(bubble)
     }
     
+    public func addSticker(stickerModel: StickerModel) {
+        let sticker = StickerView(stickerModel: stickerModel)
+        self.addSubview(sticker)
+    }
     
 }
 

@@ -24,6 +24,7 @@ public struct AdjustmentData {
     
     //state restoration property
     var bubbles = [BubbleModel]()
+    var stickers = [StickerModel]()
     var filterType = FilterType.Original
     
     public static func decode(data: NSData) -> AdjustmentData {
@@ -41,6 +42,7 @@ extension AdjustmentData: JSONEncodable {
         do {
             return try JSONEncoder.create({ encoder in
                 try encoder.encode(bubbles, key: PropertyKey.bubbles.rawValue)
+                try encoder.encode(stickers, key: PropertyKey.stickers.rawValue)
                 try encoder.encode(filterType, key: PropertyKey.filterType.rawValue)
             })
         }catch{
@@ -54,6 +56,7 @@ extension AdjustmentData: JSONDecodable {
         do {
             let decoder = JSONDecoder(object: object)
             bubbles = try decoder.decode(PropertyKey.bubbles.rawValue)
+            stickers = try decoder.decode(PropertyKey.stickers.rawValue)
             filterType = try decoder.decode(PropertyKey.filterType.rawValue)
         }catch{
             fatalError("\(error)")
@@ -64,5 +67,6 @@ extension AdjustmentData: JSONDecodable {
 
 private enum PropertyKey: String {
     case bubbles
+    case stickers
     case filterType
 }

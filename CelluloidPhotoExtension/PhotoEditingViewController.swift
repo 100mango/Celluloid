@@ -36,6 +36,7 @@ class PhotoEditingViewController: UIViewController {
     var adjustmentData: AdjustmentData {
         var adjustmentData = AdjustmentData()
         adjustmentData.bubbles = overlayView.bubbleModels
+        adjustmentData.stickers = overlayView.stickerModels
         adjustmentData.filterType = filterType
         return adjustmentData
     }
@@ -48,8 +49,10 @@ class PhotoEditingViewController: UIViewController {
             let scale = fullSizeImage.size.width / preview.imageRect.width
             
             //filter
-            fullSizeImageView.image = fullSizeImage.filteredImage(input!.fullSizeImageOrientation, filter: Filters.filter(filterType))
-                        
+            if filterType != .Original {
+                fullSizeImageView.image = fullSizeImage.filteredImage(input!.fullSizeImageOrientation, filter: Filters.filter(filterType))
+            }
+            
             //bubbles
             let bubbles: [BubbleModel] = self.adjustmentData.bubbles.map({
                 var new = $0
@@ -63,6 +66,20 @@ class PhotoEditingViewController: UIViewController {
                 fullSizeImageView.addSubview(bubbleView)
             })
             
+            //stickers
+            let stickers: [StickerModel] = self.adjustmentData.stickers.map({
+                var new = $0
+                new.center = CGPoint(x: scale * $0.center.x, y: scale * $0.center.y)
+                new.transform = CGAffineTransformScale($0.transform, scale, scale)
+                return new
+            })
+            
+            stickers.forEach({
+                let stickerView = StickerView(stickerModel: $0)
+                fullSizeImageView.addSubview(stickerView)
+            })
+            
+            //output
             let outputImage = fullSizeImageView.render()
             return outputImage
         }else{
@@ -90,7 +107,8 @@ class PhotoEditingViewController: UIViewController {
 private extension PhotoEditingViewController {
     func restoreFromData(data: AdjustmentData) {
         filterType = data.filterType
-        data.bubbles.forEach({ self.overlayView.addBubble($0) })
+        data.bubbles.forEach{ self.overlayView.addBubble($0) }
+        data.stickers.forEach{ self.overlayView.addSticker($0) }
     }
 }
 
@@ -98,6 +116,10 @@ private extension PhotoEditingViewController {
 extension PhotoEditingViewController: EditPhotoPanelDelegate {
     func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectBubble bubble: BubbleModel) {
         self.overlayView.addBubble(bubble)
+    }
+    
+    func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectSticker sticker: StickerModel) {
+        self.overlayView.addSticker(sticker)
     }
     
     func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectFilter filter: FilterType) {
