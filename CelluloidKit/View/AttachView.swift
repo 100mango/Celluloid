@@ -16,13 +16,12 @@ public class AttachView: UIView {
     public lazy var imageView:UIImageView = {
         let imageView = UIImageView(frame: self.bounds.insetBy(dx: self.halfButtonWidth, dy: self.halfButtonWidth))
         imageView.contentMode = .ScaleAspectFit
-        imageView.layer.borderWidth = 1
-        imageView.layer.borderColor = UIColor.whiteColor().colorWithAlphaComponent(0.6).CGColor
         return imageView
     }()
     
     lazy var deleteButton: UIButton = {
         let button = UIButton(type: .Custom)
+        button.hidden = true
         button.frame = CGRect(x: self.bounds.width - self.buttonWidth, y: 0, width: self.buttonWidth, height: self.buttonWidth)
         button.setImage(UIImage(asset: .Btn_icon_sticker_delete_normal), forState: .Normal)
         button.addTarget(self, action: .removeSelf, forControlEvents: .TouchUpInside)
@@ -31,6 +30,7 @@ public class AttachView: UIView {
     
     lazy var resizeButton: UIButton = {
         let button = UIButton(type: .Custom)
+        button.hidden = true
         button.frame = CGRect(x: self.bounds.width - self.buttonWidth, y: self.bounds.height - self.buttonWidth, width: self.buttonWidth, height: self.buttonWidth)
         button.setImage(UIImage(asset: .Btn_icon_sticker_edit_normal), forState: .Normal)
         let panGesture = UIPanGestureRecognizer(target: self, action: .rotateAndResize)
@@ -39,7 +39,7 @@ public class AttachView: UIView {
         return button
     }()
     
-    public var hideButtonEnable:Bool = false {
+    public var hideButtonEnable:Bool = true {
         didSet {
             imageView.layer.borderWidth = hideButtonEnable ? 0 : 1
             imageView.layer.borderColor = UIColor.whiteColor().colorWithAlphaComponent(0.6).CGColor

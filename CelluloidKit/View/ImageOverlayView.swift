@@ -11,19 +11,13 @@ import Foundation
 public class ImageOverlayView: UIView {
     
     public var bubbleModels: [BubbleModel] {
-        return bubbles.map({ $0.bubbleModel })
-    }
-    
-    var bubbles: [BubbleView] {
-        return self.subviews.flatMap({ $0 as? BubbleView })
+        return self.subviews.flatMap { $0 as? BubbleView }
+            .map({ $0.bubbleModel })
     }
     
     public var stickerModels: [StickerModel] {
-        return stickers.map({ $0.stickerModel })
-    }
-    
-    var stickers: [StickerView] {
         return self.subviews.flatMap({ $0 as? StickerView })
+            .map({ $0.stickerModel })
     }
     
     //MARK: init
@@ -70,6 +64,8 @@ public class ImageOverlayView: UIView {
 
 extension ImageOverlayView {
     @objc func touch() {
-        bubbles.forEach({$0.hideButtonEnable = !$0.hideButtonEnable})
+        self.subviews.flatMap({ $0 as? AttachView }).forEach{
+            $0.hideButtonEnable = true
+        }
     }
 }

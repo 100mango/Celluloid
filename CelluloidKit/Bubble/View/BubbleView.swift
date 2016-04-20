@@ -12,11 +12,12 @@ import MZFormSheetPresentationController
 public class BubbleView: AttachView {
     //MARK: Property
     lazy var editTextBubbton: UIButton = {
-        let editTextButton = UIButton(type: .Custom)
-        editTextButton.frame = CGRect(x: 0, y: 0, width: self.buttonWidth, height: self.buttonWidth)
-        editTextButton.setImage(UIImage(asset: .Btn_icon_sticker_text_normal), forState: .Normal)
-        editTextButton.addTarget(self, action: #selector(editText), forControlEvents: .TouchUpInside)
-        return editTextButton
+        let button = UIButton(type: .Custom)
+        button.hidden = true
+        button.frame = CGRect(x: 0, y: 0, width: self.buttonWidth, height: self.buttonWidth)
+        button.setImage(UIImage(asset: .Btn_icon_sticker_text_normal), forState: .Normal)
+        button.addTarget(self, action: #selector(editText), forControlEvents: .TouchUpInside)
+        return button
     }()
     
     public var bubbleModel: BubbleModel {
