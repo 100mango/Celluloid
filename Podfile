@@ -5,3 +5,4 @@ pod 'SnapKit'
 pod 'UIColor_Hex_Swift'
 pod 'MZFormSheetPresentationController'
 pod 'JSONCodable'
+pod "BSImagePicker"

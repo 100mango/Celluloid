@@ -1,14 +1,20 @@
 PODS:
   - AsyncSwift (1.7.2)
+  - BSGridCollectionViewLayout (1.1.1)
+  - BSImagePicker (2.3.0):
+    - BSGridCollectionViewLayout (~> 1.1)
+    - UIImageViewModeScaleAspect (~> 1.3)
   - JSONCodable (2.1)
   - MZAppearance (1.1.6)
   - MZFormSheetPresentationController (2.3.0):
     - MZAppearance
   - SnapKit (0.19.1)
   - UIColor_Hex_Swift (1.9)
+  - UIImageViewModeScaleAspect (1.3)
 
 DEPENDENCIES:
   - AsyncSwift
+  - BSImagePicker
   - JSONCodable
   - MZFormSheetPresentationController
   - SnapKit
@@ -16,10 +22,13 @@ DEPENDENCIES:
 
 SPEC CHECKSUMS:
   AsyncSwift: 46a78bceb11f0e5bb52747f740d9692ec78d2d7c
+  BSGridCollectionViewLayout: d7304dcb35c6b3b4420c527e9f9b77ff322250f3
+  BSImagePicker: 591b28ce4994c44cbc4ac896717c1db9f9fadd18
   JSONCodable: d3bb8d1323bb4cbc381b16219046c5282565a4f1
   MZAppearance: 0c06d3fa9cc55142f1da14bc8631fbe8fd6e19d5
   MZFormSheetPresentationController: 076391ba3f6474b4ef75eaaef2380991524d8be4
   SnapKit: eff58d6e3451bf2f482db2eccf86aecf371dc62d
   UIColor_Hex_Swift: 2ee747c0fed8b72b2135ef474b80a6921e489daa
+  UIImageViewModeScaleAspect: ec78901acfc20d3782154111a21d34390f8f71ad
 
 COCOAPODS: 0.39.0

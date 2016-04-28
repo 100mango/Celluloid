@@ -8,12 +8,29 @@
 
 import UIKit
 import CelluloidKit
+import BSImagePicker
+import Photos
 
 class ViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
         self.view.backgroundColor = UIColor.redColor()
+        
+        let vc = BSImagePickerViewController()
+        vc.maxNumberOfSelections = 6
+        
+        bs_presentImagePickerController(vc, animated: false,
+                                        select: { (asset: PHAsset) -> Void in
+                                            print("Selected: \(asset)")
+            }, deselect: { (asset: PHAsset) -> Void in
+                print("Deselected: \(asset)")
+            }, cancel: { (assets: [PHAsset]) -> Void in
+                print("Cancel: \(assets)")
+            }, finish: { (assets: [PHAsset]) -> Void in
+                print("Finish: \(assets)")
+            }, completion: nil)
+        
     }
 
     override func didReceiveMemoryWarning() {

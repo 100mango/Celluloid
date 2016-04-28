@@ -15,8 +15,6 @@
 		DB14F7781C803608000FA15F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7771C803608000FA15F /* Assets.xcassets */; };
 		DB14F77B1C803608000FA15F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7791C803608000FA15F /* LaunchScreen.storyboard */; };
 		DB14F78A1C8083A1000FA15F /* CelluloidKit.h in Headers */ = {isa = PBXBuildFile; fileRef = DB14F7891C8083A1000FA15F /* CelluloidKit.h */; settings = {ATTRIBUTES = (Public, ); }; };
-		DB14F7911C8083A1000FA15F /* CelluloidKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7871C8083A1000FA15F /* CelluloidKit.framework */; };
-		DB14F7981C8083A1000FA15F /* CelluloidKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7971C8083A1000FA15F /* CelluloidKitTests.swift */; };
 		DB14F79C1C8083A1000FA15F /* CelluloidKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7871C8083A1000FA15F /* CelluloidKit.framework */; };
 		DB14F79D1C8083A1000FA15F /* CelluloidKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7871C8083A1000FA15F /* CelluloidKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		DB14F7AC1C808579000FA15F /* PhotosUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7AB1C808579000FA15F /* PhotosUI.framework */; };
@@ -49,20 +47,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		DB14F7921C8083A1000FA15F /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = DB14F7651C803608000FA15F /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = DB14F7861C8083A1000FA15F;
-			remoteInfo = CelluloidKit;
-		};
-		DB14F7941C8083A1000FA15F /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = DB14F7651C803608000FA15F /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = DB14F76C1C803608000FA15F;
-			remoteInfo = Celluloid;
-		};
 		DB14F79A1C8083A1000FA15F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = DB14F7651C803608000FA15F /* Project object */;
@@ -116,9 +100,6 @@
 		DB14F7871C8083A1000FA15F /* CelluloidKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CelluloidKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		DB14F7891C8083A1000FA15F /* CelluloidKit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CelluloidKit.h; sourceTree = "<group>"; };
 		DB14F78B1C8083A1000FA15F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		DB14F7901C8083A1000FA15F /* CelluloidKitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CelluloidKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		DB14F7971C8083A1000FA15F /* CelluloidKitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CelluloidKitTests.swift; sourceTree = "<group>"; };
-		DB14F7991C8083A1000FA15F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		DB14F7A91C808579000FA15F /* CelluloidPhotoExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CelluloidPhotoExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		DB14F7AB1C808579000FA15F /* PhotosUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PhotosUI.framework; path = System/Library/Frameworks/PhotosUI.framework; sourceTree = SDKROOT; };
 		DB14F7AD1C808579000FA15F /* Photos.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Photos.framework; path = System/Library/Frameworks/Photos.framework; sourceTree = SDKROOT; };
@@ -171,14 +152,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		DB14F78D1C8083A1000FA15F /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				DB14F7911C8083A1000FA15F /* CelluloidKit.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		DB14F7A61C808579000FA15F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -206,7 +179,6 @@
 			children = (
 				DB14F76F1C803608000FA15F /* Celluloid */,
 				DB14F7881C8083A1000FA15F /* CelluloidKit */,
-				DB14F7961C8083A1000FA15F /* CelluloidKitTests */,
 				DB14F7AF1C808579000FA15F /* CelluloidPhotoExtension */,
 				DB14F7AA1C808579000FA15F /* Frameworks */,
 				DB14F76E1C803608000FA15F /* Products */,
@@ -219,7 +191,6 @@
 			children = (
 				DB14F76D1C803608000FA15F /* Celluloid.app */,
 				DB14F7871C8083A1000FA15F /* CelluloidKit.framework */,
-				DB14F7901C8083A1000FA15F /* CelluloidKitTests.xctest */,
 				DB14F7A91C808579000FA15F /* CelluloidPhotoExtension.appex */,
 			);
 			name = Products;
@@ -252,15 +223,6 @@
 				DB14F7891C8083A1000FA15F /* CelluloidKit.h */,
 			);
 			path = CelluloidKit;
-			sourceTree = "<group>";
-		};
-		DB14F7961C8083A1000FA15F /* CelluloidKitTests */ = {
-			isa = PBXGroup;
-			children = (
-				DB14F7971C8083A1000FA15F /* CelluloidKitTests.swift */,
-				DB14F7991C8083A1000FA15F /* Info.plist */,
-			);
-			path = CelluloidKitTests;
 			sourceTree = "<group>";
 		};
 		DB14F7AA1C808579000FA15F /* Frameworks */ = {
@@ -475,25 +437,6 @@
 			productReference = DB14F7871C8083A1000FA15F /* CelluloidKit.framework */;
 			productType = "com.apple.product-type.framework";
 		};
-		DB14F78F1C8083A1000FA15F /* CelluloidKitTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = DB14F7A41C8083A1000FA15F /* Build configuration list for PBXNativeTarget "CelluloidKitTests" */;
-			buildPhases = (
-				DB14F78C1C8083A1000FA15F /* Sources */,
-				DB14F78D1C8083A1000FA15F /* Frameworks */,
-				DB14F78E1C8083A1000FA15F /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				DB14F7931C8083A1000FA15F /* PBXTargetDependency */,
-				DB14F7951C8083A1000FA15F /* PBXTargetDependency */,
-			);
-			name = CelluloidKitTests;
-			productName = CelluloidKitTests;
-			productReference = DB14F7901C8083A1000FA15F /* CelluloidKitTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
 		DB14F7A81C808579000FA15F /* CelluloidPhotoExtension */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = DB14F7B91C808579000FA15F /* Build configuration list for PBXNativeTarget "CelluloidPhotoExtension" */;
@@ -530,10 +473,6 @@
 					DB14F7861C8083A1000FA15F = {
 						CreatedOnToolsVersion = 7.2.1;
 					};
-					DB14F78F1C8083A1000FA15F = {
-						CreatedOnToolsVersion = 7.2.1;
-						TestTargetID = DB14F76C1C803608000FA15F;
-					};
 					DB14F7A81C808579000FA15F = {
 						CreatedOnToolsVersion = 7.2.1;
 					};
@@ -555,7 +494,6 @@
 			targets = (
 				DB14F76C1C803608000FA15F /* Celluloid */,
 				DB14F7861C8083A1000FA15F /* CelluloidKit */,
-				DB14F78F1C8083A1000FA15F /* CelluloidKitTests */,
 				DB14F7A81C808579000FA15F /* CelluloidPhotoExtension */,
 			);
 		};
@@ -578,13 +516,6 @@
 				DB14F7C01C84348B000FA15F /* CelluloidKit.xcassets in Resources */,
 				DB7A356E1C958BB300AB3283 /* Localizable.strings in Resources */,
 				DB7A35AE1C965D2100AB3283 /* bubble.json in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		DB14F78E1C8083A1000FA15F /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -756,14 +687,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		DB14F78C1C8083A1000FA15F /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				DB14F7981C8083A1000FA15F /* CelluloidKitTests.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		DB14F7A51C808579000FA15F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -776,16 +699,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		DB14F7931C8083A1000FA15F /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = DB14F7861C8083A1000FA15F /* CelluloidKit */;
-			targetProxy = DB14F7921C8083A1000FA15F /* PBXContainerItemProxy */;
-		};
-		DB14F7951C8083A1000FA15F /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = DB14F76C1C803608000FA15F /* Celluloid */;
-			targetProxy = DB14F7941C8083A1000FA15F /* PBXContainerItemProxy */;
-		};
 		DB14F79B1C8083A1000FA15F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = DB14F7861C8083A1000FA15F /* CelluloidKit */;
@@ -985,28 +898,6 @@
 			};
 			name = Release;
 		};
-		DB14F7A01C8083A1000FA15F /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				INFOPLIST_FILE = CelluloidKitTests/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = Mango.CelluloidKitTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Celluloid.app/Celluloid";
-			};
-			name = Debug;
-		};
-		DB14F7A11C8083A1000FA15F /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				INFOPLIST_FILE = CelluloidKitTests/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = Mango.CelluloidKitTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Celluloid.app/Celluloid";
-			};
-			name = Release;
-		};
 		DB14F7BA1C808579000FA15F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 685EEB2FDEBD70B67B91C80D /* Pods.debug.xcconfig */;
@@ -1057,15 +948,6 @@
 			buildConfigurations = (
 				DB14F79E1C8083A1000FA15F /* Debug */,
 				DB14F79F1C8083A1000FA15F /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		DB14F7A41C8083A1000FA15F /* Build configuration list for PBXNativeTarget "CelluloidKitTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				DB14F7A01C8083A1000FA15F /* Debug */,
-				DB14F7A11C8083A1000FA15F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
