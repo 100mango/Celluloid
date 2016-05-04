@@ -39,6 +39,8 @@
 		DB7A35AE1C965D2100AB3283 /* bubble.json in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35AD1C965D2100AB3283 /* bubble.json */; };
 		DB7A35B01C969FFA00AB3283 /* BubbleLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */; };
 		DB80D6641CAB9EF6006B2F60 /* Filter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB80D6631CAB9EF6006B2F60 /* Filter.swift */; };
+		DB83EFA91CD992F600962016 /* ImageArrangedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFA81CD992F600962016 /* ImageArrangedView.swift */; };
+		DB83EFAC1CD995C800962016 /* PhotoModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFAB1CD995C800962016 /* PhotoModel.swift */; };
 		DBA390F21C868172006248A4 /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390F11C868172006248A4 /* Style.swift */; };
 		DBC81CCE1C9BE3A800423098 /* AdjustmentData.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBC81CCD1C9BE3A800423098 /* AdjustmentData.swift */; };
 		DBDC81E71CC7506C0036F18E /* StickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDC81E61CC7506C0036F18E /* StickerModel.swift */; };
@@ -126,6 +128,8 @@
 		DB7A35AD1C965D2100AB3283 /* bubble.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = bubble.json; sourceTree = "<group>"; };
 		DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleLabel.swift; path = Bubble/View/BubbleLabel.swift; sourceTree = "<group>"; };
 		DB80D6631CAB9EF6006B2F60 /* Filter.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Filter.swift; path = Filter/Filter.swift; sourceTree = "<group>"; };
+		DB83EFA81CD992F600962016 /* ImageArrangedView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ImageArrangedView.swift; path = View/ImageArrangedView.swift; sourceTree = "<group>"; };
+		DB83EFAB1CD995C800962016 /* PhotoModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PhotoModel.swift; path = Model/PhotoModel.swift; sourceTree = "<group>"; };
 		DBA390F11C868172006248A4 /* Style.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Style.swift; sourceTree = "<group>"; };
 		DBC81CCD1C9BE3A800423098 /* AdjustmentData.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AdjustmentData.swift; sourceTree = "<group>"; };
 		DBDC81E61CC7506C0036F18E /* StickerModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = StickerModel.swift; path = Sticker/Model/StickerModel.swift; sourceTree = "<group>"; };
@@ -199,6 +203,8 @@
 		DB14F76F1C803608000FA15F /* Celluloid */ = {
 			isa = PBXGroup;
 			children = (
+				DB83EFAA1CD995A100962016 /* Model */,
+				DB83EFA71CD992D100962016 /* View */,
 				DB14F7701C803608000FA15F /* AppDelegate.swift */,
 				DB14F7721C803608000FA15F /* ViewController.swift */,
 				DB14F7771C803608000FA15F /* Assets.xcassets */,
@@ -332,6 +338,22 @@
 				DB80D6631CAB9EF6006B2F60 /* Filter.swift */,
 			);
 			name = Filter;
+			sourceTree = "<group>";
+		};
+		DB83EFA71CD992D100962016 /* View */ = {
+			isa = PBXGroup;
+			children = (
+				DB83EFA81CD992F600962016 /* ImageArrangedView.swift */,
+			);
+			name = View;
+			sourceTree = "<group>";
+		};
+		DB83EFAA1CD995A100962016 /* Model */ = {
+			isa = PBXGroup;
+			children = (
+				DB83EFAB1CD995C800962016 /* PhotoModel.swift */,
+			);
+			name = Model;
 			sourceTree = "<group>";
 		};
 		DBA390F31C86CD92006248A4 /* Constant */ = {
@@ -658,6 +680,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				DB14F7731C803608000FA15F /* ViewController.swift in Sources */,
+				DB83EFA91CD992F600962016 /* ImageArrangedView.swift in Sources */,
+				DB83EFAC1CD995C800962016 /* PhotoModel.swift in Sources */,
 				DB14F7711C803608000FA15F /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
