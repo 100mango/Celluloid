@@ -23,6 +23,8 @@ class ViewController: UIViewController {
         button.center = self.view.center
         self.view.addSubview(button)
         button.addTarget(self, action: .touch, forControlEvents: .TouchUpInside)
+        
+        print(CollageModel.collageModels(.Two))
     }
 
     override func didReceiveMemoryWarning() {
@@ -44,7 +46,7 @@ extension ViewController {
         let vc = BSImagePickerViewController()
         vc.maxNumberOfSelections = 6
         
-        bs_presentImagePickerController(vc, animated: false,
+        bs_presentImagePickerController(vc, animated: true,
                                         select: nil, deselect: nil, cancel: nil,
                                         finish: { (assets: [PHAsset]) -> Void in
                                         

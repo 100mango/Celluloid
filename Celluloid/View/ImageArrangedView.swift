@@ -103,9 +103,9 @@ private class ArrangedCollectionViewCell: UICollectionViewCell {
         imageView = UIImageView.init()
         imageView.contentMode = .ScaleAspectFill
         super.init(frame: frame)
-        
+        self.clipsToBounds = true
         self.addSubview(imageView)
-        imageView.snp_makeConstraints { (make) in
+        imageView.snp_makeConstraints { make in
             make.edges.equalTo(self.imageView.superview!)
         }
     }
