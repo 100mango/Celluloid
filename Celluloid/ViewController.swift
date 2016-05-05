@@ -13,6 +13,13 @@ import Photos
 import Async
 
 class ViewController: UIViewController {
+    
+    //MARK: Property
+    private lazy var collageStylePanel: CollageStylePanel = {
+        let panel = CollageStylePanel(models: [])
+        panel.delegate = self
+        return panel
+    }()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -24,7 +31,12 @@ class ViewController: UIViewController {
         self.view.addSubview(button)
         button.addTarget(self, action: .touch, forControlEvents: .TouchUpInside)
         
-        print(CollageModel.collageModels(.Two))
+        
+        self.view.addSubview(collageStylePanel)
+        collageStylePanel.snp_makeConstraints { make in
+            make.left.right.bottom.equalTo(collageStylePanel.superview!)
+            make.height.equalTo(120)
+        }
     }
 
     override func didReceiveMemoryWarning() {
@@ -34,6 +46,11 @@ class ViewController: UIViewController {
 
 }
 
+//MARK: CollageStylePanel Delegate
+extension ViewController: CollageStylePanelDelegate {
+    func collageStylePanel(collageStylePanel: CollageStylePanel, didSelctModel model: CollageModel) {
+    }
+}
 
 //MARK: Actions
 private extension Selector {
@@ -44,7 +61,7 @@ extension ViewController {
     
     @objc func touch() {
         let vc = BSImagePickerViewController()
-        vc.maxNumberOfSelections = 6
+        vc.maxNumberOfSelections = 4
         
         bs_presentImagePickerController(vc, animated: true,
                                         select: nil, deselect: nil, cancel: nil,
@@ -52,13 +69,14 @@ extension ViewController {
                                         
                                             Async.main {
                                                 let models = assets.map { PhotoModel(asset: $0) }
-                                                let arrangedView = ImageArrangedView(models: models)
+                                                let arrangedView = ImageArrangedPanel(models: models)
                                                 self.view.addSubview(arrangedView)
                                                 arrangedView.snp_makeConstraints(closure: { (make) in
                                                     make.top.equalTo(self.topLayoutGuide)
                                                     make.left.right.equalTo(self.view)
                                                     make.height.equalTo(80)
                                                 })
+                                                self.collageStylePanel.collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
                                             }
             }
             , completion: nil)

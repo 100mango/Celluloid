@@ -32,6 +32,7 @@
 		DB5D9A1B1CA023540045E49B /* ImageOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */; };
 		DB6A158E1CC5DD3C00DFF71E /* StickerPickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */; };
 		DB6A15921CC7461500DFF71E /* BasePickerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6A15911CC7461500DFF71E /* BasePickerController.swift */; };
+		DB7989801CDA4EF700419114 /* CollageStylePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB79897F1CDA4EF700419114 /* CollageStylePanel.swift */; };
 		DB7A35691C9557AD00AB3283 /* BubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35681C9557AD00AB3283 /* BubbleView.swift */; };
 		DB7A356E1C958BB300AB3283 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35701C958BB300AB3283 /* Localizable.strings */; };
 		DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35721C958DA700AB3283 /* Localizable.swift */; };
@@ -39,7 +40,7 @@
 		DB7A35AE1C965D2100AB3283 /* bubble.json in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35AD1C965D2100AB3283 /* bubble.json */; };
 		DB7A35B01C969FFA00AB3283 /* BubbleLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */; };
 		DB80D6641CAB9EF6006B2F60 /* Filter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB80D6631CAB9EF6006B2F60 /* Filter.swift */; };
-		DB83EFA91CD992F600962016 /* ImageArrangedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFA81CD992F600962016 /* ImageArrangedView.swift */; };
+		DB83EFA91CD992F600962016 /* ImageArrangedPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFA81CD992F600962016 /* ImageArrangedPanel.swift */; };
 		DB83EFAC1CD995C800962016 /* PhotoModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFAB1CD995C800962016 /* PhotoModel.swift */; };
 		DB83EFAF1CD9F37F00962016 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFAE1CD9F37F00962016 /* Log.swift */; };
 		DB83EFB11CDA0ADD00962016 /* CollageModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFB01CDA0ADD00962016 /* CollageModel.swift */; };
@@ -121,6 +122,7 @@
 		DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ImageOverlayView.swift; path = View/ImageOverlayView.swift; sourceTree = "<group>"; };
 		DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = StickerPickerViewController.swift; path = Sticker/Controller/StickerPickerViewController.swift; sourceTree = "<group>"; };
 		DB6A15911CC7461500DFF71E /* BasePickerController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BasePickerController.swift; path = Controller/BasePickerController.swift; sourceTree = "<group>"; };
+		DB79897F1CDA4EF700419114 /* CollageStylePanel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = CollageStylePanel.swift; path = View/CollageStylePanel.swift; sourceTree = "<group>"; };
 		DB7A35681C9557AD00AB3283 /* BubbleView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleView.swift; path = Bubble/View/BubbleView.swift; sourceTree = "<group>"; };
 		DB7A356C1C958A6D00AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/LaunchScreen.strings"; sourceTree = "<group>"; };
 		DB7A356D1C958A6D00AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/MainInterface.strings"; sourceTree = "<group>"; };
@@ -131,7 +133,7 @@
 		DB7A35AD1C965D2100AB3283 /* bubble.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = bubble.json; sourceTree = "<group>"; };
 		DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleLabel.swift; path = Bubble/View/BubbleLabel.swift; sourceTree = "<group>"; };
 		DB80D6631CAB9EF6006B2F60 /* Filter.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Filter.swift; path = Filter/Filter.swift; sourceTree = "<group>"; };
-		DB83EFA81CD992F600962016 /* ImageArrangedView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ImageArrangedView.swift; path = View/ImageArrangedView.swift; sourceTree = "<group>"; };
+		DB83EFA81CD992F600962016 /* ImageArrangedPanel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ImageArrangedPanel.swift; path = View/ImageArrangedPanel.swift; sourceTree = "<group>"; };
 		DB83EFAB1CD995C800962016 /* PhotoModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PhotoModel.swift; path = Model/PhotoModel.swift; sourceTree = "<group>"; };
 		DB83EFAE1CD9F37F00962016 /* Log.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Log.swift; path = Utility/Log.swift; sourceTree = "<group>"; };
 		DB83EFB01CDA0ADD00962016 /* CollageModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = CollageModel.swift; path = Model/CollageModel.swift; sourceTree = "<group>"; };
@@ -351,7 +353,8 @@
 		DB83EFA71CD992D100962016 /* View */ = {
 			isa = PBXGroup;
 			children = (
-				DB83EFA81CD992F600962016 /* ImageArrangedView.swift */,
+				DB83EFA81CD992F600962016 /* ImageArrangedPanel.swift */,
+				DB79897F1CDA4EF700419114 /* CollageStylePanel.swift */,
 			);
 			name = View;
 			sourceTree = "<group>";
@@ -706,7 +709,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				DB14F7731C803608000FA15F /* ViewController.swift in Sources */,
-				DB83EFA91CD992F600962016 /* ImageArrangedView.swift in Sources */,
+				DB83EFA91CD992F600962016 /* ImageArrangedPanel.swift in Sources */,
+				DB7989801CDA4EF700419114 /* CollageStylePanel.swift in Sources */,
 				DB83EFAC1CD995C800962016 /* PhotoModel.swift in Sources */,
 				DB14F7711C803608000FA15F /* AppDelegate.swift in Sources */,
 				DB83EFB11CDA0ADD00962016 /* CollageModel.swift in Sources */,

@@ -8,7 +8,7 @@
 
 import UIKit
 
-class ImageArrangedView: UIView {
+class ImageArrangedPanel: UIView {
     
     //MARK: Property
     var photoModels: [PhotoModel]
@@ -27,7 +27,7 @@ class ImageArrangedView: UIView {
         collectionView.dataSource = self
         collectionView.registerClass(ArrangedCollectionViewCell)
         
-        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(ImageArrangedView.handleLongPressGesture(_:)))
+        let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(ImageArrangedPanel.handleLongPressGesture(_:)))
         collectionView.addGestureRecognizer(longPressGesture)
         
         return collectionView
@@ -49,7 +49,7 @@ class ImageArrangedView: UIView {
 }
 
 //MARK: Action
-extension ImageArrangedView {
+extension ImageArrangedPanel {
     @objc private func handleLongPressGesture(gesture: UILongPressGestureRecognizer) {
         switch gesture.state {
         case .Began:
@@ -68,7 +68,7 @@ extension ImageArrangedView {
 }
 
 //MARK: UICollectionViewDataSource
-extension ImageArrangedView: UICollectionViewDataSource {
+extension ImageArrangedPanel: UICollectionViewDataSource {
     
     func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         return photoModels.count
@@ -90,7 +90,7 @@ extension ImageArrangedView: UICollectionViewDataSource {
 }
 
 //MARK: UICollectionViewDelegate
-extension ImageArrangedView: UICollectionViewDelegate {
+extension ImageArrangedPanel: UICollectionViewDelegate {
     
     
 }

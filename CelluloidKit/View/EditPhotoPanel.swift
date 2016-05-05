@@ -46,7 +46,7 @@ private enum PanelType {
     case ButtonType
 }
 
-@IBDesignable public class EditPhotoPanel:UIView{
+@IBDesignable public class EditPhotoPanel: UIView {
     
     //MARK: Property
     public weak var delegate: EditPhotoPanelDelegate?
