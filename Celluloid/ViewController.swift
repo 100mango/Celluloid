@@ -20,6 +20,12 @@ class ViewController: UIViewController {
         panel.delegate = self
         return panel
     }()
+    
+    private lazy var imageArrangedPanel: ImageArrangedPanel = {
+        let panel = ImageArrangedPanel(models: [])
+        panel.delegate = self
+        return panel
+    }()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -37,6 +43,13 @@ class ViewController: UIViewController {
             make.left.right.bottom.equalTo(collageStylePanel.superview!)
             make.height.equalTo(120)
         }
+        
+        self.view.addSubview(imageArrangedPanel)
+        imageArrangedPanel.snp_makeConstraints(closure: { (make) in
+            make.top.equalTo(self.topLayoutGuide)
+            make.left.right.equalTo(self.view)
+            make.height.equalTo(80)
+        })
     }
 
     override func didReceiveMemoryWarning() {
@@ -49,6 +62,12 @@ class ViewController: UIViewController {
 //MARK: CollageStylePanel Delegate
 extension ViewController: CollageStylePanelDelegate {
     func collageStylePanel(collageStylePanel: CollageStylePanel, didSelctModel model: CollageModel) {
+    }
+}
+
+//MARK: ImageArrangedPanelDelegate Delegate
+extension ViewController: ImageArrangedPanelDelegate {
+    func imageArrangedPanel(imageArrangedPanel: ImageArrangedPanel, didEditModels models: [PhotoModel]) {
     }
 }
 
@@ -69,13 +88,8 @@ extension ViewController {
                                         
                                             Async.main {
                                                 let models = assets.map { PhotoModel(asset: $0) }
-                                                let arrangedView = ImageArrangedPanel(models: models)
-                                                self.view.addSubview(arrangedView)
-                                                arrangedView.snp_makeConstraints(closure: { (make) in
-                                                    make.top.equalTo(self.topLayoutGuide)
-                                                    make.left.right.equalTo(self.view)
-                                                    make.height.equalTo(80)
-                                                })
+                                                self.imageArrangedPanel.photoModels = models
+                                                self.imageArrangedPanel.reload()
                                                 self.collageStylePanel.collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
                                             }
             }

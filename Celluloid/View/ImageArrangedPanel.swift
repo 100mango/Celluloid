@@ -8,6 +8,10 @@
 
 import UIKit
 
+protocol ImageArrangedPanelDelegate: class {
+    func imageArrangedPanel(imageArrangedPanel: ImageArrangedPanel, didEditModels models: [PhotoModel])
+}
+
 class ImageArrangedPanel: UIView {
     
     //MARK: Property
@@ -33,6 +37,8 @@ class ImageArrangedPanel: UIView {
         return collectionView
     }()
     
+    weak var delegate: ImageArrangedPanelDelegate?
+    
     //MARK: init
     init(models: [PhotoModel]) {
         photoModels = models
@@ -45,6 +51,10 @@ class ImageArrangedPanel: UIView {
     
     required init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    
+    func reload() {
+        collectionView.reloadData()
     }
 }
 
@@ -84,7 +94,9 @@ extension ImageArrangedPanel: UICollectionViewDataSource {
     }
     
     func collectionView(collectionView: UICollectionView, moveItemAtIndexPath sourceIndexPath: NSIndexPath, toIndexPath destinationIndexPath: NSIndexPath) {
+    
         swap(&photoModels[sourceIndexPath.row], &photoModels[destinationIndexPath.row])
+        self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
     }
     
 }
