@@ -61,22 +61,19 @@ class ViewController: UIViewController {
         button.addTarget(self, action: .touch, forControlEvents: .TouchUpInside)
     }
 
-    override func didReceiveMemoryWarning() {
-        super.didReceiveMemoryWarning()
-        // Dispose of any resources that can be recreated.
-    }
-
 }
 
 //MARK: CollageStylePanel Delegate
 extension ViewController: CollageStylePanelDelegate {
     func collageStylePanel(collageStylePanel: CollageStylePanel, didSelctModel model: CollageModel) {
+        collageView.setupWithCollageModel(model)
     }
 }
 
 //MARK: ImageArrangedPanelDelegate Delegate
 extension ViewController: ImageArrangedPanelDelegate {
     func imageArrangedPanel(imageArrangedPanel: ImageArrangedPanel, didEditModels models: [PhotoModel]) {
+        collageView.setupWithPhotoModels(models)
     }
 }
 

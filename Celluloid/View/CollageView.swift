@@ -10,7 +10,13 @@ import UIKit
 
 class CollageView: UIView {
     
+    var collageModel: CollageModel?
+    var photoModels: [PhotoModel]?
+    
     func setupWithCollageModel(collageModel: CollageModel, photoModels: [PhotoModel] ) {
+        
+        self.collageModel = collageModel
+        self.photoModels = photoModels
         
         self.subviews.forEach { $0.removeFromSuperview() }
         
@@ -21,6 +27,18 @@ class CollageView: UIView {
             collageContentView.setup()
         }
         
+    }
+    
+    func setupWithCollageModel(collageModel: CollageModel) {
+        if let photoModels = photoModels {
+            setupWithCollageModel(collageModel, photoModels: photoModels)
+        }
+    }
+    
+    func setupWithPhotoModels(photoModels: [PhotoModel]) {
+        if let collageModel = collageModel {
+            setupWithCollageModel(collageModel, photoModels: photoModels)
+        }
     }
     
 }
