@@ -29,6 +29,7 @@ class CollageStylePanel: UIView {
         collectionView.delegate = self
         collectionView.dataSource = self
         collectionView.backgroundColor = UIColor.whiteColor()
+        collectionView.showsHorizontalScrollIndicator = false
         collectionView.registerClass(CollageStyleCell)
         
         return collectionView

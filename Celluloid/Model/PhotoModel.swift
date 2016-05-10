@@ -13,6 +13,12 @@ struct PhotoModel {
     
     let asset: PHAsset
     
+    //拼图相关：
+    var points: [CGPoint] = []
+    var zoomScale: CGFloat = 0
+    var contentOffset: CGPoint = .zero
+    var oldScrollViewSize: CGSize = .zero
+    
     private var image: UIImage?
     
     init(asset: PHAsset) {
