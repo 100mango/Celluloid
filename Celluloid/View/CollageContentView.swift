@@ -12,6 +12,7 @@ class CollageContentView: UIView {
     
     private lazy var scrollView: UIScrollView = {
         let scrollView = UIScrollView()
+        scrollView.backgroundColor = .clearColor()
         scrollView.delegate = self
         scrollView.minimumZoomScale = 1
         scrollView.maximumZoomScale = 5
@@ -46,6 +47,7 @@ extension CollageContentView {
     func setup() {
         
         self.frame = model.points.frameWithNewSize(self.superview!.size)
+        scrollView.frame = self.bounds
         setupImage()
         crop()
         
@@ -93,7 +95,7 @@ extension CollageContentView {
         shape.frame = self.bounds;
         shape.path = path.CGPath;
         shape.lineWidth = 3
-        shape.strokeColor = UIColor.blueColor().CGColor;
+        shape.strokeColor = UIColor.blackColor().CGColor;
         shape.fillColor = UIColor.clearColor().CGColor;
         self.layer.addSublayer(shape)
     }

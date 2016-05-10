@@ -122,7 +122,7 @@ extension Array where Element: CGPointWrapper {
     }
     
     func cropPath(newSize: CGSize) -> UIBezierPath {
-        return pathWithOldSize(oldSize, newSize: <#T##CGSize#>)
+        return pathWithOldSize(oldSize, newSize: newSize)
     }
     
     func pathWithOldSize(oldSize: CGSize, newSize: CGSize) -> UIBezierPath {
@@ -155,7 +155,6 @@ extension Array where Element: CGPointWrapper {
         return path
     }
 }
-
 
 
 

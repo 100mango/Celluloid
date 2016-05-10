@@ -26,17 +26,13 @@ class ViewController: UIViewController {
         panel.delegate = self
         return panel
     }()
+    
+    private let collageView = CollageView()
 
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        let button = UIButton()
-        button.size = CGSize(width: 50, height: 50)
-        button.backgroundColor = UIColor.redColor()
-        button.center = self.view.center
-        self.view.addSubview(button)
-        button.addTarget(self, action: .touch, forControlEvents: .TouchUpInside)
-        
+        self.view.backgroundColor = .whiteColor()
         
         self.view.addSubview(collageStylePanel)
         collageStylePanel.snp_makeConstraints { make in
@@ -45,11 +41,24 @@ class ViewController: UIViewController {
         }
         
         self.view.addSubview(imageArrangedPanel)
-        imageArrangedPanel.snp_makeConstraints(closure: { (make) in
+        imageArrangedPanel.snp_makeConstraints(closure: { make in
             make.top.equalTo(self.topLayoutGuide)
             make.left.right.equalTo(self.view)
             make.height.equalTo(80)
         })
+        
+        self.view.addSubview(collageView)
+        collageView.snp_makeConstraints { make in
+            make.height.width.equalTo(collageView.superview!.width)
+            make.center.equalTo(collageView.superview!)
+        }
+        
+        let button = UIButton()
+        button.size = CGSize(width: 50, height: 50)
+        button.backgroundColor = UIColor.redColor()
+        button.center = self.view.center
+        self.view.addSubview(button)
+        button.addTarget(self, action: .touch, forControlEvents: .TouchUpInside)
     }
 
     override func didReceiveMemoryWarning() {
@@ -90,7 +99,10 @@ extension ViewController {
                                                 let models = assets.map { PhotoModel(asset: $0) }
                                                 self.imageArrangedPanel.photoModels = models
                                                 self.imageArrangedPanel.reload()
-                                                self.collageStylePanel.collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
+                                                
+                                                let collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
+                                                self.collageStylePanel.collageModels = collageModels
+                                                self.collageView.setupWithCollageModel(collageModels.first!, photoModels: models)
                                             }
             }
             , completion: nil)
