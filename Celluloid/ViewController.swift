@@ -32,17 +32,20 @@ class ViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        self.title = tr(.Collage)
+        self.automaticallyAdjustsScrollViewInsets = false
         self.view.backgroundColor = .whiteColor()
         
         self.view.addSubview(collageStylePanel)
         collageStylePanel.snp_makeConstraints { make in
-            make.left.right.bottom.equalTo(collageStylePanel.superview!)
+            make.left.right.equalTo(collageStylePanel.superview!)
+            make.bottom.equalTo(self.snp_bottomLayoutGuideTop)
             make.height.equalTo(120)
         }
         
         self.view.addSubview(imageArrangedPanel)
         imageArrangedPanel.snp_makeConstraints(closure: { make in
-            make.top.equalTo(self.topLayoutGuide)
+            make.top.equalTo(self.snp_topLayoutGuideBottom)
             make.left.right.equalTo(self.view)
             make.height.equalTo(80)
         })

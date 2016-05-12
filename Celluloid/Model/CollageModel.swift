@@ -91,28 +91,6 @@ extension Array where Element: CGPointWrapper {
     
     func frameWithOldSize(oldSize: CGSize, newSize: CGSize) -> CGRect {
         
-        /*
-        var minX = CGFloat.max
-        var maxX = CGFloat(0)
-        var minY = CGFloat.max
-        var maxY = CGFloat(0)
-        
-        for pointWrapper in self {
-            let point = pointWrapper.point
-            
-            if point.x <= minX {
-                minX = point.x
-            }
-            if point.x >= maxX {
-                maxX = point.x
-            }
-            if point.y <= minY {
-                minY = point.y
-            }
-            if point.y >= maxY {
-                maxY = point.y
-            }
-        }*/
         let path = self.path
         var frame = CGPathGetBoundingBox(path.CGPath)
         //newSize与oldSize的比例一致,因为都是正方形,这里长宽的放缩比例相同

@@ -11,6 +11,8 @@ import Foundation
 public enum L10n {
     /// done
     case Done
+    /// collage
+    case Collage
 }
 
 extension L10n: CustomStringConvertible {
@@ -20,6 +22,8 @@ extension L10n: CustomStringConvertible {
         switch self {
         case .Done:
             return L10n.tr("done")
+        case .Collage:
+            return L10n.tr("collage")
         }
     }
     
