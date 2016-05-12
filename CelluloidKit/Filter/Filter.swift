@@ -23,6 +23,7 @@ public enum FilterType: String {
     case Fade
     case Invert
     case Posterize
+    case Sketch
     case PixellateFace
 }
 
@@ -30,7 +31,7 @@ public struct Filters {
     
     public static func filter(type: FilterType) -> Filter {
         switch type {
-        case .Sepia:
+        case .Sepia, .Original:
             return sepia()
         case .Chrome:
             return chrome()
@@ -40,10 +41,10 @@ public struct Filters {
             return invert()
         case .Posterize:
             return posterize()
+        case .Sketch:
+            return sketch()
         case .PixellateFace:
             return pixellateFace()
-        default:
-            return sepia()
         }
     }
     
@@ -78,6 +79,10 @@ public struct Filters {
     
     public static func posterize() -> Filter {
         return simpleFilter("CIColorPosterize")
+    }
+    
+    public static func sketch() -> Filter {
+        return simpleFilter("CILineOverlay")
     }
     
     public static func pixellate() -> Filter {

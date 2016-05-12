@@ -37,6 +37,7 @@ private enum FilterCellType: Int {
     case Fade
     case Invert
     case Posterize
+    case Sketch
     case PixellateFace
     case Count
 }
@@ -153,6 +154,8 @@ private extension EditPhotoPanel {
                 imageView.image = UIImage(asset: .Posterize)
             case .PixellateFace:
                 imageView.image = UIImage(asset: .Posterize)
+            case .Sketch:
+                imageView.image = UIImage(asset: .Posterize)
             case .Count:
                 break
             }
@@ -206,6 +209,8 @@ private extension EditPhotoPanel {
             self.delegate?.editPhotoPanel(self, didSelectFilter: .Invert)
         case .Posterize:
             self.delegate?.editPhotoPanel(self, didSelectFilter: .Posterize)
+        case .Sketch:
+            self.delegate?.editPhotoPanel(self, didSelectFilter: .Sketch)
         case .PixellateFace:
             self.delegate?.editPhotoPanel(self, didSelectFilter: .PixellateFace)
         case .Count:
