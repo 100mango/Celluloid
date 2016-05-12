@@ -76,7 +76,17 @@ extension ViewController: CollageStylePanelDelegate {
 //MARK: ImageArrangedPanelDelegate Delegate
 extension ViewController: ImageArrangedPanelDelegate {
     func imageArrangedPanel(imageArrangedPanel: ImageArrangedPanel, didEditModels models: [PhotoModel]) {
-        collageView.setupWithPhotoModels(models)
+        
+        let oldModels = collageView.photoModels!
+        if oldModels.count == models.count {
+            collageView.setupWithPhotoModels(models)
+        }else{
+            //如果图片数量改变，则collageModel也需要改变
+            let count = CollageImageCount(rawValue: models.count)
+            let collageModels = CollageModel.collageModels(count!)
+            collageView.setupWithCollageModel(collageModels.first!, photoModels: models)
+            self.collageStylePanel.collageModels = collageModels
+        }
     }
 }
 

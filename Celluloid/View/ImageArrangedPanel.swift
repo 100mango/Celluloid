@@ -77,6 +77,17 @@ extension ImageArrangedPanel {
     }
 }
 
+//MARK: ArrangedCollectionViewCell Delegate
+extension ImageArrangedPanel: ArrangedCollectionViewCellDelegate {
+    private func shouldRemoveCell(cell: ArrangedCollectionViewCell) {
+        if let indexPath = collectionView.indexPathForCell(cell) {
+            photoModels.removeAtIndex(indexPath.item)
+            collectionView.deleteItemsAtIndexPaths([indexPath])
+            self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
+        }
+    }
+}
+
 //MARK: UICollectionViewDataSource
 extension ImageArrangedPanel: UICollectionViewDataSource {
     
@@ -86,6 +97,7 @@ extension ImageArrangedPanel: UICollectionViewDataSource {
     
     func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCellWithReuseIdentifier(ArrangedCollectionViewCell.defaultReuseIdentifier, forIndexPath: indexPath) as! ArrangedCollectionViewCell
+        cell.delegate = self
         
         photoModels[indexPath.row].requstImage { image in
             cell.imageView.image = image
@@ -107,18 +119,44 @@ extension ImageArrangedPanel: UICollectionViewDelegate {
     
 }
 
+
+//MARK: ArrangedCollectionViewCell
+private protocol ArrangedCollectionViewCellDelegate: class {
+    func shouldRemoveCell(cell: ArrangedCollectionViewCell)
+}
+
+
 private class ArrangedCollectionViewCell: UICollectionViewCell {
     
-    let imageView: UIImageView
+    let imageView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.contentMode = .ScaleAspectFill
+        imageView.clipsToBounds = true
+        return imageView
+    }()
+    
+    private lazy var deleteButton: UIButton = {
+        let button = UIButton(type: .Custom)
+        button.setImage(UIImage(asset: .Btn_icon_sticker_delete_normal), forState: .Normal)
+        button.addTarget(self, action: #selector(ArrangedCollectionViewCell.remove) , forControlEvents: .TouchUpInside)
+        return button
+    }()
+    
+    var delegate: ArrangedCollectionViewCellDelegate?
     
     override init(frame: CGRect) {
-        imageView = UIImageView.init()
-        imageView.contentMode = .ScaleAspectFill
+        
         super.init(frame: frame)
-        self.clipsToBounds = true
-        self.addSubview(imageView)
+        
+        self.contentView.addSubview(imageView)
         imageView.snp_makeConstraints { make in
             make.edges.equalTo(self.imageView.superview!)
+        }
+        
+        self.contentView.addSubview(deleteButton)
+        deleteButton.snp_makeConstraints { make in
+            make.top.equalTo(deleteButton.superview!).offset(-10)
+            make.right.equalTo(deleteButton.superview!).offset(10)
         }
     }
     
@@ -126,6 +164,9 @@ private class ArrangedCollectionViewCell: UICollectionViewCell {
         fatalError("init(coder:) has not been implemented")
     }
     
+    @objc func remove() {
+        self.delegate?.shouldRemoveCell(self)
+    }
 }
 
 
