@@ -42,6 +42,9 @@ public extension UIImage {
         case Btn_icon_sticker_turn1_pressed = "btn_icon_sticker_turn1_pressed"
         case Btn_icon_sticker_turn2_normal = "btn_icon_sticker_turn2_normal"
         case Btn_icon_sticker_turn2_pressed = "btn_icon_sticker_turn2_pressed"
+        case BubbleButton = "bubbleButton"
+        case FilterButton = "filterButton"
+        case StickerButton = "stickerButton"
         
         //Filter
         case Image_icon_filter = "image_icon_filter"

@@ -18,6 +18,8 @@ class PhotoEditingViewController: UIViewController {
     var input: PHContentEditingInput?
     @IBOutlet weak var preview: UIImageView!
     @IBOutlet weak var panel: EditPhotoPanel!
+    let toolBar =  EditPhotoToolBar()
+    
     lazy var overlayView: ImageOverlayView = ImageOverlayView.makeViewOverlaysImageView(self.preview)
     var filterType = FilterType.Original {
         didSet {
@@ -91,6 +93,12 @@ class PhotoEditingViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         panel.delegate = self
+        self.view.addSubview(toolBar)
+        toolBar.snp_makeConstraints { (make) in
+            make.height.equalTo(49)
+            make.left.right.bottom.equalTo(toolBar.superview!)
+        }
+        print(toolBar)
     }
 
     override func didReceiveMemoryWarning() {

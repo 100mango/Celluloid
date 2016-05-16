@@ -11,4 +11,7 @@ import UIColor_Hex_Swift
 
 public extension UIColor {
     @nonobjc public static let cellLightPurple = UIColor(hex6: 0xeff1ff)
+    @nonobjc public static let alphaWhiteColor = UIColor.whiteColor().colorWithAlphaComponent(0.7)
+    @nonobjc public static let alphaBlackColor = UIColor.blackColor().colorWithAlphaComponent(0.7)
+
 }

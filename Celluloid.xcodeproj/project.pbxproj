@@ -39,6 +39,7 @@
 		DB7A35871C9596C200AB3283 /* BubblePickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35861C9596C200AB3283 /* BubblePickerViewController.swift */; };
 		DB7A35AE1C965D2100AB3283 /* bubble.json in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35AD1C965D2100AB3283 /* bubble.json */; };
 		DB7A35B01C969FFA00AB3283 /* BubbleLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */; };
+		DB7A79691CE9902900EBC93B /* UIView-Borders.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A79681CE9902900EBC93B /* UIView-Borders.swift */; };
 		DB80D6641CAB9EF6006B2F60 /* Filter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB80D6631CAB9EF6006B2F60 /* Filter.swift */; };
 		DB83EFA91CD992F600962016 /* ImageArrangedPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFA81CD992F600962016 /* ImageArrangedPanel.swift */; };
 		DB83EFAC1CD995C800962016 /* PhotoModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFAB1CD995C800962016 /* PhotoModel.swift */; };
@@ -52,6 +53,7 @@
 		DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */; };
 		DBF094C11CE18385006FA424 /* CollageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF094C01CE18385006FA424 /* CollageView.swift */; };
 		DBF094C31CE1A14E006FA424 /* CollageContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF094C21CE1A14E006FA424 /* CollageContentView.swift */; };
+		DBF094C51CE5A8E0006FA424 /* EditPhotoToolBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF094C41CE5A8E0006FA424 /* EditPhotoToolBar.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -134,6 +136,7 @@
 		DB7A35861C9596C200AB3283 /* BubblePickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubblePickerViewController.swift; path = Bubble/Controller/BubblePickerViewController.swift; sourceTree = "<group>"; };
 		DB7A35AD1C965D2100AB3283 /* bubble.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = bubble.json; sourceTree = "<group>"; };
 		DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleLabel.swift; path = Bubble/View/BubbleLabel.swift; sourceTree = "<group>"; };
+		DB7A79681CE9902900EBC93B /* UIView-Borders.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "UIView-Borders.swift"; sourceTree = "<group>"; };
 		DB80D6631CAB9EF6006B2F60 /* Filter.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Filter.swift; path = Filter/Filter.swift; sourceTree = "<group>"; };
 		DB83EFA81CD992F600962016 /* ImageArrangedPanel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ImageArrangedPanel.swift; path = View/ImageArrangedPanel.swift; sourceTree = "<group>"; };
 		DB83EFAB1CD995C800962016 /* PhotoModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PhotoModel.swift; path = Model/PhotoModel.swift; sourceTree = "<group>"; };
@@ -147,6 +150,7 @@
 		DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditBubbleViewController.swift; path = Bubble/Controller/EditBubbleViewController.swift; sourceTree = "<group>"; };
 		DBF094C01CE18385006FA424 /* CollageView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = CollageView.swift; path = View/CollageView.swift; sourceTree = "<group>"; };
 		DBF094C21CE1A14E006FA424 /* CollageContentView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = CollageContentView.swift; path = View/CollageContentView.swift; sourceTree = "<group>"; };
+		DBF094C41CE5A8E0006FA424 /* EditPhotoToolBar.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditPhotoToolBar.swift; path = View/EditPhotoToolBar.swift; sourceTree = "<group>"; };
 		FA3B5D21938C80179B355304 /* Pods.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -272,6 +276,7 @@
 				DB14F7C81C8580C9000FA15F /* EditPhotoPanel.swift */,
 				DB1DE64F1C882EEC0076EE76 /* AttachView.swift */,
 				DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */,
+				DBF094C41CE5A8E0006FA424 /* EditPhotoToolBar.swift */,
 			);
 			name = View;
 			sourceTree = "<group>";
@@ -322,10 +327,11 @@
 		DB6A15901CC745E100DFF71E /* Extension */ = {
 			isa = PBXGroup;
 			children = (
+				DB7A79681CE9902900EBC93B /* UIView-Borders.swift */,
 				DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */,
 				DB2875AB1CB394F800CB8977 /* JSONCodableExtension.swift */,
 			);
-			name = Extension;
+			path = Extension;
 			sourceTree = "<group>";
 		};
 		DB7A35671C95578800AB3283 /* View */ = {
@@ -745,6 +751,8 @@
 				DBA390F21C868172006248A4 /* Style.swift in Sources */,
 				DB83EFAF1CD9F37F00962016 /* Log.swift in Sources */,
 				DBDC81EA1CC75BDF0036F18E /* StickerView.swift in Sources */,
+				DBF094C51CE5A8E0006FA424 /* EditPhotoToolBar.swift in Sources */,
+				DB7A79691CE9902900EBC93B /* UIView-Borders.swift in Sources */,
 				DB2875AC1CB394F800CB8977 /* JSONCodableExtension.swift in Sources */,
 				DB1DE64C1C881DEB0076EE76 /* BubbleModel.swift in Sources */,
 				DBDC81E71CC7506C0036F18E /* StickerModel.swift in Sources */,

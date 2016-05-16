@@ -13,6 +13,12 @@ public enum L10n {
     case Done
     /// collage
     case Collage
+    /// filter
+    case Filter
+    /// bubble
+    case Bubble
+    /// sticker
+    case Sticker
 }
 
 extension L10n: CustomStringConvertible {
@@ -24,6 +30,12 @@ extension L10n: CustomStringConvertible {
             return L10n.tr("done")
         case .Collage:
             return L10n.tr("collage")
+        case .Filter:
+            return L10n.tr("filter")
+        case .Bubble:
+            return L10n.tr("bubble")
+        case .Sticker:
+            return L10n.tr("sticker")
         }
     }
     
