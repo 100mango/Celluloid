@@ -7,9 +7,20 @@
 //
 
 import UIKit
+import MZFormSheetPresentationController
 
-public
-class EditPhotoToolBar: UIView {
+public protocol EditPhotoToolBarDelegate: class {
+    
+    func editPhotoToolBar(editPhotoToolBar: EditPhotoToolBar, didSelectBubble bubble: BubbleModel)
+    
+    func editPhotoToolBar(editPhotoToolBar: EditPhotoToolBar, didSelectSticker sticker: StickerModel)
+    
+    func editPhotoToolBar(editPhotoToolBar: EditPhotoToolBar, didSelectFilter filter: FilterType)
+}
+
+public class EditPhotoToolBar: UIView {
+    
+    public weak var delegate: EditPhotoToolBarDelegate?
     
     private lazy var stackView: UIStackView = {
         let stackView = UIStackView()
@@ -87,6 +98,7 @@ private extension EditPhotoToolBar {
                 button.resetState()
             }
         }
+        
     }
     
     @objc func touchBubbleButton() {
@@ -95,6 +107,10 @@ private extension EditPhotoToolBar {
                 button.resetState()
             }
         }
+        
+        let bubblePicker = BubblePickerViewController()
+        bubblePicker.delegate = self
+        presentViewControllerFromSheet(bubblePicker)
     }
     
     @objc func touchStickerButton() {
@@ -103,6 +119,32 @@ private extension EditPhotoToolBar {
                 button.resetState()
             }
         }
+        
+        let stickerPicker = StickerPickerViewController()
+        stickerPicker.delegate = self
+        presentViewControllerFromSheet(stickerPicker)
+    }
+    
+    func presentViewControllerFromSheet(vc: UIViewController) {
+        let navigationVC = UINavigationController(rootViewController: vc)
+        let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
+        formSheetController.presentationController?.shouldUseMotionEffect = true
+        formSheetController.presentationController?.shouldCenterVertically = true
+        self.parentViewController?.presentViewController(formSheetController, animated: true, completion: nil)
+    }
+}
+
+//MARK: BubblePickerViewControllerDelegate
+extension EditPhotoToolBar: BubblePickerViewControllerDelegate {
+    public func bubblePickerViewController(bubblePickerViewController: BubblePickerViewController, didSelectBubble bubble: BubbleModel) {
+        self.delegate?.editPhotoToolBar(self, didSelectBubble: bubble)
+    }
+}
+
+//MARK: StickerPickerViewControllerDelegate
+extension EditPhotoToolBar: StickerPickerViewControllerDelegate {
+    public func stickerPickerViewController(stickerPickerViewController: StickerPickerViewController, didSelectSticker sticker: StickerModel) {
+        self.delegate?.editPhotoToolBar(self, didSelectSticker: sticker)
     }
 }
 

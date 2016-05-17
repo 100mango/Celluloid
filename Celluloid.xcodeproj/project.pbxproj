@@ -32,6 +32,8 @@
 		DB5D9A1B1CA023540045E49B /* ImageOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */; };
 		DB6A158E1CC5DD3C00DFF71E /* StickerPickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */; };
 		DB6A15921CC7461500DFF71E /* BasePickerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6A15911CC7461500DFF71E /* BasePickerController.swift */; };
+		DB72089B1CEAB955001E4F4F /* CollagePreviewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB72089A1CEAB955001E4F4F /* CollagePreviewController.swift */; };
+		DB72089D1CEB0C8D001E4F4F /* EditPhotoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB72089C1CEB0C8D001E4F4F /* EditPhotoViewController.swift */; };
 		DB7989801CDA4EF700419114 /* CollageStylePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB79897F1CDA4EF700419114 /* CollageStylePanel.swift */; };
 		DB7A35691C9557AD00AB3283 /* BubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35681C9557AD00AB3283 /* BubbleView.swift */; };
 		DB7A356E1C958BB300AB3283 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35701C958BB300AB3283 /* Localizable.strings */; };
@@ -126,6 +128,8 @@
 		DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ImageOverlayView.swift; path = View/ImageOverlayView.swift; sourceTree = "<group>"; };
 		DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = StickerPickerViewController.swift; path = Sticker/Controller/StickerPickerViewController.swift; sourceTree = "<group>"; };
 		DB6A15911CC7461500DFF71E /* BasePickerController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BasePickerController.swift; path = Controller/BasePickerController.swift; sourceTree = "<group>"; };
+		DB72089A1CEAB955001E4F4F /* CollagePreviewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = CollagePreviewController.swift; path = Controller/CollagePreviewController.swift; sourceTree = "<group>"; };
+		DB72089C1CEB0C8D001E4F4F /* EditPhotoViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditPhotoViewController.swift; path = Controller/EditPhotoViewController.swift; sourceTree = "<group>"; };
 		DB79897F1CDA4EF700419114 /* CollageStylePanel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = CollageStylePanel.swift; path = View/CollageStylePanel.swift; sourceTree = "<group>"; };
 		DB7A35681C9557AD00AB3283 /* BubbleView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleView.swift; path = Bubble/View/BubbleView.swift; sourceTree = "<group>"; };
 		DB7A356C1C958A6D00AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/LaunchScreen.strings"; sourceTree = "<group>"; };
@@ -222,8 +226,8 @@
 				DB83EFB21CDA113700962016 /* Resources */,
 				DB83EFAA1CD995A100962016 /* Model */,
 				DB83EFA71CD992D100962016 /* View */,
+				DB7208991CEAB923001E4F4F /* Controller */,
 				DB14F7701C803608000FA15F /* AppDelegate.swift */,
-				DB14F7721C803608000FA15F /* ViewController.swift */,
 				DB14F7771C803608000FA15F /* Assets.xcassets */,
 				DB14F7791C803608000FA15F /* LaunchScreen.storyboard */,
 				DB14F77C1C803608000FA15F /* Info.plist */,
@@ -332,6 +336,16 @@
 				DB2875AB1CB394F800CB8977 /* JSONCodableExtension.swift */,
 			);
 			path = Extension;
+			sourceTree = "<group>";
+		};
+		DB7208991CEAB923001E4F4F /* Controller */ = {
+			isa = PBXGroup;
+			children = (
+				DB14F7721C803608000FA15F /* ViewController.swift */,
+				DB72089A1CEAB955001E4F4F /* CollagePreviewController.swift */,
+				DB72089C1CEB0C8D001E4F4F /* EditPhotoViewController.swift */,
+			);
+			name = Controller;
 			sourceTree = "<group>";
 		};
 		DB7A35671C95578800AB3283 /* View */ = {
@@ -721,8 +735,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				DBF094C31CE1A14E006FA424 /* CollageContentView.swift in Sources */,
+				DB72089D1CEB0C8D001E4F4F /* EditPhotoViewController.swift in Sources */,
 				DB14F7731C803608000FA15F /* ViewController.swift in Sources */,
 				DB83EFA91CD992F600962016 /* ImageArrangedPanel.swift in Sources */,
+				DB72089B1CEAB955001E4F4F /* CollagePreviewController.swift in Sources */,
 				DB7989801CDA4EF700419114 /* CollageStylePanel.swift in Sources */,
 				DB83EFAC1CD995C800962016 /* PhotoModel.swift in Sources */,
 				DBF094C11CE18385006FA424 /* CollageView.swift in Sources */,
