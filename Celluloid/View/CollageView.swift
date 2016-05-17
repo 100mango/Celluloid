@@ -24,7 +24,7 @@ class CollageView: UIView {
             photoModel.points = points
             let collageContentView = CollageContentView(model: photoModel)
             self.addSubview(collageContentView)
-            collageContentView.setup()
+            collageContentView.setupForEdit()
         }
         
     }

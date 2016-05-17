@@ -12,18 +12,21 @@ import Photos
 struct PhotoModel {
     
     let asset: PHAsset
-    
+    private var image: UIImage?
+
     //拼图相关：
     var points: [CGPoint] = []
-    var zoomScale: CGFloat = 0
+    var zoomScale: CGFloat = 1
     var contentOffset: CGPoint = .zero
     var oldScrollViewSize: CGSize = .zero
-    
-    private var image: UIImage?
     
     init(asset: PHAsset) {
         self.asset = asset
     }
+    
+}
+
+extension PhotoModel {
     
     mutating func requstImage(completion: (UIImage)->Void) {
         if let image = image {
@@ -37,5 +40,4 @@ struct PhotoModel {
             })
         }
     }
-    
 }

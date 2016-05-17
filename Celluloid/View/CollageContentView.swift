@@ -43,18 +43,35 @@ class CollageContentView: UIView {
 
 //MARK: layout
 extension CollageContentView {
-    //call after set in superview
-    func setup() {
-        
+    
+    private func setup() {
         self.frame = model.points.frameWithNewSize(self.superview!.size)
         scrollView.frame = self.bounds
         setupImage()
         crop()
+    }
+    
+    //call after set in superview
+    func setupForEdit() {
         
+        setup()
         //设置 scroll view相关参数，便于恢复相关状态
         model.oldScrollViewSize = scrollView.size;
-        model.contentOffset = CGPointZero;
-        model.zoomScale = 1;
+    }
+    
+    func setupForPreView() {
+        
+        setup()
+        //从model的相关参数恢复相关放大，偏移状态
+        let scale = scrollView.size.width / model.oldScrollViewSize.width
+        let tranfrom = CGAffineTransformMakeScale(scale, scale)
+        let newOffset = CGPointApplyAffineTransform(model.contentOffset, tranfrom)
+        scrollView.zoomScale = model.zoomScale
+        scrollView.contentOffset = newOffset
+        //设置Preview所需状态
+        scrollView.scrollEnabled = false
+        let tap = UITapGestureRecognizer(target: self, action: #selector(CollageContentView.touch))
+        self.addGestureRecognizer(tap)
     }
     
     private func setupImage() {
@@ -98,6 +115,13 @@ extension CollageContentView {
         shape.strokeColor = UIColor.blackColor().CGColor;
         shape.fillColor = UIColor.clearColor().CGColor;
         self.layer.addSublayer(shape)
+    }
+}
+
+//MARK: Action
+private extension CollageContentView {
+    @objc func touch() {
+        
     }
 }
 
