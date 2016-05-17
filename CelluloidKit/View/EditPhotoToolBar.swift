@@ -99,6 +99,9 @@ private extension EditPhotoToolBar {
             }
         }
         
+        let filterPicker = FilterPickerViewController()
+        filterPicker.delegate = self
+        presentViewControllerFromSheet(filterPicker)
     }
     
     @objc func touchBubbleButton() {
@@ -148,6 +151,12 @@ extension EditPhotoToolBar: StickerPickerViewControllerDelegate {
     }
 }
 
+//MARK: FilterPickerViewControllerDelegate
+extension EditPhotoToolBar: FilterPickerViewControllerDelegate {
+    public func filterPickerViewController(filterPickerViewController: FilterPickerViewController, didSelectFilter filter: FilterType) {
+        self.delegate?.editPhotoToolBar(self, didSelectFilter: filter)
+    }
+}
 
 //MARK: EditPhotoToolBarItem
 private class EditPhotoToolBarItem: UIControl {
