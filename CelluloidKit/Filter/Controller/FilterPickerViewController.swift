@@ -127,6 +127,8 @@ private extension FilterPickerViewController {
         case .Count:
             break
         }
+        
+        dismissViewControllerAnimated(true, completion: nil)
     }
 }
 

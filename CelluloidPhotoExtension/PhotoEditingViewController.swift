@@ -16,8 +16,12 @@ class PhotoEditingViewController: UIViewController {
 
     //MARK: Property
     var input: PHContentEditingInput?
-    @IBOutlet weak var preview: UIImageView!
-    @IBOutlet weak var panel: EditPhotoPanel!
+    let preview: UIImageView = {
+        let preview = UIImageView()
+        preview.contentMode = .ScaleAspectFit
+        preview.userInteractionEnabled = true
+        return preview
+    }()
     let toolBar =  EditPhotoToolBar()
     
     lazy var overlayView: ImageOverlayView = ImageOverlayView.makeViewOverlaysImageView(self.preview)
@@ -92,7 +96,13 @@ class PhotoEditingViewController: UIViewController {
     //MARK: View Lift Cycle
     override func viewDidLoad() {
         super.viewDidLoad()
-        panel.delegate = self
+        
+        self.view.addSubview(preview)
+        preview.snp_makeConstraints { (make) in
+            make.edges.equalTo(preview.superview!)
+        }
+        
+        toolBar.delegate = self
         self.view.addSubview(toolBar)
         toolBar.snp_makeConstraints { (make) in
             make.height.equalTo(49)
@@ -121,16 +131,16 @@ private extension PhotoEditingViewController {
 }
 
 // MARK: - EditPhotoPanel Delegate
-extension PhotoEditingViewController: EditPhotoPanelDelegate {
-    func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectBubble bubble: BubbleModel) {
+extension PhotoEditingViewController: EditPhotoToolBarDelegate {
+    func editPhotoToolBar(editPhotoToolBar: EditPhotoToolBar, didSelectBubble bubble: BubbleModel) {
         self.overlayView.addBubble(bubble)
     }
     
-    func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectSticker sticker: StickerModel) {
+    func editPhotoToolBar(editPhotoToolBar: EditPhotoToolBar, didSelectSticker sticker: StickerModel) {
         self.overlayView.addSticker(sticker)
     }
     
-    func editPhotoPanel(editPhotoPanel: EditPhotoPanel, didSelectFilter filter: FilterType) {
+    func editPhotoToolBar(editPhotoToolBar: EditPhotoToolBar, didSelectFilter filter: FilterType) {
         filterType = filter
     }
 }
