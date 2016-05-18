@@ -1,5 +1,5 @@
 //
-//  ViewController.swift
+//  CollageViewController.swift
 //  Celluloid
 //
 //  Created by Mango on 16/2/26.
@@ -12,9 +12,11 @@ import BSImagePicker
 import Photos
 import Async
 
-class ViewController: UIViewController {
+class CollageViewController: UIViewController {
     
     //MARK: Property
+    var assets: [PHAsset]
+    
     private lazy var collageStylePanel: CollageStylePanel = {
         let panel = CollageStylePanel(models: [])
         panel.delegate = self
@@ -27,14 +29,21 @@ class ViewController: UIViewController {
         return panel
     }()
     
+    private lazy var leftButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.Cancel), style: .Plain, target: self, action: #selector(dismiss))
+    
+    private lazy var rightButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.Done), style: .Plain, target: self, action: #selector(done))
+    
     private let collageView = CollageView()
 
+    //MARK: View Life Cycle
     override func viewDidLoad() {
         super.viewDidLoad()
         
         self.title = tr(.Collage)
         self.automaticallyAdjustsScrollViewInsets = false
         self.view.backgroundColor = .whiteColor()
+        self.navigationItem.setLeftBarButtonItem(leftButtonItem, animated: false)
+        self.navigationItem.setRightBarButtonItem(rightButtonItem, animated: false)
         
         self.view.addSubview(collageStylePanel)
         collageStylePanel.snp_makeConstraints { make in
@@ -56,25 +65,53 @@ class ViewController: UIViewController {
             make.center.equalTo(collageView.superview!)
         }
         
-        let button = UIButton()
-        button.size = CGSize(width: 50, height: 50)
-        button.backgroundColor = UIColor.redColor()
-        button.center = self.view.center
-        self.view.addSubview(button)
-        button.addTarget(self, action: .touch, forControlEvents: .TouchUpInside)
+        //setup data
+        let models = assets.map { PhotoModel(asset: $0) }
+        imageArrangedPanel.photoModels = models
+        imageArrangedPanel.reload()
+        
+        let collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
+        collageStylePanel.collageModels = collageModels
     }
-
+    
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        
+        struct Static {
+            static var didSetup = false
+        }
+        
+        if Static.didSetup == false {
+            Static.didSetup = true
+            let models = assets.map { PhotoModel(asset: $0) }
+            let collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
+            //因为Autolayout的原因。 我们不能在ViewDidload就获取正确的frame。而collageView内部
+            //生成collageContentView需要正确的frame信息。所以选择在viewDidLayoutSubviews设置
+            collageView.setupWithCollageModel(collageModels.first!, photoModels: models)
+        }
+        
+    }
+    
+    //MARK: init
+    init(assets: [PHAsset]) {
+        self.assets = assets
+        super.init(nibName: nil, bundle: nil)
+    }
+    
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 }
 
 //MARK: CollageStylePanel Delegate
-extension ViewController: CollageStylePanelDelegate {
+extension CollageViewController: CollageStylePanelDelegate {
     func collageStylePanel(collageStylePanel: CollageStylePanel, didSelctModel model: CollageModel) {
         collageView.setupWithCollageModel(model)
     }
 }
 
 //MARK: ImageArrangedPanelDelegate Delegate
-extension ViewController: ImageArrangedPanelDelegate {
+extension CollageViewController: ImageArrangedPanelDelegate {
     func imageArrangedPanel(imageArrangedPanel: ImageArrangedPanel, didEditModels models: [PhotoModel]) {
         
         let oldModels = collageView.photoModels!
@@ -92,30 +129,14 @@ extension ViewController: ImageArrangedPanelDelegate {
 
 //MARK: Actions
 private extension Selector {
-    static let touch = #selector(ViewController.touch)
 }
 
-extension ViewController {
+private extension CollageViewController {
     
-    @objc func touch() {
-        let vc = BSImagePickerViewController()
-        vc.maxNumberOfSelections = 4
-        
-        bs_presentImagePickerController(vc, animated: true,
-                                        select: nil, deselect: nil, cancel: nil,
-                                        finish: { (assets: [PHAsset]) -> Void in
-                                        
-                                            Async.main {
-                                                let models = assets.map { PhotoModel(asset: $0) }
-                                                self.imageArrangedPanel.photoModels = models
-                                                self.imageArrangedPanel.reload()
-                                                
-                                                let collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
-                                                self.collageStylePanel.collageModels = collageModels
-                                                self.collageView.setupWithCollageModel(collageModels.first!, photoModels: models)
-                                            }
-            }
-            , completion: nil)
+    @objc func dismiss() {
+        dismissViewControllerAnimated(true, completion: nil)
     }
     
+    @objc func done() {
+    }
 }
