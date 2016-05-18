@@ -7,25 +7,23 @@
 //
 
 import Foundation
-import CelluloidKit
 import JSONCodable
 
 public struct AdjustmentData {
     
-    //conform StructCoding
-    public typealias structType = AdjustmentData
+    public static let formatIdentifier = "Mango.CelluloidPhotoExtension"
+    public static let formatVersion    = "1.0"
     
-    static let formatIdentifier = "Mango.CelluloidPhotoExtension"
-    static let formatVersion    = "1.0"
-    
-    static func supportIdentifier(identifier: String, version: String) -> Bool {
+    public static func supportIdentifier(identifier: String, version: String) -> Bool {
         return identifier == self.formatIdentifier && version == self.formatVersion
     }
     
     //state restoration property
-    var bubbles = [BubbleModel]()
-    var stickers = [StickerModel]()
-    var filterType = FilterType.Original
+    public var bubbles = [BubbleModel]()
+    public var stickers = [StickerModel]()
+    public var filterType = FilterType.Original
+    
+    public init() {}
     
     public static func decode(data: NSData) -> AdjustmentData {
         let dic = NSKeyedUnarchiver.unarchiveObjectWithData(data) as! [String:AnyObject]
