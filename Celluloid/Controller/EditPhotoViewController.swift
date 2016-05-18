@@ -7,15 +7,15 @@
 //
 
 import UIKit
+import CelluloidKit
+import Photos
 
-class EditPhotoViewController: UIViewController {
+class EditPhotoViewController: BaseEditPhotoController {
     
+    //MARK: Property
     let model: PhotoModel
     
-    let imageView = UIImageView()
-    
-    
-    
+    //MARK: init
     init(model: PhotoModel) {
         self.model = model
         super.init(nibName: nil, bundle: nil)
@@ -24,7 +24,5 @@ class EditPhotoViewController: UIViewController {
     required init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
-    
     
 }
