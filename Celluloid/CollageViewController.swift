@@ -74,15 +74,12 @@ class CollageViewController: UIViewController {
         collageStylePanel.collageModels = collageModels
     }
     
+    var didSetup = false
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         
-        struct Static {
-            static var didSetup = false
-        }
-        
-        if Static.didSetup == false {
-            Static.didSetup = true
+        if didSetup == false {
+            didSetup = true
             let models = assets.map { PhotoModel(asset: $0) }
             let collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
             //因为Autolayout的原因。 我们不能在ViewDidload就获取正确的frame。而collageView内部

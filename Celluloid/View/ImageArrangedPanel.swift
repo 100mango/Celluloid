@@ -81,9 +81,17 @@ extension ImageArrangedPanel {
 extension ImageArrangedPanel: ArrangedCollectionViewCellDelegate {
     private func shouldRemoveCell(cell: ArrangedCollectionViewCell) {
         if let indexPath = collectionView.indexPathForCell(cell) {
-            photoModels.removeAtIndex(indexPath.item)
-            collectionView.deleteItemsAtIndexPaths([indexPath])
-            self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
+            if photoModels.count != 2 {
+                photoModels.removeAtIndex(indexPath.item)
+                collectionView.deleteItemsAtIndexPaths([indexPath])
+                self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
+            }else {
+                let alert = UIAlertController(title: nil, message: "拼图最少需要两张照片", preferredStyle: .Alert)
+                self.parentViewController?.presentViewController(alert, animated: true, completion: nil)
+                alert.addAction(UIAlertAction(title: "确定", style: .Cancel, handler: { action in
+                    alert.dismissViewControllerAnimated(true, completion: nil)
+                }))
+            }
         }
     }
 }
