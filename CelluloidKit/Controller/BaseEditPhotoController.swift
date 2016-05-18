@@ -54,7 +54,9 @@ public class BaseEditPhotoController: UIViewController {
             
             //filter
             if filterType != .Original {
-                fullSizeImageView.image = fullSizeImage.filteredImage(input!.fullSizeImageOrientation, filter: Filters.filter(filterType))
+                if let input = input {
+                     fullSizeImageView.image = fullSizeImage.filteredImage(input.fullSizeImageOrientation, filter: Filters.filter(filterType))
+                }
             }
             
             //bubbles

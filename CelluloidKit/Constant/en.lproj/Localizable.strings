@@ -6,8 +6,10 @@
   Copyright © 2016年 Mango. All rights reserved.
 */
 
-"done" = "done";
-"collage" = "collage";
-"filter" = "filter";
-"bubble" = "bubble";
-"sticker" = "sticker";
+"done" = "Done";
+"cancel" = "Cancel";
+
+"collage" = "Collage";
+"filter" = "Filter";
+"bubble" = "Bubble";
+"sticker" = "Sticker";
