@@ -31,6 +31,7 @@
 		DB2875AC1CB394F800CB8977 /* JSONCodableExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2875AB1CB394F800CB8977 /* JSONCodableExtension.swift */; };
 		DB4FA9161CEC1A8900C78A99 /* AdjustmentData.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB4FA9151CEC1A8900C78A99 /* AdjustmentData.swift */; };
 		DB4FA9181CEC1D4A00C78A99 /* BaseEditPhotoController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB4FA9171CEC1D4A00C78A99 /* BaseEditPhotoController.swift */; };
+		DB4FA91A1CEC5BCF00C78A99 /* EntranceViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB4FA9191CEC5BCF00C78A99 /* EntranceViewController.swift */; };
 		DB5D9A1B1CA023540045E49B /* ImageOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */; };
 		DB6A158E1CC5DD3C00DFF71E /* StickerPickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */; };
 		DB6A15921CC7461500DFF71E /* BasePickerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6A15911CC7461500DFF71E /* BasePickerController.swift */; };
@@ -129,6 +130,7 @@
 		DB2875AB1CB394F800CB8977 /* JSONCodableExtension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = JSONCodableExtension.swift; sourceTree = "<group>"; };
 		DB4FA9151CEC1A8900C78A99 /* AdjustmentData.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AdjustmentData.swift; sourceTree = "<group>"; };
 		DB4FA9171CEC1D4A00C78A99 /* BaseEditPhotoController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BaseEditPhotoController.swift; path = Controller/BaseEditPhotoController.swift; sourceTree = "<group>"; };
+		DB4FA9191CEC5BCF00C78A99 /* EntranceViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EntranceViewController.swift; path = Controller/EntranceViewController.swift; sourceTree = "<group>"; };
 		DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ImageOverlayView.swift; path = View/ImageOverlayView.swift; sourceTree = "<group>"; };
 		DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = StickerPickerViewController.swift; path = Sticker/Controller/StickerPickerViewController.swift; sourceTree = "<group>"; };
 		DB6A15911CC7461500DFF71E /* BasePickerController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BasePickerController.swift; path = Controller/BasePickerController.swift; sourceTree = "<group>"; };
@@ -350,6 +352,7 @@
 				DB14F7721C803608000FA15F /* ViewController.swift */,
 				DB72089A1CEAB955001E4F4F /* CollagePreviewController.swift */,
 				DB72089C1CEB0C8D001E4F4F /* EditPhotoViewController.swift */,
+				DB4FA9191CEC5BCF00C78A99 /* EntranceViewController.swift */,
 			);
 			name = Controller;
 			sourceTree = "<group>";
@@ -766,6 +769,7 @@
 				DBF094C11CE18385006FA424 /* CollageView.swift in Sources */,
 				DB14F7711C803608000FA15F /* AppDelegate.swift in Sources */,
 				DB83EFB11CDA0ADD00962016 /* CollageModel.swift in Sources */,
+				DB4FA91A1CEC5BCF00C78A99 /* EntranceViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
