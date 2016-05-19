@@ -71,6 +71,26 @@ public extension UIView {
     }
 }
 
+public extension UIView {
+    
+    public func renderWithBounds(bounds: CGRect? = nil) -> UIImage {
+        let bounds = bounds ?? self.bounds
+        UIGraphicsBeginImageContextWithOptions(bounds.size, true, 0);
+        drawViewHierarchyInRect(CGRect(x: -bounds.origin.x, y: -bounds.origin.y, width: self.width , height: self.height), afterScreenUpdates: true)
+        let screenshot = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+        return screenshot;
+    }
+    
+    public func render() -> UIImage {
+        UIGraphicsBeginImageContextWithOptions(self.bounds.size, false, 0);
+        self.layer.renderInContext(UIGraphicsGetCurrentContext()!)
+        let render = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return render
+    }
+}
+
 //MARK: CGAffineTransform
 public extension CGAffineTransform {
     public var angle:CGFloat { return atan2(self.b,self.a) }
@@ -143,22 +163,6 @@ public extension UIImageView {
         }
     }
     
-    public func renderWithBounds(bounds: CGRect? = nil) -> UIImage {
-        let bounds = bounds ?? self.bounds
-        UIGraphicsBeginImageContextWithOptions(bounds.size, true, 0);
-        drawViewHierarchyInRect(CGRect(x: -bounds.origin.x, y: -bounds.origin.y, width: self.width , height: self.height), afterScreenUpdates: true)
-        let screenshot = UIGraphicsGetImageFromCurrentImageContext();
-        UIGraphicsEndImageContext();
-        return screenshot;
-    }
-    
-    public func render() -> UIImage {
-        UIGraphicsBeginImageContextWithOptions(self.bounds.size, false, 0);
-        self.layer.renderInContext(UIGraphicsGetCurrentContext()!)
-        let render = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        return render
-    }
 }
 
 //MARK: UITableView,UITableViewCell,UICollectionView,UICollectionViewCell
