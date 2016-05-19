@@ -9,7 +9,7 @@
 import Foundation
 import Photos
 
-struct PhotoModel {
+class PhotoModel {
     
     let asset: PHAsset
     private var image: UIImage?
@@ -28,7 +28,7 @@ struct PhotoModel {
 
 extension PhotoModel {
     
-    mutating func requstImage(completion: (UIImage)->Void) {
+    func requstImage(completion: (UIImage)->Void) {
         if let image = image {
             completion(image)
         }else{
