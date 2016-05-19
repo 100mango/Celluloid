@@ -20,7 +20,7 @@ class CollageView: UIView {
         
         self.subviews.forEach { $0.removeFromSuperview() }
         
-        for (points, var photoModel) in zip(collageModel.areas, photoModels) {
+        for (points, photoModel) in zip(collageModel.areas, photoModels) {
             photoModel.points = points
             let collageContentView = CollageContentView(model: photoModel)
             self.addSubview(collageContentView)

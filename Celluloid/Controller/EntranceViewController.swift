@@ -75,22 +75,18 @@ private extension EntranceViewController {
         let picker = BSImagePickerViewController()
         picker.maxNumberOfSelections = 1
         
-        bs_presentImagePickerController(picker, animated: true,
-                                        select: nil, deselect: nil, cancel: nil,
-                                        finish: { (assets: [PHAsset]) -> Void in
-
-                                            Async.main {
-                                                if let asset = assets.first {
-                                                    
-                                                    let editVC = EditPhotoViewController(model: PhotoModel(asset: asset))
-                                                    let navVC = UINavigationController(rootViewController: editVC)
-                                                    
-                                                    self.presentViewController(navVC, animated: true, completion: nil)
-                                                    
-                                                }
-                                            }
+        presentPicker(picker) { assets in
+            Async.main {
+                if let asset = assets.first {
+                    
+                    let editVC = EditPhotoViewController(model: PhotoModel(asset: asset))
+                    let navVC = UINavigationController(rootViewController: editVC)
+                    
+                    self.presentViewController(navVC, animated: true, completion: nil)
+                    
+                }
             }
-            , completion: nil)
+        }
     }
     
     @objc func makeCollage() {
@@ -98,23 +94,33 @@ private extension EntranceViewController {
         let picker = BSImagePickerViewController()
         picker.maxNumberOfSelections = 4
         
-        bs_presentImagePickerController(picker, animated: true,
-                                        select: nil, deselect: nil, cancel: nil,
-                                        finish: { (assets: [PHAsset]) -> Void in
-                                            
-                                            Async.main {
-                                                
-                                                let collageVC = CollageViewController(assets: assets)
-                                                let navVC = UINavigationController(rootViewController: collageVC)
-                                                
-                                                self.presentViewController(navVC, animated: true, completion: nil)
-                                                
-                                            }
+        presentPicker(picker) { assets in
+            
+            Async.main {
+                
+                if assets.count == 1 {
+                    
+                    let editVC = EditPhotoViewController(model: PhotoModel(asset: assets.first!))
+                    let navVC = UINavigationController(rootViewController: editVC)
+                    
+                    self.presentViewController(navVC, animated: true, completion: nil)
+                    
+                }else {
+                    
+                    let collageVC = CollageViewController(assets: assets)
+                    let navVC = UINavigationController(rootViewController: collageVC)
+                    
+                    self.presentViewController(navVC, animated: true, completion: nil)
+                }
+                
             }
-            , completion: nil)
+        }
         
     }
     
+    func presentPicker(picker: BSImagePickerViewController,finish: [PHAsset] -> Void ) {
+        bs_presentImagePickerController(picker, animated: true, select: nil, deselect: nil, cancel: nil, finish: finish, completion: nil)
+    }
     
 }
 

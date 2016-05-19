@@ -148,5 +148,6 @@ private extension CollageViewController {
             }) { success, error in
         }
         
+        dismiss()
     }
 }
