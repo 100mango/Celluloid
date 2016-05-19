@@ -52,6 +52,7 @@
 		DB83EFAF1CD9F37F00962016 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFAE1CD9F37F00962016 /* Log.swift */; };
 		DB83EFB11CDA0ADD00962016 /* CollageModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFB01CDA0ADD00962016 /* CollageModel.swift */; };
 		DB83EFB81CDA276F00962016 /* collage.json in Resources */ = {isa = PBXBuildFile; fileRef = DB83EFB71CDA276F00962016 /* collage.json */; };
+		DB8A90F91CEDE81000CF0B31 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7771C803608000FA15F /* Assets.xcassets */; };
 		DBA390F21C868172006248A4 /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390F11C868172006248A4 /* Style.swift */; };
 		DBDC81E71CC7506C0036F18E /* StickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDC81E61CC7506C0036F18E /* StickerModel.swift */; };
 		DBDC81EA1CC75BDF0036F18E /* StickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDC81E91CC75BDF0036F18E /* StickerView.swift */; };
@@ -625,6 +626,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DB8A90F91CEDE81000CF0B31 /* Assets.xcassets in Resources */,
 				DB14F7B41C808579000FA15F /* MainInterface.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1018,6 +1020,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 685EEB2FDEBD70B67B91C80D /* Pods.debug.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				INFOPLIST_FILE = CelluloidPhotoExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = Mango.Celluloid.CelluloidPhotoExtension;
@@ -1030,6 +1033,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A6B0D28FE53FDC28AFCD1D5A /* Pods.release.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				INFOPLIST_FILE = CelluloidPhotoExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = Mango.Celluloid.CelluloidPhotoExtension;
