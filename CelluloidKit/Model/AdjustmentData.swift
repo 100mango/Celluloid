@@ -39,9 +39,9 @@ extension AdjustmentData: JSONEncodable {
     public func toJSON() -> AnyObject {
         do {
             return try JSONEncoder.create({ encoder in
-                try encoder.encode(bubbles, key: PropertyKey.bubbles.rawValue)
-                try encoder.encode(stickers, key: PropertyKey.stickers.rawValue)
-                try encoder.encode(filterType, key: PropertyKey.filterType.rawValue)
+                try encoder.encode(bubbles, key: .bubbles)
+                try encoder.encode(stickers, key: .stickers)
+                try encoder.encode(filterType, key: .filterType)
             })
         }catch{
             fatalError("\(error)")
@@ -53,18 +53,19 @@ extension AdjustmentData: JSONDecodable {
     public init(object: JSONObject) {
         do {
             let decoder = JSONDecoder(object: object)
-            bubbles = try decoder.decode(PropertyKey.bubbles.rawValue)
-            stickers = try decoder.decode(PropertyKey.stickers.rawValue)
-            filterType = try decoder.decode(PropertyKey.filterType.rawValue)
+            bubbles = try decoder.decode(.bubbles)
+            stickers = try decoder.decode(.stickers)
+            filterType = try decoder.decode(.filterType)
         }catch{
             fatalError("\(error)")
         }
     }
 }
 
-
-private enum PropertyKey: String {
-    case bubbles
-    case stickers
-    case filterType
+//MARK: propertyKey
+private extension String {
+    static let bubbles = "bubbles"
+    static let stickers = "stickers"
+    static let filterType = "filterType"
 }
+

@@ -50,11 +50,11 @@ extension BubbleModel: JSONEncodable {
     public func toJSON() -> AnyObject {
         do {
             return try JSONEncoder.create({ encoder in
-                try encoder.encode(asset, key: PropertyKey.asset.rawValue)
-                try encoder.encode(content, key: PropertyKey.content.rawValue)
-                encoder.encode(transform, key: PropertyKey.transform.rawValue)
-                encoder.encode(bounds, key: PropertyKey.bounds.rawValue)
-                encoder.encode(center, key: PropertyKey.center.rawValue)
+                try encoder.encode(asset, key: .asset)
+                try encoder.encode(content, key: .content)
+                encoder.encode(transform, key: .transform)
+                encoder.encode(bounds, key: .bounds)
+                encoder.encode(center, key: .center)
             })
         }catch{
             fatalError("\(error)")
@@ -66,11 +66,11 @@ extension BubbleModel: JSONDecodable {
     public init(object: JSONObject) {
         do {
             let decoder = JSONDecoder(object: object)
-            asset = try decoder.decode(PropertyKey.asset.rawValue)
-            content = try decoder.decode(PropertyKey.content.rawValue)
-            transform = try decoder.decode(PropertyKey.transform.rawValue)
-            bounds = try decoder.decode(PropertyKey.bounds.rawValue)
-            center = try decoder.decode(PropertyKey.center.rawValue)
+            asset = try decoder.decode(.asset)
+            content = try decoder.decode(.content)
+            transform = try decoder.decode(.transform)
+            bounds = try decoder.decode(.bounds)
+            center = try decoder.decode(.center)
         }catch{
             fatalError("\(error)")
         }
@@ -78,13 +78,13 @@ extension BubbleModel: JSONDecodable {
 }
 
 //MARK: Constant
-private enum PropertyKey: String {
-    case content
-    case asset
-    case transform
-    case bounds
-    case center
-    case superViewSize
+private extension String {
+    static let content = "content"
+    static let asset = "asset"
+    static let transform = "transform"
+    static let bounds = "bounds"
+    static let center = "center"
+    static let superViewSize = "superViewSize"
 }
 
 private let bubbleAssets:[UIImage.Asset] = [.Aside1,.Call1,.Call2,.Call3,.Say1,.Say2,.Say3,.Think1,.Think2,.Think3]

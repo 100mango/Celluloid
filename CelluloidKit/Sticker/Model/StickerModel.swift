@@ -42,10 +42,10 @@ extension StickerModel: JSONEncodable {
     public func toJSON() -> AnyObject {
         do {
             return try JSONEncoder.create({ encoder in
-                try encoder.encode(imageName, key: PropertyKey.imageName.rawValue)
-                encoder.encode(transform, key: PropertyKey.transform.rawValue)
-                encoder.encode(bounds, key: PropertyKey.bounds.rawValue)
-                encoder.encode(center, key: PropertyKey.center.rawValue)
+                try encoder.encode(imageName, key: .imageName)
+                encoder.encode(transform, key: .transform)
+                encoder.encode(bounds, key: .bounds)
+                encoder.encode(center, key: .center)
             })
         }catch{
             fatalError("\(error)")
@@ -57,10 +57,10 @@ extension StickerModel: JSONDecodable {
     public init(object: JSONObject) {
         do {
             let decoder = JSONDecoder(object: object)
-            imageName = try decoder.decode(PropertyKey.imageName.rawValue)
-            transform = try decoder.decode(PropertyKey.transform.rawValue)
-            bounds = try decoder.decode(PropertyKey.bounds.rawValue)
-            center = try decoder.decode(PropertyKey.center.rawValue)
+            imageName = try decoder.decode(.imageName)
+            transform = try decoder.decode(.transform)
+            bounds = try decoder.decode(.bounds)
+            center = try decoder.decode(.center)
         }catch{
             fatalError("\(error)")
         }
@@ -68,9 +68,9 @@ extension StickerModel: JSONDecodable {
 }
 
 //MARK: Constant
-private enum PropertyKey: String {
-    case imageName
-    case transform
-    case bounds
-    case center
+private extension String {
+    static let imageName = "imageName"
+    static let transform = "transform"
+    static let bounds = "bounds"
+    static let center = "center"
 }
