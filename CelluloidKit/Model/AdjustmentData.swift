@@ -11,30 +11,34 @@ import JSONCodable
 
 public struct AdjustmentData {
     
-    public static let formatIdentifier = "Mango.CelluloidPhotoExtension"
-    public static let formatVersion    = "1.0"
-    
-    public static func supportIdentifier(identifier: String, version: String) -> Bool {
-        return identifier == self.formatIdentifier && version == self.formatVersion
-    }
-    
     //state restoration property
     public var bubbles = [BubbleModel]()
     public var stickers = [StickerModel]()
     public var filterType = FilterType.Original
     
     public init() {}
+}
+
+public extension AdjustmentData {
     
-    public static func decode(data: NSData) -> AdjustmentData {
+    static let formatIdentifier = "Mango.CelluloidPhotoExtension"
+    static let formatVersion    = "1.0"
+    
+    static func supportIdentifier(identifier: String, version: String) -> Bool {
+        return identifier == self.formatIdentifier && version == self.formatVersion
+    }
+    
+    static func decode(data: NSData) -> AdjustmentData {
         let dic = NSKeyedUnarchiver.unarchiveObjectWithData(data) as! [String:AnyObject]
         return AdjustmentData(object: dic)
     }
     
-    public func encode() -> NSData {
+    func encode() -> NSData {
         return NSKeyedArchiver.archivedDataWithRootObject(self.toJSON())
     }
 }
 
+//MARK: JSONCodable
 extension AdjustmentData: JSONEncodable {
     public func toJSON() -> AnyObject {
         do {

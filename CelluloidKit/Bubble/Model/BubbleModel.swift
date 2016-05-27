@@ -19,17 +19,20 @@ public struct BubbleModel {
     public var transform = CGAffineTransformIdentity
     public var bounds = CGRect(x: 0, y: 0, width: 100, height: 100)
     public var center = CGPoint(x: 100, y: 100)
-    //public var superViewSize = CGSize.zero
     
     //Computed property
-    public var bubbleImage:UIImage {
+    public var bubbleImage: UIImage {
         return UIImage(asset: self.asset)
     }
-    public var area:[CGFloat] {
+    public var area: [CGFloat] {
         return areaDic[asset.rawValue]!
     }
     
-    //MARK: init
+}
+
+//MARK: init
+extension BubbleModel {
+    
     public static let bubbles: [BubbleModel] = {
         var bubbles = [BubbleModel]()
         for asset in bubbleAssets {
@@ -84,7 +87,6 @@ private extension String {
     static let transform = "transform"
     static let bounds = "bounds"
     static let center = "center"
-    static let superViewSize = "superViewSize"
 }
 
 private let bubbleAssets:[UIImage.Asset] = [.Aside1,.Call1,.Call2,.Call3,.Say1,.Say2,.Say3,.Think1,.Think2,.Think3]

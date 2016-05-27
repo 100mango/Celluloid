@@ -62,6 +62,7 @@ public class ImageOverlayView: UIView {
     
 }
 
+//MARK: Action
 extension ImageOverlayView {
     @objc func touch() {
         self.subviews.flatMap({ $0 as? AttachView }).forEach{
