@@ -84,6 +84,7 @@ class CollageViewController: UIViewController {
             let collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
             //因为Autolayout的原因。 我们不能在ViewDidload就获取正确的frame。而collageView内部
             //生成collageContentView需要正确的frame信息。所以选择在viewDidLayoutSubviews设置
+            //TODO: 限制该界面旋转
             collageView.setupWithCollageModel(collageModels.first!, photoModels: models)
         }
         
@@ -148,6 +149,8 @@ private extension CollageViewController {
             }) { success, error in
         }
         
-        dismiss()
+        if let nav = self.navigationController {
+            nav.pushViewController(SharePhotoViewController(image: image), animated: true)
+        }
     }
 }
