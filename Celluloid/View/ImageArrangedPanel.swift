@@ -27,6 +27,7 @@ class ImageArrangedPanel: UIView {
         layout.scrollDirection = .Horizontal
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.backgroundColor = .whiteColor()
         collectionView.delegate = self
         collectionView.dataSource = self
         collectionView.registerClass(ArrangedCollectionViewCell)

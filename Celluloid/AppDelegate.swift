@@ -16,6 +16,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(application: UIApplication, didFinishLaunchingWithOptions launchOptions: [NSObject: AnyObject]?) -> Bool {
         
+        func setupAppearance() {
+            UINavigationBar.appearance().barTintColor = .alphaBlackColor
+            UINavigationBar.appearance().tintColor = .whiteColor()
+            UINavigationBar.appearance().titleTextAttributes = [NSForegroundColorAttributeName : UIColor.whiteColor()]
+            UINavigationBar.appearance().barStyle = .Black
+        }
+
+        setupAppearance()
         window = UIWindow(frame: UIScreen.mainScreen().bounds)
         window?.makeKeyAndVisible()
         window?.rootViewController = EntranceViewController()
