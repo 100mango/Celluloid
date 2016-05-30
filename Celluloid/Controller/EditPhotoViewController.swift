@@ -84,6 +84,7 @@ private extension EditPhotoViewController {
     
     func finishContentEditing() {
         
+        var shareImage: UIImage?
         Async.background {
             
             if let input = self.input {
@@ -93,6 +94,7 @@ private extension EditPhotoViewController {
                 output.adjustmentData = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: AdjustmentData.formatVersion, data: self.adjustmentData.encode())
                 let renderedJPEGData: NSData
                 if let outputImage = self.outputImage {
+                    shareImage = outputImage
                     renderedJPEGData = UIImageJPEGRepresentation(outputImage, 1.0)!
                 }else{
                     renderedJPEGData = NSData(contentsOfURL: (self.input?.fullSizeImageURL)!)!
@@ -109,8 +111,10 @@ private extension EditPhotoViewController {
 
             }
             
-        }.main { 
-            self.dismiss()
+        }.main {
+            if let nav = self.navigationController,shareImage = shareImage {
+                nav.pushViewController(SharePhotoViewController(image: shareImage), animated: true)
+            }
         }
         
     }

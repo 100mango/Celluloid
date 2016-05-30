@@ -21,11 +21,33 @@ class SharePhotoViewController: UIViewController {
         return button
     }()
     
+    lazy var doneButton: UIButton = {
+        let button = UIButton()
+        button.setTitle("完成", forState: .Normal)
+        button.addTarget(self, action: .done, forControlEvents: .TouchUpInside)
+        button.layer.cornerRadius = 22
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.whiteColor().CGColor
+        button.backgroundColor = .clearColor()
+        return button
+    }()
+    
+    let savedIcon = UIImageView(image: UIImage(named: "saved"))
+    let savedLabel: UILabel = {
+        let label = UILabel()
+        label.text = "保存成功"
+        label.font = .systemFontOfSize(20)
+        label.textColor = .whiteColor()
+        return label
+    }()
+    
+    
     let image: UIImage
 
     init(image: UIImage) {
         self.image = image
         super.init(nibName: nil, bundle: nil)
+        self.view.backgroundColor = .blackBackgroundColor
     }
     
     required init?(coder aDecoder: NSCoder) {
@@ -35,13 +57,35 @@ class SharePhotoViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        self.navigationItem.hidesBackButton = true
+        
         self.view.addSubview(shareButton)
         shareButton.snp_makeConstraints { (make) in
-            make.center.equalTo(shareButton.superview!)
-            make.height.equalTo(44)
+            make.centerX.equalTo(shareButton.superview!)
             make.width.equalTo(140)
+            make.height.equalTo(44)
+            make.bottom.equalTo(shareButton.superview!).offset(-150)
         }
         
+        self.view.addSubview(doneButton)
+        doneButton.snp_makeConstraints { (make) in
+            make.top.equalTo(shareButton.snp_bottom).offset(20)
+            make.centerX.equalTo(shareButton)
+            make.width.equalTo(140)
+            make.height.equalTo(44)
+        }
+        
+        self.view.addSubview(savedIcon)
+        savedIcon.snp_makeConstraints { (make) in
+            make.top.equalTo(snp_topLayoutGuideBottom).offset(100)
+            make.centerX.equalTo(savedIcon.superview!)
+        }
+        
+        self.view.addSubview(savedLabel)
+        savedLabel.snp_makeConstraints { (make) in
+            make.top.equalTo(savedIcon.snp_bottom).offset(45)
+            make.centerX.equalTo(savedIcon)
+        }
     }
     
 }
@@ -49,6 +93,7 @@ class SharePhotoViewController: UIViewController {
 //MARK: Action
 private extension Selector {
     static let share = #selector(SharePhotoViewController.share)
+    static let done =  #selector(SharePhotoViewController.done)
 }
 
 extension SharePhotoViewController {
@@ -57,5 +102,9 @@ extension SharePhotoViewController {
         let activityViewController = UIActivityViewController(activityItems: [image], applicationActivities: nil)
         activityViewController.popoverPresentationController?.sourceView = self.view
         presentViewController(activityViewController, animated: true, completion: nil)
+    }
+    
+    @objc func done() {
+        dismissViewControllerAnimated(true, completion: nil)
     }
 }
