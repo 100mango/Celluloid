@@ -25,6 +25,7 @@ public enum FilterType: String {
     case Posterize
     case Sketch
     case Comic
+    case Crystal
     case PixellateFace
 }
 
@@ -33,19 +34,21 @@ public struct Filters {
     public static func filter(type: FilterType) -> Filter {
         switch type {
         case .Sepia, .Original:
-            return sepia()
+            return sepia
         case .Chrome:
-            return chrome()
+            return chrome
         case .Fade:
-            return fade()
+            return fade
         case .Invert:
-            return invert()
+            return invert
         case .Posterize:
-            return posterize()
+            return posterize
         case .Sketch:
-            return sketch()
+            return sketch
         case .Comic:
-            return comic()
+            return comic
+        case .Crystal:
+            return crystal
         case .PixellateFace:
             return pixellateFace()
         }
@@ -64,33 +67,21 @@ public struct Filters {
         }
     }
 
-    public static func sepia() -> Filter {
-        return simpleFilter("CISepiaTone")
-    }
+    public static let sepia = Filters.simpleFilter("CISepiaTone")
     
-    public static func chrome() -> Filter {
-        return simpleFilter("CIPhotoEffectChrome")
-    }
+    public static let chrome = Filters.simpleFilter("CIPhotoEffectChrome")
     
-    public static func fade() -> Filter {
-        return simpleFilter("CIPhotoEffectInstant")
-    }
+    public static let fade = Filters.simpleFilter("CIPhotoEffectInstant")
     
-    public static func invert() -> Filter {
-        return simpleFilter("CIColorInvert")
-    }
+    public static let invert = Filters.simpleFilter("CIColorInvert")
     
-    public static func posterize() -> Filter {
-        return simpleFilter("CIColorPosterize")
-    }
+    public static let posterize = Filters.simpleFilter("CIColorPosterize")
     
-    public static func sketch() -> Filter {
-        return simpleFilter("CILineOverlay")
-    }
+    public static let sketch = Filters.simpleFilter("CILineOverlay")
     
-    public static func comic() -> Filter {
-        return simpleFilter("CIComicEffect")
-    }
+    public static let comic =  Filters.simpleFilter("CIComicEffect")
+    
+    public static let crystal = Filters.simpleFilter("CICrystallize")
     
     public static func pixellate() -> Filter {
         return { image in
@@ -182,7 +173,7 @@ public struct Filters {
     }
     
     public static func blurAndSepia() -> Filter {
-        return blur(5) >>> sepia()
+        return blur(5) >>> sepia
     }
 }
 
