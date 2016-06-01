@@ -24,6 +24,7 @@ public enum FilterType: String {
     case Invert
     case Posterize
     case Sketch
+    case Comic
     case PixellateFace
 }
 
@@ -43,6 +44,8 @@ public struct Filters {
             return posterize()
         case .Sketch:
             return sketch()
+        case .Comic:
+            return comic()
         case .PixellateFace:
             return pixellateFace()
         }
@@ -83,6 +86,10 @@ public struct Filters {
     
     public static func sketch() -> Filter {
         return simpleFilter("CILineOverlay")
+    }
+    
+    public static func comic() -> Filter {
+        return simpleFilter("CIComicEffect")
     }
     
     public static func pixellate() -> Filter {

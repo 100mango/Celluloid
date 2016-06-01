@@ -48,6 +48,7 @@ private enum FilterCellType: Int {
     case Invert
     case Posterize
     case Sketch
+    case Comic
     case PixellateFace
     case Count
 }
@@ -82,7 +83,7 @@ private extension FilterPickerViewController {
                 imageView.image = UIImage(asset: .Posterize)
             case .PixellateFace:
                 imageView.image = UIImage(asset: .Posterize)
-            case .Sketch:
+            case .Sketch,.Comic:
                 imageView.image = UIImage(asset: .Posterize)
             case .Count:
                 break
@@ -122,6 +123,8 @@ private extension FilterPickerViewController {
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Posterize)
         case .Sketch:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Sketch)
+        case .Comic:
+            self.delegate?.filterPickerViewController(self, didSelectFilter: .Comic)
         case .PixellateFace:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .PixellateFace)
         case .Count:

@@ -31,7 +31,10 @@ public class BaseEditPhotoController: UIViewController {
             if filterType == .Original {
                 self.preview.image = input?.displaySizeImage
             }else{
-                self.preview.image = input?.displaySizeImage?.filteredImage(Filters.filter(filterType))
+                if let input = input {
+                    self.preview.image = input.displaySizeImage?.filteredImage(input.fullSizeImageOrientation, filter: Filters.filter(filterType))
+
+                }
             }
         }
     }
