@@ -100,7 +100,7 @@ extension SharePhotoViewController {
     
     @objc func share() {
         let activityViewController = UIActivityViewController(activityItems: [image], applicationActivities: nil)
-        activityViewController.popoverPresentationController?.sourceView = self.view
+        activityViewController.popoverPresentationController?.sourceView = self.shareButton
         presentViewController(activityViewController, animated: true, completion: nil)
     }
     
