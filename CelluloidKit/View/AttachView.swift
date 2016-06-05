@@ -98,6 +98,7 @@ private extension Selector {
 
 
 extension AttachView{
+    
     @objc func removeSelf() {
         UIView.animateWithDuration(0.3, delay: 0, usingSpringWithDamping: 1, initialSpringVelocity: 0.3, options: [],
             animations: {
@@ -121,7 +122,9 @@ extension AttachView{
         let touchLocation = gestureRecognizer.locationInView(self.superview!)
         let center = self.center
         
+        
         if gestureRecognizer.state == .Began {
+            //AB两个点之间连线和x轴的夹角就是atan2（By-Ay，Bx-Ax）
             Static.deltaAngle = atan2(touchLocation.y - center.y, touchLocation.x - center.x) - self.transform.angle
             Static.initialBounds = self.bounds
             Static.initialDistance = CGPointGetDistance(center, touchLocation)
@@ -145,19 +148,22 @@ extension AttachView{
     
     @objc func move (gestureRecognizer: UIPanGestureRecognizer) {
         struct Static {
-            static var touchLocation = CGPoint.zero
+            static var touchPoint = CGPoint.zero
             static var beginningCenter = CGPoint.zero
             static var beginningPoint = CGPoint.zero
         }
         
         func makeCenter() -> CGPoint {
-            return CGPoint(x: Static.beginningCenter.x + (Static.touchLocation.x - Static.beginningPoint.x), y: Static.beginningCenter.y+(Static.touchLocation.y-Static.beginningPoint.y))
+            let x = Static.beginningCenter.x + (Static.touchPoint.x - Static.beginningPoint.x)
+            let y = Static.beginningCenter.y + (Static.touchPoint.y - Static.beginningPoint.y)
+            return CGPoint(x: x, y: y)
         }
         
-        Static.touchLocation = gestureRecognizer.locationInView(self.superview!)
+        Static.touchPoint = gestureRecognizer.locationInView(self.superview!)
+        
         if gestureRecognizer.state == .Began {
             Static.beginningCenter = self.center
-            Static.beginningPoint = Static.touchLocation
+            Static.beginningPoint = Static.touchPoint
             self.center = makeCenter()
         }else if gestureRecognizer.state == .Changed || gestureRecognizer.state == .Ended {
             self.center = makeCenter()
