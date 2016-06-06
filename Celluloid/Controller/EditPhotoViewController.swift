@@ -35,7 +35,6 @@ class EditPhotoViewController: BaseEditPhotoController {
     //MARK: View Life Cycle 
     override func viewDidLoad() {
         super.viewDidLoad()
-        self.view.backgroundColor = .blackBackgroundColor
         self.navigationItem.title = "美化"
         self.navigationItem.setLeftBarButtonItem(leftButtonItem, animated: false)
         self.navigationItem.setRightBarButtonItem(rightButtonItem, animated: false)

@@ -99,6 +99,7 @@ public class BaseEditPhotoController: UIViewController {
     //MARK: View Lift Cycle
     override public func viewDidLoad() {
         super.viewDidLoad()
+        self.view.backgroundColor = .blackBackgroundColor
         
         self.view.addSubview(preview)
         preview.snp_makeConstraints { (make) in
