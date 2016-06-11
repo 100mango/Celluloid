@@ -41,4 +41,7 @@ class CollageView: UIView {
         }
     }
     
+    func resize(){
+        self.subviews.flatMap { $0 as? CollageContentView }.forEach { $0.layout() }
+    }
 }

@@ -29,11 +29,19 @@ class CollageViewController: UIViewController {
         return panel
     }()
     
+    private let collageView = CollageView()
+    
+    private lazy var stackView: UIStackView = {
+        let stackView = UIStackView(arrangedSubviews: [self.imageArrangedPanel,self.collageView,self.collageStylePanel])
+        stackView.axis = .Vertical
+        stackView.distribution = .EqualSpacing
+        stackView.alignment = .Center
+        return stackView
+    }()
+
     private lazy var leftButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.Cancel), style: .Plain, target: self, action: #selector(dismiss))
     
     private lazy var rightButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.Done), style: .Plain, target: self, action: #selector(done))
-    
-    private let collageView = CollageView()
 
     //MARK: View Life Cycle
     override func viewDidLoad() {
@@ -45,6 +53,15 @@ class CollageViewController: UIViewController {
         self.navigationItem.setLeftBarButtonItem(leftButtonItem, animated: false)
         self.navigationItem.setRightBarButtonItem(rightButtonItem, animated: false)
         
+        self.view.addSubview(stackView)
+        stackView.snp_makeConstraints { (make) in
+            make.top.equalTo(self.snp_topLayoutGuideBottom)
+            make.bottom.equalTo(self.snp_bottomLayoutGuideTop)
+            make.left.right.equalTo(stackView.superview!)
+        }
+        
+        configureViewForSize(self.view.size)
+        /*
         self.view.addSubview(collageStylePanel)
         collageStylePanel.snp_makeConstraints { make in
             make.left.right.equalTo(collageStylePanel.superview!)
@@ -63,7 +80,7 @@ class CollageViewController: UIViewController {
         collageView.snp_makeConstraints { make in
             make.height.width.equalTo(collageView.superview!.width)
             make.center.equalTo(collageView.superview!)
-        }
+        }*/
         
         //setup data
         let models = assets.map { PhotoModel(asset: $0) }
@@ -72,22 +89,65 @@ class CollageViewController: UIViewController {
         
         let collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
         collageStylePanel.collageModels = collageModels
+        
+        collageView.setupWithCollageModel(collageModels.first!, photoModels: models)
     }
     
-    var didSetup = false
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         
-        if didSetup == false {
-            didSetup = true
-            let models = assets.map { PhotoModel(asset: $0) }
-            let collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
-            //因为Autolayout的原因。 我们不能在ViewDidload就获取正确的frame。而collageView内部
-            //生成collageContentView需要正确的frame信息。所以选择在viewDidLayoutSubviews设置
-            //TODO: 限制该界面旋转
-            collageView.setupWithCollageModel(collageModels.first!, photoModels: models)
-        }
+        collageView.resize()
+    }
+    
+    override func viewWillTransitionToSize(size: CGSize, withTransitionCoordinator
+        coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransitionToSize(size, withTransitionCoordinator: coordinator)
+        configureViewForSize(size)
+    }
+    
+    private let arrangedPanelConstant: CGFloat = 80
+    private let stylePanelConstant: CGFloat = 120
+    
+    func configureViewForSize(size: CGSize) {
         
+        if size.width > size.height {
+            imageArrangedPanel.snp_remakeConstraints(closure: { (make) in
+                make.width.equalTo(arrangedPanelConstant)
+                make.height.equalTo(imageArrangedPanel.superview!)
+            })
+            collageStylePanel.scrollDirection = .Vertical
+            collageStylePanel.snp_remakeConstraints(closure: { (make) in
+                make.width.equalTo(stylePanelConstant)
+                make.height.equalTo(collageStylePanel.superview!)
+            })
+            collageView.snp_remakeConstraints(closure: { (make) in
+                make.height.width.equalTo(collageView.superview!.snp_height)
+            })
+            stackView.axis = .Horizontal
+            stackView.layoutIfNeeded()
+        } else {
+            imageArrangedPanel.snp_remakeConstraints(closure: { (make) in
+                make.height.equalTo(arrangedPanelConstant)
+                make.width.equalTo(imageArrangedPanel.superview!)
+            })
+            collageStylePanel.scrollDirection = .Horizontal
+            collageStylePanel.snp_remakeConstraints(closure: { (make) in
+                make.height.equalTo(stylePanelConstant)
+                make.width.equalTo(collageStylePanel.superview!)
+            })
+            collageView.snp_remakeConstraints(closure: { (make) in
+                make.height.width.equalTo(collageView.superview!.snp_width)
+            })
+            /*用于修复Split View,Landscape Slide Over,Window Bounds: w:694 h:768时的界面问题*/
+            let overflow: Bool = (size.width + arrangedPanelConstant + stylePanelConstant) > size.height
+            if overflow {
+                collageView.snp_remakeConstraints(closure: { (make) in
+                    make.height.width.equalTo(400)
+                })
+            }
+            stackView.axis = .Vertical
+            stackView.layoutIfNeeded()
+        }
     }
     
     //MARK: init

@@ -26,6 +26,8 @@ class CollageContentView: UIView {
     
     private let imageView: UIImageView = UIImageView()
     
+    private let border = CAShapeLayer()
+    
     var model: PhotoModel
     
     init(model: PhotoModel) {
@@ -44,6 +46,11 @@ class CollageContentView: UIView {
 //MARK: layout
 extension CollageContentView {
     
+    //call in superview's layout subviews method
+    func layout() {
+        setup()
+    }
+    
     private func setup() {
         self.frame = model.points.frameWithNewSize(self.superview!.size)
         scrollView.frame = self.bounds
@@ -51,7 +58,7 @@ extension CollageContentView {
         crop()
     }
     
-    //call after set in superview
+    //call after added as a subview
     func setupForEdit() {
         
         setup()
@@ -108,13 +115,14 @@ extension CollageContentView {
         self.layer.mask = shapeLayer
         
         //边框线
-        let shape = CAShapeLayer()
-        shape.frame = self.bounds;
-        shape.path = path.CGPath;
-        shape.lineWidth = 3
-        shape.strokeColor = UIColor.blackColor().CGColor;
-        shape.fillColor = UIColor.clearColor().CGColor;
-        self.layer.addSublayer(shape)
+        border.frame = self.bounds;
+        border.path = path.CGPath;
+        border.lineWidth = 3
+        border.strokeColor = UIColor.blackColor().CGColor;
+        border.fillColor = UIColor.clearColor().CGColor;
+        if border.superlayer == nil {
+            self.layer.addSublayer(border)
+        }
     }
 }
 
