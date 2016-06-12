@@ -59,37 +59,17 @@ class CollageViewController: UIViewController {
             make.bottom.equalTo(self.snp_bottomLayoutGuideTop)
             make.left.right.equalTo(stackView.superview!)
         }
+        setupConstraintForSize(self.view.size)
         
-        configureViewForSize(self.view.size)
-        /*
-        self.view.addSubview(collageStylePanel)
-        collageStylePanel.snp_makeConstraints { make in
-            make.left.right.equalTo(collageStylePanel.superview!)
-            make.bottom.equalTo(self.snp_bottomLayoutGuideTop)
-            make.height.equalTo(120)
-        }
-        
-        self.view.addSubview(imageArrangedPanel)
-        imageArrangedPanel.snp_makeConstraints(closure: { make in
-            make.top.equalTo(self.snp_topLayoutGuideBottom)
-            make.left.right.equalTo(self.view)
-            make.height.equalTo(80)
-        })
-        
-        self.view.addSubview(collageView)
-        collageView.snp_makeConstraints { make in
-            make.height.width.equalTo(collageView.superview!.width)
-            make.center.equalTo(collageView.superview!)
-        }*/
-        
-        //setup data
+        //setup data for views
         let models = assets.map { PhotoModel(asset: $0) }
+        let collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
+        //arrangedPanel
         imageArrangedPanel.photoModels = models
         imageArrangedPanel.reload()
-        
-        let collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
+        //stylePanel
         collageStylePanel.collageModels = collageModels
-        
+        //collageView
         collageView.setupWithCollageModel(collageModels.first!, photoModels: models)
     }
     
@@ -102,13 +82,13 @@ class CollageViewController: UIViewController {
     override func viewWillTransitionToSize(size: CGSize, withTransitionCoordinator
         coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransitionToSize(size, withTransitionCoordinator: coordinator)
-        configureViewForSize(size)
+        setupConstraintForSize(size)
     }
     
     private let arrangedPanelConstant: CGFloat = 80
     private let stylePanelConstant: CGFloat = 120
     
-    func configureViewForSize(size: CGSize) {
+    func setupConstraintForSize(size: CGSize) {
         
         if size.width > size.height {
             imageArrangedPanel.snp_remakeConstraints(closure: { (make) in
