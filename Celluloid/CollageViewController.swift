@@ -180,7 +180,7 @@ private extension CollageViewController {
         let holder = UIView(frame: CGRect(x: 0, y: 0, width: 800, height: 800))
         let collageView = CollageView(frame: CGRect(x: 0, y: 0, width: 800, height: 800))
         holder.addSubview(collageView)
-        collageView.setupWithCollageModel(self.collageView.collageModel!, photoModels: self.collageView.photoModels!)
+        collageView.setupWithCollageModel(self.collageView.collageModel!, photoModels: self.collageView.photoModels!,forEdit: false)
         let image = holder.render()
         
         PHPhotoLibrary.sharedPhotoLibrary().performChanges({ 

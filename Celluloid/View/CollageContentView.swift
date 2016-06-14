@@ -66,7 +66,7 @@ extension CollageContentView {
         model.oldScrollViewSize = scrollView.size;
     }
     
-    func setupForPreView() {
+    func setupForRender() {
         
         setup()
         //从model的相关参数恢复相关放大，偏移状态

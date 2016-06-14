@@ -13,7 +13,7 @@ class CollageView: UIView {
     var collageModel: CollageModel?
     var photoModels: [PhotoModel]?
     
-    func setupWithCollageModel(collageModel: CollageModel, photoModels: [PhotoModel] ) {
+    func setupWithCollageModel(collageModel: CollageModel, photoModels: [PhotoModel], forEdit: Bool = true ) {
         
         self.collageModel = collageModel
         self.photoModels = photoModels
@@ -24,7 +24,11 @@ class CollageView: UIView {
             photoModel.points = points
             let collageContentView = CollageContentView(model: photoModel)
             self.addSubview(collageContentView)
-            collageContentView.setupForEdit()
+            if forEdit {
+                collageContentView.setupForEdit()
+            }else {
+                collageContentView.setupForRender()
+            }
         }
         
     }
