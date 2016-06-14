@@ -43,12 +43,12 @@ extension FilterPickerViewController {
 private enum FilterCellType: Int {
     case Original
     case Sepia
-    case Chrome
-    case Fade
-    case Invert
+    //case Chrome
+    //case Fade
+    //case Invert
     case Posterize
-    case Sketch
-    case Comic
+    //case Sketch
+    //case Comic
     case Crystal
     case PixellateFace
     case Count
@@ -71,21 +71,23 @@ private extension FilterPickerViewController {
             switch cellType {
                 
             case .Original:
-                imageView.image = UIImage(asset: .Sepia)
+                imageView.image = UIImage(asset: .OriginalFilter)
             case .Sepia:
-                imageView.image = UIImage(asset: .Sepia)
-            case .Chrome:
-                imageView.image = UIImage(asset: .Chrome)
-            case .Fade:
-                imageView.image = UIImage(asset: .Instant)
-            case .Invert:
-                imageView.image = UIImage(asset: .Invert)
+                imageView.image = UIImage(asset: .OldPictureFilter)
+            //case .Chrome:
+            //    imageView.image = UIImage(asset: .Chrome)
+            //case .Fade:
+            //    imageView.image = UIImage(asset: .Instant)
+            //case .Invert:
+            //    imageView.image = UIImage(asset: .Invert)
             case .Posterize:
-                imageView.image = UIImage(asset: .Posterize)
+                imageView.image = UIImage(asset: .PosterizeFilter)
             case .PixellateFace:
-                imageView.image = UIImage(asset: .Posterize)
-            case .Sketch,.Comic,.Crystal:
-                imageView.image = UIImage(asset: .Posterize)
+                imageView.image = UIImage(asset: .PixellateFaceFilter)
+            //case .Sketch,.Comic:
+            //    imageView.image = UIImage(asset: .Posterize)
+            case .Crystal:
+                imageView.image = UIImage(asset: .CrystalFilter)
             case .Count:
                 break
             }
@@ -114,18 +116,22 @@ private extension FilterPickerViewController {
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Original)
         case .Sepia:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Sepia)
+            /*
         case .Chrome:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Chrome)
         case .Fade:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Fade)
         case .Invert:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Invert)
+            */
         case .Posterize:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Posterize)
+            /*
         case .Sketch:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Sketch)
         case .Comic:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Comic)
+             */
         case .PixellateFace:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .PixellateFace)
         case .Crystal:

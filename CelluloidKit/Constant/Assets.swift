@@ -48,11 +48,11 @@ public extension UIImage {
         
         //Filter
         case Image_icon_filter = "image_icon_filter"
-        case Chrome = "chrome"
-        case Instant = "instant"
-        case Invert = "invert"
-        case Posterize = "posterize"
-        case Sepia = "sepia"
+        case CrystalFilter = "CrystalFilter"
+        case OldPictureFilter = "OldPictureFilter"
+        case OriginalFilter = "OriginalFilter"
+        case PixellateFaceFilter = "PixellateFaceFilter"
+        case PosterizeFilter = "PosterizeFilter"
         
         public var image: UIImage {
             return UIImage(asset: self)
