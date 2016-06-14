@@ -25,11 +25,13 @@ public class EditBubbleViewController: UIViewController {
         let textView = UITextView()
         textView.textAlignment = .Center
         textView.text = self.bubbleModel.content
+        textView.backgroundColor = .bubbleBackgroundColor
         return textView
     }()
     
     private lazy var rightBarButtonItem: UIBarButtonItem = {
         let rightBarButtonItem = UIBarButtonItem(title: tr(.Done), style: .Plain, target: self, action: #selector(done))
+
         return rightBarButtonItem
     }()
     
@@ -37,6 +39,8 @@ public class EditBubbleViewController: UIViewController {
     public init(bubbleModel:BubbleModel){
         self.bubbleModel = bubbleModel
         super.init(nibName: nil, bundle: nil)
+        self.view.backgroundColor = .whiteColor()
+        self.title = "输入内容"
     }
 
     required public init?(coder aDecoder: NSCoder) {
@@ -48,7 +52,8 @@ public class EditBubbleViewController: UIViewController {
         super.viewDidLoad()
         self.view.addSubview(self.textView)
         self.textView.snp_makeConstraints { (make) -> Void in
-            make.edges.equalTo(textView.superview!)
+            make.top.equalTo(self.snp_topLayoutGuideBottom).offset(10)
+            make.left.right.bottom.equalTo(textView.superview!).inset(10)
         }
         
         self.navigationItem.rightBarButtonItem = self.rightBarButtonItem

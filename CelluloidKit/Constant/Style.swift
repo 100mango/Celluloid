@@ -14,5 +14,5 @@ public extension UIColor {
     @nonobjc public static let alphaWhiteColor = UIColor.whiteColor().colorWithAlphaComponent(0.7)
     @nonobjc public static let alphaBlackColor = UIColor.blackColor().colorWithAlphaComponent(0.7)
     @nonobjc public static let blackBackgroundColor = UIColor(hex6: 0x1f1f1f)
-
+    @nonobjc public static let bubbleBackgroundColor = UIColor(hex6: 0xe3e6ee)
 }
