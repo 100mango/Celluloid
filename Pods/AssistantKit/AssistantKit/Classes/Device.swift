@@ -187,10 +187,12 @@ public struct Device {
 /**
  Detecting device state
  */
+/*
 extension Device {
 
     /// Return `true` for landscape interface orientation
     static public var isLandscape: Bool {
+        
         return ( UIApplication.sharedApplication().statusBarOrientation == .LandscapeLeft
             || UIApplication.sharedApplication().statusBarOrientation == .LandscapeRight )
     }
@@ -199,4 +201,4 @@ extension Device {
     static public var isPortrait: Bool {
         return !Device.isLandscape
     }
-}
+}*/

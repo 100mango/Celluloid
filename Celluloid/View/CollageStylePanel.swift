@@ -18,14 +18,7 @@ class CollageStylePanel: UIView {
     //MARK: Property
     private lazy var collectionView: UICollectionView = {
         
-        let layout = UICollectionViewFlowLayout()
-        layout.itemSize = CGSize(width: 100, height: 100)
-        layout.sectionInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 5)
-        layout.minimumLineSpacing = 5
-        layout.minimumInteritemSpacing = 5
-        layout.scrollDirection = .Horizontal
-        
-        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: self.flowLayout)
         collectionView.delegate = self
         collectionView.dataSource = self
         collectionView.backgroundColor = UIColor.whiteColor()
@@ -34,6 +27,18 @@ class CollageStylePanel: UIView {
         
         return collectionView
         
+    }()
+    
+    private lazy var flowLayout: UICollectionViewFlowLayout = {
+        
+        let layout = UICollectionViewFlowLayout()
+        layout.itemSize = CGSize(width: 100, height: 100)
+        layout.sectionInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 5)
+        layout.minimumLineSpacing = 5
+        layout.minimumInteritemSpacing = 5
+        layout.scrollDirection = .Horizontal
+        
+        return layout
     }()
     
     var collageModels: [CollageModel] {
@@ -65,6 +70,14 @@ class CollageStylePanel: UIView {
         fatalError("init(coder:) has not been implemented")
     }
     
+    //MARK: layout
+    override func layoutSubviews() {
+        if self.width > self.height {
+            flowLayout.itemSize = CGSize(width:  self.height - 20, height: self.height - 20)
+        }else {
+            flowLayout.itemSize = CGSize(width:  self.width - 20, height: self.width - 20)
+        }
+    }
 }
 
 //MARK: UICollectionViewDataSource

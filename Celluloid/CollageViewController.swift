@@ -11,6 +11,7 @@ import CelluloidKit
 import BSImagePicker
 import Photos
 import Async
+import AssistantKit
 
 class CollageViewController: UIViewController {
     
@@ -88,7 +89,7 @@ class CollageViewController: UIViewController {
     private let arrangedPanelConstant: CGFloat = 80
     private let stylePanelConstant: CGFloat = 120
     
-    func setupConstraintForSize(size: CGSize) {
+    private func setupConstraintForSize(size: CGSize) {
         
         if size.width > size.height {
             imageArrangedPanel.snp_remakeConstraints(closure: { (make) in
@@ -118,15 +119,34 @@ class CollageViewController: UIViewController {
             collageView.snp_remakeConstraints(closure: { (make) in
                 make.height.width.equalTo(collageView.superview!.snp_width)
             })
-            /*用于修复Split View,Landscape Slide Over,Window Bounds: w:694 h:768时的界面问题*/
-            let overflow: Bool = (size.width + arrangedPanelConstant + stylePanelConstant) > size.height
-            if overflow {
-                collageView.snp_remakeConstraints(closure: { (make) in
-                    make.height.width.equalTo(400)
-                })
-            }
+            fixCornerCaseLayout(size)
             stackView.axis = .Vertical
             stackView.layoutIfNeeded()
+        }
+    }
+    
+    private func fixCornerCaseLayout(size: CGSize) {
+        /*用于修复Split View,Landscape Slide Over,Window Bounds: w:694 h:768时的界面问题*/
+        let overflow: Bool = (size.width + arrangedPanelConstant + stylePanelConstant) > size.height
+        if overflow {
+            collageView.snp_remakeConstraints(closure: { (make) in
+                make.height.width.equalTo(400)
+            })
+        }
+        //fix 3.5 inshes devices
+        if Device.screen == .Inches_3_5 {
+            imageArrangedPanel.snp_remakeConstraints(closure: { (make) in
+                make.height.equalTo(40)
+                make.width.equalTo(imageArrangedPanel.superview!)
+            })
+            collageStylePanel.scrollDirection = .Horizontal
+            collageStylePanel.snp_remakeConstraints(closure: { (make) in
+                make.height.equalTo(60)
+                make.width.equalTo(collageStylePanel.superview!)
+            })
+            collageView.snp_remakeConstraints(closure: { (make) in
+                make.height.width.equalTo(collageView.superview!.snp_width)
+            })
         }
     }
     

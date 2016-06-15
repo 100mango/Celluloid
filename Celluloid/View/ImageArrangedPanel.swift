@@ -19,14 +19,7 @@ class ImageArrangedPanel: UIView {
     
     private lazy var collectionView: UICollectionView = {
         
-        let layout = UICollectionViewFlowLayout()
-        layout.itemSize = CGSize(width: 60, height: 60)
-        layout.sectionInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
-        layout.minimumLineSpacing = 10
-        layout.minimumInteritemSpacing = 10
-        layout.scrollDirection = .Horizontal
-        
-        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: self.flowLayout)
         collectionView.backgroundColor = .whiteColor()
         collectionView.delegate = self
         collectionView.dataSource = self
@@ -36,6 +29,17 @@ class ImageArrangedPanel: UIView {
         collectionView.addGestureRecognizer(longPressGesture)
         
         return collectionView
+    }()
+    
+    private let spacing: CGFloat = 10
+    private lazy var flowLayout: UICollectionViewFlowLayout = {
+        let layout = UICollectionViewFlowLayout()
+        let spacing = self.spacing
+        layout.sectionInset = UIEdgeInsets(top: spacing, left: spacing, bottom: spacing, right: spacing)
+        layout.minimumLineSpacing = spacing
+        layout.minimumInteritemSpacing = spacing
+        layout.scrollDirection = .Horizontal
+        return layout
     }()
     
     weak var delegate: ImageArrangedPanelDelegate?
@@ -54,9 +58,21 @@ class ImageArrangedPanel: UIView {
         fatalError("init(coder:) has not been implemented")
     }
     
+    //MARK: layout
     func reload() {
         collectionView.reloadData()
     }
+    
+    override func layoutSubviews() {
+        if self.width > self.height {
+            let width = self.height - (spacing * 2)
+            flowLayout.itemSize = CGSize(width:  width, height: width)
+        }else {
+            let width = self.width - (spacing * 2)
+            flowLayout.itemSize = CGSize(width: width, height: width)
+        }
+    }
+    
 }
 
 //MARK: Action
