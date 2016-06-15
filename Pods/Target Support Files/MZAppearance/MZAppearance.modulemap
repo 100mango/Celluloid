@@ -1,0 +1,6 @@
+framework module MZAppearance {
+  umbrella header "MZAppearance-umbrella.h"
+
+  export *
+  module * { export * }
+}
