@@ -6,3 +6,4 @@ pod 'UIColor_Hex_Swift'
 pod 'MZFormSheetPresentationController'
 pod 'JSONCodable'
 pod "BSImagePicker"
+pod 'AssistantKit'
