@@ -62,9 +62,9 @@ class SharePhotoViewController: UIViewController {
         self.view.addSubview(shareButton)
         shareButton.snp_makeConstraints { (make) in
             make.centerX.equalTo(shareButton.superview!)
+            make.centerY.equalTo(shareButton.superview!).offset(100)
             make.width.equalTo(140)
             make.height.equalTo(44)
-            make.bottom.equalTo(shareButton.superview!).offset(-150)
         }
         
         self.view.addSubview(doneButton)
@@ -77,13 +77,13 @@ class SharePhotoViewController: UIViewController {
         
         self.view.addSubview(savedIcon)
         savedIcon.snp_makeConstraints { (make) in
-            make.top.equalTo(snp_topLayoutGuideBottom).offset(100)
+            make.centerY.equalTo(savedIcon.superview!).offset(-100)
             make.centerX.equalTo(savedIcon.superview!)
         }
         
         self.view.addSubview(savedLabel)
         savedLabel.snp_makeConstraints { (make) in
-            make.top.equalTo(savedIcon.snp_bottom).offset(45)
+            make.top.equalTo(savedIcon.snp_bottom).offset(30)
             make.centerX.equalTo(savedIcon)
         }
     }
