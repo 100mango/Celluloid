@@ -128,7 +128,7 @@ public extension Dictionary {//where Key: String, Value: JSONEncodable {
 // JSONEncoder - provides utility methods for encoding
 
 public class JSONEncoder {
-    var object = JSONObject()
+    public var object = JSONObject()
     
     public static func create(@noescape setup: (encoder: JSONEncoder) throws -> Void) rethrows -> JSONObject {
         let encoder = JSONEncoder()
