@@ -40,7 +40,7 @@ public class EditBubbleViewController: UIViewController {
         self.bubbleModel = bubbleModel
         super.init(nibName: nil, bundle: nil)
         self.view.backgroundColor = .whiteColor()
-        self.title = "输入内容"
+        self.title = tr(.Edit)
     }
 
     required public init?(coder aDecoder: NSCoder) {

@@ -37,7 +37,7 @@ public class BasePickerController: UIViewController {
             make.left.right.equalTo(collectionView.superview!)
         }
         
-        let buttonItem = UIBarButtonItem(title: "取消", style: .Plain, target: self, action: #selector(dismiss))
+        let buttonItem = UIBarButtonItem(title: tr(.Cancel), style: .Plain, target: self, action: #selector(dismiss))
         self.navigationItem.setLeftBarButtonItem(buttonItem, animated: false)
     }
     

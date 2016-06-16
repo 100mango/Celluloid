@@ -7,12 +7,13 @@
 //
 
 import UIKit
+import CelluloidKit
 
 class SharePhotoViewController: UIViewController {
     
     lazy var shareButton: UIButton = {
         let button = UIButton()
-        button.setTitle("分享", forState: .Normal)
+        button.setTitle(tr(.Share), forState: .Normal)
         button.addTarget(self, action: .share, forControlEvents: .TouchUpInside)
         button.layer.cornerRadius = 22
         button.layer.borderWidth = 1
@@ -23,7 +24,7 @@ class SharePhotoViewController: UIViewController {
     
     lazy var doneButton: UIButton = {
         let button = UIButton()
-        button.setTitle("完成", forState: .Normal)
+        button.setTitle(tr(.Done), forState: .Normal)
         button.addTarget(self, action: .done, forControlEvents: .TouchUpInside)
         button.layer.cornerRadius = 22
         button.layer.borderWidth = 1
@@ -35,7 +36,7 @@ class SharePhotoViewController: UIViewController {
     let savedIcon = UIImageView(image: UIImage(named: "saved"))
     let savedLabel: UILabel = {
         let label = UILabel()
-        label.text = "保存成功"
+        label.text = tr(.Saved)
         label.font = .systemFontOfSize(20)
         label.textColor = .whiteColor()
         return label

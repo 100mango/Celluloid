@@ -15,7 +15,7 @@ import Photos
 class EntranceViewController: UIViewController {
     
     lazy var editPhotoButton: IconButton = {
-        let button = IconButton(image: UIImage(named: "EditPhotoEntranceButton")!, title: "美化")
+        let button = IconButton(image: UIImage(named: "EditPhotoEntranceButton")!, title: tr(.Beautify))
         button.addTarget(self, action: .editPhoto, forControlEvents: .TouchUpInside)
         return button
     }()

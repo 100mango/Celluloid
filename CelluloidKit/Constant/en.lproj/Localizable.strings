@@ -8,8 +8,13 @@
 
 "done" = "Done";
 "cancel" = "Cancel";
+"edit" = "Edit";
 
 "collage" = "Collage";
 "filter" = "Filter";
 "bubble" = "Bubble";
 "sticker" = "Sticker";
+
+"share" = "Share";
+"saved" = "Saved";
+"beautify" = "Beautify";

@@ -21,7 +21,7 @@ public class FilterPickerViewController: BasePickerController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         
-        self.navigationItem.title = "选择滤镜"
+        self.navigationItem.title = tr(.Filter)
     }
     
 }

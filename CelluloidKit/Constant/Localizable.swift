@@ -13,6 +13,8 @@ public enum L10n {
     case Done
     /// cancel
     case Cancel
+    /// Edit
+    case Edit
     /// collage
     case Collage
     /// filter
@@ -21,6 +23,12 @@ public enum L10n {
     case Bubble
     /// sticker
     case Sticker
+    /// Share
+    case Share
+    /// Saved
+    case Saved
+    /// Beautify
+    case Beautify
 }
 
 extension L10n: CustomStringConvertible {
@@ -32,6 +40,8 @@ extension L10n: CustomStringConvertible {
             return L10n.tr("done")
         case .Cancel:
             return L10n.tr("cancel")
+        case .Edit:
+            return L10n.tr("edit")
         case .Collage:
             return L10n.tr("collage")
         case .Filter:
@@ -40,6 +50,12 @@ extension L10n: CustomStringConvertible {
             return L10n.tr("bubble")
         case .Sticker:
             return L10n.tr("sticker")
+        case .Share:
+            return L10n.tr("share")
+        case .Saved:
+            return L10n.tr("saved")
+        case .Beautify:
+            return L10n.tr("beautify")
         }
     }
     

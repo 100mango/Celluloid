@@ -22,7 +22,7 @@ public class BubblePickerViewController: BasePickerController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         
-        self.navigationItem.title = "选择气泡"
+        self.navigationItem.title = tr(.Bubble)
     }
     
 }
