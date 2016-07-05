@@ -33,6 +33,7 @@
 		DB4FA9181CEC1D4A00C78A99 /* BaseEditPhotoController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB4FA9171CEC1D4A00C78A99 /* BaseEditPhotoController.swift */; };
 		DB4FA91A1CEC5BCF00C78A99 /* EntranceViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB4FA9191CEC5BCF00C78A99 /* EntranceViewController.swift */; };
 		DB5D9A1B1CA023540045E49B /* ImageOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */; };
+		DB5F9E9E1D2C015F00772697 /* CelluloidKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7871C8083A1000FA15F /* CelluloidKit.framework */; };
 		DB6A158E1CC5DD3C00DFF71E /* StickerPickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */; };
 		DB6A15921CC7461500DFF71E /* BasePickerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6A15911CC7461500DFF71E /* BasePickerController.swift */; };
 		DB72089D1CEB0C8D001E4F4F /* EditPhotoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB72089C1CEB0C8D001E4F4F /* EditPhotoViewController.swift */; };
@@ -185,6 +186,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DB5F9E9E1D2C015F00772697 /* CelluloidKit.framework in Frameworks */,
 				DB14F7AC1C808579000FA15F /* PhotosUI.framework in Frameworks */,
 				DB14F7AE1C808579000FA15F /* Photos.framework in Frameworks */,
 				B6EEAEDF95F9CFF681023FA0 /* Pods.framework in Frameworks */,
