@@ -24,3 +24,26 @@ The Best Photo Extension APP on iOS
 	Celluloid can reconstructs the past edits, it can allow users to alter or revert past edits or add new edit.
 
 4. Filter, Bubble, Sticker and Collage features for photo editing.
+
+
+##Technology
+
+###Cocoa:
+
+1. AutoLayout + StackView
+
+	- layout
+	- adaptivity
+	- multiasking
+	
+2. Core Image
+
+3. PhotoKit
+
+4. Photo Extension
+
+5. Cocoa Touch Framework
+
+	- Code Sharing
+	- Code Reuse
+
