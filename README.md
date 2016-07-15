@@ -47,3 +47,10 @@ The Best Photo Extension APP on iOS
 	- Code Sharing
 	- Code Reuse
 
+###Swift
+
+1. Functional Programming
+
+2. Powerful Enum 
+
+3. Strong Typing and Inferred type
