@@ -128,7 +128,7 @@ extension AttachView{
             Static.deltaAngle = atan2(touchLocation.y - center.y, touchLocation.x - center.x) - self.transform.angle
             Static.initialBounds = self.bounds
             Static.initialDistance = CGPointGetDistance(center, touchLocation)
-        }else if gestureRecognizer.state == .Changed {
+        } else if gestureRecognizer.state == .Changed {
             let ang = atan2(touchLocation.y - center.y, touchLocation.x - center.x)
             let angleDiff = Static.deltaAngle - ang
             self.transform = CGAffineTransformMakeRotation(-angleDiff)
@@ -165,7 +165,7 @@ extension AttachView{
             Static.beginningCenter = self.center
             Static.beginningPoint = Static.touchPoint
             self.center = makeCenter()
-        }else if gestureRecognizer.state == .Changed || gestureRecognizer.state == .Ended {
+        } else if gestureRecognizer.state == .Changed || gestureRecognizer.state == .Ended {
             self.center = makeCenter()
         }
     }

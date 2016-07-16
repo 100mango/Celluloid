@@ -67,7 +67,7 @@ class ImageArrangedPanel: UIView {
         if self.width > self.height {
             let width = self.height - (spacing * 2)
             flowLayout.itemSize = CGSize(width:  width, height: width)
-        }else {
+        } else {
             let width = self.width - (spacing * 2)
             flowLayout.itemSize = CGSize(width: width, height: width)
         }
@@ -102,7 +102,7 @@ extension ImageArrangedPanel: ArrangedCollectionViewCellDelegate {
                 photoModels.removeAtIndex(indexPath.item)
                 collectionView.deleteItemsAtIndexPaths([indexPath])
                 self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
-            }else {
+            } else {
                 let alert = UIAlertController(title: nil, message: "拼图最少需要两张照片", preferredStyle: .Alert)
                 self.parentViewController?.presentViewController(alert, animated: true, completion: nil)
                 alert.addAction(UIAlertAction(title: "确定", style: .Cancel, handler: { action in

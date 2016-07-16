@@ -175,7 +175,7 @@ extension CollageViewController: ImageArrangedPanelDelegate {
         let oldModels = collageView.photoModels!
         if oldModels.count == models.count {
             collageView.setupWithPhotoModels(models)
-        }else{
+        } else {
             //如果图片数量改变，则collageModel也需要改变
             let count = CollageImageCount(rawValue: models.count)
             let collageModels = CollageModel.collageModels(count!)

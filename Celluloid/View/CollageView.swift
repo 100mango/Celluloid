@@ -26,7 +26,7 @@ class CollageView: UIView {
             self.addSubview(collageContentView)
             if forEdit {
                 collageContentView.setupForEdit()
-            }else {
+            } else {
                 collageContentView.setupForRender()
             }
         }

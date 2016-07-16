@@ -74,7 +74,7 @@ class CollageStylePanel: UIView {
     override func layoutSubviews() {
         if self.width > self.height {
             flowLayout.itemSize = CGSize(width:  self.height - 20, height: self.height - 20)
-        }else {
+        } else {
             flowLayout.itemSize = CGSize(width:  self.width - 20, height: self.width - 20)
         }
     }

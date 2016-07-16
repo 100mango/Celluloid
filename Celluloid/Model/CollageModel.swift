@@ -125,7 +125,7 @@ extension Array where Element: CGPointWrapper {
             let point = self[index].point
             if index == 0 {
                 path.moveToPoint(point)
-            }else {
+            } else {
                 path.addLineToPoint(point)
             }
         }

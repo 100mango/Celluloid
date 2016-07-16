@@ -105,7 +105,7 @@ private extension EntranceViewController {
                     
                     self.presentViewController(navVC, animated: true, completion: nil)
                     
-                }else {
+                } else {
                     
                     let collageVC = CollageViewController(assets: assets)
                     let navVC = UINavigationController(rootViewController: collageVC)
