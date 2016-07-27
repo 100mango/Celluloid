@@ -171,6 +171,14 @@ public extension UITableView{
     public func registerClass(cellType:UITableViewCell.Type){
         registerClass(cellType, forCellReuseIdentifier: cellType.defaultReuseIdentifier)
     }
+    
+    public func dequeueReusableCellForIndexPath<T: UITableViewCell>(indexPath: NSIndexPath) -> T {
+        guard let cell = self.dequeueReusableCellWithIdentifier(T.defaultReuseIdentifier , forIndexPath: indexPath) as? T else {
+            fatalError( "Failed to dequeue a cell with identifier \(T.defaultReuseIdentifier). Ensure you have registered the cell." )
+        }
+        
+        return cell
+    }
 }
 
 public extension UITableViewCell{
@@ -182,6 +190,14 @@ public extension UITableViewCell{
 public extension UICollectionView{
     public func registerClass(cellType:UICollectionViewCell.Type){
         registerClass(cellType, forCellWithReuseIdentifier: cellType.defaultReuseIdentifier)
+    }
+    
+    public func dequeueReusableCellForIndexPath<T: UICollectionViewCell>(indexPath: NSIndexPath) -> T {
+        guard let cell = self.dequeueReusableCellWithReuseIdentifier(T.defaultReuseIdentifier, forIndexPath: indexPath) as? T else {
+            fatalError( "Failed to dequeue a cell with identifier \(T.defaultReuseIdentifier).  Ensure you have registered the cell" )
+        }
+        
+        return cell
     }
 }
 

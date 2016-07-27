@@ -121,7 +121,8 @@ extension ImageArrangedPanel: UICollectionViewDataSource {
     }
     
     func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCellWithReuseIdentifier(ArrangedCollectionViewCell.defaultReuseIdentifier, forIndexPath: indexPath) as! ArrangedCollectionViewCell
+        
+        let cell = collectionView.dequeueReusableCellForIndexPath(indexPath) as ArrangedCollectionViewCell
         cell.delegate = self
         
         photoModels[indexPath.row].requstImage { image in

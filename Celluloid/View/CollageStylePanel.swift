@@ -88,7 +88,8 @@ extension CollageStylePanel: UICollectionViewDataSource {
     }
     
     func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
-        let cell =  collectionView.dequeueReusableCellWithReuseIdentifier(CollageStyleCell.defaultReuseIdentifier, forIndexPath: indexPath) as! CollageStyleCell
+        
+        let cell = collectionView.dequeueReusableCellForIndexPath(indexPath) as CollageStyleCell
         cell.configureWithImage(collageModels[indexPath.row].collageStyleImage)
         return cell
     }
