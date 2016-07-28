@@ -20,6 +20,15 @@ class EditPhotoViewController: BaseEditPhotoController {
     
     private lazy var rightButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.Done), style: .Plain, target: self, action: #selector(done))
 
+    private lazy var activityIndicator: UIActivityIndicatorView = {
+       let indicator = UIActivityIndicatorView(activityIndicatorStyle: .WhiteLarge)
+       self.view.addSubview(indicator)
+       indicator.snp_makeConstraints { make in
+           make.center.equalTo(self.view)
+       }
+       indicator.hidesWhenStopped = true
+       return indicator
+    }()
     
     //MARK: init
     init(model: PhotoModel) {
@@ -82,7 +91,8 @@ private extension EditPhotoViewController {
     
     
     func finishContentEditing() {
-        
+        activityIndicator.startAnimating()
+        UIApplication.sharedApplication().beginIgnoringInteractionEvents()
         var shareImage: UIImage?
         Async.background {
             
@@ -111,6 +121,8 @@ private extension EditPhotoViewController {
             }
             
         }.main {
+            self.activityIndicator.stopAnimating()
+            UIApplication.sharedApplication().endIgnoringInteractionEvents()
             if let nav = self.navigationController,shareImage = shareImage {
                 nav.pushViewController(SharePhotoViewController(image: shareImage), animated: true)
             }
