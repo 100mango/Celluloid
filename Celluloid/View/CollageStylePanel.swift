@@ -78,6 +78,10 @@ class CollageStylePanel: UIView {
             flowLayout.itemSize = CGSize(width:  self.width - 20, height: self.width - 20)
         }
     }
+    
+    func reload() {
+        self.collectionView.reloadData()
+    }
 }
 
 //MARK: UICollectionViewDataSource

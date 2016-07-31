@@ -43,7 +43,6 @@ class CollageViewController: UIViewController {
     private lazy var leftButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.Cancel), style: .Plain, target: self, action: #selector(dismiss))
     
     private lazy var rightButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.Done), style: .Plain, target: self, action: #selector(done))
-
     
     //MARK: View Life Cycle
     override func viewDidLoad() {
@@ -99,6 +98,7 @@ extension CollageViewController {
         coordinator.animateAlongsideTransition({ context  in
             self.setupConstraintForSize(self.view.size)
             self.collageView.resize()
+            self.collageStylePanel.reload()
             }, completion: { context in
         })
     }
