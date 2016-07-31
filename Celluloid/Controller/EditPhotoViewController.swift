@@ -91,8 +91,10 @@ private extension EditPhotoViewController {
     
     
     func finishContentEditing() {
+        
         activityIndicator.startAnimating()
         UIApplication.sharedApplication().beginIgnoringInteractionEvents()
+        
         var shareImage: UIImage?
         Async.background {
             

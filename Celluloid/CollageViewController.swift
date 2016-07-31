@@ -44,6 +44,7 @@ class CollageViewController: UIViewController {
     
     private lazy var rightButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.Done), style: .Plain, target: self, action: #selector(done))
 
+    
     //MARK: View Life Cycle
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -60,6 +61,7 @@ class CollageViewController: UIViewController {
             make.bottom.equalTo(self.snp_bottomLayoutGuideTop)
             make.left.right.equalTo(stackView.superview!)
         }
+        //init layout
         setupConstraintForSize(self.view.size)
         
         //setup data for views
@@ -74,20 +76,32 @@ class CollageViewController: UIViewController {
         collageView.setupWithCollageModel(collageModels.first!, photoModels: models)
     }
     
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
+    //MARK: init
+    init(assets: [PHAsset]) {
+        self.assets = assets
+        super.init(nibName: nil, bundle: nil)
+    }
+    
+    required init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
+//MARK: Layout
+
+private let arrangedPanelConstant: CGFloat = 80
+private let stylePanelConstant: CGFloat = 120
+
+extension CollageViewController {
+    
+    override func viewWillTransitionToSize(size: CGSize, withTransitionCoordinator coordinator: UIViewControllerTransitionCoordinator) {
         
-        collageView.resize()
+        coordinator.animateAlongsideTransition({ context  in
+            self.setupConstraintForSize(self.view.size)
+            self.collageView.resize()
+            }, completion: { context in
+        })
     }
-    
-    override func viewWillTransitionToSize(size: CGSize, withTransitionCoordinator
-        coordinator: UIViewControllerTransitionCoordinator) {
-        super.viewWillTransitionToSize(size, withTransitionCoordinator: coordinator)
-        setupConstraintForSize(size)
-    }
-    
-    private let arrangedPanelConstant: CGFloat = 80
-    private let stylePanelConstant: CGFloat = 120
     
     private func setupConstraintForSize(size: CGSize) {
         
@@ -149,17 +163,8 @@ class CollageViewController: UIViewController {
             })
         }
     }
-    
-    //MARK: init
-    init(assets: [PHAsset]) {
-        self.assets = assets
-        super.init(nibName: nil, bundle: nil)
-    }
-    
-    required init?(coder aDecoder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
 }
+
 
 //MARK: CollageStylePanel Delegate
 extension CollageViewController: CollageStylePanelDelegate {
