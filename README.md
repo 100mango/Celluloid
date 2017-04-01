@@ -9,7 +9,7 @@
 
 The Best Photo Extension APP on iOS
 
-##Features
+## Features
 
 1. Adaptivity:
 
@@ -26,9 +26,9 @@ The Best Photo Extension APP on iOS
 4. Filter, Bubble, Sticker and Collage features for photo editing.
 
 
-##Technology
+## Technology
 
-###Cocoa:
+### Cocoa:
 
 1. AutoLayout + StackView
 
@@ -47,7 +47,7 @@ The Best Photo Extension APP on iOS
 	- Code Sharing
 	- Code Reuse
 
-###Swift
+### Swift
 
 1. Functional Programming
 
