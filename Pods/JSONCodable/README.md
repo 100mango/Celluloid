@@ -17,7 +17,7 @@
          alt="License">
 </p>
 
-#JSONCodable
+# JSONCodable
 Hassle-free JSON encoding and decoding in Swift
 
 ### Installation
@@ -117,7 +117,7 @@ Result:
 )]
 ```
 
-##Using JSONDecodable
+## Using JSONDecodable
 
 Simply add conformance to `JSONDecodable` (or to `JSONCodable`):
 ```swift

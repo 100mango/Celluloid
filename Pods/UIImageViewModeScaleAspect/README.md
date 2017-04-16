@@ -24,7 +24,7 @@ pod 'UIImageViewModeScaleAspect'
 
 <p>Import the .h file :</p>
 ``` objective-c
-#import "UIImageViewModeScaleAspect.h"
+# import "UIImageViewModeScaleAspect.h"
 ```
 
 <p>Init the UIImageViewModeScaleAspect. Important ! Do not forget to init the contentMode :</p>
