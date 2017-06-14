@@ -15,24 +15,24 @@ import Photos
 class EntranceViewController: UIViewController {
     
     lazy var editPhotoButton: IconButton = {
-        let button = IconButton(image: UIImage(named: "EditPhotoEntranceButton")!, title: tr(.Beautify))
-        button.addTarget(self, action: .editPhoto, forControlEvents: .TouchUpInside)
+        let button = IconButton(image: UIImage(named: "EditPhotoEntranceButton")!, title: tr(.beautify))
+        button.addTarget(self, action: .editPhoto, for: .touchUpInside)
         return button
     }()
     
     lazy var makeCollageButton: IconButton = {
-        let button = IconButton(image: UIImage(named: "CollageEntranceButton")!, title: tr(.Collage))
-        button.addTarget(self, action: .makeCollage, forControlEvents: .TouchUpInside)
+        let button = IconButton(image: UIImage(named: "CollageEntranceButton")!, title: tr(.collage))
+        button.addTarget(self, action: .makeCollage, for: .touchUpInside)
         return button
     }()
     
     lazy var stackView: UIStackView = {
         let stackView = UIStackView(arrangedSubviews: [self.editPhotoButton,self.makeCollageButton])
         
-        stackView.alignment = .Fill
+        stackView.alignment = .fill
         stackView.spacing = 0
-        stackView.axis = .Vertical
-        stackView.distribution = .FillEqually
+        stackView.axis = .vertical
+        stackView.distribution = .fillEqually
         
         return stackView
     }()
@@ -46,14 +46,14 @@ class EntranceViewController: UIViewController {
     //View Life Cycle
     override func viewDidLoad() {
         super.viewDidLoad()
-        self.view.backgroundColor = .blackColor()
+        self.view.backgroundColor = .black
         self.view.addSubview(stackView)
-        stackView.snp_makeConstraints { (make) in
+        stackView.snp.makeConstraints { (make) in
             make.edges.equalTo(stackView.superview!)
         }
         
         self.view.addSubview(line)
-        line.snp_makeConstraints { (make) in
+        line.snp.makeConstraints  { (make) in
             make.width.equalTo(245)
             make.height.equalTo(1)
             make.center.equalTo(line.superview!)
@@ -82,7 +82,7 @@ private extension EntranceViewController {
                     let editVC = EditPhotoViewController(model: PhotoModel(asset: asset))
                     let navVC = UINavigationController(rootViewController: editVC)
                     
-                    self.presentViewController(navVC, animated: true, completion: nil)
+                    self.present(navVC, animated: true, completion: nil)
                     
                 }
             }
@@ -103,14 +103,14 @@ private extension EntranceViewController {
                     let editVC = EditPhotoViewController(model: PhotoModel(asset: assets.first!))
                     let navVC = UINavigationController(rootViewController: editVC)
                     
-                    self.presentViewController(navVC, animated: true, completion: nil)
+                    self.present(navVC, animated: true, completion: nil)
                     
                 } else {
                     
                     let collageVC = CollageViewController(assets: assets)
                     let navVC = UINavigationController(rootViewController: collageVC)
                     
-                    self.presentViewController(navVC, animated: true, completion: nil)
+                    self.present(navVC, animated: true, completion: nil)
                 }
                 
             }
@@ -118,7 +118,7 @@ private extension EntranceViewController {
         
     }
     
-    func presentPicker(picker: BSImagePickerViewController,finish: [PHAsset] -> Void ) {
+    func presentPicker(_ picker: BSImagePickerViewController,finish: @escaping ([PHAsset]) -> Void ) {
         bs_presentImagePickerController(picker, animated: true, select: nil, deselect: nil, cancel: nil, finish: finish, completion: nil)
     }
     
@@ -132,7 +132,7 @@ class IconButton: UIControl {
     lazy var imageView: UIImageView = {
         let imageView = UIImageView()
         imageView.tintColor = .alphaWhiteColor
-        imageView.snp_makeConstraints(closure: { (make) in
+        imageView.snp.makeConstraints ({ (make) in
             make.size.equalTo(self.imageWidth)
         })
         return imageView
@@ -140,23 +140,23 @@ class IconButton: UIControl {
     
     lazy var label: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFontOfSize(18)
-        label.textColor = .whiteColor()
-        label.textAlignment = .Center
+        label.font = UIFont.systemFont(ofSize: 18)
+        label.textColor = .white
+        label.textAlignment = .center
         return label
     }()
     
     lazy var stackView: UIStackView = {
         let stackView = UIStackView(arrangedSubviews: [self.imageView,self.label])
-        stackView.alignment = .Center
+        stackView.alignment = .center
         stackView.spacing = 35
-        stackView.axis = .Vertical
+        stackView.axis = .vertical
         return stackView
     }()
     
     lazy var button: UIButton = {
         let button = UIButton()
-        button.addTarget(self, action: #selector(IconButton.touchUpInside), forControlEvents: .TouchUpInside)
+        button.addTarget(self, action: #selector(IconButton.touchUpInside), for: .touchUpInside)
         return button
     }()
     
@@ -174,12 +174,12 @@ class IconButton: UIControl {
         label.text = title
         
         self.addSubview(stackView)
-        stackView.snp_makeConstraints { (make) in
+        stackView.snp.makeConstraints  { (make) in
             make.center.equalTo(stackView.superview!)
         }
         
         self.addSubview(button)
-        button.snp_makeConstraints { (make) in
+        button.snp.makeConstraints  { (make) in
             make.edges.equalTo(button.superview!)
         }
     }
@@ -190,7 +190,7 @@ class IconButton: UIControl {
     
     //MARK: Action
     @objc func touchUpInside() {
-        self.sendActionsForControlEvents(.TouchUpInside)
+        self.sendActions(for: .touchUpInside)
     }
     
 }

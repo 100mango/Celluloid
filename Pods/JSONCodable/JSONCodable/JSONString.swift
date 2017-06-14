@@ -14,19 +14,19 @@ public extension JSONEncodable {
         case let str as String:
             return escapeJSONString(str)
         case is Bool, is Int, is Float, is Double:
-            return String(self)
+            return String(describing:self)
         default:
             let json = try toJSON()
-            let data = try NSJSONSerialization.dataWithJSONObject(json, options: NSJSONWritingOptions(rawValue: 0))
-            guard let string = NSString(data: data, encoding: NSUTF8StringEncoding) else {
+            let data = try JSONSerialization.data(withJSONObject: json, options: [])
+            guard let string = String(data: data, encoding: String.Encoding.utf8) else {
                 return ""
             }
-            return string as String
+            return string
         }
     }
 }
 
-private func escapeJSONString(str: String) -> String {
+private func escapeJSONString(_ str: String) -> String {
     var chars = String.CharacterView("\"")
     for c in str.characters {
         switch c {
@@ -47,7 +47,7 @@ private func escapeJSONString(str: String) -> String {
 public extension Optional where Wrapped: JSONEncodable {
     public func toJSONString() throws -> String {
         switch self {
-        case let .Some(jsonEncodable):
+        case let .some(jsonEncodable):
             return try jsonEncodable.toJSONString()
         case nil:
             return "null"
@@ -57,14 +57,14 @@ public extension Optional where Wrapped: JSONEncodable {
 
 public extension JSONDecodable {
     init(JSONString: String) throws {
-        guard let data = JSONString.dataUsingEncoding(NSUTF8StringEncoding) else {
-            throw JSONDecodableError.IncompatibleTypeError(key: "n/a", elementType: JSONString.dynamicType, expectedType: String.self)
+        guard let data = JSONString.data(using:String.Encoding.utf8) else {
+            throw JSONDecodableError.incompatibleTypeError(key: "n/a", elementType: String.self, expectedType: String.self)
         }
         
-        let result: AnyObject = try NSJSONSerialization.JSONObjectWithData(data, options: NSJSONReadingOptions(rawValue: 0))
-
+        let result = try JSONSerialization.jsonObject(with: data, options: JSONSerialization.ReadingOptions(rawValue: 0))
+        
         guard let converted = result as? [String: AnyObject] else {
-            throw JSONDecodableError.DictionaryTypeExpectedError(key: "n/a", elementType: result.dynamicType)
+            throw JSONDecodableError.dictionaryTypeExpectedError(key: "n/a", elementType: type(of: result))
         }
         
         try self.init(object: converted)
@@ -73,14 +73,14 @@ public extension JSONDecodable {
 
 public extension Array where Element: JSONDecodable {
     init(JSONString: String) throws {
-        guard let data = JSONString.dataUsingEncoding(NSUTF8StringEncoding) else {
-            throw JSONDecodableError.IncompatibleTypeError(key: "n/a", elementType: JSONString.dynamicType, expectedType: String.self)
+        guard let data = JSONString.data(using: String.Encoding.utf8) else {
+            throw JSONDecodableError.incompatibleTypeError(key: "n/a", elementType: type(of: JSONString), expectedType: String.self)
         }
         
-        let result: AnyObject  = try NSJSONSerialization.JSONObjectWithData(data, options: NSJSONReadingOptions(rawValue: 0))
-
+        let result = try JSONSerialization.jsonObject(with: data, options: JSONSerialization.ReadingOptions(rawValue: 0))
+        
         guard let converted = result as? [AnyObject] else {
-            throw JSONDecodableError.ArrayTypeExpectedError(key: "n/a", elementType: result.dynamicType)
+            throw JSONDecodableError.arrayTypeExpectedError(key: "n/a", elementType: type(of: result))
         }
         
         try self.init(JSONArray: converted)

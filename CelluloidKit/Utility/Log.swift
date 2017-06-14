@@ -9,6 +9,6 @@
 import Foundation
 
 public func
-    Log(text: String,  fileName: String = #file, function: String =  #function, line: Int = #line) {
+    Log(_ text: String,  fileName: String = #file, function: String =  #function, line: Int = #line) {
     debugPrint("[\((fileName as NSString).lastPathComponent), in \(function)() at line: \(line)]: \(text)")
 }

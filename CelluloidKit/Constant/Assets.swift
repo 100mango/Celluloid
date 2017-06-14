@@ -9,7 +9,7 @@
 import Foundation
 
 let buddleIndentifier = "Mango.CelluloidKit"
-let extensionBundle = NSBundle(identifier: buddleIndentifier)!
+let extensionBundle = Bundle(identifier: buddleIndentifier)!
 
 public extension UIImage {
     public enum Asset: String {
@@ -60,7 +60,7 @@ public extension UIImage {
     }
     
     public convenience init!(asset: Asset) {
-        let bundle = NSBundle(identifier: buddleIndentifier)
-        self.init(named: asset.rawValue, inBundle: bundle, compatibleWithTraitCollection: nil)
+        let bundle = Bundle(identifier: buddleIndentifier)
+        self.init(named: asset.rawValue, in: bundle, compatibleWith: nil)
     }
 }

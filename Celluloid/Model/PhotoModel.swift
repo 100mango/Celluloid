@@ -12,7 +12,7 @@ import Photos
 class PhotoModel {
     
     let asset: PHAsset
-    private var image: UIImage?
+    fileprivate var image: UIImage?
 
     //拼图相关：
     var points: [CGPoint] = []
@@ -28,11 +28,11 @@ class PhotoModel {
 
 extension PhotoModel {
     
-    func requstImage(completion: (UIImage)->Void) {
+    func requstImage(_ completion: @escaping (UIImage)->Void) {
         if let image = image {
             completion(image)
         }else{
-            PHImageManager.defaultManager().requestImageForAsset(asset, targetSize: CGSize(width: 512, height: 512), contentMode: .AspectFill, options: nil, resultHandler: { (image, info) in
+            PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 512, height: 512), contentMode: .aspectFill, options: nil, resultHandler: { (image, info) in
                 if let image = image {
                     self.image = image
                     completion(image)

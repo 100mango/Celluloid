@@ -9,14 +9,14 @@
 import UIKit
 import Photos
 
-public class BaseEditPhotoController: UIViewController {
+open class BaseEditPhotoController: UIViewController {
     
     //MARK: Property
-    public var input: PHContentEditingInput?
-    public let preview: UIImageView = {
+    open var input: PHContentEditingInput = PHContentEditingInput()
+    open let preview: UIImageView = {
         let preview = UIImageView()
-        preview.contentMode = .ScaleAspectFit
-        preview.userInteractionEnabled = true
+        preview.contentMode = .scaleAspectFit
+        preview.isUserInteractionEnabled = true
         return preview
     }()
     let toolBar =  EditPhotoToolBar()
@@ -29,18 +29,17 @@ public class BaseEditPhotoController: UIViewController {
                 return
             }
             if filterType == .Original {
-                self.preview.image = input?.displaySizeImage
+                self.preview.image = input.displaySizeImage
             }else{
-                if let input = input {
-                    self.preview.image = input.displaySizeImage?.filteredImage(input.fullSizeImageOrientation, filter: Filters.filter(filterType))
+            
+                self.preview.image = input.displaySizeImage?.filteredImage(input.fullSizeImageOrientation, filter: Filters.filter(filterType))
 
-                }
             }
         }
     }
     
     //Computed property
-    public var adjustmentData: AdjustmentData {
+    open var adjustmentData: AdjustmentData {
         var adjustmentData = AdjustmentData()
         adjustmentData.bubbles = overlayView.bubbleModels
         adjustmentData.stickers = overlayView.stickerModels
@@ -48,8 +47,8 @@ public class BaseEditPhotoController: UIViewController {
         return adjustmentData
     }
     
-    public var outputImage: UIImage? {
-        if let fullSizeImage = UIImage(contentsOfFile: input?.fullSizeImageURL?.path ?? "") {
+    open var outputImage: UIImage? {
+        if let fullSizeImage = UIImage(contentsOfFile: input.fullSizeImageURL?.path ?? "") {
             let fullSizeImageView = UIImageView()
             fullSizeImageView.image = fullSizeImage
             fullSizeImageView.size = fullSizeImage.size
@@ -57,16 +56,16 @@ public class BaseEditPhotoController: UIViewController {
             
             //filter
             if filterType != .Original {
-                if let input = input {
-                     fullSizeImageView.image = fullSizeImage.filteredImage(input.fullSizeImageOrientation, filter: Filters.filter(filterType))
-                }
+                
+                fullSizeImageView.image = fullSizeImage.filteredImage(input.fullSizeImageOrientation, filter: Filters.filter(filterType))
+                
             }
             
             //bubbles
             let bubbles: [BubbleModel] = self.adjustmentData.bubbles.map({
                 var new = $0
                 new.center = CGPoint(x: scale * $0.center.x, y: scale * $0.center.y)
-                new.transform = CGAffineTransformScale($0.transform, scale, scale)
+                new.transform = $0.transform.scaledBy(x: scale, y: scale)
                 return new
             })
             
@@ -79,7 +78,7 @@ public class BaseEditPhotoController: UIViewController {
             let stickers: [StickerModel] = self.adjustmentData.stickers.map({
                 var new = $0
                 new.center = CGPoint(x: scale * $0.center.x, y: scale * $0.center.y)
-                new.transform = CGAffineTransformScale($0.transform, scale, scale)
+                new.transform = $0.transform.scaledBy(x: scale, y: scale)
                 return new
             })
             
@@ -97,24 +96,24 @@ public class BaseEditPhotoController: UIViewController {
     }
     
     //MARK: View Lift Cycle
-    override public func viewDidLoad() {
+    override open func viewDidLoad() {
         super.viewDidLoad()
         self.view.backgroundColor = .blackBackgroundColor
         
         self.view.addSubview(preview)
-        preview.snp_makeConstraints { (make) in
+        preview.snp.makeConstraints { (make) in
             make.edges.equalTo(preview.superview!)
         }
         
         toolBar.delegate = self
         self.view.addSubview(toolBar)
-        toolBar.snp_makeConstraints { (make) in
+        toolBar.snp.makeConstraints  { (make) in
             make.height.equalTo(49)
             make.left.right.bottom.equalTo(toolBar.superview!)
         }
     }
     
-    override public func viewDidLayoutSubviews() {
+    override open func viewDidLayoutSubviews() {
         overlayView.adjustFrame()
     }
 }
@@ -122,7 +121,7 @@ public class BaseEditPhotoController: UIViewController {
 
 // MARK: - Public
 public extension BaseEditPhotoController {
-    func restoreFromData(data: AdjustmentData) {
+    func restoreFromData(_ data: AdjustmentData) {
         filterType = data.filterType
         data.bubbles.forEach{ self.overlayView.addBubble($0) }
         data.stickers.forEach{ self.overlayView.addSticker($0) }
@@ -131,15 +130,15 @@ public extension BaseEditPhotoController {
 
 // MARK: - EditPhotoPanel Delegate
 extension BaseEditPhotoController: EditPhotoToolBarDelegate {
-    public func editPhotoToolBar(editPhotoToolBar: EditPhotoToolBar, didSelectBubble bubble: BubbleModel) {
+    public func editPhotoToolBar(_ editPhotoToolBar: EditPhotoToolBar, didSelectBubble bubble: BubbleModel) {
         self.overlayView.addBubble(bubble)
     }
     
-    public func editPhotoToolBar(editPhotoToolBar: EditPhotoToolBar, didSelectSticker sticker: StickerModel) {
+    public func editPhotoToolBar(_ editPhotoToolBar: EditPhotoToolBar, didSelectSticker sticker: StickerModel) {
         self.overlayView.addSticker(sticker)
     }
     
-    public func editPhotoToolBar(editPhotoToolBar: EditPhotoToolBar, didSelectFilter filter: FilterType) {
+    public func editPhotoToolBar(_ editPhotoToolBar: EditPhotoToolBar, didSelectFilter filter: FilterType) {
         filterType = filter
     }
 }

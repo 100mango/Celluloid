@@ -10,9 +10,9 @@ import UIKit
 
 class CollageContentView: UIView {
     
-    private lazy var scrollView: UIScrollView = {
+    fileprivate lazy var scrollView: UIScrollView = {
         let scrollView = UIScrollView()
-        scrollView.backgroundColor = .clearColor()
+        scrollView.backgroundColor = .clear
         scrollView.delegate = self
         scrollView.minimumZoomScale = 1
         scrollView.maximumZoomScale = 5
@@ -24,9 +24,9 @@ class CollageContentView: UIView {
         return scrollView
     }()
     
-    private let imageView: UIImageView = UIImageView()
+    fileprivate let imageView: UIImageView = UIImageView()
     
-    private let border = CAShapeLayer()
+    fileprivate let border = CAShapeLayer()
     
     var model: PhotoModel
     
@@ -51,7 +51,7 @@ extension CollageContentView {
         setup()
     }
     
-    private func setup() {
+    fileprivate func setup() {
         self.frame = model.points.frameWithNewSize(self.superview!.size)
         scrollView.frame = self.bounds
         setupImage()
@@ -71,17 +71,17 @@ extension CollageContentView {
         setup()
         //从model的相关参数恢复相关放大，偏移状态
         let scale = scrollView.size.width / model.oldScrollViewSize.width
-        let tranfrom = CGAffineTransformMakeScale(scale, scale)
-        let newOffset = CGPointApplyAffineTransform(model.contentOffset, tranfrom)
+        let tranfrom = CGAffineTransform(scaleX: scale, y: scale)
+        let newOffset = (model.contentOffset).applying(tranfrom)
         scrollView.zoomScale = model.zoomScale
         scrollView.contentOffset = newOffset
         //设置Preview所需状态
-        scrollView.scrollEnabled = false
+        scrollView.isScrollEnabled = false
         let tap = UITapGestureRecognizer(target: self, action: #selector(CollageContentView.touch))
         self.addGestureRecognizer(tap)
     }
     
-    private func setupImage() {
+    fileprivate func setupImage() {
         model.requstImage { image in
             self.imageView.image = image
             var imageViewSize = CGSize.zero
@@ -107,19 +107,19 @@ extension CollageContentView {
         }
     }
     
-    private func crop() {
+    fileprivate func crop() {
         let path = model.points.cropPath(self.superview!.size)
         let shapeLayer = CAShapeLayer()
         shapeLayer.frame = self.bounds
-        shapeLayer.path = path.CGPath
+        shapeLayer.path = path.cgPath
         self.layer.mask = shapeLayer
         
         //边框线
         border.frame = self.bounds;
-        border.path = path.CGPath;
+        border.path = path.cgPath;
         border.lineWidth = 3
-        border.strokeColor = UIColor.blackColor().CGColor;
-        border.fillColor = UIColor.clearColor().CGColor;
+        border.strokeColor = UIColor.black.cgColor;
+        border.fillColor = UIColor.clear.cgColor;
         if border.superlayer == nil {
             self.layer.addSublayer(border)
         }
@@ -136,15 +136,15 @@ private extension CollageContentView {
 //MARK: UIScrollViewDelegate
 extension CollageContentView: UIScrollViewDelegate {
     
-    func viewForZoomingInScrollView(scrollView: UIScrollView) -> UIView? {
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
         return imageView
     }
     
-    func scrollViewDidZoom(scrollView: UIScrollView) {
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
         model.zoomScale = scrollView.zoomScale
     }
     
-    func scrollViewDidScroll(scrollView: UIScrollView) {
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
         model.contentOffset = scrollView.contentOffset
     }
     

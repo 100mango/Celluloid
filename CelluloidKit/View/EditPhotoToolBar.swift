@@ -11,58 +11,58 @@ import MZFormSheetPresentationController
 
 public protocol EditPhotoToolBarDelegate: class {
     
-    func editPhotoToolBar(editPhotoToolBar: EditPhotoToolBar, didSelectBubble bubble: BubbleModel)
+    func editPhotoToolBar(_ editPhotoToolBar: EditPhotoToolBar, didSelectBubble bubble: BubbleModel)
     
-    func editPhotoToolBar(editPhotoToolBar: EditPhotoToolBar, didSelectSticker sticker: StickerModel)
+    func editPhotoToolBar(_ editPhotoToolBar: EditPhotoToolBar, didSelectSticker sticker: StickerModel)
     
-    func editPhotoToolBar(editPhotoToolBar: EditPhotoToolBar, didSelectFilter filter: FilterType)
+    func editPhotoToolBar(_ editPhotoToolBar: EditPhotoToolBar, didSelectFilter filter: FilterType)
 }
 
-public class EditPhotoToolBar: UIView {
+open class EditPhotoToolBar: UIView {
     
-    public weak var delegate: EditPhotoToolBarDelegate?
+    open weak var delegate: EditPhotoToolBarDelegate?
     
-    private lazy var stackView: UIStackView = {
+    fileprivate lazy var stackView: UIStackView = {
         let stackView = UIStackView()
-        stackView.axis = .Horizontal
+        stackView.axis = .horizontal
         stackView.spacing = 0
-        stackView.distribution = .FillEqually
-        stackView.alignment = .Center
+        stackView.distribution = .fillEqually
+        stackView.alignment = .center
         
         return stackView
     }()
     
-    private lazy var filterButton: EditPhotoToolBarItem = {
-        let item = EditPhotoToolBarItem(image: UIImage(asset: .FilterButton), title: tr(.Filter))
-        item.addTarget(self, action: .touchFilterButton, forControlEvents: .TouchUpInside)
+    fileprivate lazy var filterButton: EditPhotoToolBarItem = {
+        let item = EditPhotoToolBarItem(image: UIImage(asset: .FilterButton), title: tr(.filter))
+        item.addTarget(self, action: .touchFilterButton, for: .touchUpInside)
         return item
     }()
     
-    private lazy var bubleButton: EditPhotoToolBarItem = {
-        let item = EditPhotoToolBarItem(image: UIImage(asset: .BubbleButton), title: tr(.Bubble))
-        item.addTarget(self, action: .touchBubbleButton, forControlEvents: .TouchUpInside)
+    fileprivate lazy var bubleButton: EditPhotoToolBarItem = {
+        let item = EditPhotoToolBarItem(image: UIImage(asset: .BubbleButton), title: tr(.bubble))
+        item.addTarget(self, action: .touchBubbleButton, for: .touchUpInside)
         return item
     }()
     
-    private lazy var stickerButton: EditPhotoToolBarItem = {
-        let item = EditPhotoToolBarItem(image: UIImage(asset: .StickerButton), title: tr(.Sticker))
-        item.addTarget(self, action: .touchStickerButton, forControlEvents: .TouchUpInside)
+    fileprivate lazy var stickerButton: EditPhotoToolBarItem = {
+        let item = EditPhotoToolBarItem(image: UIImage(asset: .StickerButton), title: tr(.sticker))
+        item.addTarget(self, action: .touchStickerButton, for: .touchUpInside)
         return item
     }()
     
-    private lazy var buttons: [EditPhotoToolBarItem] = [self.filterButton,self.bubleButton,self.stickerButton]
+    fileprivate lazy var buttons: [EditPhotoToolBarItem] = [self.filterButton,self.bubleButton,self.stickerButton]
     
     //MARK: init
-    private func commonInit() {
+    fileprivate func commonInit() {
         self.backgroundColor = .alphaBlackColor
         
         self.addSubview(stackView)
-        stackView.snp_makeConstraints { (make) in
+        stackView.snp.makeConstraints  { (make) in
             make.edges.equalTo(stackView.superview!)
         }
         buttons.forEach { button in
             stackView.addArrangedSubview(button)
-            button.snp_makeConstraints(closure: { (make) in
+            button.snp.makeConstraints ({ (make) in
                 make.height.equalTo(button.superview!)
             })
         }
@@ -80,7 +80,7 @@ public class EditPhotoToolBar: UIView {
     }
     
     //MARK: layout
-    public override func layoutSubviews() {
+    open override func layoutSubviews() {
     }
 }
 
@@ -128,32 +128,32 @@ private extension EditPhotoToolBar {
         presentViewControllerFromSheet(stickerPicker)
     }
     
-    func presentViewControllerFromSheet(vc: UIViewController) {
+    func presentViewControllerFromSheet(_ vc: UIViewController) {
         let navigationVC = UINavigationController(rootViewController: vc)
         let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
         formSheetController.presentationController?.shouldUseMotionEffect = true
         formSheetController.presentationController?.shouldCenterVertically = true
-        self.parentViewController?.presentViewController(formSheetController, animated: true, completion: nil)
+        self.parentViewController?.present(formSheetController, animated: true, completion: nil)
     }
 }
 
 //MARK: BubblePickerViewControllerDelegate
 extension EditPhotoToolBar: BubblePickerViewControllerDelegate {
-    public func bubblePickerViewController(bubblePickerViewController: BubblePickerViewController, didSelectBubble bubble: BubbleModel) {
+    public func bubblePickerViewController(_ bubblePickerViewController: BubblePickerViewController, didSelectBubble bubble: BubbleModel) {
         self.delegate?.editPhotoToolBar(self, didSelectBubble: bubble)
     }
 }
 
 //MARK: StickerPickerViewControllerDelegate
 extension EditPhotoToolBar: StickerPickerViewControllerDelegate {
-    public func stickerPickerViewController(stickerPickerViewController: StickerPickerViewController, didSelectSticker sticker: StickerModel) {
+    public func stickerPickerViewController(_ stickerPickerViewController: StickerPickerViewController, didSelectSticker sticker: StickerModel) {
         self.delegate?.editPhotoToolBar(self, didSelectSticker: sticker)
     }
 }
 
 //MARK: FilterPickerViewControllerDelegate
 extension EditPhotoToolBar: FilterPickerViewControllerDelegate {
-    public func filterPickerViewController(filterPickerViewController: FilterPickerViewController, didSelectFilter filter: FilterType) {
+    public func filterPickerViewController(_ filterPickerViewController: FilterPickerViewController, didSelectFilter filter: FilterType) {
         self.delegate?.editPhotoToolBar(self, didSelectFilter: filter)
     }
 }
@@ -166,7 +166,7 @@ private class EditPhotoToolBarItem: UIControl {
     lazy var imageView: UIImageView = {
         let imageView = UIImageView()
         imageView.tintColor = .alphaWhiteColor
-        imageView.snp_makeConstraints(closure: { (make) in
+        imageView.snp.makeConstraints ({ (make) in
             make.size.equalTo(self.imageWidth)
         })
         return imageView
@@ -174,37 +174,37 @@ private class EditPhotoToolBarItem: UIControl {
     
     lazy var label: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFontOfSize(12)
+        label.font = UIFont.systemFont(ofSize: 12)
         label.textColor = .alphaWhiteColor
-        label.textAlignment = .Center
+        label.textAlignment = .center
         return label
     }()
     
     lazy var stackView: UIStackView = {
         let stackView = UIStackView(arrangedSubviews: [self.imageView,self.label])
-        stackView.alignment = .Center
+        stackView.alignment = .center
         stackView.spacing = 1
-        stackView.axis = .Vertical
+        stackView.axis = .vertical
         return stackView
     }()
     
     let line: UIView = {
         let line = UIView()
-        line.hidden = true
-        line.backgroundColor = .whiteColor()
+        line.isHidden = true
+        line.backgroundColor = .white
         return line
     }()
     
     lazy var button: UIButton = {
         let button = UIButton()
-        button.addTarget(self, action: #selector(EditPhotoToolBarItem.touchUpInside), forControlEvents: .TouchUpInside)
+        button.addTarget(self, action: #selector(EditPhotoToolBarItem.touchUpInside), for: .touchUpInside)
         return button
     }()
     
     func resetState() {
         imageView.tintColor = .alphaWhiteColor
         label.textColor = .alphaWhiteColor
-        line.hidden = true
+        line.isHidden = true
     }
     
     //MARK: init
@@ -216,19 +216,19 @@ private class EditPhotoToolBarItem: UIControl {
         label.text = title
         
         self.addSubview(stackView)
-        stackView.snp_makeConstraints { (make) in
+        stackView.snp.makeConstraints  { (make) in
             make.center.equalTo(stackView.superview!)
         }
         
         self.addSubview(line)
-        line.snp_makeConstraints { (make) in
+        line.snp.makeConstraints  { (make) in
             make.height.equalTo(2)
             make.width.equalTo(self.imageWidth)
             make.centerX.bottom.equalTo(line.superview!)
         }
         
         self.addSubview(button)
-        button.snp_makeConstraints { (make) in
+        button.snp.makeConstraints  { (make) in
             make.edges.equalTo(button.superview!)
         }
     }
@@ -239,10 +239,10 @@ private class EditPhotoToolBarItem: UIControl {
     
     //MARK: Action 
     @objc func touchUpInside() {
-        self.sendActionsForControlEvents(.TouchUpInside)
-        imageView.tintColor = .whiteColor()
-        label.textColor = .whiteColor()
-        line.hidden = false
+        self.sendActions(for: .touchUpInside)
+        imageView.tintColor = .white
+        label.textColor = .white
+        line.isHidden = false
     }
     
 }

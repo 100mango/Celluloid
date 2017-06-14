@@ -62,7 +62,7 @@ public extension UIView {
     public var parentViewController: UIViewController? {
         var parentResponder: UIResponder? = self
         while let responder = parentResponder {
-            parentResponder = responder.nextResponder()
+            parentResponder = responder.next
             if let viewController = parentResponder as? UIViewController {
                 return viewController
             }
@@ -73,21 +73,21 @@ public extension UIView {
 
 public extension UIView {
     
-    public func renderWithBounds(bounds: CGRect? = nil) -> UIImage {
+    public func renderWithBounds(_ bounds: CGRect? = nil) -> UIImage {
         let bounds = bounds ?? self.bounds
         UIGraphicsBeginImageContextWithOptions(bounds.size, true, 0);
-        drawViewHierarchyInRect(CGRect(x: -bounds.origin.x, y: -bounds.origin.y, width: self.width , height: self.height), afterScreenUpdates: true)
+        drawHierarchy(in: CGRect(x: -bounds.origin.x, y: -bounds.origin.y, width: self.width , height: self.height), afterScreenUpdates: true)
         let screenshot = UIGraphicsGetImageFromCurrentImageContext();
         UIGraphicsEndImageContext();
-        return screenshot;
+        return screenshot!;
     }
     
     public func render() -> UIImage {
         UIGraphicsBeginImageContextWithOptions(self.bounds.size, false, 0);
-        self.layer.renderInContext(UIGraphicsGetCurrentContext()!)
+        self.layer.render(in: UIGraphicsGetCurrentContext()!)
         let render = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
-        return render
+        return render!
     }
 }
 
@@ -97,7 +97,7 @@ public extension CGAffineTransform {
 }
 
 //MARK: CGPoint
-public func CGPointGetDistance(point1:CGPoint, _ point2:CGPoint) -> CGFloat {
+public func CGPointGetDistance(_ point1:CGPoint, _ point2:CGPoint) -> CGFloat {
     let fx = point2.x - point1.x;
     let fy = point2.y - point1.y;
     
@@ -106,15 +106,15 @@ public func CGPointGetDistance(point1:CGPoint, _ point2:CGPoint) -> CGFloat {
 
 //MARK: CGRect
 public extension CGRect {
-    public func scaled(sx: CGFloat, _ sy: CGFloat) -> CGRect {
-        return CGRectMake(self.origin.x * sx, self.origin.y * sy, self.width * sx, self.height * sy);
+    public func scaled(_ sx: CGFloat, _ sy: CGFloat) -> CGRect {
+        return CGRect(x: self.origin.x * sx, y: self.origin.y * sy, width: self.width * sx, height: self.height * sy);
     }
 }
 
 //MARK: UIButton
 public extension UIButton {
     
-    func alignImageAndTitleVertically(padding: CGFloat = 6.0) {
+    func alignImageAndTitleVertically(_ padding: CGFloat = 6.0) {
         let imageSize = self.imageView!.frame.size
         let titleSize = self.titleLabel!.frame.size
         let totalHeight = imageSize.height + titleSize.height + padding
@@ -135,7 +135,7 @@ public extension UIButton {
     }
     
     
-    func setImageinFrame(frame: CGRect){
+    func setImageinFrame(_ frame: CGRect){
         self.imageEdgeInsets = UIEdgeInsets(
             top: frame.minY - self.frame.minY,
             left: frame.minX - self.frame.minX,
@@ -148,7 +148,7 @@ public extension UIButton {
 //MARK: imageView
 public extension UIImageView {
     public var imageRect: CGRect {
-        guard self.contentMode == .ScaleAspectFit && self.width != 0 && self.height != 0 else {
+        guard self.contentMode == .scaleAspectFit && self.width != 0 && self.height != 0 else {
             return self.bounds
         }
         
@@ -156,7 +156,7 @@ public extension UIImageView {
             let size = image.size
             let imageScale = CGFloat(fminf(Float(self.bounds.width/size.width), Float(self.bounds.height/size.height)))
             let scaledImageSize = CGSize(width: size.width*imageScale, height: size.height*imageScale)
-            let imageRect = CGRectMake(round(CGFloat(0.5)*(CGRectGetWidth(self.bounds)-scaledImageSize.width)), round(CGFloat(0.5)*(CGRectGetHeight(self.bounds)-scaledImageSize.height)), round(scaledImageSize.width), round(scaledImageSize.height));
+            let imageRect = CGRect(x: round(CGFloat(0.5)*(self.bounds.width-scaledImageSize.width)), y: round(CGFloat(0.5)*(self.bounds.height-scaledImageSize.height)), width: round(scaledImageSize.width), height: round(scaledImageSize.height));
             return imageRect
         }else{
             return self.bounds
@@ -168,12 +168,12 @@ public extension UIImageView {
 //MARK: UITableView,UITableViewCell,UICollectionView,UICollectionViewCell
 
 public extension UITableView{
-    public func registerClass(cellType:UITableViewCell.Type){
-        registerClass(cellType, forCellReuseIdentifier: cellType.defaultReuseIdentifier)
+    public func registerClass(_ cellType:UITableViewCell.Type){
+        register(cellType, forCellReuseIdentifier: cellType.defaultReuseIdentifier)
     }
     
-    public func dequeueReusableCellForIndexPath<T: UITableViewCell>(indexPath: NSIndexPath) -> T {
-        guard let cell = self.dequeueReusableCellWithIdentifier(T.defaultReuseIdentifier , forIndexPath: indexPath) as? T else {
+    public func dequeueReusableCellForIndexPath<T: UITableViewCell>(_ indexPath: IndexPath) -> T {
+        guard let cell = self.dequeueReusableCell(withIdentifier: T.defaultReuseIdentifier , for: indexPath) as? T else {
             fatalError( "Failed to dequeue a cell with identifier \(T.defaultReuseIdentifier). Ensure you have registered the cell." )
         }
         
@@ -183,17 +183,17 @@ public extension UITableView{
 
 public extension UITableViewCell{
     public static var defaultReuseIdentifier:String{
-        return String(self)
+        return String(describing: self)
     }
 }
 
 public extension UICollectionView{
-    public func registerClass(cellType:UICollectionViewCell.Type){
-        registerClass(cellType, forCellWithReuseIdentifier: cellType.defaultReuseIdentifier)
+    public func registerClass(_ cellType:UICollectionViewCell.Type){
+        register(cellType, forCellWithReuseIdentifier: cellType.defaultReuseIdentifier)
     }
     
-    public func dequeueReusableCellForIndexPath<T: UICollectionViewCell>(indexPath: NSIndexPath) -> T {
-        guard let cell = self.dequeueReusableCellWithReuseIdentifier(T.defaultReuseIdentifier, forIndexPath: indexPath) as? T else {
+    public func dequeueReusableCellForIndexPath<T: UICollectionViewCell>(_ indexPath: IndexPath) -> T {
+        guard let cell = self.dequeueReusableCell(withReuseIdentifier: T.defaultReuseIdentifier, for: indexPath) as? T else {
             fatalError( "Failed to dequeue a cell with identifier \(T.defaultReuseIdentifier).  Ensure you have registered the cell" )
         }
         
@@ -203,6 +203,6 @@ public extension UICollectionView{
 
 public extension UICollectionViewCell{
     public static var defaultReuseIdentifier:String{
-        return String(self)
+        return String(describing: self)
     }
 }

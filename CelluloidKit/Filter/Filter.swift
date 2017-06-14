@@ -9,10 +9,14 @@
 import Foundation
 import ImageIO
 
-public typealias Filter = CIImage -> CIImage
+public typealias Filter = (CIImage) -> CIImage
 
-infix operator >>> { associativity left }
-func >>> (filter1: Filter, filter2: Filter) -> Filter {
+//https://github.com/apple/swift-evolution/blob/master/proposals/0077-operator-precedence.md
+precedencegroup myPrecedencegroup {
+    associativity: left
+}
+infix operator >>> : myPrecedencegroup
+func >>> (filter1: @escaping Filter, filter2: @escaping Filter) -> Filter {
     return { image in filter2(filter1(image)) }
 }
 
@@ -31,7 +35,7 @@ public enum FilterType: String {
 
 public struct Filters {
     
-    public static func filter(type: FilterType) -> Filter {
+    public static func filter(_ type: FilterType) -> Filter {
         switch type {
         case .Sepia, .Original:
             return sepia
@@ -54,7 +58,7 @@ public struct Filters {
         }
     }
     
-    private static func simpleFilter(name: String) -> Filter {
+    fileprivate static func simpleFilter(_ name: String) -> Filter {
         return { image in
             let parameters = [kCIInputImageKey: image]
             guard let filter = CIFilter(name: name, withInputParameters: parameters) else {
@@ -88,7 +92,7 @@ public struct Filters {
             let parameters = [
                 kCIInputImageKey: image,
                 "inputScale": max(image.extent.width, image.extent.height)/60
-            ]
+            ] as [String : Any]
             guard let filter = CIFilter(name: "CIPixellate", withInputParameters: parameters) else {
                 fatalError("filter not found")
             }
@@ -97,7 +101,7 @@ public struct Filters {
         }
     }
     
-    public static func sourceOver(inputImage: CIImage) -> Filter {
+    public static func sourceOver(_ inputImage: CIImage) -> Filter {
         return { image in
             let parameters = [
                 kCIInputImageKey: inputImage,
@@ -111,7 +115,7 @@ public struct Filters {
         }
     }
     
-    static func makeRadialGradientCImage(inputRadius0 inputRadius0: CGFloat,
+    static func makeRadialGradientCImage(inputRadius0: CGFloat,
                                inputRadius1: CGFloat,
                                inputColor0: CIColor,
                                inputColor1: CIColor,
@@ -120,7 +124,7 @@ public struct Filters {
                           "inputRadius1": inputRadius1,
                           "inputColor0": inputColor0,
                           "inputColor1": inputColor1,
-                          kCIInputCenterKey: inputCenter]
+                          kCIInputCenterKey: inputCenter] as [String : Any]
         let radialGradient = CIFilter(name: "CIRadialGradient", withInputParameters: parameters)
         return radialGradient?.outputImage
     }
@@ -128,13 +132,15 @@ public struct Filters {
     public static func pixellateFace() -> Filter {
         return { image in
             
-            let detector = CIDetector(ofType: CIDetectorTypeFace, context: context, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])
-            let faces = detector.featuresInImage(image)
+            guard let detector = CIDetector(ofType: CIDetectorTypeFace, context: context, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]) else {
+                fatalError("create detector fail")
+            }
+            let faces = detector.features(in: image)
             guard faces.count > 0 else {
                 return image
             }
             
-            let mask = faces.flatMap({ face in
+            let mask = faces.flatMap({ face -> CIImage? in
                 
                 let radius = min(face.bounds.width, face.bounds.height / 1.5)
                 return self.makeRadialGradientCImage(inputRadius0: radius,
@@ -143,7 +149,7 @@ public struct Filters {
                     inputColor1: CIColor(red: 0, green: 0, blue: 0, alpha: 0),
                     inputCenter: CIVector(x: face.bounds.midX, y: face.bounds.midY))
 
-            }).reduce(CIImage(), combine: { sourceOver($0)($1) })
+            }).reduce(CIImage(), { sourceOver($0)($1) })
             
             let pixellatedImage = pixellate()(image)
             
@@ -159,12 +165,12 @@ public struct Filters {
         }
     }
     
-    public static func blur(radius: Double) -> Filter {
+    public static func blur(_ radius: Double) -> Filter {
         return { image in
             let parameters = [
                 kCIInputRadiusKey: radius,
                 kCIInputImageKey: image
-            ]
+            ] as [String : Any]
             guard let filter = CIFilter(name: "CIGaussianBlur",
                                         withInputParameters: parameters) else { fatalError() }
             guard let outputImage = filter.outputImage else { fatalError() }
@@ -181,18 +187,18 @@ public struct Filters {
 private let context = CIContext()
 extension UIImage {
     
-    public func filteredImage(filter: Filter) -> UIImage {
-        let inputImage = self.CIImage ?? CoreImage.CIImage(CGImage: self.CGImage!)
+    public func filteredImage(_ filter: Filter) -> UIImage {
+        let inputImage = self.ciImage ?? CoreImage.CIImage(cgImage: self.cgImage!)
         let outputImage = filter(inputImage)
-        let cgImage = context.createCGImage(outputImage, fromRect: inputImage.extent)
-        return UIImage(CGImage: cgImage)
+        let cgImage = context.createCGImage(outputImage, from: inputImage.extent)
+        return UIImage(cgImage: cgImage!)
     }
     
-    public func filteredImage(orientation: Int32, filter: Filter) -> UIImage {
-        var inputImage = self.CIImage ?? CoreImage.CIImage(CGImage: self.CGImage!)
-        inputImage = inputImage.imageByApplyingOrientation(orientation)
+    public func filteredImage(_ orientation: Int32, filter: Filter) -> UIImage {
+        var inputImage = self.ciImage ?? CoreImage.CIImage(cgImage: self.cgImage!)
+        inputImage = inputImage.applyingOrientation(orientation)
         let outputImage = filter(inputImage)
-        let cgImage = context.createCGImage(outputImage, fromRect: inputImage.extent)
-        return UIImage(CGImage: cgImage)
+        let cgImage = context.createCGImage(outputImage, from: inputImage.extent)
+        return UIImage(cgImage: cgImage!)
     }
 }

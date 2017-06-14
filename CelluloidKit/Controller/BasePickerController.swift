@@ -8,7 +8,7 @@
 
 import Foundation
 
-public class BasePickerController: UIViewController {
+open class BasePickerController: UIViewController {
     
     lazy var collectionView: UICollectionView = {
         
@@ -17,31 +17,33 @@ public class BasePickerController: UIViewController {
         layout.sectionInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
         layout.minimumLineSpacing = cellMargin
         layout.minimumInteritemSpacing = cellMargin
-        layout.scrollDirection = .Vertical
+        layout.scrollDirection = .vertical
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.dataSource = self
         collectionView.delegate = self
-        collectionView.backgroundColor = UIColor.whiteColor()
-        collectionView.registerClass(UICollectionViewCell)
+        collectionView.backgroundColor = UIColor.white
+        collectionView.registerClass(UICollectionViewCell.self)
         return collectionView
     }()
     
-    override public func viewDidLoad() {
+    override open func viewDidLoad() {
         super.viewDidLoad()
         
         view.addSubview(collectionView)
-        collectionView.snp_makeConstraints { (make) -> Void in
-            make.top.equalTo(topLayoutGuide)
-            make.bottom.equalTo(bottomLayoutGuide)
+        collectionView.snp.makeConstraints { make in
+
+            make.top.equalTo(self.view.top)
+            make.bottom.equalTo(self.view.bottom)
             make.left.right.equalTo(collectionView.superview!)
         }
+
         
-        let buttonItem = UIBarButtonItem(title: tr(.Cancel), style: .Plain, target: self, action: #selector(dismiss))
-        self.navigationItem.setLeftBarButtonItem(buttonItem, animated: false)
+        let buttonItem = UIBarButtonItem(title: tr(.cancel), style: .plain, target: self, action: #selector(dismissSelf))
+        self.navigationItem.setLeftBarButton(buttonItem, animated: false)
     }
     
-    override public func viewDidLayoutSubviews() {
+    override open func viewDidLayoutSubviews() {
         let layout = collectionView.collectionViewLayout as! UICollectionViewFlowLayout
         let cellMargin = CGFloat(10)
         let cellWidth = (view.width - cellMargin * 3)/2
@@ -51,19 +53,19 @@ public class BasePickerController: UIViewController {
 }
 
 //MARK: Action
-private extension BasePickerController {
-    @objc func dismiss(){
-        dismissViewControllerAnimated(true, completion: nil)
+extension BasePickerController {
+    @objc func dismissSelf(){
+        self.dismiss(animated: true, completion: nil)
     }
 }
 
 extension BasePickerController: UICollectionViewDataSource, UICollectionViewDelegate {
     
-    public func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+    public func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         return 0
     }
     
-    public func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
+    public func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         return UICollectionViewCell()
     }
 }

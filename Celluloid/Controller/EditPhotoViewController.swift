@@ -16,14 +16,14 @@ class EditPhotoViewController: BaseEditPhotoController {
     //MARK: Property
     let model: PhotoModel
     
-    private lazy var leftButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.Cancel), style: .Plain, target: self, action: #selector(dismiss))
+    fileprivate lazy var leftButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.cancel), style: .plain, target: self, action: #selector(dismissSelf))
     
-    private lazy var rightButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.Done), style: .Plain, target: self, action: #selector(done))
+    fileprivate lazy var rightButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.done), style: .plain, target: self, action: #selector(done))
 
-    private lazy var activityIndicator: UIActivityIndicatorView = {
-       let indicator = UIActivityIndicatorView(activityIndicatorStyle: .WhiteLarge)
+    fileprivate lazy var activityIndicator: UIActivityIndicatorView = {
+       let indicator = UIActivityIndicatorView(activityIndicatorStyle: .whiteLarge)
        self.view.addSubview(indicator)
-       indicator.snp_makeConstraints { make in
+       indicator.snp.makeConstraints  { make in
            make.center.equalTo(self.view)
        }
        indicator.hidesWhenStopped = true
@@ -44,9 +44,9 @@ class EditPhotoViewController: BaseEditPhotoController {
     //MARK: View Life Cycle 
     override func viewDidLoad() {
         super.viewDidLoad()
-        self.navigationItem.title = tr(.Beautify)
-        self.navigationItem.setLeftBarButtonItem(leftButtonItem, animated: false)
-        self.navigationItem.setRightBarButtonItem(rightButtonItem, animated: false)
+        self.navigationItem.title = tr(.beautify)
+        self.navigationItem.setLeftBarButton(leftButtonItem, animated: false)
+        self.navigationItem.setRightBarButton(rightButtonItem, animated: false)
         
         startContentEditing()
     }
@@ -56,8 +56,8 @@ class EditPhotoViewController: BaseEditPhotoController {
 //MARK: Action
 private extension EditPhotoViewController {
     
-    @objc func dismiss() {
-        dismissViewControllerAnimated(true, completion: nil)
+    @objc func dismissSelf() {
+        dismiss(animated: true, completion: nil)
     }
     
     @objc func done() {
@@ -74,15 +74,15 @@ private extension EditPhotoViewController {
         option.canHandleAdjustmentData = { option in
             return AdjustmentData.supportIdentifier(option.formatIdentifier, version: option.formatVersion)
         }
-        model.asset.requestContentEditingInputWithOptions(option) { (input, info) in
-            self.input = input
+        model.asset.requestContentEditingInput(with: option) { (input, info) in
+            self.input = input!
         }
     }
     
     func startContentEditing() {
         
-        preview.image = input?.displaySizeImage
-        if let adjustmentData = input?.adjustmentData {
+        preview.image = input.displaySizeImage
+        if let adjustmentData = input.adjustmentData {
             let adjustmentData = AdjustmentData.decode(adjustmentData.data)
             //state restoration
             restoreFromData(adjustmentData)
@@ -93,39 +93,37 @@ private extension EditPhotoViewController {
     func finishContentEditing() {
         
         activityIndicator.startAnimating()
-        UIApplication.sharedApplication().beginIgnoringInteractionEvents()
+        UIApplication.shared.beginIgnoringInteractionEvents()
         
         var shareImage: UIImage?
         Async.background {
             
-            if let input = self.input {
-                
-                let output = PHContentEditingOutput(contentEditingInput: input)
-                
-                output.adjustmentData = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: AdjustmentData.formatVersion, data: self.adjustmentData.encode())
-                let renderedJPEGData: NSData
-                if let outputImage = self.outputImage {
-                    shareImage = outputImage
-                    renderedJPEGData = UIImageJPEGRepresentation(outputImage, 1.0)!
-                }else{
-                    renderedJPEGData = NSData(contentsOfURL: (self.input?.fullSizeImageURL)!)!
-                }
-                renderedJPEGData.writeToURL(output.renderedContentURL, atomically: true)
-                
-                PHPhotoLibrary.sharedPhotoLibrary().performChanges({ 
-                    let request = PHAssetChangeRequest(forAsset: self.model.asset)
-                    request.contentEditingOutput = output
-                    
-                    }, completionHandler: { success, error in
-                        print("Finished updating asset. %@", (success ? "Success." : error))
-                })
-
+            let output = PHContentEditingOutput(contentEditingInput: self.input)
+            
+            output.adjustmentData = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: AdjustmentData.formatVersion, data: self.adjustmentData.encode())
+            let renderedJPEGData: NSData
+            if let outputImage = self.outputImage {
+                shareImage = outputImage
+                renderedJPEGData = UIImageJPEGRepresentation(outputImage, 1.0)! as NSData
+            }else{
+                renderedJPEGData = NSData(contentsOf: (self.input.fullSizeImageURL)!)!
             }
+            renderedJPEGData.write(to: output.renderedContentURL, atomically: true)
+            
+            PHPhotoLibrary.shared().performChanges({
+                let request = PHAssetChangeRequest(for: self.model.asset)
+                request.contentEditingOutput = output
+                
+            }, completionHandler: { success, error in
+                print("Finished updating asset. %@", (success ? "Success." : error!))
+            })
+            
+            
             
         }.main {
             self.activityIndicator.stopAnimating()
-            UIApplication.sharedApplication().endIgnoringInteractionEvents()
-            if let nav = self.navigationController,shareImage = shareImage {
+            UIApplication.shared.endIgnoringInteractionEvents()
+            if let nav = self.navigationController,let shareImage = shareImage {
                 nav.pushViewController(SharePhotoViewController(image: shareImage), animated: true)
             }
         }

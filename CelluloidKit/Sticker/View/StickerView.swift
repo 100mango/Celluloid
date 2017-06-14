@@ -8,25 +8,25 @@
 
 import Foundation
 
-public class StickerView: AttachView {
+open class StickerView: AttachView {
     
     //MARK: Property
-    public var stickerModel: StickerModel
+    open var stickerModel: StickerModel
     
     //Property observers
-    public override var transform: CGAffineTransform {
+    open override var transform: CGAffineTransform {
         didSet {
             stickerModel.transform = transform
         }
     }
     
-    public override var bounds: CGRect {
+    open override var bounds: CGRect {
         didSet {
             stickerModel.bounds = bounds
         }
     }
     
-    public override var center: CGPoint {
+    open override var center: CGPoint {
         didSet {
             stickerModel.center = center
         }

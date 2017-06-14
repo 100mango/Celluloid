@@ -10,27 +10,27 @@ import UIKit
 import SnapKit
 
 public protocol EditBubbleViewControllerDelegate: class {
-    func editBubbleViewController(editBubbleViewController: EditBubbleViewController, didEditedBubbleModel bubbleModel: BubbleModel)
+    func editBubbleViewController(_ editBubbleViewController: EditBubbleViewController, didEditedBubbleModel bubbleModel: BubbleModel)
     
 }
 
-public class EditBubbleViewController: UIViewController {
+open class EditBubbleViewController: UIViewController {
     
     //MARK: Property
     var bubbleModel: BubbleModel
     
-    public weak var delegate: EditBubbleViewControllerDelegate?
+    open weak var delegate: EditBubbleViewControllerDelegate?
     
-    private lazy var textView: UITextView = {
+    fileprivate lazy var textView: UITextView = {
         let textView = UITextView()
-        textView.textAlignment = .Center
+        textView.textAlignment = .center
         textView.text = self.bubbleModel.content
         textView.backgroundColor = .bubbleBackgroundColor
         return textView
     }()
     
-    private lazy var rightBarButtonItem: UIBarButtonItem = {
-        let rightBarButtonItem = UIBarButtonItem(title: tr(.Done), style: .Plain, target: self, action: #selector(done))
+    fileprivate lazy var rightBarButtonItem: UIBarButtonItem = {
+        let rightBarButtonItem = UIBarButtonItem(title: tr(.done), style: .plain, target: self, action: #selector(done))
 
         return rightBarButtonItem
     }()
@@ -39,8 +39,8 @@ public class EditBubbleViewController: UIViewController {
     public init(bubbleModel:BubbleModel){
         self.bubbleModel = bubbleModel
         super.init(nibName: nil, bundle: nil)
-        self.view.backgroundColor = .whiteColor()
-        self.title = tr(.Edit)
+        self.view.backgroundColor = .white
+        self.title = tr(.edit)
     }
 
     required public init?(coder aDecoder: NSCoder) {
@@ -48,11 +48,11 @@ public class EditBubbleViewController: UIViewController {
     }
     
     //MARK: View life cycle
-    public override func viewDidLoad() {
+    open override func viewDidLoad() {
         super.viewDidLoad()
         self.view.addSubview(self.textView)
-        self.textView.snp_makeConstraints { (make) -> Void in
-            make.top.equalTo(self.snp_topLayoutGuideBottom).offset(10)
+        self.textView.snp.makeConstraints { (make) -> Void in
+            make.top.equalTo(self.view.top).offset(10)
             make.left.right.bottom.equalTo(textView.superview!).inset(10)
         }
         
@@ -65,6 +65,6 @@ private extension EditBubbleViewController {
     @objc func done(){
         self.bubbleModel.content = self.textView.text
         self.delegate?.editBubbleViewController(self, didEditedBubbleModel: self.bubbleModel)
-        dismissViewControllerAnimated(true, completion: nil)
+        dismiss(animated: true, completion: nil)
     }
 }

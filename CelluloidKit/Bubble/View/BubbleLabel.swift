@@ -8,7 +8,7 @@
 
 import UIKit
 
-public class BubbleLabel: UILabel {
+open class BubbleLabel: UILabel {
     
     //MARK: Property
     var model: BubbleModel
@@ -17,9 +17,9 @@ public class BubbleLabel: UILabel {
     public init(model: BubbleModel) {
         self.model = model
         super.init(frame: CGRect.zero)
-        self.backgroundColor = UIColor.clearColor()
+        self.backgroundColor = UIColor.clear
         self.numberOfLines = 0
-        self.lineBreakMode = .ByCharWrapping
+        self.lineBreakMode = .byCharWrapping
         self.text = model.content
     }
 
@@ -31,7 +31,7 @@ public class BubbleLabel: UILabel {
     /**
     call this method in superView's layoutSubViews method to adjust label frame and font size
     */
-    public func adjustFrame() {
+    open func adjustFrame() {
         if let superview = self.superview as? UIImageView {
             let imageRect = superview.imageRect
             let width = imageRect.size.width
@@ -52,7 +52,7 @@ private extension UILabel {
         var maxFontSize = CGFloat(16)
         let minFontSize = CGFloat(1)
         
-        let constrainSize = CGSize(width: self.width, height: CGFloat.max)
+        let constrainSize = CGSize(width: self.width, height: CGFloat.greatestFiniteMagnitude)
         var textSize: CGSize
         repeat {
             self.font = UIFont(name: self.font.fontName, size: maxFontSize)
@@ -62,9 +62,9 @@ private extension UILabel {
         
         //如果只有一行则居中
         if (floor((textSize.height / self.font.lineHeight)) == 1) {
-            self.textAlignment = .Center;
+            self.textAlignment = .center;
         }else{
-            self.textAlignment = .Left;
+            self.textAlignment = .left;
         }
     }
 }

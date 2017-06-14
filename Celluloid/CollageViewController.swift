@@ -18,46 +18,46 @@ class CollageViewController: UIViewController {
     //MARK: Property
     var assets: [PHAsset]
     
-    private lazy var collageStylePanel: CollageStylePanel = {
+    fileprivate lazy var collageStylePanel: CollageStylePanel = {
         let panel = CollageStylePanel(models: [])
         panel.delegate = self
         return panel
     }()
     
-    private lazy var imageArrangedPanel: ImageArrangedPanel = {
+    fileprivate lazy var imageArrangedPanel: ImageArrangedPanel = {
         let panel = ImageArrangedPanel(models: [])
         panel.delegate = self
         return panel
     }()
     
-    private let collageView = CollageView()
+    fileprivate let collageView = CollageView()
     
-    private lazy var stackView: UIStackView = {
+    fileprivate lazy var stackView: UIStackView = {
         let stackView = UIStackView(arrangedSubviews: [self.imageArrangedPanel,self.collageView,self.collageStylePanel])
-        stackView.axis = .Vertical
-        stackView.distribution = .EqualSpacing
-        stackView.alignment = .Center
+        stackView.axis = .vertical
+        stackView.distribution = .equalSpacing
+        stackView.alignment = .center
         return stackView
     }()
 
-    private lazy var leftButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.Cancel), style: .Plain, target: self, action: #selector(dismiss))
+    fileprivate lazy var leftButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.cancel), style: .plain, target: self, action: #selector(dismissSelf))
     
-    private lazy var rightButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.Done), style: .Plain, target: self, action: #selector(done))
+    fileprivate lazy var rightButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.done), style: .plain, target: self, action: #selector(done))
     
     //MARK: View Life Cycle
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        self.title = tr(.Collage)
+        self.title = tr(.collage)
         self.automaticallyAdjustsScrollViewInsets = false
-        self.view.backgroundColor = .whiteColor()
-        self.navigationItem.setLeftBarButtonItem(leftButtonItem, animated: false)
-        self.navigationItem.setRightBarButtonItem(rightButtonItem, animated: false)
+        self.view.backgroundColor = .white
+        self.navigationItem.setLeftBarButton(leftButtonItem, animated: false)
+        self.navigationItem.setRightBarButton(rightButtonItem, animated: false)
         
         self.view.addSubview(stackView)
-        stackView.snp_makeConstraints { (make) in
-            make.top.equalTo(self.snp_topLayoutGuideBottom)
-            make.bottom.equalTo(self.snp_bottomLayoutGuideTop)
+        stackView.snp.makeConstraints { (make) in
+            make.top.equalTo(self.view.snp.top)
+            make.bottom.equalTo(self.view.snp.bottom)
             make.left.right.equalTo(stackView.superview!)
         }
         //init layout
@@ -93,9 +93,9 @@ private let stylePanelConstant: CGFloat = 120
 
 extension CollageViewController {
     
-    override func viewWillTransitionToSize(size: CGSize, withTransitionCoordinator coordinator: UIViewControllerTransitionCoordinator) {
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         
-        coordinator.animateAlongsideTransition({ context  in
+        coordinator.animate(alongsideTransition: { context  in
             self.setupConstraintForSize(self.view.size)
             self.collageView.resize()
             self.collageStylePanel.reload()
@@ -103,63 +103,63 @@ extension CollageViewController {
         })
     }
     
-    private func setupConstraintForSize(size: CGSize) {
+    fileprivate func setupConstraintForSize(_ size: CGSize) {
         
         if size.width > size.height {
-            imageArrangedPanel.snp_remakeConstraints(closure: { (make) in
+            imageArrangedPanel.snp.makeConstraints({ (make) in
                 make.width.equalTo(arrangedPanelConstant)
                 make.height.equalTo(imageArrangedPanel.superview!)
             })
-            collageStylePanel.scrollDirection = .Vertical
-            collageStylePanel.snp_remakeConstraints(closure: { (make) in
+            collageStylePanel.scrollDirection = .vertical
+            collageStylePanel.snp.makeConstraints({ (make) in
                 make.width.equalTo(stylePanelConstant)
                 make.height.equalTo(collageStylePanel.superview!)
             })
-            collageView.snp_remakeConstraints(closure: { (make) in
-                make.height.width.equalTo(collageView.superview!.snp_height)
+            collageView.snp.makeConstraints({ (make) in
+                make.height.width.equalTo(collageView.superview!.snp.height)
             })
-            stackView.axis = .Horizontal
+            stackView.axis = .horizontal
             stackView.layoutIfNeeded()
         } else {
-            imageArrangedPanel.snp_remakeConstraints(closure: { (make) in
+            imageArrangedPanel.snp.makeConstraints({ (make) in
                 make.height.equalTo(arrangedPanelConstant)
                 make.width.equalTo(imageArrangedPanel.superview!)
             })
-            collageStylePanel.scrollDirection = .Horizontal
-            collageStylePanel.snp_remakeConstraints(closure: { (make) in
+            collageStylePanel.scrollDirection = .horizontal
+            collageStylePanel.snp.makeConstraints({ (make) in
                 make.height.equalTo(stylePanelConstant)
                 make.width.equalTo(collageStylePanel.superview!)
             })
-            collageView.snp_remakeConstraints(closure: { (make) in
-                make.height.width.equalTo(collageView.superview!.snp_width)
+            collageView.snp.makeConstraints({ (make) in
+                make.height.width.equalTo(collageView.superview!.snp.height)
             })
             fixCornerCaseLayout(size)
-            stackView.axis = .Vertical
+            stackView.axis = .vertical
             stackView.layoutIfNeeded()
         }
     }
     
-    private func fixCornerCaseLayout(size: CGSize) {
+    fileprivate func fixCornerCaseLayout(_ size: CGSize) {
         /*用于修复Split View,Landscape Slide Over,Window Bounds: w:694 h:768时的界面问题*/
         let overflow: Bool = (size.width + arrangedPanelConstant + stylePanelConstant) > size.height
         if overflow {
-            collageView.snp_remakeConstraints(closure: { (make) in
+            collageView.snp.makeConstraints ({ (make) in
                 make.height.width.equalTo(400)
             })
         }
         //fix 3.5 inshes devices
-        if Device.screen == .Inches_3_5 {
-            imageArrangedPanel.snp_remakeConstraints(closure: { (make) in
+        if Device.screen == .inches_3_5 {
+            imageArrangedPanel.snp.makeConstraints({ (make) in
                 make.height.equalTo(40)
                 make.width.equalTo(imageArrangedPanel.superview!)
             })
-            collageStylePanel.scrollDirection = .Horizontal
-            collageStylePanel.snp_remakeConstraints(closure: { (make) in
+            collageStylePanel.scrollDirection = .horizontal
+            collageStylePanel.snp.makeConstraints({ (make) in
                 make.height.equalTo(60)
                 make.width.equalTo(collageStylePanel.superview!)
             })
-            collageView.snp_remakeConstraints(closure: { (make) in
-                make.height.width.equalTo(collageView.superview!.snp_width)
+            collageView.snp.makeConstraints({ (make) in
+                make.height.width.equalTo(collageView.superview!.snp.height)
             })
         }
     }
@@ -168,14 +168,14 @@ extension CollageViewController {
 
 //MARK: CollageStylePanel Delegate
 extension CollageViewController: CollageStylePanelDelegate {
-    func collageStylePanel(collageStylePanel: CollageStylePanel, didSelctModel model: CollageModel) {
+    func collageStylePanel(_ collageStylePanel: CollageStylePanel, didSelctModel model: CollageModel) {
         collageView.setupWithCollageModel(model)
     }
 }
 
 //MARK: ImageArrangedPanelDelegate Delegate
 extension CollageViewController: ImageArrangedPanelDelegate {
-    func imageArrangedPanel(imageArrangedPanel: ImageArrangedPanel, didEditModels models: [PhotoModel]) {
+    func imageArrangedPanel(_ imageArrangedPanel: ImageArrangedPanel, didEditModels models: [PhotoModel]) {
         
         let oldModels = collageView.photoModels!
         if oldModels.count == models.count {
@@ -196,8 +196,8 @@ private extension Selector {
 
 private extension CollageViewController {
     
-    @objc func dismiss() {
-        dismissViewControllerAnimated(true, completion: nil)
+    @objc func dismissSelf() {
+        self.dismiss(animated: true, completion: nil)
     }
     
     @objc func done() {
@@ -208,9 +208,9 @@ private extension CollageViewController {
         collageView.setupWithCollageModel(self.collageView.collageModel!, photoModels: self.collageView.photoModels!,forEdit: false)
         let image = holder.render()
         
-        PHPhotoLibrary.sharedPhotoLibrary().performChanges({ 
-            let newRequest = PHAssetChangeRequest.creationRequestForAssetFromImage(image)
-            newRequest.creationDate = NSDate()
+        PHPhotoLibrary.shared().performChanges({ 
+            let newRequest = PHAssetChangeRequest.creationRequestForAsset(from: image)
+            newRequest.creationDate = Date()
             }) { success, error in
         }
         

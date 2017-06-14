@@ -14,12 +14,12 @@ public struct StickerModel {
     //MARK: Property
     //Stored property
     let imageName: String
-    public var transform = CGAffineTransformIdentity
+    public var transform = CGAffineTransform.identity
     public var bounds = CGRect(x: 0, y: 0, width: 100, height: 100)
     public var center = CGPoint(x: 100, y: 100)
     //Computed property
     public var stickerImage: UIImage {
-        return UIImage(named: imageName, inBundle: extensionBundle, compatibleWithTraitCollection: nil)!
+        return UIImage(named: imageName, in: extensionBundle, compatibleWith: nil)!
     }
 
     //MARK: init
@@ -32,7 +32,7 @@ public struct StickerModel {
         return stickers
     }()
     
-    private init(imageName: String) {
+    fileprivate init(imageName: String) {
         self.imageName = imageName
     }
 }
@@ -46,7 +46,7 @@ extension StickerModel: JSONEncodable {
                 encoder.encode(transform, key: .transform)
                 encoder.encode(bounds, key: .bounds)
                 encoder.encode(center, key: .center)
-            })
+            }) as AnyObject
         }catch{
             fatalError("\(error)")
         }

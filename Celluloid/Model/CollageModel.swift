@@ -10,9 +10,9 @@ import Foundation
 import JSONCodable
 
 enum CollageImageCount: Int {
-    case Two = 2
-    case Three
-    case Four
+    case two = 2
+    case three
+    case four
 }
 
 struct CollageModel {
@@ -27,29 +27,29 @@ struct CollageModel {
 
 extension CollageModel {
     
-    static func collageModels(imageCount: CollageImageCount) -> [CollageModel] {
+    static func collageModels(_ imageCount: CollageImageCount) -> [CollageModel] {
         let key: String
         switch imageCount {
-        case .Two:
+        case .two:
             key = "two_pic"
-        case .Three:
+        case .three:
             key = "three_pic"
-        case .Four:
+        case .four:
             key = "four_pic"
         }
         
         
-        func floatsToPoints(floats: [CGFloat]) -> [CGPoint] {
+        func floatsToPoints(_ floats: [CGFloat]) -> [CGPoint] {
             var points = [CGPoint]()
-            for index in 0.stride(to: floats.count, by: 2) {
+            for index in stride(from: 0, to: floats.count, by: 2) {
                 points.append(CGPoint(x: floats[index], y: floats[index+1]))
             }
             return points
         }
         
-        let path =  NSBundle.mainBundle().pathForResource("collage", ofType: "json")
-        if let jsonData = NSData(contentsOfFile: path!){
-            let json = try! NSJSONSerialization.JSONObjectWithData(jsonData, options: NSJSONReadingOptions.MutableContainers) as! [String:AnyObject]
+        let path =  Bundle.main.path(forResource: "collage", ofType: "json")
+        if let jsonData = try? Data(contentsOf: URL(fileURLWithPath: path!)){
+            let json = try! JSONSerialization.jsonObject(with: jsonData, options: JSONSerialization.ReadingOptions.mutableContainers) as! [String:AnyObject]
             let array = json[key] as! [[String:AnyObject]]
             
             return array.map{ dic -> CollageModel in
@@ -85,51 +85,51 @@ private let oldSize = CGSize(width: 100, height: 100)
 extension Array where Element: CGPointWrapper {
     
     
-    func frameWithNewSize(newSize: CGSize) -> CGRect {
+    func frameWithNewSize(_ newSize: CGSize) -> CGRect {
         return frameWithOldSize(oldSize, newSize: newSize)
     }
     
-    func frameWithOldSize(oldSize: CGSize, newSize: CGSize) -> CGRect {
+    func frameWithOldSize(_ oldSize: CGSize, newSize: CGSize) -> CGRect {
         
         let path = self.path
-        var frame = CGPathGetBoundingBox(path.CGPath)
+        var frame = path.cgPath.boundingBox
         //newSize与oldSize的比例一致,因为都是正方形,这里长宽的放缩比例相同
         let scale = newSize.width/oldSize.width;
-        frame = CGRectApplyAffineTransform(frame, CGAffineTransformMakeScale(scale, scale));
+        frame = frame.applying(CGAffineTransform(scaleX: scale, y: scale));
         return frame;
     }
     
-    func cropPath(newSize: CGSize) -> UIBezierPath {
+    func cropPath(_ newSize: CGSize) -> UIBezierPath {
         return pathWithOldSize(oldSize, newSize: newSize)
     }
     
-    func pathWithOldSize(oldSize: CGSize, newSize: CGSize) -> UIBezierPath {
+    func pathWithOldSize(_ oldSize: CGSize, newSize: CGSize) -> UIBezierPath {
         
         let path = self.path
         
-        let frame = CGPathGetBoundingBox(path.CGPath);
+        let frame = path.cgPath.boundingBox;
         //newSize与oldSize的比例一致,因为都是正方形,这里长宽的放缩比例相同
         let scale = newSize.width/oldSize.width;
         //bezierPath用于剪切ScrollView而不是整个拼图区域。需要将它回归到原点
-        let move = CGAffineTransformMakeTranslation(-frame.origin.x, -frame.origin.y);
-        let scaleTransform = CGAffineTransformMakeScale(scale, scale);
-        let transform = CGAffineTransformConcat(move, scaleTransform);
-        path.applyTransform(transform)
+        let move = CGAffineTransform(translationX: -frame.origin.x, y: -frame.origin.y);
+        let scaleTransform = CGAffineTransform(scaleX: scale, y: scale);
+        let transform = move.concatenating(scaleTransform);
+        path.apply(transform)
         return path
     }
     
-    private var path: UIBezierPath {
+    fileprivate var path: UIBezierPath {
         let path = UIBezierPath()
         
         for index in 0..<self.count {
             let point = self[index].point
             if index == 0 {
-                path.moveToPoint(point)
+                path.move(to: point)
             } else {
-                path.addLineToPoint(point)
+                path.addLine(to: point)
             }
         }
-        path.closePath()
+        path.close()
         return path
     }
 }

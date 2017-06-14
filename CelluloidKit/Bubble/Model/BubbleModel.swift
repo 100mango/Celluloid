@@ -16,7 +16,7 @@ public struct BubbleModel {
     //Stored property
     let asset: UIImage.Asset
     public var content = ""
-    public var transform = CGAffineTransformIdentity
+    public var transform = CGAffineTransform.identity
     public var bounds = CGRect(x: 0, y: 0, width: 100, height: 100)
     public var center = CGPoint(x: 100, y: 100)
     
@@ -42,7 +42,7 @@ extension BubbleModel {
         return bubbles
     }()
     
-    private init(asset: UIImage.Asset){
+    fileprivate init(asset: UIImage.Asset){
         self.asset = asset
     }
 }
@@ -52,13 +52,13 @@ extension BubbleModel {
 extension BubbleModel: JSONEncodable {
     public func toJSON() -> AnyObject {
         do {
-            return try JSONEncoder.create({ encoder in
+            return try (JSONEncoder.create({ encoder in
                 try encoder.encode(asset, key: .asset)
                 try encoder.encode(content, key: .content)
                 encoder.encode(transform, key: .transform)
                 encoder.encode(bounds, key: .bounds)
                 encoder.encode(center, key: .center)
-            })
+            }) as AnyObject)
         }catch{
             fatalError("\(error)")
         }
@@ -92,9 +92,9 @@ private extension String {
 private let bubbleAssets:[UIImage.Asset] = [.Aside1,.Call1,.Call2,.Call3,.Say1,.Say2,.Say3,.Think1,.Think2,.Think3]
 
 private let areaDic:[String:[CGFloat]] = {
-    let path = extensionBundle.pathForResource("bubble", ofType: "json")
-    if let jsonData = NSData(contentsOfFile: path!){
-        let json = try! NSJSONSerialization.JSONObjectWithData(jsonData, options: NSJSONReadingOptions.MutableContainers)
+    let path = extensionBundle.path(forResource: "bubble", ofType: "json")
+    if let jsonData = try? Data(contentsOf: URL(fileURLWithPath: path!)){
+        let json = try! JSONSerialization.jsonObject(with: jsonData, options: JSONSerialization.ReadingOptions.mutableContainers)
         return json as! [String:[CGFloat]]
     }else{
         return [String:[CGFloat]]()

@@ -24,17 +24,17 @@ public extension AdjustmentData {
     static let formatIdentifier = "Mango.CelluloidPhotoExtension"
     static let formatVersion    = "1.0"
     
-    static func supportIdentifier(identifier: String, version: String) -> Bool {
+    static func supportIdentifier(_ identifier: String, version: String) -> Bool {
         return identifier == self.formatIdentifier && version == self.formatVersion
     }
     
-    static func decode(data: NSData) -> AdjustmentData {
-        let dic = NSKeyedUnarchiver.unarchiveObjectWithData(data) as! [String:AnyObject]
+    static func decode(_ data: Data) -> AdjustmentData {
+        let dic = NSKeyedUnarchiver.unarchiveObject(with: data) as! [String:AnyObject]
         return AdjustmentData(object: dic)
     }
     
-    func encode() -> NSData {
-        return NSKeyedArchiver.archivedDataWithRootObject(self.toJSON())
+    func encode() -> Data {
+        return NSKeyedArchiver.archivedData(withRootObject: self.toJSON())
     }
 }
 
@@ -46,7 +46,7 @@ extension AdjustmentData: JSONEncodable {
                 try encoder.encode(bubbles, key: .bubbles)
                 try encoder.encode(stickers, key: .stickers)
                 try encoder.encode(filterType, key: .filterType)
-            })
+            }) as AnyObject
         }catch{
             fatalError("\(error)")
         }

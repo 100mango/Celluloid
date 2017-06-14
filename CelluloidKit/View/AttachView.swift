@@ -8,45 +8,45 @@
 
 import Foundation
 
-public class AttachView: UIView {
+open class AttachView: UIView {
     //MARK: Property
     let buttonWidth = CGFloat(32)
     let halfButtonWidth = CGFloat(16)
     
-    public lazy var imageView:UIImageView = {
+    open lazy var imageView:UIImageView = {
         let imageView = UIImageView(frame: self.bounds.insetBy(dx: self.halfButtonWidth, dy: self.halfButtonWidth))
-        imageView.contentMode = .ScaleAspectFit
+        imageView.contentMode = .scaleAspectFit
         return imageView
     }()
     
     lazy var deleteButton: UIButton = {
-        let button = UIButton(type: .Custom)
-        button.hidden = true
+        let button = UIButton(type: .custom)
+        button.isHidden = true
         button.frame = CGRect(x: self.bounds.width - self.buttonWidth, y: 0, width: self.buttonWidth, height: self.buttonWidth)
-        button.setImage(UIImage(asset: .Btn_icon_sticker_delete_normal), forState: .Normal)
-        button.addTarget(self, action: .removeSelf, forControlEvents: .TouchUpInside)
+        button.setImage(UIImage(asset: .Btn_icon_sticker_delete_normal), for: UIControlState())
+        button.addTarget(self, action: .removeSelf, for: .touchUpInside)
         return button
     }()
     
     lazy var resizeButton: UIButton = {
-        let button = UIButton(type: .Custom)
-        button.hidden = true
+        let button = UIButton(type: .custom)
+        button.isHidden = true
         button.frame = CGRect(x: self.bounds.width - self.buttonWidth, y: self.bounds.height - self.buttonWidth, width: self.buttonWidth, height: self.buttonWidth)
-        button.setImage(UIImage(asset: .Btn_icon_sticker_edit_normal), forState: .Normal)
+        button.setImage(UIImage(asset: .Btn_icon_sticker_edit_normal), for: UIControlState())
         let panGesture = UIPanGestureRecognizer(target: self, action: .rotateAndResize)
         button.addGestureRecognizer(panGesture)
         
         return button
     }()
     
-    public var hideButtonEnable:Bool = true {
+    open var hideButtonEnable:Bool = true {
         didSet {
             imageView.layer.borderWidth = hideButtonEnable ? 0 : 1
-            imageView.layer.borderColor = UIColor.whiteColor().colorWithAlphaComponent(0.6).CGColor
-            UIView.animateWithDuration(0.3, animations: {
+            imageView.layer.borderColor = UIColor.white.withAlphaComponent(0.6).cgColor
+            UIView.animate(withDuration: 0.3, animations: {
                 for view in self.subviews {
                     if let button = view as? UIButton {
-                        button.hidden = self.hideButtonEnable
+                        button.isHidden = self.hideButtonEnable
                     }
                 }
             })
@@ -54,7 +54,7 @@ public class AttachView: UIView {
     }
     
     //MARK: init
-    private func commonInit() {
+    fileprivate func commonInit() {
         self.addSubview(imageView)
         self.addSubview(deleteButton)
         self.addSubview(resizeButton)
@@ -77,7 +77,7 @@ public class AttachView: UIView {
         commonInit()
     }
     
-    public override func layoutSubviews() {
+    open override func layoutSubviews() {
         super.layoutSubviews()
         
         //set frame.width & bounds.width is different because of the transform
@@ -100,9 +100,9 @@ private extension Selector {
 extension AttachView{
     
     @objc func removeSelf() {
-        UIView.animateWithDuration(0.3, delay: 0, usingSpringWithDamping: 1, initialSpringVelocity: 0.3, options: [],
+        UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 1, initialSpringVelocity: 0.3, options: [],
             animations: {
-                self.transform = CGAffineTransformMakeScale(0.5, 0.5)
+                self.transform = CGAffineTransform(scaleX: 0.5, y: 0.5)
                 self.alpha = 0
             },
             completion: { finish in
@@ -111,7 +111,7 @@ extension AttachView{
         )
     }
     
-    @objc func rotateAndResize (gestureRecognizer:UIPanGestureRecognizer) {
+    @objc func rotateAndResize (_ gestureRecognizer:UIPanGestureRecognizer) {
         
         struct Static {
             static var deltaAngle = CGFloat()
@@ -119,19 +119,19 @@ extension AttachView{
             static var initialDistance = CGFloat()
         }
         
-        let touchLocation = gestureRecognizer.locationInView(self.superview!)
+        let touchLocation = gestureRecognizer.location(in: self.superview!)
         let center = self.center
         
         
-        if gestureRecognizer.state == .Began {
+        if gestureRecognizer.state == .began {
             //AB两个点之间连线和x轴的夹角就是atan2（By-Ay，Bx-Ax）
             Static.deltaAngle = atan2(touchLocation.y - center.y, touchLocation.x - center.x) - self.transform.angle
             Static.initialBounds = self.bounds
             Static.initialDistance = CGPointGetDistance(center, touchLocation)
-        } else if gestureRecognizer.state == .Changed {
+        } else if gestureRecognizer.state == .changed {
             let ang = atan2(touchLocation.y - center.y, touchLocation.x - center.x)
             let angleDiff = Static.deltaAngle - ang
-            self.transform = CGAffineTransformMakeRotation(-angleDiff)
+            self.transform = CGAffineTransform(rotationAngle: -angleDiff)
             
             //Finding scale between current touchPoint and previous touchPoint
             let scale = CGPointGetDistance(center, touchLocation)/Static.initialDistance;
@@ -146,7 +146,7 @@ extension AttachView{
         }
     }
     
-    @objc func move (gestureRecognizer: UIPanGestureRecognizer) {
+    @objc func move (_ gestureRecognizer: UIPanGestureRecognizer) {
         struct Static {
             static var touchPoint = CGPoint.zero
             static var beginningCenter = CGPoint.zero
@@ -159,13 +159,13 @@ extension AttachView{
             return CGPoint(x: x, y: y)
         }
         
-        Static.touchPoint = gestureRecognizer.locationInView(self.superview!)
+        Static.touchPoint = gestureRecognizer.location(in: self.superview!)
         
-        if gestureRecognizer.state == .Began {
+        if gestureRecognizer.state == .began {
             Static.beginningCenter = self.center
             Static.beginningPoint = Static.touchPoint
             self.center = makeCenter()
-        } else if gestureRecognizer.state == .Changed || gestureRecognizer.state == .Ended {
+        } else if gestureRecognizer.state == .changed || gestureRecognizer.state == .ended {
             self.center = makeCenter()
         }
     }

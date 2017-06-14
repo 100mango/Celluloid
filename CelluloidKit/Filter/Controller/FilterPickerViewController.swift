@@ -9,19 +9,19 @@
 import Foundation
 
 public protocol FilterPickerViewControllerDelegate: class {
-    func filterPickerViewController(filterPickerViewController: FilterPickerViewController, didSelectFilter filter: FilterType)
+    func filterPickerViewController(_ filterPickerViewController: FilterPickerViewController, didSelectFilter filter: FilterType)
 }
 
-public class FilterPickerViewController: BasePickerController {
+open class FilterPickerViewController: BasePickerController {
     
     //MARK: Property
-    public weak var delegate: FilterPickerViewControllerDelegate?
+    open weak var delegate: FilterPickerViewControllerDelegate?
     
     //MARK: View life cycle
-    public override func viewDidLoad() {
+    open override func viewDidLoad() {
         super.viewDidLoad()
         
-        self.navigationItem.title = tr(.Filter)
+        self.navigationItem.title = tr(.filter)
     }
     
 }
@@ -30,33 +30,33 @@ public class FilterPickerViewController: BasePickerController {
 
 extension FilterPickerViewController {
     
-    public override func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        return FilterCellType.Count.rawValue
+    public override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        return FilterCellType.count.rawValue
     }
     
-    public override func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
+    public override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         return makeFilterCell(indexPath)
     }
     
 }
 
 private enum FilterCellType: Int {
-    case Original
-    case Sepia
+    case original
+    case sepia
     //case Chrome
     //case Fade
     //case Invert
-    case Posterize
+    case posterize
     //case Sketch
     //case Comic
-    case Crystal
-    case PixellateFace
-    case Count
+    case crystal
+    case pixellateFace
+    case count
 }
 
 private extension FilterPickerViewController {
     
-    func makeFilterCell(indexPath: NSIndexPath) ->  UICollectionViewCell {
+    func makeFilterCell(_ indexPath: IndexPath) ->  UICollectionViewCell {
         
         let cell = collectionView.dequeueReusableCellForIndexPath(indexPath)
         cell.backgroundColor = .cellLightPurple
@@ -71,9 +71,9 @@ private extension FilterPickerViewController {
         if let cellType = FilterCellType(rawValue: indexPath.row){
             switch cellType {
                 
-            case .Original:
+            case .original:
                 imageView.image = UIImage(asset: .OriginalFilter)
-            case .Sepia:
+            case .sepia:
                 imageView.image = UIImage(asset: .OldPictureFilter)
             //case .Chrome:
             //    imageView.image = UIImage(asset: .Chrome)
@@ -81,15 +81,15 @@ private extension FilterPickerViewController {
             //    imageView.image = UIImage(asset: .Instant)
             //case .Invert:
             //    imageView.image = UIImage(asset: .Invert)
-            case .Posterize:
+            case .posterize:
                 imageView.image = UIImage(asset: .PosterizeFilter)
-            case .PixellateFace:
+            case .pixellateFace:
                 imageView.image = UIImage(asset: .PixellateFaceFilter)
             //case .Sketch,.Comic:
             //    imageView.image = UIImage(asset: .Posterize)
-            case .Crystal:
+            case .crystal:
                 imageView.image = UIImage(asset: .CrystalFilter)
-            case .Count:
+            case .count:
                 break
             }
         }
@@ -101,7 +101,7 @@ private extension FilterPickerViewController {
 //MARK: CollectionView delegate
 
 extension FilterPickerViewController {
-    public func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
+    public func collectionView(_ collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: IndexPath) {
         if let type = FilterCellType(rawValue: indexPath.row) {
             handleSelectFilter(type)
         }
@@ -109,13 +109,13 @@ extension FilterPickerViewController {
 }
 
 private extension FilterPickerViewController {
-    func handleSelectFilter(type: FilterCellType) {
+    func handleSelectFilter(_ type: FilterCellType) {
         
         switch type {
             
-        case .Original:
+        case .original:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Original)
-        case .Sepia:
+        case .sepia:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Sepia)
             /*
         case .Chrome:
@@ -125,7 +125,7 @@ private extension FilterPickerViewController {
         case .Invert:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Invert)
             */
-        case .Posterize:
+        case .posterize:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Posterize)
             /*
         case .Sketch:
@@ -133,15 +133,15 @@ private extension FilterPickerViewController {
         case .Comic:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Comic)
              */
-        case .PixellateFace:
+        case .pixellateFace:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .PixellateFace)
-        case .Crystal:
+        case .crystal:
             self.delegate?.filterPickerViewController(self, didSelectFilter: .Crystal)
-        case .Count:
+        case .count:
             break
         }
         
-        dismissViewControllerAnimated(true, completion: nil)
+        dismiss(animated: true, completion: nil)
     }
 }
 

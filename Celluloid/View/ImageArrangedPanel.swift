@@ -9,7 +9,7 @@
 import UIKit
 
 protocol ImageArrangedPanelDelegate: class {
-    func imageArrangedPanel(imageArrangedPanel: ImageArrangedPanel, didEditModels models: [PhotoModel])
+    func imageArrangedPanel(_ imageArrangedPanel: ImageArrangedPanel, didEditModels models: [PhotoModel])
 }
 
 class ImageArrangedPanel: UIView {
@@ -17,13 +17,13 @@ class ImageArrangedPanel: UIView {
     //MARK: Property
     var photoModels: [PhotoModel]
     
-    private lazy var collectionView: UICollectionView = {
+    fileprivate lazy var collectionView: UICollectionView = {
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: self.flowLayout)
-        collectionView.backgroundColor = .whiteColor()
+        collectionView.backgroundColor = .white
         collectionView.delegate = self
         collectionView.dataSource = self
-        collectionView.registerClass(ArrangedCollectionViewCell)
+        collectionView.registerClass(ArrangedCollectionViewCell.self)
         
         let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(ImageArrangedPanel.handleLongPressGesture(_:)))
         collectionView.addGestureRecognizer(longPressGesture)
@@ -31,14 +31,14 @@ class ImageArrangedPanel: UIView {
         return collectionView
     }()
     
-    private let spacing: CGFloat = 10
-    private lazy var flowLayout: UICollectionViewFlowLayout = {
+    fileprivate let spacing: CGFloat = 10
+    fileprivate lazy var flowLayout: UICollectionViewFlowLayout = {
         let layout = UICollectionViewFlowLayout()
         let spacing = self.spacing
         layout.sectionInset = UIEdgeInsets(top: spacing, left: spacing, bottom: spacing, right: spacing)
         layout.minimumLineSpacing = spacing
         layout.minimumInteritemSpacing = spacing
-        layout.scrollDirection = .Horizontal
+        layout.scrollDirection = .horizontal
         return layout
     }()
     
@@ -49,7 +49,7 @@ class ImageArrangedPanel: UIView {
         photoModels = models
         super.init(frame: CGRect.zero)
         self.addSubview(collectionView)
-        collectionView.snp_makeConstraints { (make) in
+        collectionView.snp.makeConstraints  { (make) in
             make.edges.equalTo(collectionView.superview!)
         }
     }
@@ -77,16 +77,16 @@ class ImageArrangedPanel: UIView {
 
 //MARK: Action
 extension ImageArrangedPanel {
-    @objc private func handleLongPressGesture(gesture: UILongPressGestureRecognizer) {
+    @objc fileprivate func handleLongPressGesture(_ gesture: UILongPressGestureRecognizer) {
         switch gesture.state {
-        case .Began:
-            let location = gesture.locationInView(collectionView)
-            if let selectedIndexPath = collectionView.indexPathForItemAtPoint(location) {
-                collectionView.beginInteractiveMovementForItemAtIndexPath(selectedIndexPath)
+        case .began:
+            let location = gesture.location(in: collectionView)
+            if let selectedIndexPath = collectionView.indexPathForItem(at: location) {
+                collectionView.beginInteractiveMovementForItem(at: selectedIndexPath)
             }
-        case .Changed:
-            collectionView.updateInteractiveMovementTargetPosition(gesture.locationInView(gesture.view!))
-        case .Ended:
+        case .changed:
+            collectionView.updateInteractiveMovementTargetPosition(gesture.location(in: gesture.view!))
+        case .ended:
             collectionView.endInteractiveMovement()
         default:
             collectionView.cancelInteractiveMovement()
@@ -96,17 +96,17 @@ extension ImageArrangedPanel {
 
 //MARK: ArrangedCollectionViewCell Delegate
 extension ImageArrangedPanel: ArrangedCollectionViewCellDelegate {
-    private func shouldRemoveCell(cell: ArrangedCollectionViewCell) {
-        if let indexPath = collectionView.indexPathForCell(cell) {
+    fileprivate func shouldRemoveCell(_ cell: ArrangedCollectionViewCell) {
+        if let indexPath = collectionView.indexPath(for: cell) {
             if photoModels.count != 2 {
-                photoModels.removeAtIndex(indexPath.item)
-                collectionView.deleteItemsAtIndexPaths([indexPath])
+                photoModels.remove(at: indexPath.item)
+                collectionView.deleteItems(at: [indexPath])
                 self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
             } else {
-                let alert = UIAlertController(title: nil, message: "拼图最少需要两张照片", preferredStyle: .Alert)
-                self.parentViewController?.presentViewController(alert, animated: true, completion: nil)
-                alert.addAction(UIAlertAction(title: "确定", style: .Cancel, handler: { action in
-                    alert.dismissViewControllerAnimated(true, completion: nil)
+                let alert = UIAlertController(title: nil, message: "拼图最少需要两张照片", preferredStyle: .alert)
+                self.parentViewController?.present(alert, animated: true, completion: nil)
+                alert.addAction(UIAlertAction(title: "确定", style: .cancel, handler: { action in
+                    alert.dismiss(animated: true, completion: nil)
                 }))
             }
         }
@@ -116,11 +116,11 @@ extension ImageArrangedPanel: ArrangedCollectionViewCellDelegate {
 //MARK: UICollectionViewDataSource
 extension ImageArrangedPanel: UICollectionViewDataSource {
     
-    func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         return photoModels.count
     }
     
-    func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         
         let cell = collectionView.dequeueReusableCellForIndexPath(indexPath) as ArrangedCollectionViewCell
         cell.delegate = self
@@ -131,7 +131,7 @@ extension ImageArrangedPanel: UICollectionViewDataSource {
         return cell
     }
     
-    func collectionView(collectionView: UICollectionView, moveItemAtIndexPath sourceIndexPath: NSIndexPath, toIndexPath destinationIndexPath: NSIndexPath) {
+    func collectionView(_ collectionView: UICollectionView, moveItemAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
     
         swap(&photoModels[sourceIndexPath.row], &photoModels[destinationIndexPath.row])
         self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
@@ -148,7 +148,7 @@ extension ImageArrangedPanel: UICollectionViewDelegate {
 
 //MARK: ArrangedCollectionViewCell
 private protocol ArrangedCollectionViewCellDelegate: class {
-    func shouldRemoveCell(cell: ArrangedCollectionViewCell)
+    func shouldRemoveCell(_ cell: ArrangedCollectionViewCell)
 }
 
 
@@ -156,15 +156,15 @@ private class ArrangedCollectionViewCell: UICollectionViewCell {
     
     let imageView: UIImageView = {
         let imageView = UIImageView()
-        imageView.contentMode = .ScaleAspectFill
+        imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
         return imageView
     }()
     
-    private lazy var deleteButton: UIButton = {
-        let button = UIButton(type: .Custom)
-        button.setImage(UIImage(asset: .Btn_icon_sticker_delete_normal), forState: .Normal)
-        button.addTarget(self, action: #selector(ArrangedCollectionViewCell.remove) , forControlEvents: .TouchUpInside)
+    fileprivate lazy var deleteButton: UIButton = {
+        let button = UIButton(type: .custom)
+        button.setImage(UIImage(asset: .Btn_icon_sticker_delete_normal), for: .normal)
+        button.addTarget(self, action: #selector(ArrangedCollectionViewCell.remove) , for: .touchUpInside)
         return button
     }()
     
@@ -175,12 +175,12 @@ private class ArrangedCollectionViewCell: UICollectionViewCell {
         super.init(frame: frame)
         
         self.contentView.addSubview(imageView)
-        imageView.snp_makeConstraints { make in
+        imageView.snp.makeConstraints  { make in
             make.edges.equalTo(self.imageView.superview!)
         }
         
         self.contentView.addSubview(deleteButton)
-        deleteButton.snp_makeConstraints { make in
+        deleteButton.snp.makeConstraints  { make in
             make.top.equalTo(deleteButton.superview!).offset(-10)
             make.right.equalTo(deleteButton.superview!).offset(10)
         }

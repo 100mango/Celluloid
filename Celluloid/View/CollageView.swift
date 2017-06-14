@@ -13,7 +13,7 @@ class CollageView: UIView {
     var collageModel: CollageModel?
     var photoModels: [PhotoModel]?
     
-    func setupWithCollageModel(collageModel: CollageModel, photoModels: [PhotoModel], forEdit: Bool = true ) {
+    func setupWithCollageModel(_ collageModel: CollageModel, photoModels: [PhotoModel], forEdit: Bool = true ) {
         
         self.collageModel = collageModel
         self.photoModels = photoModels
@@ -33,13 +33,13 @@ class CollageView: UIView {
         
     }
     
-    func setupWithCollageModel(collageModel: CollageModel) {
+    func setupWithCollageModel(_ collageModel: CollageModel) {
         if let photoModels = photoModels {
             setupWithCollageModel(collageModel, photoModels: photoModels)
         }
     }
     
-    func setupWithPhotoModels(photoModels: [PhotoModel]) {
+    func setupWithPhotoModels(_ photoModels: [PhotoModel]) {
         if let collageModel = collageModel {
             setupWithCollageModel(collageModel, photoModels: photoModels)
         }

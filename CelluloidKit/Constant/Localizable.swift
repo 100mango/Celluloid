@@ -10,25 +10,25 @@ import Foundation
 
 public enum L10n {
     /// done
-    case Done
+    case done
     /// cancel
-    case Cancel
+    case cancel
     /// Edit
-    case Edit
+    case edit
     /// collage
-    case Collage
+    case collage
     /// filter
-    case Filter
+    case filter
     /// bubble
-    case Bubble
+    case bubble
     /// sticker
-    case Sticker
+    case sticker
     /// Share
-    case Share
+    case share
     /// Saved
-    case Saved
+    case saved
     /// Beautify
-    case Beautify
+    case beautify
 }
 
 extension L10n: CustomStringConvertible {
@@ -36,35 +36,35 @@ extension L10n: CustomStringConvertible {
     
     public var string: String {
         switch self {
-        case .Done:
+        case .done:
             return L10n.tr("done")
-        case .Cancel:
+        case .cancel:
             return L10n.tr("cancel")
-        case .Edit:
+        case .edit:
             return L10n.tr("edit")
-        case .Collage:
+        case .collage:
             return L10n.tr("collage")
-        case .Filter:
+        case .filter:
             return L10n.tr("filter")
-        case .Bubble:
+        case .bubble:
             return L10n.tr("bubble")
-        case .Sticker:
+        case .sticker:
             return L10n.tr("sticker")
-        case .Share:
+        case .share:
             return L10n.tr("share")
-        case .Saved:
+        case .saved:
             return L10n.tr("saved")
-        case .Beautify:
+        case .beautify:
             return L10n.tr("beautify")
         }
     }
     
-    private static func tr(key: String, _ args: CVarArgType...) -> String {
+    fileprivate static func tr(_ key: String, _ args: CVarArg...) -> String {
         let format = NSLocalizedString(key, bundle: extensionBundle, comment: "")
         return String(format: format, arguments: args)
     }
 }
 
-public func tr(key: L10n) -> String {
+public func tr(_ key: L10n) -> String {
     return key.string
 }

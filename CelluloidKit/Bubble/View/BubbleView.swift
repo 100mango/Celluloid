@@ -9,18 +9,18 @@
 import UIKit
 import MZFormSheetPresentationController
 
-public class BubbleView: AttachView {
+open class BubbleView: AttachView {
     //MARK: Property
     lazy var editTextBubbton: UIButton = {
-        let button = UIButton(type: .Custom)
-        button.hidden = true
+        let button = UIButton(type: .custom)
+        button.isHidden = true
         button.frame = CGRect(x: 0, y: 0, width: self.buttonWidth, height: self.buttonWidth)
-        button.setImage(UIImage(asset: .Btn_icon_sticker_text_normal), forState: .Normal)
-        button.addTarget(self, action: #selector(editText), forControlEvents: .TouchUpInside)
+        button.setImage(UIImage(asset: .Btn_icon_sticker_text_normal), for: UIControlState())
+        button.addTarget(self, action: #selector(editText), for: .touchUpInside)
         return button
     }()
     
-    public var bubbleModel: BubbleModel {
+    open var bubbleModel: BubbleModel {
         didSet {
             bubbleLabel.text = bubbleModel.content
             bubbleLabel.adjustFrame()
@@ -30,19 +30,19 @@ public class BubbleView: AttachView {
     let bubbleLabel: BubbleLabel
     
     //Property observers
-    public override var transform: CGAffineTransform {
+    open override var transform: CGAffineTransform {
         didSet {
             self.bubbleModel.transform = transform
         }
     }
     
-    public override var bounds: CGRect {
+    open override var bounds: CGRect {
         didSet {
             self.bubbleModel.bounds = bounds
         }
     }
     
-    public override var center: CGPoint {
+    open override var center: CGPoint {
         didSet {
             self.bubbleModel.center = center
         }
@@ -65,7 +65,7 @@ public class BubbleView: AttachView {
         fatalError("init(coder:) has not been implemented")
     }
     
-    public override func layoutSubviews() {
+    open override func layoutSubviews() {
         super.layoutSubviews()
         
         deleteButton.frame = CGRect(x: bounds.width - self.buttonWidth, y: 0, width: self.buttonWidth, height: self.buttonWidth)
@@ -83,13 +83,13 @@ extension BubbleView {
         let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
         formSheetController.presentationController?.shouldUseMotionEffect = true
         formSheetController.presentationController?.shouldCenterVertically = true
-        self.parentViewController?.presentViewController(formSheetController, animated: true, completion: nil)
+        self.parentViewController?.present(formSheetController, animated: true, completion: nil)
     }
 }
 
 //MARK: EditBubbleViewController delegate
 extension BubbleView: EditBubbleViewControllerDelegate {
-    public func editBubbleViewController(editBubbleViewController: EditBubbleViewController, didEditedBubbleModel bubbleModel: BubbleModel) {
+    public func editBubbleViewController(_ editBubbleViewController: EditBubbleViewController, didEditedBubbleModel bubbleModel: BubbleModel) {
         self.bubbleModel = bubbleModel
     }
 }

@@ -10,43 +10,43 @@ import Foundation
 import JSONCodable
 
 extension JSONEncoder {
-    func encode(value: CGAffineTransform, key: String) {
-        object[key] = NSValue(CGAffineTransform: value)
+    func encode(_ value: CGAffineTransform, key: String) {
+        object[key] = NSValue(cgAffineTransform: value)
     }
     
-    func encode(value: CGRect, key: String) {
-        object[key] = NSValue(CGRect: value)
+    func encode(_ value: CGRect, key: String) {
+        object[key] = NSValue(cgRect: value)
     }
     
-    func encode(value: CGPoint, key: String) {
-        object[key] = NSValue(CGPoint: value)
+    func encode(_ value: CGPoint, key: String) {
+        object[key] = NSValue(cgPoint: value)
     }
 }
 
 extension JSONDecoder {
     
-    func decode(key: String, type: Any.Type) throws -> NSValue {
+    func decode(_ key: String, type: Any.Type) throws -> NSValue {
         guard let value = get(key) else {
-            throw JSONDecodableError.MissingTypeError(key: key)
+            throw JSONDecodableError.missingTypeError(key: key)
         }
         guard let compatible = value as? NSValue else {
-            throw JSONDecodableError.IncompatibleTypeError(key: key, elementType: value.dynamicType, expectedType: NSValue.self)
+            throw JSONDecodableError.incompatibleTypeError(key: key, elementType: type(of: value), expectedType: NSValue.self)
         }
-        guard let objcType = String.fromCString(compatible.objCType) where objcType.containsString("\(type)") else {
-            throw JSONDecodableError.IncompatibleTypeError(key: key, elementType: value.dynamicType, expectedType: type)
+        guard let objcType = String(validatingUTF8: compatible.objCType), objcType.contains("\(type)") else {
+            throw JSONDecodableError.incompatibleTypeError(key: key, elementType: type(of: value), expectedType: type)
         }
         return compatible
     }
     
-    func decode(key: String) throws -> CGAffineTransform {
-        return try decode(key, type: CGAffineTransform.self).CGAffineTransformValue()
+    func decode(_ key: String) throws -> CGAffineTransform {
+        return try decode(key, type: CGAffineTransform.self).cgAffineTransformValue
     }
     
-    func decode(key: String) throws -> CGRect {
-        return try decode(key, type: CGRect.self).CGRectValue()
+    func decode(_ key: String) throws -> CGRect {
+        return try decode(key, type: CGRect.self).cgRectValue
     }
     
-    func decode(key: String) throws -> CGPoint {
-        return try decode(key, type: CGPoint.self).CGPointValue()
+    func decode(_ key: String) throws -> CGPoint {
+        return try decode(key, type: CGPoint.self).cgPointValue
     }
 }

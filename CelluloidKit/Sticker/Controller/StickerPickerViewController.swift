@@ -9,19 +9,19 @@
 import Foundation
 
 public protocol StickerPickerViewControllerDelegate: class {
-    func stickerPickerViewController(stickerPickerViewController: StickerPickerViewController, didSelectSticker sticker: StickerModel)
+    func stickerPickerViewController(_ stickerPickerViewController: StickerPickerViewController, didSelectSticker sticker: StickerModel)
 }
 
-public class StickerPickerViewController: BasePickerController {
+open class StickerPickerViewController: BasePickerController {
     
     //MARK: Property
-    public weak var delegate: StickerPickerViewControllerDelegate?
+    open weak var delegate: StickerPickerViewControllerDelegate?
     
     //MARK: View life cycle
-    public override func viewDidLoad() {
+    open override func viewDidLoad() {
         super.viewDidLoad()
         
-        self.navigationItem.title = tr(.Sticker)
+        self.navigationItem.title = tr(.sticker)
     }
 
 }
@@ -29,11 +29,11 @@ public class StickerPickerViewController: BasePickerController {
 //MARK: CollectionView Data Source
 extension StickerPickerViewController {
     
-    public override func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+    public override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         return StickerModel.stickers.count
     }
     
-    public override func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
+    public override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         
         let cell = collectionView.dequeueReusableCellForIndexPath(indexPath)
         cell.backgroundColor = .cellLightPurple
@@ -43,7 +43,7 @@ extension StickerPickerViewController {
         
         let imageView = UIImageView()
         imageView.size = cell.size
-        imageView.contentMode = .ScaleAspectFit
+        imageView.contentMode = .scaleAspectFit
         imageView.image = StickerModel.stickers[indexPath.row].stickerImage
         cell.contentView.addSubview(imageView)
         return cell
@@ -53,9 +53,9 @@ extension StickerPickerViewController {
 
 //MARK: CollectionView delegate
 extension StickerPickerViewController {
-    public func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
+    public func collectionView(_ collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: IndexPath) {
         let sticker = StickerModel.stickers[indexPath.row]
         self.delegate?.stickerPickerViewController(self, didSelectSticker: sticker)
-        self.dismissViewControllerAnimated(true, completion: nil)
+        self.dismiss(animated: true, completion: nil)
     }
 }

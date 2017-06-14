@@ -10,19 +10,19 @@ import UIKit
 import SnapKit
 
 public protocol BubblePickerViewControllerDelegate: class {
-    func bubblePickerViewController(bubblePickerViewController: BubblePickerViewController, didSelectBubble bubble: BubbleModel)
+    func bubblePickerViewController(_ bubblePickerViewController: BubblePickerViewController, didSelectBubble bubble: BubbleModel)
 }
 
-public class BubblePickerViewController: BasePickerController {
+open class BubblePickerViewController: BasePickerController {
     
     //MARK: Property
-    public weak var delegate: BubblePickerViewControllerDelegate?
+    open weak var delegate: BubblePickerViewControllerDelegate?
     
     //MARK: View life cycle
-    public override func viewDidLoad() {
+    open override func viewDidLoad() {
         super.viewDidLoad()
         
-        self.navigationItem.title = tr(.Bubble)
+        self.navigationItem.title = tr(.bubble)
     }
     
 }
@@ -30,11 +30,11 @@ public class BubblePickerViewController: BasePickerController {
 //MARK: CollectionView Data Source
 extension BubblePickerViewController {
     
-    public override func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+    public override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         return BubbleModel.bubbles.count
     }
     
-    public override func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
+    public override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         
         let cell = collectionView.dequeueReusableCellForIndexPath(indexPath)
         cell.backgroundColor = .cellLightPurple
@@ -44,7 +44,7 @@ extension BubblePickerViewController {
         
         let imageView = UIImageView()
         imageView.size = cell.size
-        imageView.contentMode = .ScaleAspectFit
+        imageView.contentMode = .scaleAspectFit
         imageView.image = BubbleModel.bubbles[indexPath.row].bubbleImage
         cell.contentView.addSubview(imageView)
         return cell
@@ -54,7 +54,7 @@ extension BubblePickerViewController {
 
 //MARK: CollectionView delegate
 extension BubblePickerViewController {
-    public func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
+    public func collectionView(_ collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: IndexPath) {
         let bubble = BubbleModel.bubbles[indexPath.row]
         let editBubbleViewController = EditBubbleViewController(bubbleModel: bubble)
         editBubbleViewController.delegate = self
@@ -64,7 +64,7 @@ extension BubblePickerViewController {
 
 //MARK: EditBubbleViewController delegate
 extension BubblePickerViewController: EditBubbleViewControllerDelegate {
-    public func editBubbleViewController(editBubbleViewController: EditBubbleViewController, didEditedBubbleModel bubbleModel: BubbleModel) {
+    public func editBubbleViewController(_ editBubbleViewController: EditBubbleViewController, didEditedBubbleModel bubbleModel: BubbleModel) {
         self.delegate?.bubblePickerViewController(self, didSelectBubble: bubbleModel)
     }
 }

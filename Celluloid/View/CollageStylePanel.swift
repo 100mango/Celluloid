@@ -10,33 +10,33 @@ import UIKit
 import CelluloidKit
 
 protocol CollageStylePanelDelegate: class {
-    func collageStylePanel(collageStylePanel: CollageStylePanel, didSelctModel model: CollageModel)
+    func collageStylePanel(_ collageStylePanel: CollageStylePanel, didSelctModel model: CollageModel)
 }
 
 class CollageStylePanel: UIView {
     
     //MARK: Property
-    private lazy var collectionView: UICollectionView = {
+    fileprivate lazy var collectionView: UICollectionView = {
         
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: self.flowLayout)
         collectionView.delegate = self
         collectionView.dataSource = self
-        collectionView.backgroundColor = UIColor.whiteColor()
+        collectionView.backgroundColor = UIColor.white
         collectionView.showsHorizontalScrollIndicator = false
-        collectionView.registerClass(CollageStyleCell)
+        collectionView.registerClass(CollageStyleCell.self)
         
         return collectionView
         
     }()
     
-    private lazy var flowLayout: UICollectionViewFlowLayout = {
+    fileprivate lazy var flowLayout: UICollectionViewFlowLayout = {
         
         let layout = UICollectionViewFlowLayout()
         layout.itemSize = CGSize(width: 100, height: 100)
         layout.sectionInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 5)
         layout.minimumLineSpacing = 5
         layout.minimumInteritemSpacing = 5
-        layout.scrollDirection = .Horizontal
+        layout.scrollDirection = .horizontal
         
         return layout
     }()
@@ -47,7 +47,7 @@ class CollageStylePanel: UIView {
         }
     }
     
-    var scrollDirection: UICollectionViewScrollDirection = .Horizontal {
+    var scrollDirection: UICollectionViewScrollDirection = .horizontal {
         didSet {
             let layout = collectionView.collectionViewLayout as! UICollectionViewFlowLayout
             layout.scrollDirection = scrollDirection
@@ -61,7 +61,7 @@ class CollageStylePanel: UIView {
         self.collageModels = models
         super.init(frame: CGRect.zero)
         self.addSubview(collectionView)
-        collectionView.snp_makeConstraints { (make) in
+        collectionView.snp.makeConstraints  { (make) in
             make.edges.equalTo(collectionView.superview!)
         }
     }
@@ -87,11 +87,11 @@ class CollageStylePanel: UIView {
 //MARK: UICollectionViewDataSource
 extension CollageStylePanel: UICollectionViewDataSource {
     
-    func collectionView(collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         return collageModels.count
     }
     
-    func collectionView(collectionView: UICollectionView, cellForItemAtIndexPath indexPath: NSIndexPath) -> UICollectionViewCell {
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         
         let cell = collectionView.dequeueReusableCellForIndexPath(indexPath) as CollageStyleCell
         cell.configureWithImage(collageModels[indexPath.row].collageStyleImage)
@@ -103,7 +103,7 @@ extension CollageStylePanel: UICollectionViewDataSource {
 //MARK: UICollectionViewDelegate
 extension CollageStylePanel: UICollectionViewDelegate {
     
-    func collectionView(collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: NSIndexPath) {
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         self.delegate?.collageStylePanel(self, didSelctModel: collageModels[indexPath.row])
     }
     
@@ -114,10 +114,10 @@ extension CollageStylePanel: UICollectionViewDelegate {
 class CollageStyleCell: UICollectionViewCell {
     
     let imageView: UIImageView = UIImageView()
-    let mask: UIView = {
+    let maskview: UIView = {
         let mask = UIView()
-        mask.backgroundColor = UIColor.cellLightPurple.colorWithAlphaComponent(0.5)
-        mask.hidden = true
+        mask.backgroundColor = UIColor.cellLightPurple.withAlphaComponent(0.5)
+        mask.isHidden = true
         return mask
     }()
     
@@ -127,27 +127,29 @@ class CollageStyleCell: UICollectionViewCell {
         self.backgroundColor = .cellLightPurple
         
         self.contentView.addSubview(imageView)
-        imageView.snp_makeConstraints { (make) in
+        imageView.snp.makeConstraints { (make) in
             make.edges.equalTo(imageView.superview!).inset(5)
         }
-        self.contentView.addSubview(mask)
-        mask.snp_makeConstraints { (make) in
+        
+
+        self.contentView.addSubview(maskview)
+        maskview.snp.makeConstraints { (make) in
             make.width.height.equalTo(imageView)
             make.center.equalTo(imageView)
         }
     }
     
-    override var selected: Bool {
+    override var isSelected: Bool {
         didSet {
-            if selected {
-                mask.hidden = false
+            if isSelected {
+                maskview.isHidden = false
             }else{
-                mask.hidden = true
+                maskview.isHidden = true
             }
         }
     }
     
-    func configureWithImage(image: UIImage) {
+    func configureWithImage(_ image: UIImage) {
         imageView.image = image
     }
     
