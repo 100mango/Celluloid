@@ -10,7 +10,6 @@
 		160C58FD9254A906AA80A2C4 /* Pods_CelluloidKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B28FB260AAFC44AF0B81C827 /* Pods_CelluloidKit.framework */; };
 		1EA1CE5534CCFAEAF5C069F5 /* Pods_Celluloid.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B870BE9FD003101A4AAA17D /* Pods_Celluloid.framework */; };
 		258256A28047D0DE10328EA0 /* Pods_CelluloidPhotoExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6BD8BF675D857FBF341A407A /* Pods_CelluloidPhotoExtension.framework */; };
-		BF49C97C1EF169AD0082B2E7 /* Default-568h@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = BF49C97B1EF169AD0082B2E7 /* Default-568h@2x.png */; };
 		DB14F7711C803608000FA15F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7701C803608000FA15F /* AppDelegate.swift */; };
 		DB14F7731C803608000FA15F /* CollageViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7721C803608000FA15F /* CollageViewController.swift */; };
 		DB14F7781C803608000FA15F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7771C803608000FA15F /* Assets.xcassets */; };
@@ -113,7 +112,6 @@
 		AB89F2C26175F4792B591645 /* Pods-CelluloidKit.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CelluloidKit.release.xcconfig"; path = "Pods/Target Support Files/Pods-CelluloidKit/Pods-CelluloidKit.release.xcconfig"; sourceTree = "<group>"; };
 		B09EFB0F9079D177778EE888 /* Pods-Celluloid.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Celluloid.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Celluloid/Pods-Celluloid.debug.xcconfig"; sourceTree = "<group>"; };
 		B28FB260AAFC44AF0B81C827 /* Pods_CelluloidKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_CelluloidKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		BF49C97B1EF169AD0082B2E7 /* Default-568h@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Default-568h@2x.png"; sourceTree = "<group>"; };
 		DB14F76D1C803608000FA15F /* Celluloid.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Celluloid.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DB14F7701C803608000FA15F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		DB14F7721C803608000FA15F /* CollageViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollageViewController.swift; sourceTree = "<group>"; };
@@ -220,7 +218,6 @@
 		DB14F7641C803608000FA15F = {
 			isa = PBXGroup;
 			children = (
-				BF49C97B1EF169AD0082B2E7 /* Default-568h@2x.png */,
 				DB14F76F1C803608000FA15F /* Celluloid */,
 				DB14F7881C8083A1000FA15F /* CelluloidKit */,
 				DB14F7AF1C808579000FA15F /* CelluloidPhotoExtension */,
@@ -624,7 +621,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				DB14F77B1C803608000FA15F /* LaunchScreen.storyboard in Resources */,
-				BF49C97C1EF169AD0082B2E7 /* Default-568h@2x.png in Resources */,
 				DB83EFB81CDA276F00962016 /* collage.json in Resources */,
 				DB14F7781C803608000FA15F /* Assets.xcassets in Resources */,
 			);
