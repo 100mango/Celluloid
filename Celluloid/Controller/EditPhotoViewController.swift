@@ -15,6 +15,7 @@ class EditPhotoViewController: BaseEditPhotoController {
     
     //MARK: Property
     let model: PhotoModel
+    private var didCancel = false
     
     fileprivate lazy var leftButtonItem: UIBarButtonItem = UIBarButtonItem(title: tr(.cancel), style: .plain, target: self, action: #selector(dismissSelf))
     
@@ -34,7 +35,6 @@ class EditPhotoViewController: BaseEditPhotoController {
     init(model: PhotoModel) {
         self.model = model
         super.init(nibName: nil, bundle: nil)
-        requstContentEditingInput()
     }
     
     required init?(coder aDecoder: NSCoder) {
@@ -47,8 +47,9 @@ class EditPhotoViewController: BaseEditPhotoController {
         self.navigationItem.title = tr(.beautify)
         self.navigationItem.setLeftBarButton(leftButtonItem, animated: false)
         self.navigationItem.setRightBarButton(rightButtonItem, animated: false)
-        
-        startContentEditing()
+
+        rightButtonItem.isEnabled = false
+        requstContentEditingInput()
     }
     
 }
@@ -57,6 +58,7 @@ class EditPhotoViewController: BaseEditPhotoController {
 private extension EditPhotoViewController {
     
     @objc func dismissSelf() {
+        didCancel = true
         dismiss(animated: true, completion: nil)
     }
     
@@ -75,7 +77,23 @@ private extension EditPhotoViewController {
             return AdjustmentData.supportIdentifier(option.formatIdentifier, version: option.formatVersion)
         }
         model.asset.requestContentEditingInput(with: option) { (input, info) in
-            self.input = input!
+            DispatchQueue.main.async {
+                guard !self.didCancel && !self.isBeingDismissed && !self.isMovingFromParent else { return }
+
+                guard let input = input else {
+                    let alert = UIAlertController(title: nil, message: "Unable to load this photo.", preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: tr(.done), style: .default, handler: { _ in
+                        self.didCancel = true
+                        self.dismiss(animated: true, completion: nil)
+                    }))
+                    self.present(alert, animated: true, completion: nil)
+                    return
+                }
+
+                self.input = input
+                self.rightButtonItem.isEnabled = true
+                self.startContentEditing()
+            }
         }
     }
     
