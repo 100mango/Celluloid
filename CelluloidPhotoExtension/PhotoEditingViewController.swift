@@ -48,6 +48,11 @@ extension PhotoEditingViewController: PHContentEditingController {
             // renderedJPEGData.writeToURL(output.renderedContentURL, atomically: true)
             
             output.adjustmentData = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: AdjustmentData.formatVersion, data: self.adjustmentData.encode())
+
+            let completeWithoutEdit = {
+                output.adjustmentData = nil
+                completionHandler(output)
+            }
             
             
             
@@ -58,20 +63,20 @@ extension PhotoEditingViewController: PHContentEditingController {
                 let renderedJPEGData: Data
                 if let outputImage = self.outputImage {
                     guard let jpegData = UIImageJPEGRepresentation(outputImage, 1.0) else {
-                        completionHandler(nil)
+                        completeWithoutEdit()
                         return
                     }
                     renderedJPEGData = jpegData
                 } else {
                     guard let url = self.input.fullSizeImageURL else {
-                        completionHandler(nil)
+                        completeWithoutEdit()
                         return
                     }
                     renderedJPEGData = try Data(contentsOf: url)
                 }
                 try renderedJPEGData.write(to: output.renderedContentURL)
             } catch {
-                completionHandler(nil)
+                completeWithoutEdit()
                 return
             }
             
