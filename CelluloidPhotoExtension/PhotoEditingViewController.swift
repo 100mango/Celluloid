@@ -54,15 +54,26 @@ extension PhotoEditingViewController: PHContentEditingController {
             
             
             
-            let renderedJPEGData: Data
-            if let outputImage = self.outputImage {
-                renderedJPEGData = UIImageJPEGRepresentation(outputImage, 1.0)!
-            }else{
-                guard let url = self.input.fullSizeImageURL
-                    else { fatalError("missing input image url") }
-                renderedJPEGData = try! Data(contentsOf: url)
+            do {
+                let renderedJPEGData: Data
+                if let outputImage = self.outputImage {
+                    guard let jpegData = UIImageJPEGRepresentation(outputImage, 1.0) else {
+                        completionHandler(nil)
+                        return
+                    }
+                    renderedJPEGData = jpegData
+                } else {
+                    guard let url = self.input.fullSizeImageURL else {
+                        completionHandler(nil)
+                        return
+                    }
+                    renderedJPEGData = try Data(contentsOf: url)
+                }
+                try renderedJPEGData.write(to: output.renderedContentURL)
+            } catch {
+                completionHandler(nil)
+                return
             }
-            try! renderedJPEGData.write(to: output.renderedContentURL)
             
             
             // Call completion handler to commit edit to Photos.
