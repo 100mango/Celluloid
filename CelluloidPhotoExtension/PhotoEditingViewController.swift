@@ -74,7 +74,7 @@ extension PhotoEditingViewController: PHContentEditingController {
                     }
                     renderedJPEGData = try Data(contentsOf: url)
                 }
-                try renderedJPEGData.write(to: output.renderedContentURL)
+                try renderedJPEGData.write(to: output.renderedContentURL, options: .atomic)
             } catch {
                 completeWithoutEdit()
                 return
