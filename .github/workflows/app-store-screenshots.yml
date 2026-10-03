@@ -29,7 +29,7 @@ jobs:
           git diff --exit-code HEAD --
           python3 - <<'PY'
           import subprocess
-          frozen='738b45f0c53f724d6f782d6346bb43c19c2f69d7'
+          frozen='fc4e2efaf6082c02f30b199d4aa699c49a70efa3'
           allowed={'.github/workflows/app-store-screenshots.yml','CelluloidUITests/CelluloidUITests.swift','Celluloid.xcodeproj/xcshareddata/xcschemes/CelluloidCapture.xcscheme'}
           changed=set(subprocess.check_output(['git','diff','--name-only',frozen,'HEAD'],text=True).splitlines())
           assert changed and changed <= allowed, changed
@@ -55,6 +55,29 @@ jobs:
               print(matches[0]['udid'],name)
           PY
           cat /tmp/celluloid-capture-devices.txt
+      - name: Prepare Release app and synthetic Photos fixtures on iPhone
+        run: |
+          set -euo pipefail
+          python3 Scripts/create_fixture.py
+          id=$(head -1 /tmp/celluloid-capture-devices.txt | cut -d' ' -f1)
+          if ! xcodebuild -project Celluloid.xcodeproj -scheme CelluloidCapture -configuration Release -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-capture build-for-testing CODE_SIGNING_ALLOWED=NO > build-capture-host.log 2>&1; then
+            tail -200 build-capture-host.log; exit 1
+          fi
+          xcrun simctl boot "$id" || true
+          xcrun simctl bootstatus "$id" -b
+          xcrun simctl addmedia "$id" /tmp/celluloid-fixture.png /tmp/celluloid-fixture-2.png
+          xcrun simctl install "$id" .build-capture/Build/Products/Release-iphonesimulator/Celluloid.app
+          xcrun simctl privacy "$id" grant photos Mango.Celluloid
+      - name: Assess actual Photos host before screenshots
+        continue-on-error: true
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          id=$(head -1 /tmp/celluloid-capture-devices.txt | cut -d' ' -f1)
+          xcrun simctl boot "$id" || true
+          xcrun simctl bootstatus "$id" -b
+          xcodebuild -project Celluloid.xcodeproj -scheme CelluloidCapture -configuration Release -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-capture -resultBundlePath PhotosHost.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidCaptureTests/testPhotosHostAssessment test-without-building CODE_SIGNING_ALLOWED=NO | tee photos-host.log
+          xcrun simctl shutdown "$id"
       - name: Capture Chinese Release UI on iPhone and iPad
         run: |
           set -euo pipefail
@@ -73,16 +96,6 @@ jobs:
             xcrun xcresulttool get test-results summary --path "Capture-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY"
             xcrun simctl shutdown "$id"
           done < /tmp/celluloid-capture-devices.txt
-      - name: Assess actual Photos host after main captures
-        continue-on-error: true
-        timeout-minutes: 8
-        run: |
-          set -euo pipefail
-          id=$(head -1 /tmp/celluloid-capture-devices.txt | cut -d' ' -f1)
-          xcrun simctl boot "$id" || true
-          xcrun simctl bootstatus "$id" -b
-          xcodebuild -project Celluloid.xcodeproj -scheme CelluloidCapture -configuration Release -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-capture -resultBundlePath PhotosHost.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidCaptureTests/testPhotosHostAssessment test-without-building CODE_SIGNING_ALLOWED=NO | tee photos-host.log
-          xcrun simctl shutdown "$id"
       - name: Verify capture count and final source
         if: always()
         run: |

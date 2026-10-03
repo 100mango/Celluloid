@@ -73,3 +73,18 @@ struct AdjustmentDictionary {
         return point
     }
 }
+
+/// Pure arithmetic validation before creating CALayer/UIView geometry. Finite
+/// components alone are insufficient when their products or extents overflow.
+func hasRenderableGeometry(center: CGPoint, bounds: CGRect, transform: CGAffineTransform) -> Bool {
+    let raw = [center.x, center.y, bounds.minX, bounds.minY, bounds.maxX, bounds.maxY,
+               bounds.width, bounds.height, transform.a, transform.b, transform.c,
+               transform.d, transform.tx, transform.ty]
+    guard raw.allSatisfy({ $0.isFinite }), bounds.width >= 0, bounds.height >= 0 else { return false }
+    let transformed = bounds.applying(transform)
+    let halfWidth = transformed.width / 2, halfHeight = transformed.height / 2
+    return [transformed.minX, transformed.minY, transformed.maxX, transformed.maxY,
+            transformed.width, transformed.height,
+            center.x + transform.tx - halfWidth, center.x + transform.tx + halfWidth,
+            center.y + transform.ty - halfHeight, center.y + transform.ty + halfHeight].allSatisfy { $0.isFinite }
+}

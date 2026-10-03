@@ -12,12 +12,23 @@ import Photos
 
 open class BaseEditPhotoController: UIViewController {
     
+    private nonisolated static let exportQueue = DispatchQueue(label: "Mango.Celluloid.full-resolution-export", qos: .userInitiated)
+    private var activeExport: PhotoExportTask?
+
+    public func cancelExport() { activeExport?.cancel(); activeExport = nil }
+
     //MARK: Property
     open var input: PHContentEditingInput? {
-        didSet { sourceImage = input?.displaySizeImage }
+        didSet {
+            cancelExport()
+            // A reused editor/Photos extension starts a separate editing session.
+            filterType = .Original
+            overlayView.reset()
+            sourceImage = input?.displaySizeImage
+        }
     }
     public var sourceImage: UIImage? {
-        didSet { preview.image = sourceImage }
+        didSet { cancelExport(); updatePreviewImage() }
     }
     public let preview: UIImageView = {
         let preview = UIImageView()
@@ -30,96 +41,148 @@ open class BaseEditPhotoController: UIViewController {
     lazy var overlayView: ImageOverlayView = ImageOverlayView.makeViewOverlaysImageView(self.preview)
     
     var filterType = FilterType.Original {
-        didSet {
-            guard filterType != oldValue else {
-                return
-            }
-            if filterType == .Original {
-                self.preview.image = sourceImage
-            }else{
-            
-                self.preview.image = sourceImage?.filteredImage(Filters.filter(filterType))
-
-            }
-        }
+        didSet { cancelExport(); updatePreviewImage() }
     }
-    
+
+    private func updatePreviewImage() {
+        preview.image = filterType == .Original ? sourceImage : sourceImage?.filteredImage(Filters.filter(filterType))
+        overlayView.adjustFrame()
+        viewIfLoaded?.setNeedsLayout()
+    }
+
     //Computed property
     open var adjustmentData: AdjustmentData {
+        viewIfLoaded?.layoutIfNeeded()
+        overlayView.adjustFrame()
         var adjustmentData = AdjustmentData()
         adjustmentData.bubbles = overlayView.bubbleModels
         adjustmentData.stickers = overlayView.stickerModels
         adjustmentData.filterType = filterType
+        adjustmentData.referenceCanvasSize = overlayView.referenceCanvasSize
         return adjustmentData
     }
     
+    /// Synchronous compatibility API for callers already on the UI thread.
+    /// App and extension saving use exportPhoto to move decode/filter/JPEG off-main.
     open var outputImage: UIImage? {
-        if let fullSizeImage = normalizedFullSizeImage {
-            guard preview.imageRect.width > 0, fullSizeImage.size.width > 0, fullSizeImage.size.height > 0 else { return nil }
-            let fullSizeImageView = UIImageView()
-            fullSizeImageView.image = fullSizeImage
-            fullSizeImageView.size = fullSizeImage.size
-            let scale = fullSizeImage.size.width / preview.imageRect.width
-            
-            //filter
-            if filterType != .Original {
-                
-                fullSizeImageView.image = fullSizeImage.filteredImage(Filters.filter(filterType))
-                
+        let data = adjustmentData
+        guard let image = Self.prepareFullSizeImage(url: input?.fullSizeImageURL,
+                orientation: input?.fullSizeImageOrientation, fallback: input == nil ? sourceImage : nil, filter: data.filterType) else { return nil }
+        return composite(image, data: data)
+    }
+
+    @discardableResult
+    public func exportPhoto(completion: @escaping (Result<PhotoExport, PhotoExportError>) -> Void) -> PhotoExportTask {
+        precondition(Thread.isMainThread)
+        cancelExport()
+        let task = PhotoExportTask()
+        activeExport = task
+        let data = adjustmentData
+        let url = input?.fullSizeImageURL
+        let orientation = input?.fullSizeImageOrientation
+        let fallback = input == nil ? sourceImage : nil
+        func finish(_ result: Result<PhotoExport, PhotoExportError>) {
+            DispatchQueue.main.async {
+                completion(task.isCancelled ? .failure(.cancelled) : result)
             }
-            
-            //bubbles
-            let bubbles: [BubbleModel] = self.adjustmentData.bubbles.map({
-                var new = $0
-                new.center = CGPoint(x: scale * $0.center.x, y: scale * $0.center.y)
-                new.transform = $0.transform.scaledBy(x: scale, y: scale)
-                return new
-            })
-            
-            bubbles.forEach({
-                let bubbleView = BubbleView(bubbleModel: $0)
-                fullSizeImageView.addSubview(bubbleView)
-            })
-            
-            //stickers
-            let stickers: [StickerModel] = self.adjustmentData.stickers.map({
-                var new = $0
-                new.center = CGPoint(x: scale * $0.center.x, y: scale * $0.center.y)
-                new.transform = $0.transform.scaledBy(x: scale, y: scale)
-                return new
-            })
-            
-            stickers.forEach({
-                let stickerView = StickerView(stickerModel: $0)
-                fullSizeImageView.addSubview(stickerView)
-            })
-            
-            //output
-            let outputImage = fullSizeImageView.render()
-            return outputImage
-        }else{
-            return nil
+        }
+        func encode(_ image: UIImage) {
+            Self.exportQueue.async {
+                autoreleasepool {
+                    guard !task.isCancelled else { finish(.failure(.cancelled)); return }
+                    guard let jpeg = image.jpegData(compressionQuality: 1) else { finish(.failure(.encodingFailed)); return }
+                    guard let archive = try? data.encode() else { finish(.failure(.invalidState)); return }
+                    finish(.success(PhotoExport(image: image, jpegData: jpeg, adjustmentData: archive)))
+                }
+            }
+        }
+        Self.exportQueue.async { [weak self] in
+            autoreleasepool {
+                guard !task.isCancelled else { finish(.failure(.cancelled)); return }
+                guard let image = Self.prepareFullSizeImage(url: url, orientation: orientation, fallback: fallback, filter: data.filterType) else {
+                    finish(.failure(.missingImage)); return
+                }
+                guard !task.isCancelled else { finish(.failure(.cancelled)); return }
+                if data.bubbles.isEmpty && data.stickers.isEmpty {
+                    // No UIKit render or additional full-size backing surface.
+                    encode(image)
+                } else {
+                    DispatchQueue.main.async { [weak self] in
+                        autoreleasepool {
+                            guard !task.isCancelled else { finish(.failure(.cancelled)); return }
+                            guard let self = self, let output = self.composite(image, data: data) else {
+                                finish(.failure(.missingImage)); return
+                            }
+                            encode(output)
+                        }
+                    }
+                }
+            }
+        }
+        return task
+    }
+
+    private func composite(_ fullSizeImage: UIImage, data: AdjustmentData) -> UIImage? {
+        precondition(Thread.isMainThread)
+        if data.bubbles.isEmpty && data.stickers.isEmpty { return fullSizeImage }
+        guard let canvas = data.referenceCanvasSize, AdjustmentData.isValidReferenceCanvas(canvas),
+              fullSizeImage.size.width > 0, fullSizeImage.size.height > 0 else { return nil }
+        let sx = fullSizeImage.size.width / canvas.width
+        let sy = fullSizeImage.size.height / canvas.height
+        guard sx.isFinite, sy.isFinite, sx > 0, sy > 0,
+              data.bubbles.allSatisfy({ hasRenderableGeometry(center: CGPoint(x: $0.center.x * sx, y: $0.center.y * sy), bounds: $0.bounds, transform: $0.transform.scaledInCanvas(x: sx, y: sy)) }),
+              data.stickers.allSatisfy({ hasRenderableGeometry(center: CGPoint(x: $0.center.x * sx, y: $0.center.y * sy), bounds: $0.bounds, transform: $0.transform.scaledInCanvas(x: sx, y: sy)) }) else { return nil }
+        return autoreleasepool {
+            let fullSizeImageView = UIImageView(image: fullSizeImage)
+            fullSizeImageView.size = fullSizeImage.size
+            let scaleX = fullSizeImage.size.width / canvas.width
+            let scaleY = fullSizeImage.size.height / canvas.height
+            for model in data.bubbles {
+                var scaled = model
+                scaled.center = CGPoint(x: scaleX * model.center.x, y: scaleY * model.center.y)
+                scaled.transform = model.transform.scaledInCanvas(x: scaleX, y: scaleY)
+                fullSizeImageView.addSubview(BubbleView(bubbleModel: scaled))
+            }
+            for model in data.stickers {
+                var scaled = model
+                scaled.center = CGPoint(x: scaleX * model.center.x, y: scaleY * model.center.y)
+                scaled.transform = model.transform.scaledInCanvas(x: scaleX, y: scaleY)
+                fullSizeImageView.addSubview(StickerView(stickerModel: scaled))
+            }
+            return fullSizeImageView.render()
         }
     }
-    
-    private var normalizedFullSizeImage: UIImage? {
-        if let url = input?.fullSizeImageURL, let image = UIImage(contentsOfFile: url.path) {
-            return image.filteredImage(input?.fullSizeImageOrientation ?? 1, filter: Filters.filter(.Original))
+
+    private nonisolated static func prepareFullSizeImage(url: URL?, orientation: Int32?, fallback: UIImage?, filter: FilterType) -> UIImage? {
+        let image: UIImage
+        let exif: Int32
+        if let url = url {
+            guard let loaded = UIImage(contentsOfFile: url.path) else { return nil }
+            image = loaded
+            exif = orientation ?? 1
+        } else if let fallback = fallback {
+            image = fallback
+            switch fallback.imageOrientation {
+            case .up: exif = 1
+            case .upMirrored: exif = 2
+            case .down: exif = 3
+            case .downMirrored: exif = 4
+            case .leftMirrored: exif = 5
+            case .right: exif = 6
+            case .rightMirrored: exif = 7
+            case .left: exif = 8
+            @unknown default: exif = 1
+            }
+        } else { return nil }
+        guard image.size.width > 0, image.size.height > 0 else { return nil }
+        if exif == 1 && filter == .Original, let backing = image.cgImage {
+            return UIImage(cgImage: backing, scale: 1, orientation: .up)
         }
-        guard let image = sourceImage else { return nil }
-        let orientation: Int32
-        switch image.imageOrientation {
-        case .up: orientation = 1
-        case .upMirrored: orientation = 2
-        case .down: orientation = 3
-        case .downMirrored: orientation = 4
-        case .leftMirrored: orientation = 5
-        case .right: orientation = 6
-        case .rightMirrored: orientation = 7
-        case .left: orientation = 8
-        @unknown default: orientation = 1
-        }
-        return image.filteredImage(orientation, filter: Filters.filter(.Original))
+        // Fuse orientation and filtering into one Core Image render rather than
+        // retaining separate normalized and filtered full-resolution surfaces.
+        let rendered = image.filteredImage(exif, filter: Filters.filter(filter))
+        guard let pixels = rendered.cgImage else { return nil }
+        return UIImage(cgImage: pixels, scale: 1, orientation: .up)
     }
 
     //MARK: View Lift Cycle
@@ -150,10 +213,8 @@ open class BaseEditPhotoController: UIViewController {
 // MARK: - Public
 public extension BaseEditPhotoController {
     func restoreFromData(_ data: AdjustmentData) {
-        overlayView.subviews.forEach { $0.removeFromSuperview() }
         filterType = data.filterType
-        data.bubbles.forEach{ self.overlayView.addBubble($0) }
-        data.stickers.forEach{ self.overlayView.addSticker($0) }
+        overlayView.restore(data)
     }
 }
 

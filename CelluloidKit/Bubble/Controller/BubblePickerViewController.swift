@@ -38,6 +38,9 @@ extension BubblePickerViewController {
         
         let cell: UICollectionViewCell = collectionView.dequeueReusableCellForIndexPath(indexPath)
         cell.backgroundColor = .cellLightPurple
+        cell.isAccessibilityElement = true
+        cell.accessibilityTraits = .button
+        cell.accessibilityLabel = String(format: NSLocalizedString("Bubble %d", bundle: extensionBundle, comment: "Picker item"), indexPath.row + 1)
         cell.contentView.subviews.forEach {
             $0.removeFromSuperview()
         }

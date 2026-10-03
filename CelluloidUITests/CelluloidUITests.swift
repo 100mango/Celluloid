@@ -6,11 +6,37 @@ final class CelluloidUITests: XCTestCase {
     private var app: XCUIApplication!
     override func setUp() { super.setUp(); continueAfterFailure = false; app = XCUIApplication() }
     override func tearDown() { XCUIDevice.shared.orientation = .portrait; app.terminate(); super.tearDown() }
-    private func launch(_ arguments: [String] = []) {
-        app.launchArguments = arguments + ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+    private func launch(_ arguments: [String] = [], language: String = "en") {
+        app.launchArguments = arguments + ["-AppleLanguages", "(\(language))", "-AppleLocale", language == "zh-Hans" ? "zh_CN" : "en_US"]
         app.launch()
         XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 10))
     }
+    func testHomeChoiceGeometryInEnglishAndChineseAcrossRotation() {
+        for language in ["en", "zh-Hans"] {
+            var normalFooterHeight: CGFloat = 0
+            for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+                XCUIDevice.shared.orientation = .portrait
+                launch(["-UIPreferredContentSizeCategoryName", category.rawValue], language: language)
+                let initialFooterHeight = app.buttons["privacy-policy"].frame.height
+                if category == .large { normalFooterHeight = initialFooterHeight }
+                else { XCTAssertGreaterThan(initialFooterHeight, normalFooterHeight, "The largest text setting must actually affect the app") }
+                for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
+                    XCUIDevice.shared.orientation = orientation
+                    let edit = app.buttons["edit-photo"]
+                    let collage = app.buttons["make-collage"]
+                    let footer = app.buttons["privacy-policy"]
+                    XCTAssertTrue(edit.isHittable && collage.isHittable && footer.isHittable)
+                    XCTAssertGreaterThanOrEqual(edit.frame.height, 120)
+                    XCTAssertGreaterThanOrEqual(collage.frame.height, 120)
+                    XCTAssertFalse(edit.frame.intersects(collage.frame), "Primary choices must not collapse together")
+                    XCTAssertGreaterThanOrEqual(footer.frame.minY + 1, max(edit.frame.maxY, collage.frame.maxY))
+                    XCTAssertLessThan(footer.frame.height, app.frame.height * 0.40)
+                }
+                app.terminate()
+            }
+        }
+    }
+
     func testPrivacyPolicyEntryRemainsAccessibleAndCanClose() {
         launch()
         let policy = app.buttons["privacy-policy"]
@@ -76,12 +102,31 @@ final class CelluloidUITests: XCTestCase {
         XCTAssertTrue(app.collectionViews.cells.firstMatch.waitForExistence(timeout: 5))
         app.collectionViews.cells.firstMatch.tap()
         XCTAssertTrue(done.waitForExistence(timeout: 5))
+        app.buttons["tool-bubble"].tap()
+        XCTAssertTrue(app.collectionViews.cells.firstMatch.waitForExistence(timeout: 5))
+        app.collectionViews.cells.firstMatch.tap()
+        let text = app.textViews["bubble-text"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        text.tap()
+        text.typeText("Hello")
+        app.buttons["bubble-text-done"].tap()
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        let bubble = app.images.matching(identifier: "attachment-image").allElementsBoundByIndex.last
+        if let bubble = bubble, bubble.isHittable {
+            let start = bubble.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.2, thenDragTo: start.withOffset(CGVector(dx: 100, dy: 30)))
+        }
         emitScreenshot("edited-fixture")
         XCUIDevice.shared.press(.home)
         app.activate()
         done.tap()
         XCTAssertTrue(app.staticTexts["photo-saved"].waitForExistence(timeout: 20))
-        app.buttons["Done"].tap()
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let shareDone = app.buttons["share-done"]
+        XCTAssertTrue(shareDone.isHittable, "Saved-photo dismissal must remain visible in compact landscape")
+        XCTAssertTrue(app.frame.contains(shareDone.frame))
+        shareDone.tap()
+        XCUIDevice.shared.orientation = .portrait
         app.buttons["edit-photo"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["photo-0"].waitForExistence(timeout: 10))
         app.descendants(matching: .any)["photo-0"].tap()
@@ -112,11 +157,17 @@ final class CelluloidUITests: XCTestCase {
         emitScreenshot("collage-preview")
         done.tap()
         XCTAssertTrue(app.staticTexts["photo-saved"].waitForExistence(timeout: 20))
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(app.buttons["share-done"].isHittable)
+        app.buttons["share-done"].tap()
+        XCTAssertTrue(app.buttons["make-collage"].waitForExistence(timeout: 5))
     }
 
     private func emitScreenshot(_ name: String) {
         // Two bounded screenshots per CI job, from the iPhone run and synthetic data only.
         guard UIDevice.current.userInterfaceIdiom == .phone,
+              UIScreen.main.bounds.width < 400,
+              UIScreen.main.traitCollection.userInterfaceStyle == .dark,
               let image = UIImage(data: app.screenshot().pngRepresentation),
               let jpeg = image.jpegData(compressionQuality: 0.55), jpeg.count <= 500_000 else { return }
         let base64 = jpeg.base64EncodedString()
@@ -159,6 +210,16 @@ final class CelluloidCaptureTests: XCTestCase {
             XCTAssertEqual(app.buttons[identifier].label, label)
             XCTAssertTrue(app.buttons[identifier].isHittable)
         }
+        let editFrame = app.buttons["edit-photo"].frame
+        let collageFrame = app.buttons["make-collage"].frame
+        let footerFrame = app.buttons["privacy-policy"].frame
+        XCTAssertGreaterThanOrEqual(editFrame.height, 120)
+        XCTAssertGreaterThanOrEqual(collageFrame.height, 120)
+        XCTAssertFalse(editFrame.intersects(collageFrame), "Primary home choices must not overlap")
+        XCTAssertGreaterThanOrEqual(footerFrame.minY + 1, max(editFrame.maxY, collageFrame.maxY))
+        XCTAssertLessThan(footerFrame.height, app.frame.height * 0.40)
+        XCTAssertTrue(app.frame.contains(editFrame) && app.frame.contains(collageFrame) && app.frame.contains(footerFrame))
+        print("STORE_HOME_GEOMETRY edit=\(editFrame) collage=\(collageFrame) footer=\(footerFrame)")
         try emitStoreScreenshot("01-home")
 
         app.buttons["edit-photo"].tap()
@@ -247,12 +308,21 @@ final class CelluloidCaptureTests: XCTestCase {
         _ = tapLabel(["图库", "Library", "所有照片", "All Photos"])
         Thread.sleep(forTimeInterval: 2)
         hierarchy("library")
-        let cells = photos.collectionViews.cells.allElementsBoundByIndex.filter { $0.exists && $0.isHittable }
-        guard let first = cells.first else {
-            print("PHOTOS_HOST_RESULT:BLOCKED no accessible seeded-photo grid cell in actual Photos host")
+        // Observed iOS 27 Photos hierarchy exposes Images, not CollectionView Cells.
+        // Six simulator stock images predate the two fixtures added during this job.
+        let images = photos.images.matching(identifier: "PXGGridLayout-Info").allElementsBoundByIndex.filter { $0.exists && $0.isHittable }
+        print("PHOTOS_HOST_GRID_LABELS: " + images.map { $0.label }.joined(separator: " | "))
+        let latest = Array(images.suffix(2))
+        let today = Calendar.current.dateComponents([.month, .day], from: Date())
+        let datePattern = "\\b\(today.month!)月0?\(today.day!)日"
+        guard latest.count == 2,
+              latest.allSatisfy({ $0.label.range(of: datePattern, options: .regularExpression) != nil }),
+              let fixture = latest.last else {
+            print("PHOTOS_HOST_RESULT:BLOCKED latest two accessible Photos grid images cannot be verified as today's seeded fixtures")
             return
         }
-        first.tap()
+        print("PHOTOS_HOST_SELECTED_SEEDED_FIXTURE: " + fixture.label)
+        fixture.tap()
         Thread.sleep(forTimeInterval: 2)
         hierarchy("selected-photo")
         guard tapLabel(["编辑", "Edit"]) else {
@@ -264,7 +334,7 @@ final class CelluloidCaptureTests: XCTestCase {
         _ = tapLabel(["更多", "More", "扩展", "Extensions", "更多选项", "More options"])
         Thread.sleep(forTimeInterval: 2)
         hierarchy("extensions")
-        guard tapLabel(["Celluloid"]) else {
+        guard tapLabel(["CelluloidPhotoExtension", "Celluloid"]) else {
             print("PHOTOS_HOST_RESULT:BLOCKED Photos Edit does not expose accessible Celluloid extension after bounded normal UI attempt")
             return
         }
@@ -300,13 +370,17 @@ final class CelluloidCaptureTests: XCTestCase {
         Thread.sleep(forTimeInterval: 2)
         _ = tapLabel(["更多", "More", "扩展", "Extensions", "更多选项", "More options"])
         Thread.sleep(forTimeInterval: 2)
-        guard tapLabel(["Celluloid"]) else {
+        guard tapLabel(["CelluloidPhotoExtension", "Celluloid"]) else {
             hierarchy("reopen-blocked")
             print("PHOTOS_HOST_RESULT:PARTIAL editing reopened but extension state restoration not established")
             return
         }
         Thread.sleep(forTimeInterval: 3)
         hierarchy("reopened")
+        guard photos.buttons["tool-filter"].exists && photos.buttons["tool-filter"].isHittable else {
+            print("PHOTOS_HOST_RESULT:PARTIAL extension action selected during reopen but editor presence not established")
+            return
+        }
         print("PHOTOS_HOST_RESULT:REOPENED extension UI reopened through actual Photos; adjustment/pixel integrity requires separate visual review")
     }
 }

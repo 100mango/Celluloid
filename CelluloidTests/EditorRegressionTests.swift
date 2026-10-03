@@ -19,11 +19,49 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertTrue(entrance.privacyPolicyButton.isEnabled)
     }
 
+    func testHomeLayoutDoesNotCollapseOrOverlapAcrossPhoneAndPadSizes() {
+        let entrance = EntranceViewController()
+        entrance.loadViewIfNeeded()
+        for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+            let traits = UITraitCollection(preferredContentSizeCategory: category)
+            entrance.privacyPolicyButton.titleLabel?.font = .preferredFont(forTextStyle: .footnote, compatibleWith: traits)
+            entrance.editPhotoButton.label.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+            entrance.makeCollageButton.label.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+            for size in [CGSize(width: 320, height: 568), CGSize(width: 568, height: 320),
+                         CGSize(width: 390, height: 844), CGSize(width: 844, height: 390),
+                         CGSize(width: 1032, height: 1376), CGSize(width: 1376, height: 1032)] {
+                entrance.view.frame = CGRect(origin: .zero, size: size)
+                entrance.view.setNeedsLayout()
+                entrance.view.layoutIfNeeded()
+                entrance.viewDidLayoutSubviews()
+                entrance.view.layoutIfNeeded()
+                let edit = entrance.editPhotoButton.convert(entrance.editPhotoButton.bounds, to: entrance.view)
+                let collage = entrance.makeCollageButton.convert(entrance.makeCollageButton.bounds, to: entrance.view)
+                let editContent = entrance.editPhotoButton.stackView.convert(entrance.editPhotoButton.stackView.bounds, to: entrance.view)
+                let collageContent = entrance.makeCollageButton.stackView.convert(entrance.makeCollageButton.stackView.bounds, to: entrance.view)
+                let footer = entrance.privacyPolicyButton.frame
+                XCTAssertGreaterThanOrEqual(edit.height, 120, "\(size), \(category)")
+                XCTAssertGreaterThanOrEqual(collage.height, 120, "\(size), \(category)")
+                XCTAssertGreaterThanOrEqual(edit.width, 150, "\(size), \(category)")
+                XCTAssertGreaterThanOrEqual(collage.width, 150, "\(size), \(category)")
+                XCTAssertFalse(edit.intersects(collage), "Primary choices overlap at \(size)")
+                XCTAssertTrue(edit.insetBy(dx: -1, dy: -1).contains(editContent), "Edit content escapes its choice at \(size), \(category)")
+                XCTAssertTrue(collage.insetBy(dx: -1, dy: -1).contains(collageContent), "Collage content escapes its choice at \(size), \(category)")
+                XCTAssertFalse(editContent.intersects(collageContent), "Icons/text overlap at \(size)")
+                XCTAssertGreaterThan(footer.minY, size.height * 0.60)
+                XCTAssertGreaterThanOrEqual(footer.minY, max(edit.maxY, collage.maxY))
+                let textHeight = entrance.privacyPolicyButton.titleLabel?.sizeThatFits(CGSize(width: size.width - 32, height: .greatestFiniteMagnitude)).height ?? 0
+                XCTAssertEqual(footer.height, max(44, textHeight + 16), accuracy: 1)
+            }
+        }
+    }
+
     func testEditorRendersAndRestoresWithoutDuplicatingOverlays() throws {
         let editor = BaseEditPhotoController()
         editor.loadViewIfNeeded()
         editor.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
-        editor.sourceImage = UIGraphicsImageRenderer(size: CGSize(width: 96, height: 64)).image { context in
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        editor.sourceImage = UIGraphicsImageRenderer(size: CGSize(width: 96, height: 64), format: format).image { context in
             UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 96, height: 64))
         }
         editor.view.layoutIfNeeded()
@@ -80,7 +118,7 @@ final class EditorRegressionTests: XCTestCase {
     func testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation() throws {
         XCTAssertEqual(PHPhotoLibrary.authorizationStatus(for: .readWrite), .authorized,
                        "The integration suite requires simulator Photos access to its synthetic fixtures")
-        let asset = try XCTUnwrap(PHAsset.fetchAssets(with: .image, options: nil).firstObject)
+        let asset = try XCTUnwrap(CelluloidTestFixtures.syntheticAsset())
         let loaded = expectation(description: "Photos editing input")
         var editingInput: PHContentEditingInput?
         let options = PHContentEditingInputRequestOptions()
@@ -123,7 +161,20 @@ final class EditorRegressionTests: XCTestCase {
             cancelled.fulfill()
         }
         wait(for: [cancelled], timeout: 1)
-        // No PHPhotoLibrary.performChanges: the synthetic library asset is never mutated here.
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        let superseded = expectation(description: "Superseded Photos session cannot return stale output")
+        var staleCallbacks = 0
+        editor.finishContentEditing { output in
+            staleCallbacks += 1
+            XCTAssertNil(output)
+            superseded.fulfill()
+        }
+        // Same PHContentEditingInput object, new host session: object identity alone
+        // must not authorize an older asynchronous completion.
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        wait(for: [superseded], timeout: 10)
+        XCTAssertEqual(staleCallbacks, 1)
+                // No PHPhotoLibrary.performChanges: the synthetic library asset is never mutated here.
     }
 
     func testExtensionWithoutInputCompletesWithFailureExactlyOnce() {
