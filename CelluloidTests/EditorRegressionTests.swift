@@ -1,11 +1,57 @@
 import XCTest
 import UIKit
 import Photos
+import CryptoKit
 @testable import Celluloid
 @testable import CelluloidKit
 
 @MainActor
 final class EditorRegressionTests: XCTestCase {
+    func testPhotosLibraryBootstrapReadiness() throws {
+        try recordSyntheticLibraryState(hashResources: false)
+    }
+
+    func testReconcileSyntheticPhotosAfterImport() throws {
+        try recordSyntheticLibraryState(hashResources: true)
+    }
+
+    private func recordSyntheticLibraryState(hashResources: Bool) throws {
+        let started = ProcessInfo.processInfo.systemUptime
+        let authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        XCTAssertEqual(authorization, .authorized, "Real simulator Photos grant must be effective before readiness is claimed")
+        guard authorization == .authorized else { return }
+        let assets = PHAsset.fetchAssets(with: .image, options: nil)
+        var rows: [[String: Any]] = []
+        for index in 0..<min(assets.count, 64) {
+            let asset = assets.object(at: index)
+            guard let resource = PHAssetResource.assetResources(for: asset).first(where: {
+                $0.type == .photo && ($0.originalFilename.hasPrefix("celluloid-fixture") || $0.originalFilename.hasPrefix("celluloid-composition-"))
+            }) else { continue }
+            var row: [String: Any] = ["identifier": asset.localIdentifier, "filename": resource.originalFilename,
+                "width": asset.pixelWidth, "height": asset.pixelHeight]
+            if hashResources {
+                let done = expectation(description: "Read only generated synthetic resource")
+                var data = Data()
+                var failure: Error?
+                let lock = NSLock()
+                let options = PHAssetResourceRequestOptions(); options.isNetworkAccessAllowed = false
+                PHAssetResourceManager.default().requestData(for: resource, options: options, dataReceivedHandler: { chunk in
+                    lock.lock(); data.append(chunk); lock.unlock()
+                }, completionHandler: { error in failure = error; done.fulfill() })
+                wait(for: [done], timeout: 30)
+                if let error = failure { throw error }
+                row["bytes"] = data.count
+                row["sha256"] = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            }
+            rows.append(row)
+        }
+        let result: [String: Any] = ["authorization": authorization.rawValue, "asset_count": assets.count,
+            "synthetic": rows, "hash_resources": hashResources,
+            "elapsed_seconds": ProcessInfo.processInfo.systemUptime - started,
+            "library_mutation": false]
+        print("PHOTOS_LIBRARY_READINESS " + String(decoding: try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]), as: UTF8.self))
+    }
+
     func testPrivacyPolicyUsesApprovedHTTPSDestinationAndAccessibleControl() {
         XCTAssertEqual(AppLinks.privacyPolicyURL.absoluteString, "https://100mango.github.io/app-privacy/")
         XCTAssertEqual(AppLinks.privacyPolicyURL.scheme, "https")

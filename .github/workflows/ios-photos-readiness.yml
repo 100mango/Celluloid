@@ -1,0 +1,81 @@
+name: Read-only Photos bootstrap diagnosis
+on:
+  push:
+    branches: [codex/ios-photos-readiness]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-photos-readiness
+  cancel-in-progress: true
+jobs:
+  mini-readiness:
+    runs-on: xcode-27
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify test-only exact source and stable environment
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 100mango/Celluloid
+          test "$GITHUB_REF" = refs/heads/codex/ios-photos-readiness
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code HEAD --
+          python3 - <<'PY'
+          import subprocess
+          allowed={'.github/workflows/ios-photos-readiness.yml','CelluloidTests/EditorRegressionTests.swift','Scripts/probe_photos_bootstrap.py'}
+          changed=set(subprocess.check_output(['git','diff','--name-only','0fa5069e20d0f0d59dc9d58e85133667970f85c2','HEAD'],text=True).splitlines())
+          assert changed and changed<=allowed,changed
+          print('FROZEN_PRODUCTION_SOURCE 0fa5069e20d0f0d59dc9d58e85133667970f85c2')
+          print('READINESS_TEST_ONLY_FILES',sorted(changed))
+          PY
+          sw_vers
+          xcodebuild -version
+          xcodebuild -showsdks
+          xcrun simctl list runtimes
+          xcrun simctl list devices available
+          sysctl hw.memsize hw.ncpu
+          xcodebuild -version | grep '^Xcode 27.0$'
+      - name: Build exact source with bounded compiler work
+        run: |
+          set -euo pipefail
+          python3 Scripts/create_fixture.py
+          python3 Scripts/select_test_devices.py 'iPad mini (A17 Pro)' > /tmp/test-devices.txt
+          id=$(cut -d' ' -f1 /tmp/test-devices.txt)
+          echo "$id" > /tmp/current-celluloid-simulator
+          # Index data is unnecessary for CI. The official build setting controls
+          # compiler indexing only; optimization/product settings remain unchanged.
+          python3 Scripts/run_bounded.py --seconds 900 --label mini-build-no-index xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -jobs 2 build-for-testing CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO | tee build.log
+      - name: Read PhotoKit readiness then reconcile synthetic imports
+        id: probe
+        run: |
+          set -euo pipefail
+          python3 -u Scripts/probe_photos_bootstrap.py "$(cat /tmp/current-celluloid-simulator)"
+      - name: Exercise unchanged real Photos integration cases
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          test -f /tmp/celluloid-bootstrap-assets-verified
+          id=$(cat /tmp/current-celluloid-simulator)
+          python3 Scripts/run_bounded.py --seconds 600 --label unchanged-Photos-integration xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath Bootstrap-integration.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests/CollageCompositionTests -only-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation test-without-building CODE_SIGNING_ALLOWED=NO | tee integration.log
+          xcrun xcresulttool get test-results summary --path Bootstrap-integration.xcresult | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Retain bounded simulator diagnostics
+        if: failure()
+        timeout-minutes: 3
+        run: python3 Scripts/collect_simulator_diagnostics.py
+      - name: Stop owned simulator and verify immutable source
+        if: always()
+        run: |
+          if [[ -f /tmp/current-celluloid-simulator ]]; then
+            python3 Scripts/run_bounded.py --seconds 60 --label bootstrap-shutdown xcrun simctl shutdown "$(cat /tmp/current-celluloid-simulator)" || true
+          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code HEAD --
+          git rev-parse HEAD 'HEAD^{tree}'
+          shasum -a 256 .github/workflows/ios-photos-readiness.yml
