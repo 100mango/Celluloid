@@ -11,8 +11,32 @@ extension UTType {
     static let celluloidDocument = UTType(exportedAs: "Mango.Celluloid.document", conformingTo: .package)
 }
 
+/// UI events carry field mutations, never a previously rendered recipe snapshot.
+typealias RecipeMutation = (inout EditRecipe) -> Void
+typealias RecipeChange = (@escaping RecipeMutation, String) -> Void
+
+extension EditRecipe {
+    mutating func editOverlay(_ identity: UUID, mutation: (inout Overlay) -> Void) {
+        guard let index = overlays.firstIndex(where: { $0.id == identity }) else { return }
+        mutation(&overlays[index])
+    }
+    mutating func editSourceCrop(_ identity: UUID, mutation: (inout SourceCrop) -> Void) {
+        guard let index = sources.firstIndex(where: { $0.id == identity }) else { return }
+        mutation(&sources[index].crop)
+    }
+}
+
 struct NativeDocument: FileDocument, Equatable {
     static var readableContentTypes: [UTType] { [.celluloidDocument] }
+    func editing(_ mutation: RecipeMutation) throws -> NativeDocument {
+        var next = self
+        mutation(&next.recipe)
+        try next.recipe.validate()
+        let identities = Set(next.recipe.sources.map(\.id))
+        next.originals = next.originals.filter { identities.contains($0.key) }
+        return next
+    }
+
     var recipe = EditRecipe()
     var originals: [UUID: Data] = [:]
     init() {}

@@ -86,16 +86,32 @@ struct PhoneCompanionResultsView: View {
         List {
             if !model.pending.isEmpty {
                 Text("Interrupted or queued requests are kept on this iPhone. Resume locally; to receive a new preview, request processing again from your current Watch.")
+                    .font(.body).fixedSize(horizontal: false, vertical: true)
                 ForEach(model.pending, id: \.id) { request in
                     VStack(alignment: .leading) {
                         Text(request.filter.localizedTitle)
-                        Button("Resume on iPhone") { Task { await model.resume(request) } }.disabled(model.resuming).accessibilityIdentifier("companion.resume." + request.id.uuidString)
-                        Button("Discard Pending Request", role: .destructive) { discard = request }.disabled(model.resuming).accessibilityIdentifier("companion.discard." + request.id.uuidString)
+                        // List's automatic row button style can join multiple
+                        // controls into one row action. Keep each intent distinct.
+                        Button {
+                            #if DEBUG
+                            print("PHONE_COMPANION_ROW_ACTION resume id=\(request.id)")
+                            #endif
+                            Task { await model.resume(request) }
+                        } label: { Text("Resume on iPhone").foregroundStyle(.primary) }
+                            .buttonStyle(.borderless).disabled(model.resuming).accessibilityIdentifier("companion.resume." + request.id.uuidString)
+                        Button(role: .destructive) {
+                            #if DEBUG
+                            print("PHONE_COMPANION_ROW_ACTION discard id=\(request.id)")
+                            #endif
+                            discard = request
+                        } label: { Text("Discard Pending Request").foregroundStyle(.primary) }
+                            .buttonStyle(.borderless).disabled(model.resuming).accessibilityIdentifier("companion.discard." + request.id.uuidString)
                     }
                 }
             }
             if let error = model.error { Text(error).foregroundStyle(.red) }
-            if model.records.isEmpty { Text("No Watch processing results yet. Choose a photo on your Watch and request phone processing.").accessibilityIdentifier("companion.empty") }
+            if model.records.isEmpty { Text("No Watch processing results yet. Choose a photo on your Watch and request phone processing.")
+                    .font(.body).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("companion.empty") }
             ForEach(model.records) { record in
                 Button { selection = record } label: {
                     VStack(alignment: .leading) {

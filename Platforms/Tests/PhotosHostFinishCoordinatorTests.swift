@@ -24,21 +24,30 @@ final class PhotosHostFinishCoordinatorTests: XCTestCase {
         let coordinator = PhotosHostFinishCoordinator<Int>()
         let oldStarted = expectation(description: "Old request started")
         let oldReturned = expectation(description: "Old request resolved")
+        let newStarted = expectation(description: "New request rendering remains pending")
         let newFinished = expectation(description: "New request finished")
         var oldResume: CheckedContinuation<Int, Never>?
+        var newResume: CheckedContinuation<Int, Never>?
         var outputs: [Int] = [], oldStates: [Bool] = [], newStates: [Bool] = []
         coordinator.finish(preparing: { oldStates.append($0) }, failed: { _ in XCTFail() }, operation: {
             let value = await withCheckedContinuation { oldResume = $0; oldStarted.fulfill() }
             oldReturned.fulfill(); return value
         }, completion: { _ in XCTFail("Superseded completion must not reach Photos") })
         await fulfillment(of: [oldStarted], timeout: 2)
-        coordinator.finish(preparing: { newStates.append($0) }, failed: { _ in XCTFail() }, operation: { 2 }, completion: {
+        coordinator.finish(preparing: { newStates.append($0) }, failed: { _ in XCTFail() }, operation: {
+            await withCheckedContinuation { newResume = $0; newStarted.fulfill() }
+        }, completion: {
             if let value = $0 { outputs.append(value) }; newFinished.fulfill()
         })
-        await fulfillment(of: [newFinished], timeout: 2)
+        await fulfillment(of: [newStarted], timeout: 2)
         oldResume?.resume(returning: 1)
         await fulfillment(of: [oldReturned], timeout: 2); await Task.yield()
-        XCTAssertEqual(oldStates, [true, false]); XCTAssertEqual(newStates, [true, false]); XCTAssertEqual(outputs, [2])
+        XCTAssertEqual(oldStates, [true, false])
+        XCTAssertEqual(newStates, [true], "A superseded operation must not unlock the newer render's controls")
+        XCTAssertTrue(outputs.isEmpty)
+        newResume?.resume(returning: 2)
+        await fulfillment(of: [newFinished], timeout: 2)
+        XCTAssertEqual(newStates, [true, false]); XCTAssertEqual(outputs, [2])
     }
     @MainActor func testSynchronousCancellationFromPreparingStartsNoOperation() async {
         let coordinator = PhotosHostFinishCoordinator<Int>()

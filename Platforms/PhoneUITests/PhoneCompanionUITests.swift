@@ -26,13 +26,21 @@ final class PhoneCompanionUITests: XCTestCase {
         // survive a process relaunch before any local processing begins.
         try reveal(discard, in: app); discard.tap()
         let cancel = app.buttons["Cancel"].firstMatch
-        XCTAssertTrue(cancel.waitForExistence(timeout: 5)); cancel.tap()
+        let cancelExists = cancel.waitForExistence(timeout: 5)
+        print("PHONE_COMPANION_PENDING_DISCARD_AX " + String(app.debugDescription.prefix(24000)))
+        capture(app, name: "native-phone-pending-discard-confirmation")
+        XCTAssertTrue(cancelExists); cancel.tap()
+        XCTAssertFalse(app.buttons["companion.result." + pendingID].exists, "Discard must never also invoke the same row's Resume action")
+        XCTAssertFalse(app.buttons["companion.result." + processID].exists)
+        XCTAssertTrue(resume.exists); XCTAssertTrue(discard.exists)
         app.terminate(); app.launch()
         XCTAssertTrue(resume.waitForExistence(timeout: 20)); XCTAssertTrue(discard.exists)
         try reveal(resume, in: app); resume.tap()
         let result = app.buttons["companion.result." + processID]
         XCTAssertTrue(result.waitForExistence(timeout: 30))
         XCTAssertFalse(resume.exists); XCTAssertTrue(discard.exists)
+        XCTAssertFalse(app.sheets.firstMatch.exists, "Resume must not also open its row's discard dialog")
+        XCTAssertFalse(app.buttons["companion.result." + pendingID].exists)
         XCTAssertTrue(app.staticTexts["Ready on iPhone; Watch delivery is pending or failed."].exists)
         try reveal(result, in: app); result.tap()
         XCTAssertTrue(app.images["companion.preview"].waitForExistence(timeout: 15))
@@ -84,6 +92,7 @@ final class PhoneCompanionUITests: XCTestCase {
     }
     @MainActor private func audit(_ app: XCUIApplication, state: String) throws {
         guard #available(iOS 27.0, *) else { return }
+        print("PHONE_COMPANION_AUDIT_STATE state=\(state) " + String(app.debugDescription.prefix(24000)))
         let previous = continueAfterFailure; continueAfterFailure = true
         defer { continueAfterFailure = previous }
         try app.performAccessibilityAudit(for: .all) { issue in

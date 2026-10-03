@@ -95,14 +95,36 @@ final class NativeEditorUITests: XCTestCase {
         // Invoke the real document shortcut while text input is still focused;
         // the production transform command must relinquish that text responder.
         XCTAssertEqual(text.value as? String, "Saved 世界")
+        let modelLayer = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'layer.'")).firstMatch
+        print("NATIVE_MAC_TEXT_BEFORE_TRANSFORM field=\(text.value ?? "missing") modelLayer=\(modelLayer.label)")
         app.typeKey(.rightArrow, modifierFlags: [.command, .option])
         let horizontal = app.staticTexts["editor.layer.value.Horizontal position"]
         expectation(for: NSPredicate(format: "value == '0.51'"), evaluatedWith: horizontal)
         waitForExpectations(timeout: 5)
+        XCTAssertEqual(text.value as? String, "Saved 世界")
+        XCTAssertEqual(modelLayer.label, "Select layer: Saved 世界")
+        // Undo the first transform before any second command can hide a late
+        // native text commit. Both Unicode and unchanged rotation must survive.
+        let firstRotation = app.staticTexts["editor.layer.value.Rotation"]
+        XCTAssertEqual(firstRotation.value as? String, "0.00")
+        app.typeKey("z", modifierFlags: .command)
+        expectation(for: NSPredicate(format: "value == '0.50'"), evaluatedWith: horizontal)
+        waitForExpectations(timeout: 5)
+        XCTAssertEqual(text.value as? String, "Saved 世界")
+        XCTAssertEqual(modelLayer.label, "Select layer: Saved 世界")
+        XCTAssertEqual(firstRotation.value as? String, "0.00")
+        app.typeKey("z", modifierFlags: [.command, .shift])
+        expectation(for: NSPredicate(format: "value == '0.51'"), evaluatedWith: horizontal)
+        waitForExpectations(timeout: 5)
+        XCTAssertEqual(text.value as? String, "Saved 世界")
+        XCTAssertEqual(modelLayer.label, "Select layer: Saved 世界")
+        XCTAssertEqual(firstRotation.value as? String, "0.00")
+        print("NATIVE_MAC_FIRST_TRANSFORM_UNDO_REDO exact Unicode and geometry verified")
         app.typeKey("]", modifierFlags: [.command, .option])
         let rotation = app.staticTexts["editor.layer.value.Rotation"]
         expectation(for: NSPredicate(format: "value == '15.00'"), evaluatedWith: rotation)
         waitForExpectations(timeout: 5)
+        XCTAssertEqual(text.value as? String, "Saved 世界")
         app.typeKey("z", modifierFlags: .command)
         print("NATIVE_MAC_KEYBOARD_UNDO_RESULT rotation=\(rotation.value ?? "missing") horizontal=\(horizontal.value ?? "missing") text=\(text.value ?? "missing")")
         let undoShot = XCTAttachment(screenshot: app.screenshot()); undoShot.name = "native-mac-keyboard-undo-result"; undoShot.lifetime = .keepAlways; add(undoShot)
@@ -111,20 +133,29 @@ final class NativeEditorUITests: XCTestCase {
         app.typeKey(.escape, modifierFlags: [])
         expectation(for: NSPredicate(format: "value == '0.00'"), evaluatedWith: rotation)
         waitForExpectations(timeout: 5)
+        XCTAssertEqual(text.value as? String, "Saved 世界")
         app.typeKey("z", modifierFlags: [.command, .shift])
         expectation(for: NSPredicate(format: "value == '15.00'"), evaluatedWith: rotation)
         waitForExpectations(timeout: 5)
-        print("NATIVE_MAC_KEYBOARD_TRANSFORMS actual nudge/rotate/Undo/Redo readouts verified")
+        XCTAssertEqual(text.value as? String, "Saved 世界")
+        print("NATIVE_MAC_KEYBOARD_TRANSFORMS actual nudge/rotate/Undo/Redo exact text and geometry verified")
         app.typeKey("s", modifierFlags: .command)
         try save(in: folder, app: app)
         let documentURL = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).first { $0.pathExtension == "celluloid" })
-        let saved = try EditRecipe.decode(Data(contentsOf: documentURL.appendingPathComponent("recipe.json")))
+        let savedBytes = try Data(contentsOf: documentURL.appendingPathComponent("recipe.json"))
+        let saved = try EditRecipe.decode(savedBytes)
+        XCTAssertLessThanOrEqual(savedBytes.count, 8192)
+        print("NATIVE_UI_SAVED_RECIPE sha256=\(SHA256.hash(data: savedBytes).map { String(format: "%02x", $0) }.joined()) json=\(String(decoding: savedBytes, as: UTF8.self))")
         XCTAssertEqual(saved.overlays.first?.text, "Saved 世界")
         XCTAssertEqual(try XCTUnwrap(saved.overlays.first?.centerX), 0.51, accuracy: 0.000_001)
         XCTAssertEqual(try XCTUnwrap(saved.overlays.first?.rotation), 15, accuracy: 0.000_001)
         XCTAssertEqual(saved.sources.count, 1)
         XCTAssertEqual(try Data(contentsOf: documentURL.appendingPathComponent(saved.sources[0].filename)), try Data(contentsOf: fixture))
         app.typeKey("w", modifierFlags: .command)
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: modelLayer)
+        waitForExpectations(timeout: 5)
+        XCTAssertFalse(app.windows.buttons["Cancel"].firstMatch.exists, "Saved document must actually close without an unsaved-changes sheet")
+        print("NATIVE_MAC_SAVED_DOCUMENT_CLOSED layer absent before genuine Open")
         app.typeKey("o", modifierFlags: .command); try goTo(documentURL, in: app)
         let reopen = app.windows.buttons["OKButton"].firstMatch
         XCTAssertTrue(reopen.waitForExistence(timeout: 5)); reopen.click()
@@ -134,6 +165,9 @@ final class NativeEditorUITests: XCTestCase {
         let restoredText = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
         XCTAssertTrue(restoredText.waitForExistence(timeout: 5))
         XCTAssertEqual(restoredText.value as? String, "Saved 世界")
+        XCTAssertEqual(app.staticTexts["editor.layer.value.Horizontal position"].value as? String, "0.51")
+        XCTAssertEqual(app.staticTexts["editor.layer.value.Rotation"].value as? String, "15.00")
+        XCTAssertEqual(restoredLayer.label, "Select layer: Saved 世界")
         for menuTitle in ["PNG…", "JPEG…"] {
             let menu = app.descendants(matching: .any)["editor.export"].firstMatch
             XCTAssertTrue(menu.waitForExistence(timeout: 5))

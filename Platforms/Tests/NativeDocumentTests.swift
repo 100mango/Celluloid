@@ -44,6 +44,53 @@ final class NativeDocumentTests: XCTestCase {
         let empty = FileWrapper(directoryWithFileWrappers: ["recipe.json": FileWrapper(regularFileWithContents: try document.recipe.encoded())])
         XCTAssertThrowsError(try NativeDocument(wrapper: empty))
     }
+    @MainActor func testPendingTextAndTransformOrdersKeepExactTextGeometryUndoAndReopen() throws {
+        let bytes = try image()
+        for textFirst in [true, false] {
+            var value = NativeDocument(); try value.replaceSources([("Original.png", bytes)])
+            let bubble = Overlay(bubble: .say1, text: "Hello")
+            value.recipe.overlays = [bubble]
+            let sourceID = try XCTUnwrap(value.recipe.sources.first?.id)
+            // Both actions were created by the same old displayed view. They
+            // intentionally carry IDs/field mutations rather than its snapshot.
+            let text: RecipeMutation = { $0.editOverlay(bubble.id) { $0.text = "Saved 世界 مرحبا" } }
+            let transform: RecipeMutation = {
+                $0.editOverlay(bubble.id) { $0.centerX += 0.01; $0.rotation += 15 }
+                $0.editSourceCrop(sourceID) { $0.zoom = 1.5 }
+            }
+            let manager = UndoManager(); manager.groupsByEvent = false
+            let undo = DocumentUndo(); undo.apply = { value = $0 }
+            for mutation in textFirst ? [text, transform] : [transform, text] {
+                let next = try value.editing(mutation)
+                manager.beginUndoGrouping(); undo.change(from: value, to: next, manager: manager, name: "Synthetic field edit"); manager.endUndoGrouping()
+            }
+            XCTAssertEqual(value.recipe.overlays[0].text, "Saved 世界 مرحبا")
+            XCTAssertEqual(value.recipe.overlays[0].centerX, 0.51, accuracy: 0.000_001)
+            XCTAssertEqual(value.recipe.overlays[0].rotation, 15)
+            XCTAssertEqual(value.recipe.sources[0].crop.zoom, 1.5)
+            manager.undo()
+            XCTAssertEqual(value.recipe.overlays[0].text, textFirst ? "Saved 世界 مرحبا" : "Hello")
+            XCTAssertEqual(value.recipe.overlays[0].rotation, textFirst ? 0 : 15)
+            manager.redo()
+            XCTAssertEqual(value.recipe.overlays[0].text, "Saved 世界 مرحبا")
+            XCTAssertEqual(value.recipe.overlays[0].centerX, 0.51, accuracy: 0.000_001)
+            XCTAssertEqual(value.recipe.overlays[0].rotation, 15)
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".celluloid")
+            defer { try? FileManager.default.removeItem(at: folder) }
+            try value.archive().write(to: folder, options: .atomic, originalContentsURL: nil)
+            let reopened = try NativeDocument(wrapper: FileWrapper(url: folder, options: .immediate))
+            XCTAssertEqual(reopened, value); XCTAssertEqual(reopened.originals[sourceID], bytes)
+        }
+    }
+    func testLateTextForRemovedLayerCannotReplaceAnotherLayer() throws {
+        var value = NativeDocument(); try value.replaceSources([("Original.png", image())])
+        let removed = Overlay(bubble: .say1, text: "Old"), retained = Overlay(bubble: .call2, text: "Keep 世界")
+        value.recipe.overlays = [removed, retained]
+        value = try value.editing { $0.overlays.removeAll { $0.id == removed.id } }
+        let snapshot = value
+        value = try value.editing { $0.editOverlay(removed.id) { $0.text = "Late obsolete text" } }
+        XCTAssertEqual(value, snapshot); XCTAssertEqual(value.recipe.overlays.first?.text, "Keep 世界")
+    }
     @MainActor func testUndoRedoRestoresExactRecipe() throws {
         let manager = UndoManager(); manager.groupsByEvent = false
         let undo = DocumentUndo()

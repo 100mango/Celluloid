@@ -1,6 +1,13 @@
 import XCTest
 
 final class NativeWatchUITests: XCTestCase {
+    override func tearDownWithError() throws {
+        // An XCTest assertion abort can bypass Swift defer. End only the app
+        // launched by this case; retain actual failures and runner time bounds.
+        let app = XCUIApplication()
+        if app.state != .notRunning { app.terminate() }
+        try super.tearDownWithError()
+    }
     @MainActor func testNativeOfflineGalleryControlsAndPrivacy() throws {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["-AppleLanguages", "(en)"]
@@ -56,7 +63,23 @@ final class NativeWatchUITests: XCTestCase {
     }
     @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication) throws {
         XCTAssertTrue(element.waitForExistence(timeout: 10))
-        for _ in 0..<8 { if element.isHittable { return }; app.swipeUp() }
+        for step in 0..<12 {
+            if element.isHittable { return }
+            let owner = app.scrollViews.containing(.any, identifier: element.identifier).firstMatch
+            let viewport = owner.exists ? owner : app.scrollViews.firstMatch
+            guard viewport.exists else {
+                print("WATCH_SCROLL_FAILURE_AX " + String(app.debugDescription.prefix(24000)))
+                XCTFail("No actual scroll container exposes the requested Watch control"); return
+            }
+            let frame = element.frame, bounds = viewport.frame
+            let down = frame.midY < bounds.midY
+            print("WATCH_SCROLL_STEP target=\(element.identifier) step=\(step) enabled=\(element.isEnabled) frame=\(frame) viewport=\(bounds) direction=\(down ? "down" : "up")")
+            // A full-screen swipe can overshoot a short control. Resolve the
+            // current target position each time and scroll its actual container.
+            if down { viewport.swipeDown() } else { viewport.swipeUp() }
+        }
+        print("WATCH_SCROLL_FAILURE_AX " + String(app.debugDescription.prefix(24000)))
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-watch-scroll-failure"; shot.lifetime = .keepAlways; add(shot)
         XCTFail("Watch control cannot be reached by ordinary scrolling: " + element.identifier)
     }
     func testSystemPhotosPickerReportsSimulatorLimitationAndCloses() {

@@ -24,13 +24,7 @@ final class NativeTVUITests: XCTestCase {
             print("TV_PHOTOS_PERMISSION_AX " + system.debugDescription)
             try select(allow, in: system)
         }
-        let photo = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.photo.' AND label BEGINSWITH 'CelluloidSource-1.png,'")).firstMatch
-        let found = photo.waitForExistence(timeout: 15)
-        if !found {
-            print("TV_PHOTOS_IMPORT_FAILURE_AX " + app.debugDescription)
-            let state = XCTAttachment(screenshot: app.screenshot()); state.name = "tv-photos-import-failure"; state.lifetime = .keepAlways; add(state)
-        }
-        XCTAssertTrue(found, "Simulator must contain the seeded synthetic Photos asset")
+        let photo = try revealPhoto("CelluloidSource-1.png", in: app)
         try select(photo, in: app)
         try select(app.buttons["tv.edit-selected"], in: app)
         XCTAssertTrue(app.images["tv.preview"].waitForExistence(timeout: 15))
@@ -90,8 +84,7 @@ final class NativeTVUITests: XCTestCase {
         var intended: [[String:String]] = []
         for (order,index) in Array((0..<count).reversed()).enumerated() {
             let filename = "CelluloidSource-\(index+1).png"
-            let target = app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH 'tv.photo.' AND label BEGINSWITH %@",filename+",")).firstMatch
-            XCTAssertTrue(target.waitForExistence(timeout:15),app.debugDescription)
+            let target = try revealPhoto(filename, in: app)
             let identifier = String(target.identifier.dropFirst("tv.photo.".count))
             XCTAssertFalse(identifier.isEmpty); intended.append(["assetID":identifier,"filename":filename])
             try select(target,in:app)
@@ -160,6 +153,27 @@ final class NativeTVUITests: XCTestCase {
         if #available(tvOS 27.0, *) { try app.performAccessibilityAudit(for:.all) { issue in
             print("NATIVE_ACCESSIBILITY_ISSUE state=tv-collage-\(count) description=\(issue.compactDescription) element=\(issue.element?.debugDescription ?? "none")");return false
         } }
+    }
+    @MainActor private func revealPhoto(_ filename: String, in app: XCUIApplication) throws -> XCUIElement {
+        // LazyVGrid only exposes materialized rows. Search by the known synthetic
+        // filename while genuinely scrolling; never substitute the first asset.
+        let target = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.photo.' AND label BEGINSWITH %@", filename + ",")).firstMatch
+        let anyPhoto = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.photo.'")).firstMatch
+        XCTAssertTrue(anyPhoto.waitForExistence(timeout: 15), "The real Photos sheet must expose at least one imported asset")
+        for direction in ["down", "up"] {
+            for step in 0..<16 {
+                if target.exists { return target }
+                let focused = app.descendants(matching: .any).matching(NSPredicate(format: "hasFocus == true")).firstMatch
+                if focused.exists {
+                    print("TV_PHOTO_REVEAL filename=\(filename) direction=\(direction) step=\(step) focused=\(focused.identifier) label=\(focused.label) frame=\(focused.frame)")
+                } else { print("TV_PHOTO_REVEAL filename=\(filename) direction=\(direction) step=\(step) focused=none") }
+                if direction == "down" { XCUIRemote.shared.press(.down) } else { XCUIRemote.shared.press(.up) }
+            }
+        }
+        print("TV_PHOTOS_IMPORT_FAILURE_AX " + app.debugDescription)
+        let state = XCTAttachment(screenshot: app.screenshot()); state.name = "tv-photos-import-failure"; state.lifetime = .keepAlways; add(state)
+        XCTFail("Known synthetic source was not reachable in the real Photos picker: " + filename)
+        return target
     }
     @MainActor private func select(_ target: XCUIElement, in app: XCUIApplication) throws {
         try focus(target,in:app); XCUIRemote.shared.press(.select)

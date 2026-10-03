@@ -126,10 +126,9 @@ struct EditorView: View {
         }
     }
 
-    private func changeRecipe(_ next: EditRecipe, _ name: String) {
-        var updated = document; updated.recipe = next
-        let ids = Set(next.sources.map(\.id)); updated.originals = updated.originals.filter { ids.contains($0.key) }
-        apply(updated, name: name)
+    private func changeRecipe(_ mutation: @escaping RecipeMutation, _ name: String) {
+        do { apply(try document.editing(mutation), name: name) }
+        catch { self.error = error.localizedDescription }
     }
     private func apply(_ next: NativeDocument, name: String) {
         do {

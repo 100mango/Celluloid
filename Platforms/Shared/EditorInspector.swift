@@ -1,11 +1,14 @@
 import SwiftUI
 import CelluloidDomain
 import CelluloidRendering
+#if os(macOS)
+import AppKit
+#endif
 
 struct EditorInspector: View {
     let recipe: EditRecipe
     @Binding var selection: UUID?
-    let change: (EditRecipe, String) -> Void
+    let change: RecipeChange
     @State private var assetPanel: AssetPanel?
     @State private var showingPrivacy = false
 
@@ -19,13 +22,13 @@ struct EditorInspector: View {
                     Text("Filter")
                     NativeChoicePicker(selection: Binding(get: { recipe.filter.rawValue }, set: { raw in
                         guard let preset = FilterPreset(rawValue: raw) else { return }
-                        var next = recipe; next.filter = preset; change(next, "Change Filter")
+                        change({ $0.filter = preset }, "Change Filter")
                     }), options: FilterPreset.allCases.map { (id: $0.rawValue, title: $0.localizedTitle) },
                        label: NSLocalizedString("Filter", comment: "Filter menu"), identifier: "editor.filter")
                 }
                 #else
                 Picker("Filter", selection: Binding(get: { recipe.filter }, set: { preset in
-                    var next = recipe; next.filter = preset; change(next, "Change Filter")
+                    change({ $0.filter = preset }, "Change Filter")
                 })) {
                     ForEach(FilterPreset.allCases, id: \.rawValue) { Text($0.localizedTitle).tag($0) }
                 }.accessibilityIdentifier("editor.filter")
@@ -59,7 +62,7 @@ struct EditorInspector: View {
                         .accessibilityIdentifier("layer." + overlay.id.uuidString)
                 }
                 if let selected = recipe.overlays.first(where: { $0.id == selection }) {
-                    OverlayInspector(overlay: selected, update: update, remove: remove)
+                    OverlayInspector(overlay: selected, update: update, remove: remove).id(selected.id)
                 }
                 Divider()
                 Text("Static photos · sRGB SDR export").editorHelperText()
@@ -77,28 +80,27 @@ struct EditorInspector: View {
         return String(format: NSLocalizedString("Sticker %d", comment: "Sticker name"), (Int(overlay.asset) ?? 32) - 31)
     }
     private func add(_ overlay: Overlay) {
-        var next = recipe; next.overlays.append(overlay)
-        selection = overlay.id; change(next, "Add \(overlay.kind.rawValue.capitalized)")
+        selection = overlay.id
+        change({ $0.overlays.append(overlay) }, "Add \(overlay.kind.rawValue.capitalized)")
     }
-    private func update(_ overlay: Overlay, _ name: String) {
-        guard let index = recipe.overlays.firstIndex(where: { $0.id == overlay.id }) else { return }
-        var next = recipe; next.overlays[index] = overlay; change(next, name)
+    private func update(_ identity: UUID, _ mutation: @escaping (inout Overlay) -> Void, _ name: String) {
+        change({ $0.editOverlay(identity, mutation: mutation) }, name)
     }
     private func remove(_ overlay: Overlay) {
-        var next = recipe; next.overlays.removeAll { $0.id == overlay.id }
-        selection = nil; change(next, "Delete Layer")
+        selection = nil
+        change({ $0.overlays.removeAll { $0.id == overlay.id } }, "Delete Layer")
     }
 }
 
 private struct CollagePicker: View {
     let recipe: EditRecipe
-    let change: (EditRecipe, String) -> Void
+    let change: RecipeChange
     @State private var templates: [CollageTemplate] = []
     @State private var failure: String?
     var body: some View {
         VStack(alignment: .leading) {
             Picker("Collage Layout", selection: Binding(get: { recipe.collageTemplate ?? "" }, set: { name in
-                var next = recipe; next.collageTemplate = name; change(next, "Change Collage Layout")
+                change({ $0.collageTemplate = name }, "Change Collage Layout")
             })) {
                 ForEach(templates, id: \.assetName) { Text($0.assetName).tag($0.assetName) }
             }
@@ -112,7 +114,7 @@ private struct CollagePicker: View {
 
 private struct OverlayInspector: View {
     let overlay: Overlay
-    let update: (Overlay, String) -> Void
+    let update: (UUID, @escaping (inout Overlay) -> Void, String) -> Void
     let remove: (Overlay) -> Void
     #if os(macOS)
     @FocusState private var editingText: Bool
@@ -123,12 +125,13 @@ private struct OverlayInspector: View {
             Text("Selected Layer").font(.headline)
             if overlay.kind == .bubble {
                 #if os(visionOS)
-                VisionBubbleTextEditor(value: overlay.text) { text in
-                    var next = overlay; next.text = text; update(next, "Edit Bubble Text")
-                }.id(overlay.id)
+                VisionBubbleTextEditor(value: overlay.text, accepts: { text in
+                    var candidate = overlay; candidate.text = text
+                    return (try? candidate.validate()) != nil
+                }) { text in edit("Edit Bubble Text") { $0.text = text } }.id(overlay.id)
                 #else
                 TextField("Bubble text", text: Binding(get: { overlay.text }, set: { text in
-                    var next = overlay; next.text = text; update(next, "Edit Bubble Text")
+                    edit("Edit Bubble Text") { $0.text = text }
                 }), axis: .vertical).lineLimit(3...8).accessibilityIdentifier("editor.bubble-text")
                     .focused($editingText)
                 #endif
@@ -140,7 +143,7 @@ private struct OverlayInspector: View {
             number("Height", \.height, range: 0.02...1.5)
             number("Rotation", \.rotation, range: -180...180)
             Toggle("Mirror layer", isOn: Binding(get: { overlay.mirrored }, set: { value in
-                var next = overlay; next.mirrored = value; update(next, "Mirror Layer")
+                edit("Mirror Layer") { $0.mirrored = value }
             }))
             HStack {
                 Button("←") { nudge(x: -0.01, y: 0) }.keyboardShortcut(.leftArrow, modifiers: [.command, .option]).accessibilityLabel("Move layer left")
@@ -156,30 +159,41 @@ private struct OverlayInspector: View {
             Text("Move with ⌥⌘ arrows; rotate with ⌥⌘ [ or ].").editorHelperText()
         }
     }
+    private func edit(_ name: String, _ mutation: @escaping (inout Overlay) -> Void) {
+        update(overlay.id, mutation, name)
+    }
     private func number(_ label: String, _ path: WritableKeyPath<Overlay, Double>, range: ClosedRange<Double>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack { Text(LocalizedStringKey(label)).editorAdjustmentLabel(); Spacer(); Text(overlay[keyPath: path], format: .number.precision(.fractionLength(2))).monospacedDigit().accessibilityIdentifier("editor.layer.value." + label) }
             EditorSlider(value: Binding(get: { overlay[keyPath: path] }, set: { value in
-                var next = overlay; next[keyPath: path] = value; update(next, label)
+                edit(label) { $0[keyPath: path] = value }
             }), range: range, label: NSLocalizedString(label, comment: "Layer adjustment"))
         }
     }
+    #if os(macOS)
+    private func finishTextInput() -> Bool {
+        // A Cocoa field editor may commit on focus exit. Complete that normal
+        // responder transition synchronously before applying a document command.
+        if editingText, NSApp.keyWindow?.makeFirstResponder(nil) == false { return false }
+        editingText = false
+        return true
+    }
+    #endif
     private func nudge(x: Double, y: Double) {
         #if os(macOS)
         // These are document-transform commands, even when invoked while a
         // multiline field is focused. End text input before the next Undo.
-        editingText = false
+        guard finishTextInput() else { return }
         #endif
-        var next = overlay
-        next.centerX = min(3, max(-2, next.centerX + x)); next.centerY = min(3, max(-2, next.centerY + y))
-        update(next, "Move Layer")
+        edit("Move Layer") {
+            $0.centerX = min(3, max(-2, $0.centerX + x)); $0.centerY = min(3, max(-2, $0.centerY + y))
+        }
     }
     private func rotate(_ delta: Double) {
         #if os(macOS)
-        editingText = false
+        guard finishTextInput() else { return }
         #endif
-        var next = overlay; next.rotation = (next.rotation + delta).truncatingRemainder(dividingBy: 360)
-        update(next, "Rotate Layer")
+        edit("Rotate Layer") { $0.rotation = ($0.rotation + delta).truncatingRemainder(dividingBy: 360) }
     }
 }
 
@@ -189,15 +203,21 @@ private struct OverlayInspector: View {
 /// every input event; exact full-string UI assertions guard against lost input.
 private struct VisionBubbleTextEditor: View {
     let value: String
+    let accepts: (String) -> Bool
     let commit: (String) -> Void
     @State private var draft: String
-    init(value: String, commit: @escaping (String) -> Void) {
-        self.value = value; self.commit = commit; _draft = State(initialValue: value)
+    init(value: String, accepts: @escaping (String) -> Bool, commit: @escaping (String) -> Void) {
+        self.value = value; self.accepts = accepts; self.commit = commit; _draft = State(initialValue: value)
     }
     var body: some View {
         TextEditor(text: $draft).frame(minHeight: 110, maxHeight: 180)
             .accessibilityLabel("Bubble text").accessibilityIdentifier("editor.bubble-text")
-            .onChange(of: draft) { text in if text != value { commit(text) } }
+            .onChange(of: draft) { text in
+                if text != value {
+                    commit(text) // The document reports its normal validation error.
+                    if !accepts(text) { draft = value } // Never display unsaved oversized text as the exported recipe.
+                }
+            }
             .onChange(of: value) { text in if text != draft { draft = text } }
     }
 }

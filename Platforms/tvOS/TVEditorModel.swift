@@ -32,6 +32,8 @@ struct TVSavedRecipe: Codable, Equatable {
 
 @MainActor final class TVEditorModel: ObservableObject {
     @Published private(set) var recipe = EditRecipe()
+    // Transient UI lifetime, distinct from persisted layer/source identities.
+    @Published private(set) var editEpoch = UUID()
     @Published private(set) var preview: CGImage?
     @Published private(set) var busy = false
     @Published var error: String?
@@ -64,7 +66,7 @@ struct TVSavedRecipe: Codable, Equatable {
             }
             try Self.configureCanvas(&next)
             guard operation == generation else { return }
-            recipe = next; originals = data; photoIDs = references; fingerprints = hashes; history.removeAll(); selectedLayer = nil
+            editEpoch = UUID(); recipe = next; originals = data; photoIDs = references; fingerprints = hashes; history.removeAll(); selectedLayer = nil
             render(); status = NSLocalizedString("Photos imported. Save the finished picture to Photos before leaving.", comment: "TV status")
         } catch { if operation == generation { self.error = error.localizedDescription } }
     }
@@ -77,8 +79,9 @@ struct TVSavedRecipe: Codable, Equatable {
         }
         try recipe.validate()
     }
-    func change(_ mutate: (inout EditRecipe) -> Void) {
-        guard !busy else { return }
+    func change(_ mutate: (inout EditRecipe) -> Void) { change(epoch: editEpoch, mutate) }
+    func change(epoch: UUID, _ mutate: (inout EditRecipe) -> Void) {
+        guard epoch == editEpoch, !busy else { return }
         var next = recipe; mutate(&next)
         do {
             try next.validate()
@@ -87,11 +90,59 @@ struct TVSavedRecipe: Codable, Equatable {
             recipe = next; render()
         } catch { self.error = error.localizedDescription }
     }
-    func undo() { if let previous = history.popLast() { recipe = previous; render() } }
+    func undo() { guard !busy else { return }; if let previous = history.popLast() { recipe = previous; render() } }
     func add(_ overlay: Overlay) { change { $0.overlays.append(overlay) }; selectedLayer = overlay.id }
     func editLayer(_ mutate: (inout Overlay) -> Void) {
-        guard let index = recipe.overlays.firstIndex(where: { $0.id == selectedLayer }) else { return }
-        change { mutate(&$0.overlays[index]) }
+        guard let identity = selectedLayer else { return }
+        editLayer(identity, mutate)
+    }
+    func editLayer(_ identity: UUID, _ mutate: (inout Overlay) -> Void) { editLayer(identity, epoch: editEpoch, mutate) }
+    func editLayer(_ identity: UUID, epoch: UUID, _ mutate: (inout Overlay) -> Void) {
+        change(epoch: epoch) { current in
+            guard let index = current.overlays.firstIndex(where: { $0.id == identity }) else { return }
+            mutate(&current.overlays[index])
+        }
+    }
+    func adjustLayer(_ identity: UUID, epoch: UUID, field: WritableKeyPath<Overlay, Double>, delta: Double, range: ClosedRange<Double>) {
+        editLayer(identity, epoch: epoch) { layer in
+            layer[keyPath: field] = min(range.upperBound, max(range.lowerBound, layer[keyPath: field] + delta))
+        }
+    }
+    func selectLayer(_ identity: UUID, epoch: UUID) {
+        guard epoch == editEpoch, !busy, recipe.overlays.contains(where: { $0.id == identity }) else { return }
+        selectedLayer = identity
+    }
+    func deleteLayer(_ identity: UUID, epoch: UUID) {
+        guard epoch == editEpoch, !busy else { return }
+        change(epoch: epoch) { $0.overlays.removeAll { $0.id == identity } }
+        if selectedLayer == identity { selectedLayer = nil }
+    }
+    func editSource(_ identity: UUID, epoch: UUID, _ mutate: (inout SourceImage) -> Void) {
+        change(epoch: epoch) { current in
+            guard let index = current.sources.firstIndex(where: { $0.id == identity }) else { return }
+            mutate(&current.sources[index])
+        }
+    }
+    func adjustSource(_ identity: UUID, epoch: UUID, field: WritableKeyPath<SourceCrop, Double>, delta: Double, range: ClosedRange<Double>) {
+        editSource(identity, epoch: epoch) { source in
+            source.crop[keyPath: field] = min(range.upperBound, max(range.lowerBound, source.crop[keyPath: field] + delta))
+        }
+    }
+    func moveSource(_ identity: UUID, epoch: UUID, offset: Int) {
+        guard [-1, 1].contains(offset) else { return }
+        change(epoch: epoch) { current in
+            guard let index = current.sources.firstIndex(where: { $0.id == identity }),
+                  current.sources.indices.contains(index + offset) else { return }
+            current.sources.swapAt(index, index + offset)
+        }
+    }
+    func removeSource(_ identity: UUID, epoch: UUID) {
+        change(epoch: epoch) { current in
+            guard current.sources.count > 1, current.sources.contains(where: { $0.id == identity }) else { return }
+            var next = current; next.sources.removeAll { $0.id == identity }
+            do { try Self.configureCanvas(&next); current = next }
+            catch { self.error = error.localizedDescription }
+        }
     }
     func keepRecipe() {
         do {
@@ -131,7 +182,7 @@ struct TVSavedRecipe: Codable, Equatable {
                       data.values.reduce(0, { $0 + $1.count }) + bytes.count <= 64 * 1024 * 1024 else { throw RecipeError.resourceLimit }
                 data[source.id] = bytes
             }
-            recipe = saved.recipe; originals = data; photoIDs = saved.photoIDs; fingerprints = saved.fingerprints; history.removeAll(); render()
+            editEpoch = UUID(); recipe = saved.recipe; selectedLayer = nil; originals = data; photoIDs = saved.photoIDs; fingerprints = saved.fingerprints; history.removeAll(); render()
             status = NSLocalizedString("Editable recipe reopened from Photos sources.", comment: "TV status")
         } catch { self.error = error.localizedDescription }
     }
