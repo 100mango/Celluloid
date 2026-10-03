@@ -10,12 +10,12 @@ public enum RenderError: Error, LocalizedError {
     case invalidImage, unavailableFilter(String), missingAsset(String), renderFailed, exportFailed, textDoesNotFit
     public var errorDescription: String? {
         switch self {
-        case .invalidImage: return "This file could not be decoded as an image."
-        case .unavailableFilter(let name): return "The \(name) filter is unavailable on this device."
-        case .missingAsset(let name): return "Required artwork is missing: \(name)."
-        case .renderFailed: return "The image could not be rendered. Your original is unchanged."
-        case .exportFailed: return "The exported image could not be verified."
-        case .textDoesNotFit: return "This bubble text does not fit. Shorten the text or make the bubble larger."
+        case .invalidImage: return NSLocalizedString("This file could not be decoded as an image.", bundle: .module, comment: "Rendering error")
+        case .unavailableFilter(let name): return String(format: NSLocalizedString("The %@ filter is unavailable on this device.", bundle: .module, comment: "Rendering error"), name)
+        case .missingAsset(let name): return String(format: NSLocalizedString("Required artwork is missing: %@.", bundle: .module, comment: "Rendering error"), name)
+        case .renderFailed: return NSLocalizedString("The image could not be rendered. Your original is unchanged.", bundle: .module, comment: "Rendering error")
+        case .exportFailed: return NSLocalizedString("The exported image could not be verified.", bundle: .module, comment: "Rendering error")
+        case .textDoesNotFit: return NSLocalizedString("This bubble text does not fit. Shorten the text or make the bubble larger.", bundle: .module, comment: "Rendering error")
         }
     }
 }
@@ -130,6 +130,7 @@ public final class RecipeRenderer {
             guard template != nil else { throw RecipeError.invalidDocument }
         } else { template = nil }
         for (index, source) in recipe.sources.enumerated() {
+            try autoreleasepool {
             try Task.checkCancellation()
             guard let data = sources[source.id] else { throw RecipeError.missingSource }
             let info = try RasterCodec.metadata(data)
@@ -137,6 +138,7 @@ public final class RecipeRenderer {
             let input = try RasterCodec.image(data)
             let filtered = try apply(recipe.filter, to: input)
             canvas.saveGState()
+            defer { canvas.restoreGState(); context.clearCaches() }
             var rect = bounds
             if let polygon = template?.polygons[index] {
                 let path = CGMutablePath()
@@ -157,7 +159,7 @@ public final class RecipeRenderer {
             guard let image = context.createCGImage(sampled, from: materializedBounds, format: .RGBA8,
                                                     colorSpace: RasterCodec.colorSpace) else { throw RenderError.renderFailed }
             canvas.draw(image, in: materializedBounds)
-            canvas.restoreGState()
+            }
         }
         for overlay in recipe.overlays {
             try Task.checkCancellation()

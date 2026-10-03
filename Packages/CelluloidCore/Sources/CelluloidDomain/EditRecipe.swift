@@ -49,11 +49,11 @@ public enum RecipeError: Error, Equatable, LocalizedError {
     case unsupportedVersion, invalidDocument, resourceLimit, missingSource, invalidGeometry
     public var errorDescription: String? {
         switch self {
-        case .unsupportedVersion: return "This document uses an unsupported Celluloid recipe version."
-        case .invalidDocument: return "This Celluloid document is damaged or has invalid contents."
-        case .resourceLimit: return "The image or document is too large. Use images up to 48 megapixels and keep the combined originals under 64 MB."
-        case .missingSource: return "An original image is missing from this document."
-        case .invalidGeometry: return "An overlay contains invalid position or size information."
+        case .unsupportedVersion: return NSLocalizedString("This document uses an unsupported Celluloid recipe version.", bundle: .module, comment: "Document error")
+        case .invalidDocument: return NSLocalizedString("This Celluloid document is damaged or has invalid contents.", bundle: .module, comment: "Document error")
+        case .resourceLimit: return NSLocalizedString("The image or document is too large. Use images up to 48 megapixels and keep the combined originals under 64 MB.", bundle: .module, comment: "Document error")
+        case .missingSource: return NSLocalizedString("An original image is missing from this document.", bundle: .module, comment: "Document error")
+        case .invalidGeometry: return NSLocalizedString("An overlay contains invalid position or size information.", bundle: .module, comment: "Document error")
         }
     }
 }

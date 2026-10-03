@@ -10,6 +10,7 @@ final class NativeEditorUITests: XCTestCase {
         let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
         let expected = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
         let app = XCUIApplication(url: expected)
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
         app.launch(); defer { app.terminate() }
         let candidates = NSRunningApplication.runningApplications(withBundleIdentifier: "Mango.Celluloid")
         let actual = try XCTUnwrap(candidates.first { $0.bundleURL?.standardizedFileURL.resolvingSymlinksInPath().path == expected.path })
@@ -28,12 +29,19 @@ final class NativeEditorUITests: XCTestCase {
         let pathField = app.windows.textFields.firstMatch
         XCTAssertTrue(pathField.waitForExistence(timeout: 5))
         pathField.typeText(fixture.path); app.typeKey(.return, modifierFlags: [])
-        let open = app.windows.buttons["Open"].firstMatch
+        let open = app.windows.buttons["OKButton"].firstMatch
         XCTAssertTrue(open.waitForExistence(timeout: 5)); open.click()
-        XCTAssertTrue(app.staticTexts["1200 × 800 px"].waitForExistence(timeout: 10))
+        let imported = app.staticTexts["1200 × 800 px"].waitForExistence(timeout: 10)
+        if !imported {
+            print("IMPORT_FAILURE_AX " + app.debugDescription)
+            let state = XCTAttachment(screenshot: app.screenshot()); state.name = "import-dimension-failure"; state.lifetime = .keepAlways; add(state)
+        }
+        XCTAssertTrue(imported)
         let bubble = app.descendants(matching: .any)["editor.add-bubble"].firstMatch
         XCTAssertTrue(bubble.isHittable); bubble.click()
-        app.menuItems["say1"].click()
+        let palette = XCTAttachment(screenshot: app.screenshot()); palette.name = "native-mac-visual-bubble-picker"; palette.lifetime = .keepAlways; add(palette)
+        let say1 = app.buttons["asset.say1"]
+        XCTAssertTrue(say1.waitForExistence(timeout: 5)); say1.click()
         let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 5)); text.click()
         app.typeKey("a", modifierFlags: .command); text.typeText("Hello 世界")
@@ -51,6 +59,38 @@ final class NativeEditorUITests: XCTestCase {
         XCTAssertTrue(closeCancel.waitForExistence(timeout: 5))
         closeCancel.click()
         XCTAssertTrue(text.waitForExistence(timeout: 5))
+    }
+    @MainActor func testSimplifiedChineseEditorAndVisualPicker() throws {
+        continueAfterFailure = false
+        let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
+        let app = XCUIApplication(url: URL(fileURLWithPath: path))
+        app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN", "-ApplePersistenceIgnoreState", "YES"]
+        app.launch(); defer { app.terminate() }
+        let cancel = app.windows["open-panel"].buttons["CancelButton"]
+        if cancel.waitForExistence(timeout: 3) { cancel.click() }
+        app.typeKey("n", modifierFlags: .command)
+        let importButton = app.descendants(matching: .any)["editor.import-files"].firstMatch
+        XCTAssertTrue(importButton.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["原生照片编辑器"].exists)
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
+        importButton.click(); app.typeKey("g", modifierFlags: [.command, .shift])
+        let field = app.windows.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5)); field.typeText(fixture.path)
+        app.typeKey(.return, modifierFlags: [])
+        let open = app.windows.buttons["OKButton"].firstMatch
+        XCTAssertTrue(open.waitForExistence(timeout: 5)); open.click()
+        let imported = app.staticTexts["1200 × 800 px"].waitForExistence(timeout: 10)
+        if !imported {
+            print("IMPORT_FAILURE_AX " + app.debugDescription)
+            let state = XCTAttachment(screenshot: app.screenshot()); state.name = "import-dimension-failure"; state.lifetime = .keepAlways; add(state)
+        }
+        XCTAssertTrue(imported)
+        app.descendants(matching: .any)["editor.add-bubble"].firstMatch.click()
+        XCTAssertTrue(app.buttons["asset.say1"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["选择气泡"].exists)
+        XCTAssertEqual(app.buttons["asset.say1"].label, "对话 1")
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "native-mac-zh-Hans-visual-picker"; screenshot.lifetime = .keepAlways; add(screenshot)
     }
     private func makeFixture() throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("CelluloidUI-" + UUID().uuidString)

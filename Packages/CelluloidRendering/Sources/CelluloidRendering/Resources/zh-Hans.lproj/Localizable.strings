@@ -1,0 +1,6 @@
+"Required artwork is missing: %@." = "缺少必要的图案资源：%@。";
+"The %@ filter is unavailable on this device." = "此设备无法使用 %@ 滤镜。";
+"The exported image could not be verified." = "无法验证导出的图片。";
+"The image could not be rendered. Your original is unchanged." = "无法生成图片。原片未发生更改。";
+"This bubble text does not fit. Shorten the text or make the bubble larger." = "气泡容纳不下这些文字。请缩短文字或放大气泡。";
+"This file could not be decoded as an image." = "无法将此文件解码为图片。";

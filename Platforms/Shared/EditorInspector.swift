@@ -6,6 +6,7 @@ struct EditorInspector: View {
     let recipe: EditRecipe
     @Binding var selection: UUID?
     let change: (EditRecipe, String) -> Void
+    @State private var assetPanel: AssetPanel?
 
     var body: some View {
         ScrollView {
@@ -15,25 +16,18 @@ struct EditorInspector: View {
                 Picker("Filter", selection: Binding(get: { recipe.filter }, set: { preset in
                     var next = recipe; next.filter = preset; change(next, "Change Filter")
                 })) {
-                    ForEach(FilterPreset.allCases, id: \.rawValue) { Text($0.rawValue).tag($0) }
+                    ForEach(FilterPreset.allCases, id: \.rawValue) { Text($0.localizedTitle).tag($0) }
                 }.accessibilityIdentifier("editor.filter")
                 if recipe.sources.count > 1 {
                     CollagePicker(recipe: recipe, change: change)
                 }
                 HStack {
-                    Menu("Sticker") {
-                        ForEach(StickerAsset.all, id: \.rawValue) { asset in
-                            Button("Sticker \(asset.rawValue)") { add(Overlay(sticker: asset)) }
-                        }
-                    }
-                    .accessibilityIdentifier("editor.add-sticker")
-                    Menu("Bubble") {
-                        ForEach(BubbleAsset.allCases, id: \.rawValue) { asset in
-                            Button(asset.rawValue) { add(Overlay(bubble: asset)) }
-                        }
-                    }
-                    .accessibilityIdentifier("editor.add-bubble")
+                    Button("Sticker") { assetPanel = .stickers }.accessibilityIdentifier("editor.add-sticker")
+                    Button("Bubble") { assetPanel = .bubbles }.accessibilityIdentifier("editor.add-bubble")
                 }.disabled(recipe.sources.isEmpty || recipe.overlays.count >= 100)
+                .popover(item: $assetPanel) { panel in
+                    AssetPaletteView(panel: panel) { overlay in add(overlay); assetPanel = nil }
+                }
                 SourceInspector(recipe: recipe, change: change)
                 Text("Layers").font(.headline)
                 if recipe.overlays.isEmpty { Text("Add a sticker or a speech bubble").foregroundStyle(.secondary) }
@@ -131,7 +125,7 @@ private struct OverlayInspector: View {
     }
     private func number(_ label: String, _ path: WritableKeyPath<Overlay, Double>, range: ClosedRange<Double>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack { Text(label); Spacer(); Text(overlay[keyPath: path], format: .number.precision(.fractionLength(2))).monospacedDigit() }
+            HStack { Text(LocalizedStringKey(label)); Spacer(); Text(overlay[keyPath: path], format: .number.precision(.fractionLength(2))).monospacedDigit() }
             Slider(value: Binding(get: { overlay[keyPath: path] }, set: { value in
                 var next = overlay; next[keyPath: path] = value; update(next, label)
             }), in: range).accessibilityLabel(label)

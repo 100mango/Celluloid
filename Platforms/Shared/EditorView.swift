@@ -57,7 +57,7 @@ struct EditorView: View {
         .task(id: try? document.recipe.encoded()) { await renderPreview() }
         .onAppear {
             undo.apply = { document = $0 }
-            undo.historyTrimmed = { status = "Older undo history cleared to limit memory; the last import can still be undone." }
+            undo.historyTrimmed = { status = NSLocalizedString("Older undo history cleared to limit memory; the last import can still be undone.", comment: "Editor message") }
         }
         .onDisappear { importGeneration = UUID(); importTask?.cancel(); exportTask?.cancel(); undo.apply = nil }
         .alert("Celluloid", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
@@ -70,7 +70,7 @@ struct EditorView: View {
             ZStack {
                 Rectangle().fill(Color.secondary.opacity(0.08))
                 if let preview {
-                    Image(decorative: preview, scale: 1).resizable().aspectRatio(contentMode: .fit)
+                    Image(preview, scale: 1, label: Text("Edited photo preview")).resizable().aspectRatio(contentMode: .fit)
                         .padding(16).accessibilityLabel("Edited photo preview")
                 } else {
                     VStack(spacing: 12) {
@@ -85,7 +85,7 @@ struct EditorView: View {
             .onDrop(of: [.fileURL, .image], isTargeted: nil, perform: drop)
             .accessibilityIdentifier("editor.canvas")
             HStack {
-                Text(document.recipe.sources.isEmpty ? "No photos imported" : "\(document.recipe.canvasWidth) × \(document.recipe.canvasHeight) px")
+                Text(verbatim: document.recipe.sources.isEmpty ? NSLocalizedString("No photos imported", comment: "Empty editor") : "\(document.recipe.canvasWidth) × \(document.recipe.canvasHeight) px").accessibilityIdentifier("editor.dimensions")
                 Spacer()
                 Text(status)
             }.font(.caption).foregroundStyle(.secondary).padding(.horizontal).padding(.bottom, 8)
@@ -109,13 +109,13 @@ struct EditorView: View {
         defer { importing = false }
         do {
             var next = document; try next.replaceSources(items)
-            status = "Imported \(items.count) photo(s)"; apply(next, name: "Import Photos")
+            status = String(format: NSLocalizedString("Imported %d photo(s)", comment: "Import status"), items.count); apply(next, name: "Import Photos")
         } catch { self.error = error.localizedDescription }
     }
     private func importFiles(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
-            guard (1...4).contains(urls.count) else { error = "Choose between one and four images."; return }
+            guard (1...4).contains(urls.count) else { error = NSLocalizedString("Choose between one and four images.", comment: "Editor message"); return }
             let generation = UUID(); importGeneration = generation; importing = true
             importTask?.cancel()
             importTask = Task {
@@ -153,7 +153,7 @@ struct EditorView: View {
         return try Data(contentsOf: url, options: .mappedIfSafe)
     }
     private func drop(_ providers: [NSItemProvider]) -> Bool {
-        guard (1...4).contains(providers.count) else { error = "Drop between one and four images."; return false }
+        guard (1...4).contains(providers.count) else { error = NSLocalizedString("Drop between one and four images.", comment: "Editor message"); return false }
         let generation = UUID(); importGeneration = generation; importing = true
         importTask?.cancel()
         importTask = Task {
@@ -192,7 +192,7 @@ struct EditorView: View {
             importFiles(.success(urls)); return
         }
         guard let image = NSImage(pasteboard: board), let bytes = image.tiffRepresentation else {
-            error = "The clipboard does not contain an image."; return
+            error = NSLocalizedString("The clipboard does not contain an image.", comment: "Editor message"); return
         }
         importTask?.cancel()
         let generation = UUID(); importGeneration = generation
@@ -230,8 +230,8 @@ struct EditorView: View {
                 let bytes = try Self.readImage(url, limit: 256 * 1024 * 1024)
                 guard bytes == exported?.data else { throw RenderError.exportFailed }
                 _ = try RasterCodec.metadata(bytes, maximumBytes: 256 * 1024 * 1024)
-                status = "Exported and verified \(url.lastPathComponent)"
-            } catch { self.error = "The export was written, but could not be read back: \(error.localizedDescription)" }
+                status = String(format: NSLocalizedString("Exported and verified %@", comment: "Export status"), url.lastPathComponent)
+            } catch { self.error = String(format: NSLocalizedString("The export was written, but could not be read back: %@", comment: "Export status"), error.localizedDescription) }
         case .failure(let error):
             if (error as NSError).code != CocoaError.userCancelled.rawValue { self.error = error.localizedDescription }
         }

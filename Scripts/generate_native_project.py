@@ -39,6 +39,16 @@ for name,platform in settings_by_name.items():
     tests=name.endswith('Tests')
     paths=list((ROOT/'Platforms'/('UITests' if name.endswith('UITests') else 'Tests' if tests else 'Shared')).glob('*.swift'))
     if not tests: paths+=list((ROOT/'Platforms'/('macOS' if name=='CelluloidMac' else 'visionOS')).glob('*.swift'))
+    localized=[]
+    if not tests:
+        language_refs=[]
+        for language in ['en','zh-Hans']:
+            path='Platforms/Resources/'+language+'.lproj/Localizable.strings'
+            language_ref=reference(path);objects[language_ref]['name']=language
+            if language_ref in children:children.remove(language_ref)
+            language_refs.append(language_ref)
+        variant=add('variant:'+name,'PBXVariantGroup',children=language_refs,name='Localizable.strings',sourceTree='<group>');children.append(variant)
+        localized.append(add('build:localization:'+name,'PBXBuildFile',fileRef=variant))
     source=[add('build:'+name+p.relative_to(ROOT).as_posix(),'PBXBuildFile',fileRef=reference(p.relative_to(ROOT).as_posix())) for p in sorted(paths)]
     links=[];deps=[];package_deps=[]
     for package,product in [('CelluloidCore','CelluloidDomain'),('CelluloidRendering','CelluloidRendering')]:
@@ -49,7 +59,7 @@ for name,platform in settings_by_name.items():
         deps.append(add('dependency:'+name,'PBXTargetDependency',target=targets['CelluloidMac'],targetProxy=proxy))
     settings=dict(PRODUCT_NAME='$(TARGET_NAME)',PRODUCT_BUNDLE_IDENTIFIER='Mango.Celluloid.'+name if tests else 'Mango.Celluloid',SWIFT_VERSION='5.0',SWIFT_STRICT_CONCURRENCY='minimal',CODE_SIGNING_ALLOWED='NO',CODE_SIGNING_REQUIRED='NO',CODE_SIGN_IDENTITY='',CURRENT_PROJECT_VERSION='2',MARKETING_VERSION='2.0',ENABLE_USER_SCRIPT_SANDBOXING='YES',LD_RUNPATH_SEARCH_PATHS=['$(inherited)','@executable_path/Frameworks','@executable_path/../Frameworks'],**platform)
     if not tests: settings['INFOPLIST_FILE']='Platforms/'+('macOS' if name=='CelluloidMac' else 'visionOS')+'/Info.plist'
-    phases=[add('phase:'+name+kind,'PBX'+kind+'BuildPhase',buildActionMask='2147483647',files=files,runOnlyForDeploymentPostprocessing='0') for kind,files in [('Sources',source),('Frameworks',links),('Resources',[])]]
+    phases=[add('phase:'+name+kind,'PBX'+kind+'BuildPhase',buildActionMask='2147483647',files=files,runOnlyForDeploymentPostprocessing='0') for kind,files in [('Sources',source),('Frameworks',links),('Resources',localized)]]
     add('target:'+name,'PBXNativeTarget',name=name,productName=name,productReference=products[name],productType='com.apple.product-type.'+('bundle.ui-testing' if name.endswith('UITests') else 'bundle.unit-test' if tests else 'application'),buildConfigurationList=configs(name,settings),buildPhases=phases,buildRules=[],dependencies=deps,packageProductDependencies=package_deps)
 prodgroup=add('products','PBXGroup',name='Products',children=list(products.values()),sourceTree='<group>')
 root=add('root','PBXGroup',children=children+[prodgroup],sourceTree='<group>')

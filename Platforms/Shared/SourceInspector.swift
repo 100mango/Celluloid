@@ -36,7 +36,7 @@ struct SourceInspector: View {
     }
     private func cropSlider(_ label: String, _ source: SourceImage, _ path: WritableKeyPath<SourceCrop, Double>, range: ClosedRange<Double>) -> some View {
         VStack(alignment: .leading) {
-            HStack { Text(label); Spacer(); Text(source.crop[keyPath: path], format: .number.precision(.fractionLength(2))) }
+            HStack { Text(LocalizedStringKey(label)); Spacer(); Text(source.crop[keyPath: path], format: .number.precision(.fractionLength(2))) }
             Slider(value: Binding(get: { source.crop[keyPath: path] }, set: { value in
                 var crop = source.crop; crop[keyPath: path] = value; update(source.id, crop: crop)
             }), in: range).accessibilityLabel("\(label) for \(source.displayName)")

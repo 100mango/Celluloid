@@ -2,6 +2,7 @@
 import PackageDescription
 let package = Package(
     name: "CelluloidRendering",
+    defaultLocalization: "en",
     platforms: [.macOS(.v13), .iOS(.v15), .tvOS(.v17), .visionOS(.v1)],
     products: [.library(name: "CelluloidRendering", targets: ["CelluloidRendering"])],
     dependencies: [.package(path: "../CelluloidCore")],

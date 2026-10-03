@@ -8,6 +8,7 @@ import CelluloidDomain
 /// cancellation before allocating; superseded callers must also reject their stale result.
 public actor NativeRenderQueue {
     public static let shared = NativeRenderQueue()
+    private let renderer = RecipeRenderer()
     public init() {}
     private var activeRasterJobs = 0
     private(set) var maximumConcurrentRasterJobs = 0
@@ -16,7 +17,7 @@ public actor NativeRenderQueue {
     public func preview(_ recipe: EditRecipe, sources: [UUID: Data], maximumDimension: Int = 1400) throws -> CGImage {
         try Task.checkCancellation()
         beginJob(); defer { endJob() }
-        let result = try RecipeRenderer().render(recipe, sources: sources, maximumDimension: maximumDimension)
+        let result = try autoreleasepool { try renderer.render(recipe, sources: sources, maximumDimension: maximumDimension) }
         try Task.checkCancellation()
         return result
     }
@@ -24,9 +25,11 @@ public actor NativeRenderQueue {
     public func export(_ recipe: EditRecipe, sources: [UUID: Data], type: UTType) throws -> Data {
         try Task.checkCancellation()
         beginJob(); defer { endJob() }
-        let image = try RecipeRenderer().render(recipe, sources: sources)
-        try Task.checkCancellation()
-        let data = try RasterCodec.encode(image, as: type)
+        let data = try autoreleasepool {
+            let image = try renderer.render(recipe, sources: sources)
+            try Task.checkCancellation()
+            return try RasterCodec.encode(image, as: type)
+        }
         try Task.checkCancellation()
         return data
     }

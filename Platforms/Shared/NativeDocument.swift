@@ -96,7 +96,7 @@ struct NativeDocument: FileDocument, Equatable {
         manager?.registerUndo(withTarget: self) { target in
             target.change(from: next, to: previous, manager: manager, name: name)
         }
-        manager?.setActionName(name)
+        manager?.setActionName(NSLocalizedString(name, comment: "Undo action"))
         apply?(next)
     }
 }

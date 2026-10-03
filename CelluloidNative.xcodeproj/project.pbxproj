@@ -41,6 +41,40 @@
 			"sourceTree" = "BUILT_PRODUCTS_DIR";
 			"includeInIndex" = "0";
 		};
+		"350528213B2B3A278F55EA5B" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.xml";
+			"path" = "Platforms/Resources/en.lproj/Localizable.strings";
+			"sourceTree" = "<group>";
+			"name" = "en";
+		};
+		"EF368E24752B361BBCADA132" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.xml";
+			"path" = "Platforms/Resources/zh-Hans.lproj/Localizable.strings";
+			"sourceTree" = "<group>";
+			"name" = "zh-Hans";
+		};
+		"758CB950C338BD32AB90F06C" = {
+			"isa" = "PBXVariantGroup";
+			"children" = ("350528213B2B3A278F55EA5B", "EF368E24752B361BBCADA132");
+			"name" = "Localizable.strings";
+			"sourceTree" = "<group>";
+		};
+		"492E5EE31E7A61E8627BA7F4" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "758CB950C338BD32AB90F06C";
+		};
+		"FD487CF6F9095694E5C931A3" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/Shared/AssetPaletteView.swift";
+			"sourceTree" = "<group>";
+		};
+		"130FEF204C02ECF6011764BC" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "FD487CF6F9095694E5C931A3";
+		};
 		"15E4AE0E4F10C1CCED2C1AE4" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -112,7 +146,7 @@
 		"FCBEF293623C00A0F831AC3D" = {
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
-			"files" = ("6535D58D1B93AF2BE31E5117", "6BC2D8EF7D0E58A0EB01850F", "25388334531764AEE3E85C0F", "8148ED83AF14CF71A643170B", "901BF6DF62E3BD0753A501D6");
+			"files" = ("130FEF204C02ECF6011764BC", "6535D58D1B93AF2BE31E5117", "6BC2D8EF7D0E58A0EB01850F", "25388334531764AEE3E85C0F", "8148ED83AF14CF71A643170B", "901BF6DF62E3BD0753A501D6");
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
 		"17FFDEE2B7A439489FEFCE10" = {
@@ -124,7 +158,7 @@
 		"B48FC1C5D41A4DCCBE59FE23" = {
 			"isa" = "PBXResourcesBuildPhase";
 			"buildActionMask" = "2147483647";
-			"files" = ();
+			"files" = ("492E5EE31E7A61E8627BA7F4");
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
 		"00BDB47A67344E17EC508B63" = {
@@ -192,6 +226,20 @@
 			"dependencies" = ();
 			"packageProductDependencies" = ("4A0A7B794080F5F4DC92EB00", "BF7FC0A44D99C9E7965706D5");
 		};
+		"A50F2B4239342C7A30514195" = {
+			"isa" = "PBXVariantGroup";
+			"children" = ("350528213B2B3A278F55EA5B", "EF368E24752B361BBCADA132");
+			"name" = "Localizable.strings";
+			"sourceTree" = "<group>";
+		};
+		"B3885BC80A5950C46F3538AB" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A50F2B4239342C7A30514195";
+		};
+		"1329F6AD86C5C31E2B0E8D02" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "FD487CF6F9095694E5C931A3";
+		};
 		"41BF5FEB36F51C539FEAC831" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "15E4AE0E4F10C1CCED2C1AE4";
@@ -239,7 +287,7 @@
 		"7F8402196162D6F03EC8DE86" = {
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
-			"files" = ("41BF5FEB36F51C539FEAC831", "7C9F1EC2C3AA56A955FD4573", "EEC8E2618615B82FED161FA2", "2104F47FA14F65DADB8EF750", "302DA5A93D3F971E787C0880");
+			"files" = ("1329F6AD86C5C31E2B0E8D02", "41BF5FEB36F51C539FEAC831", "7C9F1EC2C3AA56A955FD4573", "EEC8E2618615B82FED161FA2", "2104F47FA14F65DADB8EF750", "302DA5A93D3F971E787C0880");
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
 		"CB6B033E6F13804AF768297C" = {
@@ -251,7 +299,7 @@
 		"81CFE60AC37AB411AFCE8FBC" = {
 			"isa" = "PBXResourcesBuildPhase";
 			"buildActionMask" = "2147483647";
-			"files" = ();
+			"files" = ("B3885BC80A5950C46F3538AB");
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
 		"AF14B61401137A422E6A043A" = {
@@ -601,7 +649,7 @@
 		};
 		"C3C8853CC2AF9E3CF862AA78" = {
 			"isa" = "PBXGroup";
-			"children" = ("15E4AE0E4F10C1CCED2C1AE4", "BA1EE020EAA817969B9AF6D0", "15CB0613891975E941DDB140", "EDEEACE576FA2E263E7A5785", "15ECB0C351A51871CB00A8D3", "34CD17BD0B21355F501346C8", "BA91D03DE64529F8FED4C192", "99DD9D813FB8A17E64801B21", "276DDD039BAAABAC8C9A74FF", "399C234FAAD22663EAA8B41A", "C275A667CEA49A4BEB9C5D81");
+			"children" = ("758CB950C338BD32AB90F06C", "FD487CF6F9095694E5C931A3", "15E4AE0E4F10C1CCED2C1AE4", "BA1EE020EAA817969B9AF6D0", "15CB0613891975E941DDB140", "EDEEACE576FA2E263E7A5785", "15ECB0C351A51871CB00A8D3", "A50F2B4239342C7A30514195", "34CD17BD0B21355F501346C8", "BA91D03DE64529F8FED4C192", "99DD9D813FB8A17E64801B21", "276DDD039BAAABAC8C9A74FF", "399C234FAAD22663EAA8B41A", "C275A667CEA49A4BEB9C5D81");
 			"sourceTree" = "<group>";
 		};
 		"DED267C77AB07A6FF4168D2F" = {
