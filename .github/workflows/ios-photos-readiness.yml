@@ -46,7 +46,17 @@ jobs:
         run: |
           set -euo pipefail
           python3 Scripts/create_fixture.py
-          python3 Scripts/select_test_devices.py 'iPad mini (A17 Pro)' > /tmp/test-devices.txt
+          python3 - <<'PYSELECT' > /tmp/test-devices.txt
+          import json,subprocess
+          observed=json.loads(subprocess.check_output(['xcrun','simctl','list','devices','available','-j'],text=True))['devices']
+          booted=[d for group in observed.values() for d in group if d['state']=='Booted']
+          assert not booted,booted
+          devices=observed['com.apple.CoreSimulator.SimRuntime.iOS-27-0']
+          matches=[d for d in devices if d['name']=='iPad mini (A17 Pro)' and d.get('isAvailable') and d['state']=='Shutdown']
+          assert len(matches)==1,matches
+          print(matches[0]['udid'],matches[0]['name'])
+          PYSELECT
+          cat /tmp/test-devices.txt
           id=$(cut -d' ' -f1 /tmp/test-devices.txt)
           echo "$id" > /tmp/current-celluloid-simulator
           # Index data is unnecessary for CI. The official build setting controls

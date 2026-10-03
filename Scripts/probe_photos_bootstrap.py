@@ -48,7 +48,19 @@ for label, seconds, command in [
     ('bootstatus', 600, ['xcrun', 'simctl', 'bootstatus', device, '-b']),
     ('install-before-import', 120, ['xcrun', 'simctl', 'install', device, '.build/Build/Products/Debug-iphonesimulator/Celluloid.app']),
     ('grant-before-import', 60, ['xcrun', 'simctl', 'privacy', device, 'grant', 'photos', 'Mango.Celluloid'])]:
-    if run(label, seconds, *command)[0]: raise RuntimeError('Bootstrap prerequisite failed: ' + label)
+    code, _ = run(label, seconds, *command)
+    if label == 'bootstatus': host('after-bootstatus')
+    if code:
+        host('failed-' + label)
+        if label == 'install-before-import':
+            inspected, container = run('read-only-install-reconciliation', 45, 'xcrun', 'simctl', 'get_app_container', device, 'Mango.Celluloid', 'app')
+            print('BOOTSTRAP_INSTALL_RECONCILIATION', json.dumps({'original_code': code, 'inspection_code': inspected,
+                'registered_app_container_observed': inspected == 0, 'retry': False}), flush=True)
+            if inspected == 0:
+                errors.append({'prerequisite': label, 'code': code})
+                print('BOOTSTRAP_RECOVERED_INSTALL original command remains a diagnostic failure', flush=True)
+                continue
+        raise RuntimeError('Bootstrap prerequisite failed: ' + label)
 host('before-PhotoKit-readiness')
 initial = test('readiness-before-import', 'testPhotosLibraryBootstrapReadiness')
 assert initial['synthetic'] == [], initial
