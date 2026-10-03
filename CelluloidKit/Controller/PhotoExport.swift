@@ -18,6 +18,11 @@ public final class PhotoExportTask {
     var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
     #if DEBUG
     private var storage = PhotoExportStorageStatistics()
+    private var consumedRasterObserver: (() -> Void)?
+    var consumedRasterObserverForTesting: (() -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return consumedRasterObserver }
+        set { lock.lock(); consumedRasterObserver = newValue; lock.unlock() }
+    }
     var storageStatistics: PhotoExportStorageStatistics { lock.lock(); defer { lock.unlock() }; return storage }
     func recordCompositionStorage(_ bytes: Int) { lock.lock(); storage.compositionBytes = bytes; lock.unlock() }
     func beginRasterStorage(_ bytes: Int, width: Int, height: Int) {
@@ -28,7 +33,16 @@ public final class PhotoExportTask {
         storage.maximumRasterWidth = max(storage.maximumRasterWidth, width)
         storage.maximumRasterHeight = max(storage.maximumRasterHeight, height)
     }
-    func recordConsumedRaster() { lock.lock(); storage.consumedRasterCount += 1; lock.unlock() }
+    func recordConsumedRaster() {
+        lock.lock()
+        storage.consumedRasterCount += 1
+        let observer = consumedRasterObserver
+        consumedRasterObserver = nil
+        lock.unlock()
+        // Test-only synchronization runs outside the statistics lock. Release
+        // builds contain neither the observer nor these storage diagnostics.
+        observer?()
+    }
     func recordCompletedOverlay() { lock.lock(); storage.completedOverlayCount += 1; lock.unlock() }
     func endRasterStorage(_ bytes: Int) {
         lock.lock(); defer { lock.unlock() }

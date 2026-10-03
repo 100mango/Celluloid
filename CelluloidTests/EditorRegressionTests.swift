@@ -185,6 +185,7 @@ final class EditorRegressionTests: XCTestCase {
         editor.restoreFromData(adjustment)
         var callbacks = 0
         let finished = expectation(description: "Extension rendered output")
+        finished.assertForOverFulfill = true
         editor.finishContentEditing { output in
             callbacks += 1
             XCTAssertNotNil(output)
@@ -200,32 +201,123 @@ final class EditorRegressionTests: XCTestCase {
         }
         wait(for: [finished], timeout: 10)
         XCTAssertEqual(callbacks, 1)
+        XCTAssertTrue(editor.view.isUserInteractionEnabled)
         editor.cancelContentEditing()
-        let cancelled = expectation(description: "Cancelled extension output")
-        editor.finishContentEditing { output in
-            XCTAssertNil(output)
-            cancelled.fulfill()
-        }
-        wait(for: [cancelled], timeout: 1)
+        let cancelledBeforeFinish = expectation(description: "Photos canceled before finish: no host callback")
+        cancelledBeforeFinish.isInverted = true
+        editor.finishContentEditing { _ in cancelledBeforeFinish.fulfill() }
+        XCTAssertNil(editor.input)
+
         editor.startContentEditing(with: input, placeholderImage: placeholder)
-        let superseded = expectation(description: "Superseded Photos session cannot return stale output")
+        let cancelledDuringRender = expectation(description: "Photos canceled during preparation: suppress pending host callback")
+        cancelledDuringRender.isInverted = true
+        editor.finishContentEditing { _ in cancelledDuringRender.fulfill() }
+        XCTAssertFalse(editor.view.isUserInteractionEnabled, "Editing controls are disabled while Photos output is prepared")
+        // The asynchronous export has been requested, while its completion cannot
+        // yet execute on this main-thread stack. This is deterministic cancellation
+        // during preparation, not a race against an arbitrary elapsed delay.
+        editor.cancelContentEditing()
+        XCTAssertNil(editor.input)
+        XCTAssertTrue(editor.view.isUserInteractionEnabled)
+
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        editor.view.layoutIfNeeded()
+        var renderedState = editor.adjustmentData
+        let canvas = try XCTUnwrap(renderedState.referenceCanvasSize)
+        var sticker = StickerModel.stickers[0]
+        sticker.center = CGPoint(x: canvas.width / 2, y: canvas.height / 2)
+        renderedState.stickers = [sticker]
+        editor.restoreFromData(renderedState)
+        let cancelledAfterRaster = expectation(description: "Photos canceled after a consumed strip: no host callback")
+        cancelledAfterRaster.isInverted = true
+        let rasterCancellation = expectation(description: "Actual raster progress triggers host cancellation")
+        editor.finishContentEditing { _ in cancelledAfterRaster.fulfill() }
+        let pending = try XCTUnwrap(editor.activeExportForTesting)
+        pending.consumedRasterObserverForTesting = { [weak pending] in
+            let acknowledged = DispatchSemaphore(value: 0)
+            DispatchQueue.main.async {
+                if let pending = pending {
+                    XCTAssertGreaterThan(pending.storageStatistics.consumedRasterCount, 0)
+                    XCTAssertEqual(pending.storageStatistics.completedOverlayCount, 0)
+                } else { XCTFail("Rendering task disappeared before cancellation") }
+                editor.cancelContentEditing()
+                rasterCancellation.fulfill()
+                acknowledged.signal()
+            }
+            // Pause only this DEBUG test at its observed strip boundary. This
+            // avoids mistaking a50ms decode delay for cancellation during render.
+            _ = acknowledged.wait(timeout: .now() + 5)
+        }
+        wait(for: [rasterCancellation], timeout: 10)
+        pending.consumedRasterObserverForTesting = nil
+        XCTAssertTrue(pending.isCancelled)
+
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        let superseded = expectation(description: "Superseded Photos session must not invoke its host completion")
+        superseded.isInverted = true
         var staleCallbacks = 0
-        editor.finishContentEditing { output in
+        editor.finishContentEditing { _ in
             staleCallbacks += 1
-            XCTAssertNil(output)
             superseded.fulfill()
         }
         // Same PHContentEditingInput object, new host session: object identity alone
         // must not authorize an older asynchronous completion.
         editor.startContentEditing(with: input, placeholderImage: placeholder)
-        wait(for: [superseded], timeout: 10)
-        XCTAssertEqual(staleCallbacks, 1)
-                // No PHPhotoLibrary.performChanges: the synthetic library asset is never mutated here.
+        XCTAssertTrue(editor.view.isUserInteractionEnabled)
+        let replacement = expectation(description: "Replacement Photos session completes successfully once")
+        replacement.assertForOverFulfill = true
+        var replacementCallbacks = 0
+        editor.finishContentEditing { output in
+            replacementCallbacks += 1
+            XCTAssertNotNil(output)
+            replacement.fulfill()
+        }
+        // Completing a later export also drains the shared serial export work;
+        // canceled/superseded operations must remain silent throughout it.
+        wait(for: [replacement], timeout: 10)
+        wait(for: [cancelledBeforeFinish, cancelledDuringRender, cancelledAfterRaster, superseded], timeout: 0.25)
+        XCTAssertEqual(staleCallbacks, 0)
+        XCTAssertEqual(replacementCallbacks, 1)
+        XCTAssertTrue(editor.view.isUserInteractionEnabled)
+
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        editor.restoreFromData(renderedState)
+        let earlierFinish = expectation(description: "Repeated finish supersedes the older host completion")
+        earlierFinish.isInverted = true
+        editor.finishContentEditing { _ in earlierFinish.fulfill() }
+        let newestFinish = expectation(description: "Newest finish succeeds exactly once")
+        newestFinish.assertForOverFulfill = true
+        var newestCallbacks = 0
+        editor.finishContentEditing { output in
+            newestCallbacks += 1
+            XCTAssertNotNil(output)
+            XCTAssertTrue(editor.view.isUserInteractionEnabled)
+            newestFinish.fulfill()
+        }
+        XCTAssertFalse(editor.view.isUserInteractionEnabled)
+        let latestTask = try XCTUnwrap(editor.activeExportForTesting)
+        let newestStillPreparing = expectation(description: "Older cancellation does not enable UI during the newer render")
+        latestTask.consumedRasterObserverForTesting = {
+            let acknowledged = DispatchSemaphore(value: 0)
+            DispatchQueue.main.async {
+                XCTAssertFalse(editor.view.isUserInteractionEnabled)
+                newestStillPreparing.fulfill()
+                acknowledged.signal()
+            }
+            _ = acknowledged.wait(timeout: .now() + 5)
+        }
+        wait(for: [newestStillPreparing, newestFinish], timeout: 10)
+        latestTask.consumedRasterObserverForTesting = nil
+        wait(for: [earlierFinish], timeout: 0.25)
+        XCTAssertEqual(newestCallbacks, 1)
+        print("PHOTOS_EXTENSION_CALLBACK_CONTRACT_PASS success_once cancel_before_finish_silent cancel_during_preparation_silent cancel_after_consumed_strip_silent superseded_session_silent repeated_finish_silent newest_finish_success_once controls_disabled_until_current_finish")
+        // No PHPhotoLibrary.performChanges: the synthetic library asset is never mutated here.
     }
 
     func testExtensionWithoutInputCompletesWithFailureExactlyOnce() {
         let editor = PhotoEditingViewController()
         let failed = expectation(description: "Missing input rejected")
+        failed.assertForOverFulfill = true
         var callbacks = 0
         editor.finishContentEditing { output in
             callbacks += 1
@@ -236,12 +328,14 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertEqual(callbacks, 1)
     }
 
-    func testCancelledExtensionNeverReturnsOutput() {
+    func testCancelledExtensionNeverInvokesHostCompletion() {
         let editor = PhotoEditingViewController()
         editor.cancelContentEditing()
-        let result = expectation(description: "cancel completion")
-        editor.finishContentEditing { output in XCTAssertNil(output); result.fulfill() }
-        wait(for: [result], timeout: 1)
+        let result = expectation(description: "Canceled Photos session must not receive a completion")
+        result.isInverted = true
+        editor.finishContentEditing { _ in result.fulfill() }
+        wait(for: [result], timeout: 0.25)
+        XCTAssertNil(editor.input)
     }
     func testCollageTemplatesHaveValidPolygons() {
         for count in [CollageImageCount.two, .three, .four] {

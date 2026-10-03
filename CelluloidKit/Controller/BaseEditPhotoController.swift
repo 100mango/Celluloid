@@ -14,6 +14,9 @@ open class BaseEditPhotoController: UIViewController {
     
     private nonisolated static let exportQueue = DispatchQueue(label: "Mango.Celluloid.full-resolution-export", qos: .userInitiated)
     private var activeExport: PhotoExportTask?
+    #if DEBUG
+    var activeExportForTesting: PhotoExportTask? { activeExport }
+    #endif
 
     public func cancelExport() { activeExport?.cancel(); activeExport = nil }
 

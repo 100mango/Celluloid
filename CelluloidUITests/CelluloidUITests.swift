@@ -122,7 +122,7 @@ final class CelluloidUITests: XCTestCase {
         launch(diagnostics: false, photosAccess: true)
         app.buttons["edit-photo"].tap()
         let photo = app.descendants(matching: .any)["photo-0"]
-        XCTAssertTrue(photo.waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForFullPhotoAccessPicker(app))
         assertFullPhotoAccessPicker(app)
         waitForStableLayout(["photo-0", "picker-done"])
         audit("granted-picker")
@@ -280,7 +280,7 @@ final class CelluloidUITests: XCTestCase {
     func testSeededPhotoEditingSaveAndReopen() {
         launch(photosAccess: true)
         app.buttons["edit-photo"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["photo-0"].waitForExistence(timeout: 15), "CI must seed Photos and grant simulator Photos permission")
+        XCTAssertTrue(waitForFullPhotoAccessPicker(app), "The granted flow must finish the exact Photos consent prompt and expose fixtures")
         assertFullPhotoAccessPicker(app)
         app.descendants(matching: .any)["photo-0"].tap()
         app.buttons["picker-done"].tap()
@@ -348,7 +348,8 @@ final class CelluloidUITests: XCTestCase {
     func testTwoPhotoCollageZoomRotateAndSave() {
         launch(photosAccess: true)
         app.buttons["make-collage"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["photo-1"].waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForFullPhotoAccessPicker(app))
+        XCTAssertTrue(app.descendants(matching: .any)["photo-1"].waitForExistence(timeout: 5))
         assertFullPhotoAccessPicker(app)
         app.descendants(matching: .any)["photo-0"].tap()
         app.descendants(matching: .any)["photo-1"].tap()
@@ -403,6 +404,31 @@ final class CelluloidUITests: XCTestCase {
 // Only expected full-access flows use this monitor. The library contains CI
 // fixtures; denied/revoked/limited cases intentionally never install this handler.
 extension XCTestCase {
+    func waitForFullPhotoAccessPicker(_ app: XCUIApplication) -> Bool {
+        let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let title = "Allow “Celluloid” to access your photo library?"
+        let deadline = Date().addingTimeInterval(15)
+        repeat {
+            // Queries alone do not invoke an interruption monitor. Resolve only
+            // this expected Photos prompt directly, before waiting for assets.
+            let alerts = [system.alerts[title], app.alerts[title]]
+            if let alert = alerts.first(where: { $0.exists }) {
+                let actions = alert.buttons.matching(NSPredicate(format: "label IN %@",
+                    ["Allow Full Access", "Allow Access to All Photos"]))
+                if actions.count == 1, actions.element.isEnabled, actions.element.isHittable {
+                    print("EXPECTED_PHOTOS_DIRECT_AUTHORIZATION_ACTION " + actions.element.label)
+                    actions.element.tap()
+                    let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: alert)
+                    guard XCTWaiter.wait(for: [dismissed], timeout: 10) == .completed else { return false }
+                }
+            }
+            if app.descendants(matching: .any)["photo-0"].exists { return true }
+            Thread.sleep(forTimeInterval: 0.25)
+        } while Date() < deadline
+        print("EXPECTED_PHOTOS_PREREQUISITE_UNRESOLVED " + String(system.debugDescription.prefix(6000)))
+        return false
+    }
+
     func assertFullPhotoAccessPicker(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(app.descendants(matching: .any)["photo-0"].exists, "Granted flow requires actual assets", file: file, line: line)
         XCTAssertFalse(app.buttons["manage-photos"].exists, "The app exposes this management control for limited access only", file: file, line: line)

@@ -22,7 +22,7 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         defer { removeUIInterruptionMonitor(monitor) }
         openPicker()
         let fixture = app.descendants(matching: .any)["photo-0"]
-        XCTAssertTrue(fixture.waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForFullPhotoAccessPicker(app))
         assertFullPhotoAccessPicker(app)
         fixture.tap()
         XCTAssertTrue(app.buttons["picker-done"].isEnabled)
