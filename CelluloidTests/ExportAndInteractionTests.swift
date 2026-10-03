@@ -6,6 +6,16 @@ import CryptoKit
 
 @MainActor
 final class ExportAndInteractionTests: XCTestCase {
+    func testReleasedWarmingCopyWithoutCropKeepsStrictPixels() throws {
+        setenv("CELLULOID_EXPORT_WARMING_ONLY_CONTROL", "1", 1)
+        defer { unsetenv("CELLULOID_EXPORT_WARMING_ONLY_CONTROL") }
+        print("WARMING_COPY_RELEASE_CONTROL_ORACLES crop=false")
+        try testOffMainCompositeMatchesLegacyAffineAlphaAndColorRendering()
+        try testStreamingTileBoundariesAndManyOverlaysMatchLegacyPixels()
+        try testUnevenRotatedAndScaledStripCanvasesMatchLegacyPixels()
+        try testExtendedRangeSourceMatchesLegacyRendererBitmapAndPixels()
+    }
+
     func testFullCanvasControlsKeepEveryStrictPixelOracle() throws {
         defer { unsetenv("CELLULOID_EXPORT_FULL_CANVAS_CONTROL") }
         for mode in ["layer", "direct"] {
@@ -378,10 +388,10 @@ final class ExportAndInteractionTests: XCTestCase {
     func testExtendedRangeSourceMatchesLegacyRendererBitmapAndPixels() throws {
         let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3))
         let bitmap = CGBitmapInfo.floatComponents.rawValue | CGBitmapInfo.byteOrder16Little.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
-        let context = try XCTUnwrap(CGContext(data: nil, width: 320, height: 240, bitsPerComponent: 16,
-            bytesPerRow: 320 * 8, space: space, bitmapInfo: bitmap))
+        let context = try XCTUnwrap(CGContext(data: nil, width: 1603, height: 1207, bitsPerComponent: 16,
+            bytesPerRow: 1603 * 8, space: space, bitmapInfo: bitmap))
         context.setFillColor(try XCTUnwrap(CGColor(colorSpace: space, components: [1.5, 0.2, 0.1, 0.7])))
-        context.fill(CGRect(x: 0, y: 0, width: 320, height: 240))
+        context.fill(CGRect(x: 0, y: 0, width: 1603, height: 1207))
         let editor = BaseEditPhotoController(); editor.loadViewIfNeeded()
         editor.view.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
         editor.sourceImage = UIImage(cgImage: try XCTUnwrap(context.makeImage()))
@@ -404,7 +414,7 @@ final class ExportAndInteractionTests: XCTestCase {
                 let actual = self.extendedRGBA(output.image)
                 XCTAssertEqual(actual.count, expected.count)
                 XCTAssertTrue(actual == expected, "Exact extended-linear float pixels must retain legacy range/alpha/color semantics")
-                print("EXTENDED_SOURCE_EQUIVALENCE output_bpc=\(output.image.cgImage?.bitsPerComponent ?? 0) output_bpp=\(output.image.cgImage?.bitsPerPixel ?? 0) profile=\(String(describing: output.image.cgImage?.colorSpace?.name))")
+                print("EXTENDED_SOURCE_EQUIVALENCE width=1603 height=1207 output_bpc=\(output.image.cgImage?.bitsPerComponent ?? 0) output_bpp=\(output.image.cgImage?.bitsPerPixel ?? 0) profile=\(String(describing: output.image.cgImage?.colorSpace?.name))")
             }
             finished.fulfill()
         }

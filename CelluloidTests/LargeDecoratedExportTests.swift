@@ -8,6 +8,13 @@ import Darwin
 /// A simulator measurement, not a physical Photos-extension memory budget.
 @MainActor
 final class LargeDecoratedExportTests: XCTestCase {
+    func testReleasedWarmingCopyWithoutCropMetricsAndCancellation() throws {
+        setenv("CELLULOID_EXPORT_WARMING_ONLY_CONTROL", "1", 1)
+        defer { unsetenv("CELLULOID_EXPORT_WARMING_ONLY_CONTROL") }
+        print("WARMING_COPY_RELEASE_CONTROL_METRICS crop=false")
+        try testFortyEightMegapixelDecoratedExportAndInFlightCancellation()
+    }
+
     func testFullCanvasControlFortyEightMegapixelMetricsAndCancellation() throws {
         defer { unsetenv("CELLULOID_EXPORT_FULL_CANVAS_CONTROL") }
         for mode in ["layer", "direct"] {

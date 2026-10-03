@@ -85,6 +85,9 @@ open class BaseEditPhotoController: UIViewController {
         format.scale = 1
         #if DEBUG
         let fullCanvasControl = getenv("CELLULOID_EXPORT_FULL_CANVAS_CONTROL").map { String(cString: $0) }
+        let cropSource = getenv("CELLULOID_EXPORT_WARMING_ONLY_CONTROL") == nil
+        #else
+        let cropSource = true
         #endif
         func finish(_ result: Result<PhotoExport, PhotoExportError>) {
             DispatchQueue.main.async {
@@ -141,10 +144,10 @@ open class BaseEditPhotoController: UIViewController {
                         return
                     }
                     #endif
-                    let result = Self.compositeOffMain(source, size: image.size, models: models, task: task) { decoded, rect in
+                    let result = Self.compositeOffMain(source, size: image.size, models: models, task: task, cropSource: cropSource) { decoded, rect in
                         DispatchQueue.main.sync {
                             guard self != nil, !task.isCancelled else { return .failure(.cancelled) }
-                            return Self.rasterizeScene(decoded, size: image.size, models: models, rect: rect, format: format, directSource: true)
+                            return Self.rasterizeScene(decoded, size: image.size, models: models, rect: rect, format: format, directSource: true, sourceRect: cropSource ? rect : nil)
                         }
                     }
                     switch result {
@@ -217,7 +220,7 @@ open class BaseEditPhotoController: UIViewController {
     }
 
     private static func rasterizeScene(_ source: CGImage, size: CGSize, models: [OverlayModel], rect: CGRect,
-                                       format: UIGraphicsImageRendererFormat, globalBounds: Bool = false, directSource: Bool = false) -> Result<OverlayRaster, PhotoExportError> {
+                                       format: UIGraphicsImageRendererFormat, globalBounds: Bool = false, directSource: Bool = false, sourceRect: CGRect? = nil) -> Result<OverlayRaster, PhotoExportError> {
         precondition(Thread.isMainThread)
         return autoreleasepool {
             // Render the complete original layer stack in each final-output tile.
@@ -238,7 +241,9 @@ open class BaseEditPhotoController: UIViewController {
                     context.cgContext.saveGState()
                     context.cgContext.translateBy(x: 0, y: size.height)
                     context.cgContext.scaleBy(x: 1, y: -1)
-                    context.cgContext.draw(source, in: CGRect(origin: .zero, size: size))
+                    let region = sourceRect ?? CGRect(origin: .zero, size: size)
+                    context.cgContext.draw(source, in: CGRect(x: region.minX, y: size.height - region.maxY,
+                                                              width: region.width, height: region.height))
                     context.cgContext.restoreGState()
                 }
                 holder.layer.render(in: context.cgContext)
@@ -273,14 +278,17 @@ open class BaseEditPhotoController: UIViewController {
         return (source, pixels)
     }
 
-    private nonisolated static func compositeOffMain(_ source: CGImage, size: CGSize, models: [OverlayModel], task: PhotoExportTask,
+    private nonisolated static func compositeOffMain(_ source: CGImage, size: CGSize, models: [OverlayModel], task: PhotoExportTask, cropSource: Bool,
             rasterize: (CGImage, CGRect) -> Result<OverlayRaster, PhotoExportError>) -> Result<UIImage, PhotoExportError> {
         precondition(!Thread.isMainThread)
         guard !task.isCancelled else { return .failure(.cancelled) }
-        guard let decoded = materializedImage(source) else { return .failure(.encodingFailed) }
+        // Warm on this queue, then release the temporary provider copy before
+        // allocating the destination. Keep the original image and its metadata.
+        guard let decoded = autoreleasepool(invoking: { materializedImage(source)?.image }) else { return .failure(.encodingFailed) }
         guard !task.isCancelled else { return .failure(.cancelled) }
-        // Hold the warmed provider bytes through all recording/copy operations.
-        defer { withExtendedLifetime(decoded.pixels) {} }
+        #if DEBUG
+        PhotoExportDiagnostics.trace("source-warmed-copy-released", source: decoded)
+        #endif
         var destination: CGContext?
         // Keep the original vertical drawing coordinates: UIKit text coverage
         // can differ when its canvas is split horizontally, even away from seams.
@@ -302,7 +310,11 @@ open class BaseEditPhotoController: UIViewController {
             let expanded = rect.insetBy(dx: -CGFloat(gutter), dy: 0)
                 .intersection(CGRect(origin: .zero, size: size))
             let result: Result<Void, PhotoExportError> = autoreleasepool {
-                switch rasterize(decoded.image, expanded) {
+                // A native crop retains the original image; only the source
+                // region that contributes to this strip is drawn, at 1:1 pixels.
+                let cropped: CGImage? = cropSource ? decoded.cropping(to: expanded) : decoded
+                guard let portion = cropped else { return .failure(.encodingFailed) }
+                switch rasterize(portion, expanded) {
                 case .failure(let error): return .failure(error)
                 case .success(let raster):
                     let tile = raster.image

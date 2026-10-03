@@ -28,7 +28,7 @@ jobs:
         git fetch --no-tags origin 0fa5069e20d0f0d59dc9d58e85133667970f85c2
         python3 - <<'PY'
         import subprocess
-        allowed = {'CelluloidTests/EditorRegressionTests.swift','Scripts/probe_photos_bootstrap.py','CelluloidKit/Controller/PhotoExport.swift','CelluloidKit/Controller/BaseEditPhotoController.swift','CelluloidKit/Bubble/Controller/EditBubbleViewController.swift','CelluloidKit/Bubble/View/BubbleView.swift','CelluloidTests/AdaptiveInterfaceTests.swift','CelluloidTests/ExportAndInteractionTests.swift','CelluloidTests/LargeDecoratedExportTests.swift','CelluloidUITests/CelluloidUITests.swift','.github/workflows/ios-streaming-export.yml'}
+        allowed = {'CelluloidUITests/CelluloidSystemPermissionTests.swift','CelluloidTests/EditorRegressionTests.swift','Scripts/probe_photos_bootstrap.py','CelluloidKit/Controller/PhotoExport.swift','CelluloidKit/Controller/BaseEditPhotoController.swift','CelluloidKit/Bubble/Controller/EditBubbleViewController.swift','CelluloidKit/Bubble/View/BubbleView.swift','CelluloidTests/AdaptiveInterfaceTests.swift','CelluloidTests/ExportAndInteractionTests.swift','CelluloidTests/LargeDecoratedExportTests.swift','CelluloidUITests/CelluloidUITests.swift','.github/workflows/ios-streaming-export.yml'}
         changed = set(subprocess.check_output(['git','diff','--name-only','0fa5069e20d0f0d59dc9d58e85133667970f85c2','HEAD'], text=True).splitlines())
         assert changed <= allowed, changed - allowed
         print('FOCUSED_REPAIR_DELTA', sorted(changed))
@@ -86,7 +86,7 @@ jobs:
         python3 - <<'PY'
         import json
         d=json.load(open('/tmp/unit-summary.json'))
-        assert d['totalTestCount'] ==64 and d['passedTests'] ==64 and d['failedTests'] ==0, d
+        assert d['totalTestCount'] ==66 and d['passedTests'] ==66 and d['failedTests'] ==0, d
         PY
     - name: Read PhotoKit readiness and reconcile fixtures
       id: photos

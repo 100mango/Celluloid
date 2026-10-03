@@ -4,6 +4,7 @@ import UIKit
 final class CelluloidUITests: XCTestCase {
     private var app: XCUIApplication!
     private var recordedFailure = false
+    private var photosAccessMonitor: NSObjectProtocol?
     override func record(_ issue: XCTIssue) {
         // Capture the failing orientation before tearDown rotates the simulator.
         // Do not query hittability again here: that can itself record a new issue.
@@ -17,8 +18,14 @@ final class CelluloidUITests: XCTestCase {
         super.record(issue)
     }
     override func setUp() { super.setUp(); continueAfterFailure = false; recordedFailure = false; app = XCUIApplication() }
-    override func tearDown() { XCUIDevice.shared.orientation = .portrait; app.terminate(); super.tearDown() }
+    override func tearDown() {
+        if let monitor = photosAccessMonitor { removeUIInterruptionMonitor(monitor); photosAccessMonitor = nil }
+        XCUIDevice.shared.orientation = .portrait; app.terminate(); super.tearDown()
+    }
     private func launch(_ arguments: [String] = [], language: String = "en", diagnostics: Bool = true) {
+        if arguments.isEmpty, photosAccessMonitor == nil {
+            photosAccessMonitor = installExpectedFullPhotosAccessMonitor()
+        }
         app.launchArguments = arguments + (diagnostics ? ["--ui-diagnostics"] : []) + ["-AppleLanguages", "(\(language))", "-AppleLocale", language == "zh-Hans" ? "zh_CN" : "en_US"]
         app.launch()
         XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 10))
@@ -113,6 +120,7 @@ final class CelluloidUITests: XCTestCase {
         app.buttons["edit-photo"].tap()
         let photo = app.descendants(matching: .any)["photo-0"]
         XCTAssertTrue(photo.waitForExistence(timeout: 15))
+        assertFullPhotoAccessPicker(app)
         waitForStableLayout(["photo-0", "picker-done"])
         audit("granted-picker")
         photo.tap()
@@ -270,6 +278,7 @@ final class CelluloidUITests: XCTestCase {
         launch()
         app.buttons["edit-photo"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["photo-0"].waitForExistence(timeout: 15), "CI must seed Photos and grant simulator Photos permission")
+        assertFullPhotoAccessPicker(app)
         app.descendants(matching: .any)["photo-0"].tap()
         app.buttons["picker-done"].tap()
         let done = app.buttons["editor-done"]
@@ -337,6 +346,7 @@ final class CelluloidUITests: XCTestCase {
         launch()
         app.buttons["make-collage"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["photo-1"].waitForExistence(timeout: 15))
+        assertFullPhotoAccessPicker(app)
         app.descendants(matching: .any)["photo-0"].tap()
         app.descendants(matching: .any)["photo-1"].tap()
         app.buttons["picker-done"].tap()
@@ -385,4 +395,28 @@ final class CelluloidUITests: XCTestCase {
         add(attachment)
     }
 
+}
+
+// Only expected full-access flows use this monitor. The library contains CI
+// fixtures; denied/revoked/limited cases intentionally never install this handler.
+extension XCTestCase {
+    func assertFullPhotoAccessPicker(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(app.descendants(matching: .any)["photo-0"].exists, "Granted flow requires actual assets", file: file, line: line)
+        XCTAssertFalse(app.buttons["manage-photos"].exists, "The app exposes this management control for limited access only", file: file, line: line)
+        XCTAssertFalse(app.buttons["photos-settings"].exists, "Granted flow cannot remain denied", file: file, line: line)
+        print("FULL_ACCESS_PICKER_POSTCONDITION assets_visible=true limited_management=false denied_recovery=false")
+    }
+
+    func installExpectedFullPhotosAccessMonitor() -> NSObjectProtocol {
+        addUIInterruptionMonitor(withDescription: "Celluloid synthetic Photos full-access prerequisite") { alert in
+            guard alert.label == "Allow “Celluloid” to access your photo library?" else { return false }
+            print("EXPECTED_PHOTOS_AUTHORIZATION_ALERT " + String(alert.debugDescription.prefix(6000)))
+            let actions = alert.buttons.matching(NSPredicate(format: "label IN %@",
+                ["Allow Full Access", "Allow Access to All Photos"]))
+            guard actions.count == 1, actions.element.isHittable else { return false }
+            print("EXPECTED_PHOTOS_AUTHORIZATION_ACTION " + actions.element.label)
+            actions.element.tap()
+            return true
+        }
+    }
 }
