@@ -105,6 +105,19 @@ enum TVPhotoError: Error, LocalizedError {
         let actual = try RasterCodec.metadata(readback)
         guard actual.pixelWidth == expected.pixelWidth, actual.pixelHeight == expected.pixelHeight,
               try Self.normalizedProof(bytes) == Self.normalizedProof(readback) else { throw TVPhotoError.verification }
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["CELLULOID_TV_OUTPUT_PROOF"] == "YES" {
+            // A test-only copy of the actual PhotoKit-refetched bytes, not renderer
+            // output. The external Core Image oracle uses independent known inputs.
+            let root = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("TVOutputProof", isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let index = FileManager.default.fileExists(atPath: root.appendingPathComponent("1.json").path) ? 2 : 1
+            guard readback.count <= 5_000_000, !FileManager.default.fileExists(atPath: root.appendingPathComponent("\(index).json").path) else { throw RecipeError.resourceLimit }
+            try readback.write(to: root.appendingPathComponent("\(index).png"), options: .atomic)
+            let metadata: [String: Any] = ["photosAssetIdentifier": identifier, "bytes": readback.count, "sha256": TVSavedRecipe.fingerprint(readback), "width": actual.pixelWidth, "height": actual.pixelHeight]
+            try JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]).write(to: root.appendingPathComponent("\(index).json"), options: .atomic)
+        }
+        #endif
         return identifier
     }
     /// Independent ImageIO/CoreGraphics readback, not a check of the returned placeholder alone.

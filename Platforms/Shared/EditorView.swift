@@ -30,8 +30,14 @@ struct EditorView: View {
     var body: some View {
         NativeEditorSplit {
             canvas.frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+                #if os(macOS)
+                .background(NativeWindowAccessibility(paneLabel: NSLocalizedString("Photo preview", comment: "Split pane")).frame(width: 0, height: 0))
+                #endif
             EditorInspector(recipe: document.recipe, selection: $selection, change: changeRecipe)
                 .frame(minWidth: 250, idealWidth: 290, maxWidth: 360)
+                #if os(macOS)
+                .background(NativeWindowAccessibility(paneLabel: NSLocalizedString("Editing controls", comment: "Split pane")).frame(width: 0, height: 0))
+                #endif
         }
         .frame(minWidth: 640, minHeight: 480)
         .accessibilityElement(children: .contain)

@@ -154,3 +154,6 @@
 "Watch preview transfer finished. Check your Watch for the received result." = "手表预览传输已结束，请在手表上查看是否收到结果。";
 "%d interrupted requests are retained and waiting for pending capacity. Resume or discard a pending request to make room." = "已保留 %d 个中断的请求，正在等待待处理空间。请继续处理或删除一个待处理请求以腾出空间。";
 "An incomplete request was interrupted before acceptance. Its temporary copy was cleared; request it again from your Watch." = "一个未完成的请求在接收前中断，临时副本已清理。请从手表重新请求。";
+
+"Photo preview" = "照片预览";
+"Editing controls" = "编辑控件";

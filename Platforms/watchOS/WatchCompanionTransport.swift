@@ -5,12 +5,14 @@ import CelluloidDomain
 /// One explicit request at a time. Sending/queuing is never reported as completion.
 final class WatchCompanionTransport: NSObject, WCSessionDelegate {
     private let store: WatchGalleryStore
+    private let incoming: WatchIncomingResults
     var changed: (() -> Void)?
     var failure: ((String) -> Void)?
-    init(store: WatchGalleryStore) { self.store = store; super.init() }
+    init(store: WatchGalleryStore, incoming: WatchIncomingResults? = nil) throws { self.store = store; self.incoming = try incoming ?? WatchIncomingResults(); super.init() }
     func activate() {
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self; WCSession.default.activate()
+        Task { await recoverIncoming() }
     }
     func request(_ photo: WatchPhoto, filter: FilterPreset) async throws {
         let session = WCSession.default
@@ -44,24 +46,21 @@ final class WatchCompanionTransport: NSObject, WCSessionDelegate {
             let result = try CompanionResult.decode(envelope)
             let info = try file.fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .isSymbolicLinkKey])
             guard info.isRegularFile == true, info.isSymbolicLink != true, let size = info.fileSize, size <= 2 * 1024 * 1024 else { throw RecipeError.resourceLimit }
-            // WCSession deletes the incoming URL after this callback. Own the bounded bytes now.
+            // Persist the bounded receipt before WCSession deletes this callback-owned URL.
             let bytes = try Data(contentsOf: file.fileURL)
             guard bytes.count <= 2 * 1024 * 1024 else { throw RecipeError.resourceLimit }
-            Task {
-                do { try await store.receive(result, preview: bytes); await notify() }
-                catch { report(error) }
-            }
+            try incoming.stage(result, preview: bytes)
+            Task { await recoverIncoming() }
         } catch { report(error) }
     }
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
         if let data = userInfo["celluloid.result.v1"] as? Data {
-            Task {
-                do {
-                    let result = try CompanionResult.decode(data)
-                    guard result.failure != nil else { throw RecipeError.invalidDocument }
-                    try await store.receive(result, preview: nil); await notify()
-                } catch { report(error) }
-            }
+            do {
+                let result = try CompanionResult.decode(data)
+                guard result.failure != nil else { throw RecipeError.invalidDocument }
+                try incoming.stage(result, preview: nil)
+                Task { await recoverIncoming() }
+            } catch { report(error) }
         }
         if let data = userInfo["celluloid.processing.v1"] as? Data {
             Task {
@@ -84,6 +83,16 @@ final class WatchCompanionTransport: NSObject, WCSessionDelegate {
             do { try await store.receive(result, preview: nil); await notify() } catch { report(error) }
         }
         report(error)
+    }
+    func recoverIncoming() async {
+        do {
+            for receipt in try incoming.pending() {
+                try await store.receive(receipt.result, preview: receipt.preview)
+                // A new success may have replaced a failed receipt during the actor await.
+                try incoming.removeIfUnchanged(receipt)
+            }
+            await notify()
+        } catch { report(error) } // Keep accepted receipts on a failed gallery write.
     }
     private func notify() async { await MainActor.run { self.changed?() } }
     private func report(_ error: Error) { Task { @MainActor in self.failure?(error.localizedDescription) } }

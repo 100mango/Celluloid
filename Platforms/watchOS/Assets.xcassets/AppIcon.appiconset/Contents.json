@@ -2,7 +2,7 @@
   "images": [
     {
       "filename": "Generated-1024.png",
-      "idiom": "watch",
+      "idiom": "universal",
       "platform": "watchos",
       "size": "1024x1024"
     }

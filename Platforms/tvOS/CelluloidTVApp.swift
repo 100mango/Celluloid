@@ -47,7 +47,7 @@ struct TVEditorView: View {
                         }
                     }.disabled(requestingPhotos).accessibilityIdentifier("tv.choose-photos")
                     if requestingPhotos { ProgressView("Waiting for Photos access…").accessibilityIdentifier("tv.photos-request-pending") }
-                    Button("Reopen Kept Recipe") { Task { do { try await library.requestAccessAndRefresh(); await editor.reopen(library: library) } catch { editor.error = error.localizedDescription } } }.disabled(!editor.hasSavedRecipe)
+                    Button("Reopen Kept Recipe") { Task { do { try await library.requestAccessAndRefresh(); await editor.reopen(library: library) } catch { editor.error = error.localizedDescription } } }.disabled(!editor.hasSavedRecipe).accessibilityIdentifier("tv.reopen-recipe")
                     Group {
                         Button(editor.recipe.filter.localizedTitle) { panel = .filters }.accessibilityIdentifier("tv.filters")
                         Button("Sticker") { panel = .stickers }.accessibilityIdentifier("tv.stickers")

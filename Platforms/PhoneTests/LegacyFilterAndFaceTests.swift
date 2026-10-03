@@ -14,7 +14,8 @@ final class LegacyFilterAndFaceTests: XCTestCase {
         XCTAssertEqual(Set(rows.map(\.filter)), Set(FilterPreset.allCases.map(\.rawValue)))
         let bitmap = try RasterCodec.bitmap(width: 120, height: 80)
         for x in 0..<120 { bitmap.setFillColor(CGColor(srgbRed: CGFloat(x)/119, green: 0.4, blue: 0.8, alpha: 1)); bitmap.fill(CGRect(x: x,y: 0,width: 1,height: 80)) }
-        let image = UIImage(cgImage: try XCTUnwrap(bitmap.makeImage()))
+        let cg = try XCTUnwrap(bitmap.makeImage()), image = UIImage(cgImage: cg)
+        let sourceBytes = try RasterCodec.encode(cg, as: .png), source = try RasterCodec.metadata(sourceBytes)
         for row in rows {
             let data = try XCTUnwrap(Data(base64Encoded: row.base64))
             XCTAssertEqual(SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), row.sha256)
@@ -23,6 +24,13 @@ final class LegacyFilterAndFaceTests: XCTestCase {
             XCTAssertNil(decoded.referenceCanvasSize)
             let rendered = image.filteredImage(Filters.filter(decoded.filterType))
             XCTAssertEqual(rendered.cgImage?.width, 120); XCTAssertEqual(rendered.cgImage?.height, 80)
+            var nativeRecipe = EditRecipe(); nativeRecipe.sources = [source]; nativeRecipe.canvasWidth = 120; nativeRecipe.canvasHeight = 80
+            nativeRecipe.filter = try XCTUnwrap(FilterPreset(rawValue: row.filter))
+            let native = try RecipeRenderer().render(nativeRecipe, sources: [source.id:sourceBytes])
+            let bounds = CGRect(x:0,y:0,width:120,height:80), context = CIContext()
+            let difference = maximumDelta(pixels(CIImage(cgImage:try XCTUnwrap(rendered.cgImage)),bounds,context), pixels(CIImage(cgImage:native),bounds,context))
+            print("MAC_NEW_FILTER_UIKIT_PIXELS filter=\(row.filter) maximumChannelDifference=\(difference)")
+            XCTAssertLessThanOrEqual(difference,2,"New native filter archive must mean the same rendered edit to UIKit")
             XCTAssertEqual(try AdjustmentData.decode(decoded.encode()).filterType.rawValue, row.filter)
         }
         print("MAC_NEW_FILTER_UIKIT_ROUNDTRIP all newly authored filter-only archives decoded/rendered/reencoded by original UIKit source")
@@ -40,7 +48,7 @@ final class LegacyFilterAndFaceTests: XCTestCase {
     }
     private struct BakedFixture: Decodable { let identifier: String; let version: String; let sha256: String; let base64: String }
     func testRealFaceDetectorNativeRenderMatchesOriginalUIKitPath() throws {
-        let url = try XCTUnwrap(Bundle.main.url(forResource: "OriginalFilter", withExtension: "png"))
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("PublicFaceFixture.original")
         let data = try Data(contentsOf: url)
         XCTAssertEqual(SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), "378e569e25716ffc36c3e7622708ae1fab41ce99c870ae02f5874bb8aec45bfb")
         let original = try XCTUnwrap(UIImage(data: data)), cg = try XCTUnwrap(original.cgImage)
@@ -52,9 +60,23 @@ final class LegacyFilterAndFaceTests: XCTestCase {
         let source = try RasterCodec.metadata(data)
         var recipe = EditRecipe(); recipe.sources = [source]; recipe.canvasWidth = source.pixelWidth; recipe.canvasHeight = source.pixelHeight; recipe.filter = .pixellateFace
         let native = try RecipeRenderer().render(recipe, sources: [source.id:data])
+        let nativeInput = try RasterCodec.image(data)
+        let nativeFaces = detector.features(in: nativeInput).map(\.bounds)
+        var originalRecipe = recipe; originalRecipe.filter = .original
+        let nativeOriginal = try RecipeRenderer().render(originalRecipe, sources: [source.id:data])
+        let legacyOriginal = try XCTUnwrap(original.filteredImage(Filters.filter(.Original)).cgImage)
+        let inputDelta = maximumDelta(pixels(input,input.extent,context), pixels(nativeInput,input.extent,context))
+        let baselineDelta = maximumDelta(pixels(CIImage(cgImage:legacyOriginal),input.extent,context),pixels(CIImage(cgImage:nativeOriginal),input.extent,context))
+        let sameInputGraph = try RecipeRenderer().apply(.pixellateFace, to: input)
+        let legacyGraph = Filters.filter(.PixellateFace)(input)
+        let sameInputDelta = maximumDelta(pixels(legacyGraph,input.extent,context),pixels(sameInputGraph,input.extent,context))
+        print("FACE_DETECTOR_ACTUAL_DIAGNOSTICS UIImageSpace=\(cg.colorSpace?.name as String? ?? "nil") nativeInputSpace=\(nativeInput.colorSpace?.name as String? ?? "nil") inputDelta=\(inputDelta) originalRenderDelta=\(baselineDelta) sameInputMaskGraphDelta=\(sameInputDelta) UIKitFaces=\(faces) nativeFaces=\(nativeFaces)")
+        XCTAssertLessThanOrEqual(sameInputDelta,2,"Mask graph equivalence on identical decoded input")
         let expected = pixels(CIImage(cgImage: legacy), input.extent, context)
         let actual = pixels(CIImage(cgImage: native), input.extent, context)
-        XCTAssertLessThanOrEqual(zip(expected,actual).map { abs(Int($0)-Int($1)) }.max() ?? 0, 2)
+        let actualDelta = maximumDelta(expected,actual)
+        print("FACE_DETECTOR_ACTUAL_OUTPUT maximumChannelDifference=\(actualDelta)")
+        XCTAssertLessThanOrEqual(actualDelta, 2)
         for face in faces {
             let inside = CGRect(x: floor(face.midX)-4,y: floor(face.midY)-4,width: 8,height: 8)
             XCTAssertTrue(pixels(input,inside,context) != pixels(CIImage(cgImage:native),inside,context))
@@ -70,7 +92,7 @@ final class LegacyFilterAndFaceTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(outsideChecks,0)
-        print("FACE_DETECTOR_ACTUAL detected=\(faces.count) outsideRegions=\(outsideChecks) UIKit/native max2-level oracle; no anonymization guarantee")
+        print("FACE_DETECTOR_ACTUAL detected=\(faces.count) outsideRegions=\(outsideChecks) measuredDelta=\(actualDelta) requiredMaximum=2; assertions determine pass/fail; no anonymization guarantee")
     }
     func testGenuineDetectorNoFacePreservesBlankImage() throws {
         let context = CIContext(), input = CIImage(color: CIColor(red: 0.2,green: 0.4,blue: 0.8)).cropped(to: CGRect(x: 0,y: 0,width: 128,height: 96))
@@ -83,6 +105,9 @@ final class LegacyFilterAndFaceTests: XCTestCase {
         let legacy = try XCTUnwrap(UIImage(cgImage:sourceImage).filteredImage(Filters.filter(.PixellateFace)).cgImage)
         XCTAssertTrue(pixels(CIImage(cgImage:sourceImage),input.extent,context) == pixels(CIImage(cgImage:native),input.extent,context))
         XCTAssertTrue(pixels(CIImage(cgImage:legacy),input.extent,context) == pixels(CIImage(cgImage:native),input.extent,context))
+    }
+    private func maximumDelta(_ lhs: [UInt8], _ rhs: [UInt8]) -> Int {
+        zip(lhs,rhs).map { abs(Int($0)-Int($1)) }.max() ?? 0
     }
     private struct Fixture: Decodable { let filter: String; let sha256: String; let base64: String }
     private func pixels(_ image: CIImage, _ bounds: CGRect, _ context: CIContext) -> [UInt8] {

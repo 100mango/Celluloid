@@ -43,7 +43,7 @@ final class NativeEditorUITests: XCTestCase {
         XCTAssertTrue(bubble.isHittable); bubble.click()
         let palette = XCTAttachment(screenshot: app.screenshot()); palette.name = "native-mac-visual-bubble-picker"; palette.lifetime = .keepAlways; add(palette)
         let say1 = app.buttons["asset.say1"]
-        XCTAssertTrue(say1.waitForExistence(timeout: 5)); say1.click()
+        XCTAssertTrue(say1.waitForExistence(timeout: 5)); try auditOrdinary(app, state: "bubble-picker"); say1.click()
         let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 5)); text.click()
         app.typeKey("a", modifierFlags: .command); text.typeText("Hello 世界")
@@ -54,6 +54,7 @@ final class NativeEditorUITests: XCTestCase {
         let corner = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1)).withOffset(CGVector(dx: -3, dy: -3))
         corner.click(forDuration: 0.2, thenDragTo: corner.withOffset(CGVector(dx: 180, dy: 120)))
         XCTAssertTrue(importButton.isHittable); XCTAssertTrue(text.isHittable)
+        try auditOrdinary(app, state: "edited-multilingual-resized")
         let resized = XCTAttachment(screenshot: app.screenshot()); resized.name = "native-mac-resized"; resized.lifetime = .keepAlways; add(resized)
         // Closing an edited untitled document must offer saving or canceling.
         app.typeKey("w", modifierFlags: .command)
@@ -144,8 +145,9 @@ final class NativeEditorUITests: XCTestCase {
         XCTAssertTrue(dimensions.waitForExistence(timeout: 10))
         board.clearContents(); XCTAssertTrue(board.setData(Data("unreadable synthetic image".utf8), forType: .png))
         app.typeKey("v", modifierFlags: .command)
-        let ok = app.buttons["OK"].firstMatch
-        XCTAssertTrue(ok.waitForExistence(timeout: 10)); ok.click()
+        // Restrict to real windows: app-wide buttons also includes Touch Bar OK.
+        let ok = app.windows.buttons["OK"].firstMatch
+        XCTAssertTrue(ok.waitForExistence(timeout: 10)); try auditOrdinary(app, state: "unreadable-image-error"); ok.click()
         XCTAssertTrue(dimensions.exists, "Rejected clipboard replacement must preserve the current original")
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-mac-paste-undo-redo-rejected-replacement"; shot.lifetime = .keepAlways; add(shot)
         print("NATIVE_MAC_CLIPBOARD_E2E actual Paste/Undo/Redo/unreadable rejection preserves original dimensions")
@@ -182,9 +184,13 @@ final class NativeEditorUITests: XCTestCase {
         let review = photos.buttons["Review for Import"]
         if review.waitForExistence(timeout: 3) { review.click() }
         let importAll = photos.buttons["Import All New Photos"]
-        XCTAssertTrue(importAll.waitForExistence(timeout: 15), photos.debugDescription); importAll.click()
-        let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: importAll)
-        XCTAssertEqual(XCTWaiter.wait(for: [finished], timeout: 20), .completed)
+        // Photos27 imports a single selected PNG directly. A multi-item review
+        // can expose Import All; neither route is completion until a real asset exists.
+        if importAll.waitForExistence(timeout: 3) { importAll.click() }
+        let imported = photos.collectionViews["photos_collection_view"].descendants(matching: .any)["mediaKind_asset"].firstMatch
+        XCTAssertTrue(imported.waitForExistence(timeout: 20), photos.debugDescription)
+        XCTAssertFalse(photos.sheets["open-panel"].exists)
+        let seeded = XCTAttachment(screenshot: photos.screenshot()); seeded.name = "native-mac-photos-library-seeded"; seeded.lifetime = .keepAlways; add(seeded)
         print("NATIVE_MAC_PHOTOS_IMPORTED_AX " + photos.debugDescription)
         app.activate()
         app.descendants(matching: .any)["editor.import-photos"].firstMatch.click()
@@ -213,10 +219,17 @@ final class NativeEditorUITests: XCTestCase {
            let data = try? String(contentsOf: report, encoding: .utf8) {
             for line in data.split(separator: "\n") { print("NATIVE_APPKIT_AX " + line) }
         } else { print("NATIVE_APPKIT_AX report unavailable; issue.element hierarchy remains required") }
+        try auditOrdinary(app, state: "empty-editor")
+    }
+    @MainActor private func auditOrdinary(_ app: XCUIApplication, state: String) throws {
+        // The external sandbox lane retains its own real document operations;
+        // do not audit the deliberately visible Debug entitlement probe overlay.
+        guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] != "YES" else { return }
         if #available(macOS 27.0, *) { try app.performAccessibilityAudit(for: .all) { issue in
-            print("NATIVE_ACCESSIBILITY_ISSUE description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
-            return false // Report every real issue; this callback suppresses nothing.
+            print("NATIVE_ACCESSIBILITY_ISSUE state=\(state) description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
+            return false
         } }
+        print("NATIVE_ACCESSIBILITY_AUDIT state=\(state) completed")
     }
     @MainActor private func launch(_ app: XCUIApplication) throws {
         // The sandbox Debug app is independently signed with exact source permissions

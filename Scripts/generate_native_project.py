@@ -29,7 +29,7 @@ settings_by_name={
     'CelluloidWatch':dict(SDKROOT='watchos',SUPPORTED_PLATFORMS='watchos watchsimulator',WATCHOS_DEPLOYMENT_TARGET='9.0',TARGETED_DEVICE_FAMILY='4'),
     'CelluloidWatchTests':dict(SDKROOT='watchos',SUPPORTED_PLATFORMS='watchos watchsimulator',WATCHOS_DEPLOYMENT_TARGET='9.0',TARGETED_DEVICE_FAMILY='4',TEST_HOST='$(BUILT_PRODUCTS_DIR)/CelluloidWatch.app/CelluloidWatch',BUNDLE_LOADER='$(TEST_HOST)',GENERATE_INFOPLIST_FILE='YES'),
     'CelluloidWatchUITests':dict(SDKROOT='watchos',SUPPORTED_PLATFORMS='watchos watchsimulator',WATCHOS_DEPLOYMENT_TARGET='9.0',TARGETED_DEVICE_FAMILY='4',TEST_TARGET_NAME='CelluloidWatch',GENERATE_INFOPLIST_FILE='YES'),
-    'CelluloidPhoneCompanion':dict(SDKROOT='iphoneos',SUPPORTED_PLATFORMS='iphoneos iphonesimulator',IPHONEOS_DEPLOYMENT_TARGET='15.0',TARGETED_DEVICE_FAMILY='1,2',SKIP_INSTALL='YES',COMPRESS_PNG_FILES='NO'),
+    'CelluloidPhoneCompanion':dict(SDKROOT='iphoneos',SUPPORTED_PLATFORMS='iphoneos iphonesimulator',IPHONEOS_DEPLOYMENT_TARGET='15.0',TARGETED_DEVICE_FAMILY='1,2',SKIP_INSTALL='YES'),
     'CelluloidPhoneCompanionTests':dict(SDKROOT='iphoneos',SUPPORTED_PLATFORMS='iphoneos iphonesimulator',IPHONEOS_DEPLOYMENT_TARGET='15.0',TARGETED_DEVICE_FAMILY='1,2',TEST_HOST='$(BUILT_PRODUCTS_DIR)/CelluloidPhoneCompanion.app/CelluloidPhoneCompanion',BUNDLE_LOADER='$(TEST_HOST)',GENERATE_INFOPLIST_FILE='YES'),
     'CelluloidTV':dict(SDKROOT='appletvos',SUPPORTED_PLATFORMS='appletvos appletvsimulator',TVOS_DEPLOYMENT_TARGET='17.0',TARGETED_DEVICE_FAMILY='3'),
     'CelluloidTVTests':dict(SDKROOT='appletvos',SUPPORTED_PLATFORMS='appletvos appletvsimulator',TVOS_DEPLOYMENT_TARGET='17.0',TARGETED_DEVICE_FAMILY='3',TEST_HOST='$(BUILT_PRODUCTS_DIR)/CelluloidTV.app/CelluloidTV',BUNDLE_LOADER='$(TEST_HOST)',GENERATE_INFOPLIST_FILE='YES'),
@@ -72,8 +72,6 @@ for name,platform in settings_by_name.items():
         localized.append(add('build:localization:'+name,'PBXBuildFile',fileRef=uid('variant:shared-localizations')))
         localized.append(add('build:privacy:'+name,'PBXBuildFile',fileRef=reference('Platforms/Resources/PrivacyPolicy.txt')))
         localized.append(add('build:license:'+name,'PBXBuildFile',fileRef=reference('LICENSE.txt')))
-    if name=='CelluloidPhoneCompanion':
-        localized.append(add('build:legacy-public-face-fixture','PBXBuildFile',fileRef=reference('CelluloidKit/CelluloidKit.xcassets/filter/OriginalFilter.imageset/OriginalFilter.png')))
     if name=='CelluloidTV':
         localized.append(add('build:tv-privacy-manifest','PBXBuildFile',fileRef=reference('Platforms/tvOS/PrivacyInfo.xcprivacy')))
         refs=[]

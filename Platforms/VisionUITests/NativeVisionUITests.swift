@@ -35,11 +35,16 @@ extension NativeVisionUITests {
         let app = XCUIApplication(); app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch(); defer { app.terminate() }
         let importButton = app.buttons["editor.import-files"]
-        if !importButton.exists {
+        // Give an already-restoring document time to appear before requesting a
+        // second new window. Cold document-provider transitions were observed here.
+        if !importButton.waitForExistence(timeout: 10) {
+            print("VISION_DOCUMENT_BEFORE_CREATE_AX " + app.debugDescription)
             let create = app.buttons["FullDocumentManagerViewControllerNavigationBarCreateButtonIdentifier"]
-            XCTAssertTrue(create.waitForExistence(timeout: 20)); create.tap()
+            XCTAssertTrue(create.waitForExistence(timeout: 30)); XCTAssertTrue(create.isHittable); create.tap()
         }
-        XCTAssertTrue(importButton.waitForExistence(timeout: 20)); importButton.tap()
+        let editorReady = importButton.waitForExistence(timeout: 60)
+        if !editorReady { capture(app, name: "vision-document-transition-failure"); print("VISION_DOCUMENT_TRANSITION_FAILURE_AX " + app.debugDescription) }
+        XCTAssertTrue(editorReady); importButton.tap()
         print("VISION_FILES_PICKER_AX " + app.debugDescription)
         let file = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'VisionSynthetic' OR label == 'VisionSynthetic.png'")).firstMatch
         if !file.waitForExistence(timeout: 4) {

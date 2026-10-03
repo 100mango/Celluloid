@@ -4,15 +4,32 @@ import SwiftUI
 /// DocumentGroup has an AppKit hosting container outside the SwiftUI editor.
 /// Its actual role/class tree is captured in Debug CI; an audit pass is still required.
 struct NativeWindowAccessibility: NSViewRepresentable {
-    func makeNSView(context: Context) -> Probe { Probe() }
-    func updateNSView(_ view: Probe, context: Context) { view.labelContent() }
+    var paneLabel: String? = nil
+    func makeNSView(context: Context) -> Probe { let view = Probe(); view.paneLabel = paneLabel; return view }
+    func updateNSView(_ view: Probe, context: Context) { view.paneLabel = paneLabel; view.labelContent() }
     final class Probe: NSView {
+        var paneLabel: String?
         #if DEBUG
         private var snapshotScheduled = false
         #endif
         override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); labelContent() }
         func labelContent() {
-            window?.contentView?.setAccessibilityLabel(NSLocalizedString("Native photo editor", comment: "Document content container"))
+            if let paneLabel {
+                // The b98 native AX trace identified an extra, unnamed hosting
+                // Group inside each NSSplitView pane. Label only our own pane's
+                // ancestor, using public roles/containment, never private class names.
+                var ancestor = superview
+                for _ in 0..<12 {
+                    guard let view = ancestor else { break }
+                    if view.superview?.superview is NSSplitView,
+                       view.accessibilityRole() == .group, view.isAccessibilityElement() {
+                        view.setAccessibilityLabel(paneLabel); break
+                    }
+                    ancestor = view.superview
+                }
+            } else {
+                window?.contentView?.setAccessibilityLabel(NSLocalizedString("Native photo editor", comment: "Document content container"))
+            }
             setAccessibilityElement(false)
             #if DEBUG
             guard !snapshotScheduled, window != nil, ProcessInfo.processInfo.environment["CELLULOID_AX_REPORT"] != nil else { return }

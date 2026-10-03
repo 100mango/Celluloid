@@ -14,13 +14,21 @@ import CelluloidDomain
     let store: WatchGalleryStore?
     let transport: WatchCompanionTransport?
     init() {
+        let gallery: WatchGalleryStore
+        do { gallery = try WatchGalleryStore() }
+        catch { self.store = nil; self.transport = nil; self.error = Self.message(error); return }
+        self.store = gallery
         do {
-            let store = try WatchGalleryStore(); self.store = store
-            let transport = WatchCompanionTransport(store: store); self.transport = transport
+            let transport = try WatchCompanionTransport(store: gallery)
+            self.transport = transport
             transport.changed = { [weak self] in Task { await self?.reload() } }
             transport.failure = { [weak self] message in self?.error = message }
             transport.activate()
-        } catch { self.store = nil; self.transport = nil; self.error = Self.message(error) }
+        } catch {
+            // A damaged delivery journal must not make intact offline photos
+            // inaccessible. Surface the transport error while keeping the gallery.
+            self.transport = nil; self.error = Self.message(error)
+        }
     }
     static func message(_ error: Error) -> String {
         if (error as? RecipeError) == .resourceLimit {
@@ -47,6 +55,7 @@ import CelluloidDomain
     }
 }
 struct WatchGalleryView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var model = WatchGalleryModel()
     @State private var selection: PhotosPickerItem?
     var body: some View {
@@ -68,7 +77,8 @@ struct WatchGalleryView: View {
                 }
             }.navigationTitle("Celluloid")
         }
-        .task { await model.reload() }
+        .task { await model.transport?.recoverIncoming(); await model.reload() }
+        .onChange(of: scenePhase) { phase in if phase == .active { Task { await model.transport?.recoverIncoming() } } }
         .onChange(of: selection) { value in if let value { Task { await model.importPhoto(value) } } }
         .alert("Celluloid", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK", role: .cancel) { model.error = nil }

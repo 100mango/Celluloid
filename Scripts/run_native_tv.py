@@ -35,6 +35,8 @@ try:
     result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidTV','-destination',f'platform=tvOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-tv','-resultBundlePath',temp/'CelluloidTV.xcresult','CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO','-maximum-concurrent-test-simulator-destinations','1','test-without-building'],timeout=600,check=False,log_name='tv-runtime-tests.log')
     evidence['test_exit_code']=result.returncode
     if result.returncode:raise RuntimeError('Native TV test invocation failed; inspect actual error/attachments, do not equate build or boot with E2E coverage')
+    container=Path(run(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data']).stdout.strip())
+    run(['swift','-swift-version','5',root/'Scripts/verify_tv_filter_output.swift',fixture,container/'Library/Caches/TVOutputProof'],timeout=120,log_name='tv-filter-oracle.log')
 except Exception as error:
     evidence['error']=str(error)
     raise

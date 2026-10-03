@@ -56,6 +56,67 @@ final class NativeWatchTests: XCTestCase {
         let stale = try await store.cancelRequest(sourceID: photo.id, requestID: request.id); XCTAssertNil(stale)
         let pending = try await store.load(); XCTAssertEqual(pending.first?.job?.phase, .pending)
     }
+    func testIncomingReceiptSurvivesTerminationAndInterruptedGalleryCommit() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let gallery = try WatchGalleryStore(folder: folder.appendingPathComponent("Gallery"))
+        let inboxFolder = folder.appendingPathComponent("Inbox"), inbox = try WatchIncomingResults(folder: inboxFolder)
+        let bytes = try fixture(), photo = try await gallery.importPhoto(bytes, name: "Received fixture")
+        let request = try await gallery.beginRequest(photo.id, filter: .fade) { _, _ in }
+        let result = CompanionResult(requestID: request.id, sourceSHA256: request.sourceSHA256, previewSHA256: WatchGalleryStore.digest(bytes), pixelWidth: 64, pixelHeight: 40, failure: nil)
+        // Kill after callback ownership and before actor application: a new instance
+        // must retrieve precisely the same source-bound result and image bytes.
+        let staged = try inbox.stage(result, preview: bytes)
+        let relaunched = try WatchIncomingResults(folder: inboxFolder)
+        XCTAssertEqual(try relaunched.pending(), [staged])
+        try await gallery.receive(staged.result, preview: staged.preview)
+        // Kill after gallery commit, before receipt cleanup: replay is idempotent.
+        let replay = try XCTUnwrap(relaunched.pending().first)
+        try await gallery.receive(replay.result, preview: replay.preview)
+        try relaunched.removeIfUnchanged(replay)
+        XCTAssertTrue(try relaunched.pending().isEmpty)
+        let rows = try await gallery.load(); XCTAssertEqual(rows.first?.job?.phase, .completed)
+        let image = try await gallery.preview(photo.id, processed: true); XCTAssertEqual(image.width, 64)
+    }
+    func testIncomingReceiptCompletionWinsStaleCleanupAndBudgetIsBounded() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let inbox = try WatchIncomingResults(folder: folder), bytes = try fixture(), hash = WatchGalleryStore.digest(bytes), id = UUID()
+        let failure = CompanionResult(requestID: id, sourceSHA256: hash, previewSHA256: nil, pixelWidth: nil, pixelHeight: nil, failure: "Synthetic transfer failed")
+        let failedReceipt = try inbox.stage(failure, preview: nil)
+        let success = CompanionResult(requestID: id, sourceSHA256: hash, previewSHA256: hash, pixelWidth: 64, pixelHeight: 40, failure: nil)
+        let completed = try inbox.stage(success, preview: bytes)
+        try inbox.removeIfUnchanged(failedReceipt)
+        XCTAssertEqual(try inbox.pending(), [completed])
+        XCTAssertEqual(try inbox.stage(failure, preview: nil), completed)
+        XCTAssertThrowsError(try inbox.stage(success, preview: Data(repeating: 0, count: 2 * 1024 * 1024 + 1)))
+        let other = CompanionResult(requestID: UUID(), sourceSHA256: hash, previewSHA256: nil, pixelWidth: nil, pixelHeight: nil, failure: "Another synthetic failure")
+        _ = try inbox.stage(other, preview: nil)
+        let overflow = CompanionResult(requestID: UUID(), sourceSHA256: hash, previewSHA256: nil, pixelWidth: nil, pixelHeight: nil, failure: "Overflow")
+        XCTAssertThrowsError(try inbox.stage(overflow, preview: nil))
+        XCTAssertEqual(try inbox.pending().count, 2)
+        try inbox.removeIfUnchanged(completed); XCTAssertEqual(try inbox.pending().count, 1)
+    }
+    func testIncomingPreRenameKillRecoversAndIncompleteOwnStagingIsReclaimed() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let bytes = try fixture(), hash = WatchGalleryStore.digest(bytes)
+        let result = CompanionResult(requestID: UUID(), sourceSHA256: hash, previewSHA256: hash, pixelWidth: 64, pixelHeight: 40, failure: nil)
+        let receipt = WatchIncomingResults.Receipt(revision: UUID(), result: result, preview: bytes)
+        let encoder = PropertyListEncoder(); encoder.outputFormat = .binary
+        let complete = folder.appendingPathComponent(".staging-" + UUID().uuidString)
+        let partial = folder.appendingPathComponent(".staging-" + UUID().uuidString)
+        try encoder.encode(receipt).write(to: complete)
+        try Data("incomplete".utf8).write(to: partial)
+        let unrelated = folder.appendingPathComponent("unrelated.data")
+        try Data("preserve".utf8).write(to: unrelated)
+        let reopened = try WatchIncomingResults(folder: folder)
+        let recovered = try XCTUnwrap(reopened.pending().first)
+        XCTAssertEqual(recovered.result,result); XCTAssertEqual(recovered.preview,bytes)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: complete.path)); XCTAssertFalse(FileManager.default.fileExists(atPath: partial.path))
+        XCTAssertEqual(try Data(contentsOf: unrelated),Data("preserve".utf8))
+    }
     private func fixture() throws -> Data {
         let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
         let bitmap = try XCTUnwrap(CGContext(data: nil, width: 64, height: 40, bitsPerComponent: 8, bytesPerRow: 256, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))

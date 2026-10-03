@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 final class NativeTVUITests: XCTestCase {
     override func tearDownWithError() throws {
@@ -11,6 +12,7 @@ final class NativeTVUITests: XCTestCase {
     @MainActor func testFocusPhotoImportFilterAndVerifiedPhotosSave() throws {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchEnvironment["CELLULOID_TV_OUTPUT_PROOF"] = "YES"
         app.launch(); defer { app.terminate() }
         try select(app.buttons["tv.choose-photos"], in: app)
         print("TV_PHOTOS_AFTER_SELECT_AX " + app.debugDescription)
@@ -34,15 +36,29 @@ final class NativeTVUITests: XCTestCase {
         XCTAssertTrue(app.images["tv.preview"].waitForExistence(timeout: 15))
         try select(app.buttons["tv.filters"], in: app)
         try select(app.buttons["tv.filter.Fade"], in: app)
+        XCTAssertEqual(app.buttons["tv.filters"].label, "Fade", "The selected non-default filter must reach visible editor state")
         try select(app.buttons["tv.keep-recipe"], in: app)
         try select(app.buttons["tv.save-photos"], in: app)
         XCTAssertTrue(app.staticTexts["Saved to Photos and verified by reading the image back."].waitForExistence(timeout: 30))
-        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-tv-photos-export-verified"; shot.lifetime = .keepAlways; add(shot)
-        print("TV_NATIVE_PHOTOS_E2E real focus/import/filter/Photos-write-refetch proof completed")
+        let jpeg = try XCTUnwrap(app.screenshot().image.jpegData(compressionQuality: 0.55))
+        XCTAssertLessThanOrEqual(jpeg.count, 2_000_000)
+        let shot = XCTAttachment(data: jpeg, uniformTypeIdentifier: "public.jpeg"); shot.name = "native-tv-photos-export-verified"; shot.lifetime = .keepAlways; add(shot)
+        print("TV_NATIVE_PHOTOS_E2E real focus/import/Photos-write-refetch completed; independent requested-filter oracle runs on host")
         if #available(tvOS 27.0, *) { try app.performAccessibilityAudit(for: .all) { issue in
             print("NATIVE_ACCESSIBILITY_ISSUE description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
             return false // Report every real issue; this callback suppresses nothing.
         } }
+        // The kept recipe must restore the chosen state after actual process relaunch.
+        app.terminate(); app.launch()
+        try select(app.buttons["tv.reopen-recipe"], in: app)
+        XCTAssertTrue(app.staticTexts["Editable recipe reopened from Photos sources."].waitForExistence(timeout: 20))
+        XCTAssertEqual(app.buttons["tv.filters"].label, "Fade")
+        try select(app.buttons["tv.filters"], in: app)
+        try select(app.buttons["tv.filter.Chrome"], in: app)
+        XCTAssertEqual(app.buttons["tv.filters"].label, "Chrome")
+        try select(app.buttons["tv.save-photos"], in: app)
+        XCTAssertTrue(app.staticTexts["Saved to Photos and verified by reading the image back."].waitForExistence(timeout: 30))
+        print("TV_NATIVE_RELAUNCH_CHANGED_FILTER actual saved Fade restore then second Chrome save completed")
     }
     @MainActor private func select(_ target: XCUIElement, in app: XCUIApplication) throws {
         XCTAssertTrue(target.waitForExistence(timeout: 10))

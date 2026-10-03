@@ -154,3 +154,6 @@
 "Watch preview transfer finished. Check your Watch for the received result." = "Watch preview transfer finished. Check your Watch for the received result.";
 "%d interrupted requests are retained and waiting for pending capacity. Resume or discard a pending request to make room." = "%d interrupted requests are retained and waiting for pending capacity. Resume or discard a pending request to make room.";
 "An incomplete request was interrupted before acceptance. Its temporary copy was cleared; request it again from your Watch." = "An incomplete request was interrupted before acceptance. Its temporary copy was cleared; request it again from your Watch.";
+
+"Photo preview" = "Photo preview";
+"Editing controls" = "Editing controls";
