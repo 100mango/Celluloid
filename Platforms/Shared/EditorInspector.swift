@@ -13,7 +13,7 @@ struct EditorInspector: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Celluloid").font(.largeTitle.bold())
-                Text("Native photo editor").foregroundStyle(.secondary)
+                Text("Native photo editor").foregroundStyle(.primary)
                 Picker("Filter", selection: Binding(get: { recipe.filter }, set: { preset in
                     var next = recipe; next.filter = preset; change(next, "Change Filter")
                 })) {
@@ -32,7 +32,7 @@ struct EditorInspector: View {
                 }
                 SourceInspector(recipe: recipe, change: change)
                 Text("Layers").font(.headline)
-                if recipe.overlays.isEmpty { Text("Add a sticker or a speech bubble").foregroundStyle(.secondary) }
+                if recipe.overlays.isEmpty { Text("Add a sticker or a speech bubble").foregroundStyle(.primary) }
                 ForEach(recipe.overlays.reversed()) { overlay in
                     Button {
                         selection = overlay.id
@@ -51,10 +51,10 @@ struct EditorInspector: View {
                     OverlayInspector(overlay: selected, update: update, remove: remove)
                 }
                 Divider()
-                Text("Static photos · sRGB SDR export").font(.caption).foregroundStyle(.secondary)
-                Text("RAW/ProRAW and animation are not supported. Live Photos import as still images.").font(.caption).foregroundStyle(.secondary)
+                Text("Static photos · sRGB SDR export").font(.caption).foregroundStyle(.primary)
+                Text("RAW/ProRAW and animation are not supported. Live Photos import as still images.").font(.caption).foregroundStyle(.primary)
                 Text("Save this .celluloid document to reopen all originals, layers and text. Export PNG or JPEG for a finished image.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.primary)
                 Button("Privacy Policy") { showingPrivacy = true }.accessibilityIdentifier("editor.privacy")
             }.padding(18)
         }.sheet(isPresented: $showingPrivacy) { PrivacyView() }
@@ -133,7 +133,7 @@ private struct OverlayInspector: View {
                 Button("Rotate +15°") { rotate(15) }.keyboardShortcut("]", modifiers: [.command, .option])
             }
             Button("Delete Layer", role: .destructive) { remove(overlay) }
-            Text("Move with ⌥⌘ arrows; rotate with ⌥⌘ [ or ].").font(.caption).foregroundStyle(.secondary)
+            Text("Move with ⌥⌘ arrows; rotate with ⌥⌘ [ or ].").font(.caption).foregroundStyle(.primary)
         }
     }
     private func number(_ label: String, _ path: WritableKeyPath<Overlay, Double>, range: ClosedRange<Double>) -> some View {

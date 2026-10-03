@@ -97,7 +97,7 @@ struct EditorView: View {
                         Image(systemName: "photo.on.rectangle.angled").font(.system(size: 48))
                         Text("Start with your photos").font(.title2)
                         Text("Import one photo to edit, or 2–4 for a collage.\nYour originals stay in this editable document.")
-                            .multilineTextAlignment(.center).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center).foregroundStyle(.primary)
                     }.padding(24)
                 }
                 if rendering || importing || exporting { ProgressView().padding().background(.regularMaterial).clipShape(RoundedRectangle(cornerRadius: 10)) }
@@ -108,7 +108,7 @@ struct EditorView: View {
                 Text(verbatim: document.recipe.sources.isEmpty ? NSLocalizedString("No photos imported", comment: "Empty editor") : "\(document.recipe.canvasWidth) × \(document.recipe.canvasHeight) px").accessibilityIdentifier("editor.dimensions")
                 Spacer()
                 Text(status).accessibilityIdentifier("editor.status")
-            }.font(.caption).foregroundStyle(.secondary).padding(.horizontal).padding(.bottom, 8)
+            }.font(.caption).foregroundStyle(.primary).padding(.horizontal).padding(.bottom, 8)
         }
     }
 

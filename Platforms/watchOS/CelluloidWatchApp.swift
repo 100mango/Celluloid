@@ -112,7 +112,7 @@ private struct WatchPhotoView: View {
                     }
                     if filter == .pixellateFace { Text("Face detection can miss faces. Check the result before sharing.").font(.caption) }
                     Button("Process on iPhone") { Task { do { try await model.transport?.request(photo, filter: filter) } catch { model.error = error.localizedDescription } } }
-                        .accessibilityIdentifier("watch.process-phone")
+                        .accessibilityIdentifier("watch.process-phone").disabled(model.transport == nil)
                     Text("Sends only this selected image to your paired iPhone. A returned preview is not a Photos save. Open the phone app to save the full result.").font(.footnote)
                     Button("Remove from Watch", role: .destructive) { confirmDelete = true }
                 }

@@ -24,7 +24,7 @@ final class NativeTVUITests: XCTestCase {
             print("TV_PHOTOS_PERMISSION_AX " + system.debugDescription)
             try select(allow, in: system)
         }
-        let photo = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.photo.'")).firstMatch
+        let photo = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.photo.' AND label BEGINSWITH 'CelluloidSource-1.png,'")).firstMatch
         let found = photo.waitForExistence(timeout: 15)
         if !found {
             print("TV_PHOTOS_IMPORT_FAILURE_AX " + app.debugDescription)
@@ -60,12 +60,96 @@ final class NativeTVUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Saved to Photos and verified by reading the image back."].waitForExistence(timeout: 30))
         print("TV_NATIVE_RELAUNCH_CHANGED_FILTER actual saved Fade restore then second Chrome save completed")
     }
+    @MainActor func testRemoteCollageTwoSources() throws { try collage(count:2) }
+    @MainActor func testRemoteCollageThreeSources() throws { try collage(count:3) }
+    @MainActor func testRemoteCollageFourSources() throws { try collage(count:4) }
+    @MainActor func testTVKeyboardAutomationAvailability() throws {
+        #if !CELLULOID_TV_TYPETEXT_SUPPORTED
+        throw XCTSkip("The exact SDK did not expose typeText for tvOS; remote-only multilingual keyboard entry remains an explicit open gate")
+        #endif
+    }
+    @MainActor private func collage(count:Int) throws {
+        continueAfterFailure = false
+        let app = XCUIApplication();app.launchArguments = ["-AppleLanguages","(en)","-AppleLocale","en_US"]
+        app.launchEnvironment["CELLULOID_TV_COMPOSITION_PROOF"] = String(count)
+        app.launch(); defer { app.terminate() }
+        try select(app.buttons["tv.choose-photos"],in:app)
+        let system = XCUIApplication(bundleIdentifier:"com.apple.PineBoard")
+        let allow = system.buttons["Allow All Photos"].firstMatch
+        if allow.waitForExistence(timeout:4) {
+            XCTAssertTrue(system.staticTexts.matching(NSPredicate(format:"label CONTAINS 'Celluloid'")).firstMatch.exists)
+            try select(allow,in:system)
+        }
+        var intended: [[String:String]] = []
+        for (order,index) in Array((0..<count).reversed()).enumerated() {
+            let filename = "CelluloidSource-\(index+1).png"
+            let target = app.buttons.matching(NSPredicate(format:"identifier BEGINSWITH 'tv.photo.' AND label BEGINSWITH %@",filename+",")).firstMatch
+            XCTAssertTrue(target.waitForExistence(timeout:15),app.debugDescription)
+            let identifier = String(target.identifier.dropFirst("tv.photo.".count))
+            XCTAssertFalse(identifier.isEmpty); intended.append(["assetID":identifier,"filename":filename])
+            try select(target,in:app)
+            XCTAssertEqual(target.value as? String,"Selected \(order+1)")
+        }
+        XCTAssertEqual(Set(intended.compactMap { $0["assetID"] }).count,count)
+        try select(app.buttons["tv.edit-selected"],in:app)
+        XCTAssertTrue(app.images["tv.preview"].waitForExistence(timeout:20))
+        try select(app.buttons["tv.sources"],in:app)
+        let template = [2:"compose_2_2",3:"compose_3_10_1s",4:"compose_4_10"][count]!
+        try select(app.buttons["tv.template."+template],in:app)
+        try select(app.buttons["tv.source.0.zoom.increase"],in:app)
+        try select(app.buttons["tv.source.0.zoom.increase"],in:app)
+        try select(app.buttons["tv.source.0.crop-x.decrease"],in:app)
+        try select(app.buttons["tv.source.0.crop-y.increase"],in:app)
+        try select(app.buttons["tv.source.0.later"],in:app)
+        try select(app.buttons["tv.panel.done"],in:app)
+        try select(app.buttons["tv.stickers"],in:app)
+        try select(app.buttons["tv.asset.32"],in:app)
+        for _ in 0..<12 { try select(app.buttons["tv.layer.x.decrease"],in:app) }
+        try select(app.buttons["tv.layer.mirror"],in:app)
+        try select(app.buttons["tv.panel.done"],in:app)
+        try select(app.buttons["tv.bubbles"],in:app)
+        try select(app.buttons["tv.asset.say1"],in:app)
+        let field = app.textFields["tv.bubble-text"]
+        XCTAssertTrue(field.waitForExistence(timeout:10))
+        var text = "Hello", keyboard = false
+        #if CELLULOID_TV_TYPETEXT_SUPPORTED
+        if #available(tvOS 27.0, *) {
+            try select(field,in:app)
+            print("TV_NATIVE_KEYBOARD_AX " + String(app.debugDescription.prefix(24000)))
+            app.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:5)+"TV 世界")
+            XCUIRemote.shared.press(.menu)
+            XCTAssertTrue(field.waitForExistence(timeout:10));XCTAssertEqual(field.value as? String,"TV 世界")
+            text = "TV 世界"; keyboard = true
+        }
+        #endif
+        try select(app.buttons["tv.layer.rotation.increase"],in:app)
+        try select(app.buttons["tv.panel.done"],in:app)
+        try select(app.buttons["tv.undo"],in:app) // Undo exactly the final rotation, retaining text and both layers.
+        try select(app.buttons["tv.keep-recipe"],in:app)
+        app.terminate();app.launch()
+        try select(app.buttons["tv.reopen-recipe"],in:app)
+        XCTAssertTrue(app.staticTexts["Editable recipe reopened from Photos sources."].waitForExistence(timeout:20))
+        try select(app.buttons["tv.save-photos"],in:app)
+        XCTAssertTrue(app.staticTexts["Saved to Photos and verified by reading the image back."].waitForExistence(timeout:30))
+        try focus(app.buttons["tv.filters"],in:app) // Clean visible top control, without opening another sheet.
+        let jpeg = try XCTUnwrap(app.screenshot().image.jpegData(compressionQuality:0.45));XCTAssertLessThanOrEqual(jpeg.count,1_500_000)
+        let capture = XCTAttachment(data:jpeg,uniformTypeIdentifier:"public.jpeg");capture.name = "native-tv-collage-\(count)-photos-output";capture.lifetime = .keepAlways;add(capture)
+        let expected: [String:Any] = ["count":count,"initialSources":intended,"template":template,"bubbleText":text,"keyboardExercised":keyboard]
+        let encoded = try JSONSerialization.data(withJSONObject:expected,options:[.sortedKeys])
+        print("TV_NATIVE_COMPOSITION_EXPECTED " + String(decoding:encoded,as:UTF8.self))
+        if #available(tvOS 27.0, *) { try app.performAccessibilityAudit(for:.all) { issue in
+            print("NATIVE_ACCESSIBILITY_ISSUE state=tv-collage-\(count) description=\(issue.compactDescription) element=\(issue.element?.debugDescription ?? "none")");return false
+        } }
+    }
     @MainActor private func select(_ target: XCUIElement, in app: XCUIApplication) throws {
+        try focus(target,in:app); XCUIRemote.shared.press(.select)
+    }
+    @MainActor private func focus(_ target: XCUIElement, in app: XCUIApplication) throws {
         XCTAssertTrue(target.waitForExistence(timeout: 10))
         let remote = XCUIRemote.shared
         var attempted: [String: Set<String>] = [:]
         for _ in 0..<60 {
-            if target.hasFocus { remote.press(.select); return }
+            if target.hasFocus { return }
             let button = app.buttons.matching(NSPredicate(format: "hasFocus == true")).firstMatch
             let focused = button.exists ? button : app.descendants(matching: .any).matching(NSPredicate(format: "hasFocus == true")).firstMatch
             if focused.exists {
@@ -73,7 +157,7 @@ final class NativeTVUITests: XCTestCase {
                 // PineBoard exposes the focused inner button and outer query with
                 // identical title and geometry. Match that exact visible choice.
                 if focused.label == target.label && abs(destination.midX-current.midX) < 1 && abs(destination.midY-current.midY) < 1 && abs(destination.width-current.width) < 1 && abs(destination.height-current.height) < 1 {
-                    remote.press(.select); return
+                    return
                 }
                 let state = focused.identifier.isEmpty ? focused.label : focused.identifier
                 let vertical = destination.midY >= current.midY ? "down" : "up"

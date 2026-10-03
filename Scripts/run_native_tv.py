@@ -18,12 +18,19 @@ evidence={'runtime':runtime,'device_type':device_type,'udid':udid,'head':os.envi
 try:
     run(['xcrun','simctl','boot',udid]);run(['xcrun','simctl','bootstatus',udid,'-b'],timeout=240)
     # Seed only this disposable simulator through the supported public simctl route.
-    fixture=temp/'celluloid-tv-synthetic.png'
     def chunk(kind,data):return struct.pack('>I',len(data))+kind+data+struct.pack('>I',zlib.crc32(kind+data)&0xffffffff)
-    row=b''.join(bytes((255,0,0,255)) if x<400 else bytes((0,255,0,255)) if x<800 else bytes((0,0,255,255)) for x in range(1200))
-    fixture.write_bytes(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',1200,800,8,6,0,0,0))+chunk(b'sRGB',b'\0')+chunk(b'IDAT',zlib.compress((b'\0'+row)*800))+chunk(b'IEND',b''))
-    run(['xcrun','simctl','addmedia',udid,fixture],timeout=60)
-    evidence['synthetic_fixture']='1200x800 explicit sRGB red/green/blue PNG added with simctl addmedia'
+    fixtures=[]
+    for index in range(4):
+        path=temp/f'CelluloidSource-{index+1}.png';width=1200+index*16;height=800+index*8
+        colors=[(255,0,0,255),(0,255,0,255),(0,0,255,255)] if index==0 else [(40+index*45,40,220,255),(230,60+index*35,30,255),(30,220,40+index*35,255)]
+        row=b''.join(bytes(colors[min(2,x*3//width)]) for x in range(width))
+        lower=b''.join(bytes(tuple(c//2 for c in colors[min(2,x*3//width)][:3])+(255,)) for x in range(width))
+        scanlines=(b'\0'+bytes((9,19,29,255))*width)+(b'\0'+row)*(height//2-1)+(b'\0'+lower)*(height-height//2-1)+(b'\0'+bytes((201,211,221,255))*width)
+        path.write_bytes(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',width,height,8,6,0,0,0))+chunk(b'sRGB',b'\0')+chunk(b'IDAT',zlib.compress(scanlines))+chunk(b'IEND',b''))
+        fixtures.append(path)
+    fixture=fixtures[0]
+    run(['xcrun','simctl','addmedia',udid,*fixtures],timeout=60)
+    evidence['synthetic_fixtures']=[{'name':p.name,'sha256':__import__('hashlib').sha256(p.read_bytes()).hexdigest()} for p in fixtures]
     run(['xcrun','simctl','install',udid,app],timeout=120)
     launch=run(['xcrun','simctl','launch',udid,'Mango.Celluloid'],timeout=60)
     evidence['launch_output']=launch.stdout
@@ -37,6 +44,7 @@ try:
     if result.returncode:raise RuntimeError('Native TV test invocation failed; inspect actual error/attachments, do not equate build or boot with E2E coverage')
     container=Path(run(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data']).stdout.strip())
     run(['swift','-swift-version','5',root/'Scripts/verify_tv_filter_output.swift',fixture,container/'Library/Caches/TVOutputProof'],timeout=120,log_name='tv-filter-oracle.log')
+    run(['swift','-swift-version','5',root/'Scripts/verify_tv_composition.swift',temp,container/'Library/Caches/TVCompositionProof',temp/'tv-runtime-tests.log',root/'Celluloid/collage.json'],timeout=120,log_name='tv-composition-oracle.log')
 except Exception as error:
     evidence['error']=str(error)
     raise

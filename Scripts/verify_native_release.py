@@ -24,7 +24,7 @@ resources=base/'Resources' if platform=='mac' else base
 check('license_packaged', (resources/'LICENSE.txt').is_file() and (resources/'LICENSE.txt').read_bytes()==(ROOT/'LICENSE.txt').read_bytes())
 check('no_test_bundles',not any(app.rglob('*.xctest')))
 bytes_=executable.read_bytes()
-markers=[b'--celluloid-sandbox-diagnostics',b'sandbox.probe',b'CELLULOID_AX_REPORT',b'TV_PHOTOS_BUTTON_ACTION',b'TV_PHOTOS_AUTH',b'CELLULOID_TV_OUTPUT_PROOF',b'Celluloid synthetic container readback']
+markers=[b'--celluloid-sandbox-diagnostics',b'sandbox.probe',b'CELLULOID_AX_REPORT',b'TV_PHOTOS_BUTTON_ACTION',b'TV_PHOTOS_AUTH',b'CELLULOID_TV_OUTPUT_PROOF',b'CELLULOID_TV_COMPOSITION_PROOF',b'Celluloid synthetic container readback']
 check('debug_seams_absent',not any(marker in bytes_ for marker in markers))
 archs=subprocess.check_output(['xcrun','lipo','-archs',str(executable)],text=True).strip().split()
 check('native_arm_device_slice',any(arch.startswith('arm64') for arch in archs))

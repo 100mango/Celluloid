@@ -52,9 +52,9 @@ struct TVEditorView: View {
                         Button(editor.recipe.filter.localizedTitle) { panel = .filters }.accessibilityIdentifier("tv.filters")
                         Button("Sticker") { panel = .stickers }.accessibilityIdentifier("tv.stickers")
                         Button("Bubble") { panel = .bubbles }.accessibilityIdentifier("tv.bubbles")
-                        Button("Source Photos") { panel = .sources }
-                        Button("Layers") { panel = .layers }.disabled(editor.recipe.overlays.isEmpty)
-                        Button("Undo") { editor.undo() }.disabled(!editor.canUndo)
+                        Button("Source Photos") { panel = .sources }.accessibilityIdentifier("tv.sources")
+                        Button("Layers") { panel = .layers }.accessibilityIdentifier("tv.layers").disabled(editor.recipe.overlays.isEmpty)
+                        Button("Undo") { editor.undo() }.accessibilityIdentifier("tv.undo").disabled(!editor.canUndo)
                         Button("Keep Editable Recipe") { editor.keepRecipe() }.accessibilityIdentifier("tv.keep-recipe")
                         Button("Save Picture to Photos") { Task { await editor.saveToPhotos(library: library) } }.accessibilityIdentifier("tv.save-photos")
                     }.disabled(editor.recipe.sources.isEmpty || editor.busy)
@@ -69,7 +69,7 @@ struct TVEditorView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
-                        Button("Done") { panel = nil }
+                        Button("Done") { panel = nil }.accessibilityIdentifier("tv.panel.done")
                         switch value {
                         case .photos: TVPhotoPicker(library: library) { ids in panel = nil; Task { await editor.importPhotos(ids, library: library) } }
                             .onAppear {
@@ -159,9 +159,12 @@ private struct TVPhotoCell: View {
             VStack {
                 if let image { Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fit).frame(height: 160) }
                 else { Image(systemName: "photo").frame(height: 160) }
+                Text(verbatim: library.displayName(asset)).font(.caption).lineLimit(2)
                 Text(order.map { String(format: NSLocalizedString("Selected %d", comment: "TV selection order"), $0) } ?? "\(asset.pixelWidth) × \(asset.pixelHeight)").font(.caption)
             }.frame(width: 260)
         }.accessibilityIdentifier("tv.photo." + asset.localIdentifier)
+            .accessibilityLabel(library.displayName(asset) + ", \(asset.pixelWidth) × \(asset.pixelHeight)")
+            .accessibilityValue(order.map { String(format: NSLocalizedString("Selected %d", comment: "TV selection order"), $0) } ?? "")
             .task(id: asset.localIdentifier) { image = await library.thumbnail(asset) }
     }
 }
@@ -177,14 +180,14 @@ private struct TVLayerControls: View {
             if let layer = editor.recipe.overlays.first(where: { $0.id == editor.selectedLayer }) {
                 if layer.kind == .bubble {
                     TextField("Bubble text", text: Binding(get: { layer.text }, set: { text in editor.editLayer { $0.text = text } })).accessibilityIdentifier("tv.bubble-text")
-                    TVAdjustButtons(title: "Text size", value: layer.fontSize, step: 0.005, range: 0.005...0.2) { value in editor.editLayer { $0.fontSize = value } }
+                    TVAdjustButtons(title: "Text size", identifier: "tv.layer.font-size", value: layer.fontSize, step: 0.005, range: 0.005...0.2) { value in editor.editLayer { $0.fontSize = value } }
                 }
-                TVAdjustButtons(title: "Horizontal position", value: layer.centerX, step: 0.02, range: -0.5...1.5) { value in editor.editLayer { $0.centerX = value } }
-                TVAdjustButtons(title: "Vertical position", value: layer.centerY, step: 0.02, range: -0.5...1.5) { value in editor.editLayer { $0.centerY = value } }
-                TVAdjustButtons(title: "Width", value: layer.width, step: 0.02, range: 0.02...1.5) { value in editor.editLayer { $0.width = value } }
-                TVAdjustButtons(title: "Height", value: layer.height, step: 0.02, range: 0.02...1.5) { value in editor.editLayer { $0.height = value } }
-                TVAdjustButtons(title: "Rotation", value: layer.rotation, step: 15, range: -180...180) { value in editor.editLayer { $0.rotation = value } }
-                Button("Mirror layer") { editor.editLayer { $0.mirrored.toggle() } }
+                TVAdjustButtons(title: "Horizontal position", identifier: "tv.layer.x", value: layer.centerX, step: 0.02, range: -0.5...1.5) { value in editor.editLayer { $0.centerX = value } }
+                TVAdjustButtons(title: "Vertical position", identifier: "tv.layer.y", value: layer.centerY, step: 0.02, range: -0.5...1.5) { value in editor.editLayer { $0.centerY = value } }
+                TVAdjustButtons(title: "Width", identifier: "tv.layer.width", value: layer.width, step: 0.02, range: 0.02...1.5) { value in editor.editLayer { $0.width = value } }
+                TVAdjustButtons(title: "Height", identifier: "tv.layer.height", value: layer.height, step: 0.02, range: 0.02...1.5) { value in editor.editLayer { $0.height = value } }
+                TVAdjustButtons(title: "Rotation", identifier: "tv.layer.rotation", value: layer.rotation, step: 15, range: -180...180) { value in editor.editLayer { $0.rotation = value } }
+                Button("Mirror layer") { editor.editLayer { $0.mirrored.toggle() } }.accessibilityIdentifier("tv.layer.mirror")
                 Button("Delete Layer", role: .destructive) { editor.change { $0.overlays.removeAll { $0.id == layer.id } }; editor.selectedLayer = nil }
             }
         }
@@ -196,17 +199,17 @@ private struct TVSourceControls: View {
         VStack(alignment: .leading, spacing: 28) {
             if editor.recipe.sources.count > 1 {
                 ForEach((try? NativeResources.templates(count: editor.recipe.sources.count)) ?? [], id: \.assetName) { template in
-                    Button(template.assetName) { editor.change { $0.collageTemplate = template.assetName } }
+                    Button(template.assetName) { editor.change { $0.collageTemplate = template.assetName } }.accessibilityIdentifier("tv.template." + template.assetName)
                 }
             }
             ForEach(Array(editor.recipe.sources.enumerated()), id: \.element.id) { index, source in
                 Text(source.displayName).font(.headline)
-                TVAdjustButtons(title: "Horizontal crop", value: source.crop.centerX, step: 0.05, range: 0...1) { value in editor.change { $0.sources[index].crop.centerX = value } }
-                TVAdjustButtons(title: "Vertical crop", value: source.crop.centerY, step: 0.05, range: 0...1) { value in editor.change { $0.sources[index].crop.centerY = value } }
-                TVAdjustButtons(title: "Zoom", value: source.crop.zoom, step: 0.25, range: 1...5) { value in editor.change { $0.sources[index].crop.zoom = value } }
-                Button("Reset Crop") { editor.change { $0.sources[index].crop = SourceCrop() } }
-                Button("Earlier") { editor.change { $0.sources.swapAt(index, index - 1) } }.disabled(index == 0)
-                Button("Later") { editor.change { $0.sources.swapAt(index, index + 1) } }.disabled(index == editor.recipe.sources.count - 1)
+                TVAdjustButtons(title: "Horizontal crop", identifier: "tv.source.\(index).crop-x", value: source.crop.centerX, step: 0.05, range: 0...1) { value in editor.change { $0.sources[index].crop.centerX = value } }
+                TVAdjustButtons(title: "Vertical crop", identifier: "tv.source.\(index).crop-y", value: source.crop.centerY, step: 0.05, range: 0...1) { value in editor.change { $0.sources[index].crop.centerY = value } }
+                TVAdjustButtons(title: "Zoom", identifier: "tv.source.\(index).zoom", value: source.crop.zoom, step: 0.25, range: 1...5) { value in editor.change { $0.sources[index].crop.zoom = value } }
+                Button("Reset Crop") { editor.change { $0.sources[index].crop = SourceCrop() } }.accessibilityIdentifier("tv.source.\(index).reset")
+                Button("Earlier") { editor.change { $0.sources.swapAt(index, index - 1) } }.disabled(index == 0).accessibilityIdentifier("tv.source.\(index).earlier")
+                Button("Later") { editor.change { $0.sources.swapAt(index, index + 1) } }.disabled(index == editor.recipe.sources.count - 1).accessibilityIdentifier("tv.source.\(index).later")
                 Button("Remove Photo", role: .destructive) {
                     editor.change { next in
                         next.sources.remove(at: index)
@@ -219,14 +222,15 @@ private struct TVSourceControls: View {
 }
 private struct TVAdjustButtons: View {
     let title: String
+    var identifier: String = ""
     let value: Double, step: Double
     let range: ClosedRange<Double>
     let change: (Double) -> Void
     var body: some View {
         HStack(spacing: 30) {
             Text(LocalizedStringKey(title)); Text(value, format: .number.precision(.fractionLength(2)))
-            Button("−") { change(max(range.lowerBound, value - step)) }.accessibilityLabel(String(format: NSLocalizedString("Decrease %@", comment: "TV focus"), NSLocalizedString(title, comment: "Property")))
-            Button("+") { change(min(range.upperBound, value + step)) }.accessibilityLabel(String(format: NSLocalizedString("Increase %@", comment: "TV focus"), NSLocalizedString(title, comment: "Property")))
+            Button("−") { change(max(range.lowerBound, value - step)) }.accessibilityLabel(String(format: NSLocalizedString("Decrease %@", comment: "TV focus"), NSLocalizedString(title, comment: "Property"))).accessibilityIdentifier(identifier + ".decrease")
+            Button("+") { change(min(range.upperBound, value + step)) }.accessibilityLabel(String(format: NSLocalizedString("Increase %@", comment: "TV focus"), NSLocalizedString(title, comment: "Property"))).accessibilityIdentifier(identifier + ".increase")
         }
     }
 }

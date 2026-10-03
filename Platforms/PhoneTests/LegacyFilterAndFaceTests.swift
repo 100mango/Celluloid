@@ -30,6 +30,14 @@ final class LegacyFilterAndFaceTests: XCTestCase {
             let bounds = CGRect(x:0,y:0,width:120,height:80), context = CIContext()
             let difference = maximumDelta(pixels(CIImage(cgImage:try XCTUnwrap(rendered.cgImage)),bounds,context), pixels(CIImage(cgImage:native),bounds,context))
             print("MAC_NEW_FILTER_UIKIT_PIXELS filter=\(row.filter) maximumChannelDifference=\(difference)")
+            if difference > 2 {
+                let input = try RasterCodec.image(sourceBytes)
+                let graph = try RecipeRenderer().apply(nativeRecipe.filter,to:input)
+                diagnoseMaterialization(graph:graph,legacy:try XCTUnwrap(rendered.cgImage),native:native,tag:row.filter)
+                let decoded = try XCTUnwrap(UIImage(data:sourceBytes))
+                let sameEncodedLegacy = try XCTUnwrap(decoded.filteredImage(Filters.filter(decodedFilter(row.filter))).cgImage)
+                print("NATIVE_MATERIALIZATION sameEncodedUIKit filter=\(row.filter) max=\(maximumDelta(pixels(CIImage(cgImage:sameEncodedLegacy),bounds,context),pixels(CIImage(cgImage:native),bounds,context)))")
+            }
             XCTAssertLessThanOrEqual(difference,2,"New native filter archive must mean the same rendered edit to UIKit")
             XCTAssertEqual(try AdjustmentData.decode(decoded.encode()).filterType.rawValue, row.filter)
         }
@@ -76,6 +84,7 @@ final class LegacyFilterAndFaceTests: XCTestCase {
         let actual = pixels(CIImage(cgImage: native), input.extent, context)
         let actualDelta = maximumDelta(expected,actual)
         print("FACE_DETECTOR_ACTUAL_OUTPUT maximumChannelDifference=\(actualDelta)")
+        diagnoseMaterialization(graph:try RecipeRenderer().apply(.pixellateFace,to:nativeInput),legacy:legacy,native:native,tag:"portrait")
         XCTAssertLessThanOrEqual(actualDelta, 2)
         for face in faces {
             let inside = CGRect(x: floor(face.midX)-4,y: floor(face.midY)-4,width: 8,height: 8)
@@ -87,7 +96,12 @@ final class LegacyFilterAndFaceTests: XCTestCase {
                 let center = CGPoint(x:x+4,y:y+4)
                 if faces.allSatisfy({ hypot(center.x-$0.midX,center.y-$0.midY)>min($0.width,$0.height/1.5)+10 }) {
                     let rect=CGRect(x:x,y:y,width:8,height:8)
-                    XCTAssertTrue(pixels(input,rect,context) == pixels(CIImage(cgImage:native),rect,context));outsideChecks += 1
+                    let before = pixels(input,rect,context), after = pixels(CIImage(cgImage:native),rect,context)
+                    if before != after {
+                        let changed = stride(from:0,to:before.count,by:4).filter { Array(before[$0..<$0+4]) != Array(after[$0..<$0+4]) }.prefix(4)
+                        for offset in changed { print("FACE_DETECTOR_ACTUAL_OUTSIDE x=\(x+(offset/4)%8) y=\(y+(offset/4)/8) original=\(Array(before[offset..<offset+4])) native=\(Array(after[offset..<offset+4]))") }
+                    }
+                    XCTAssertEqual(before,after,"Outside region x=\(x) y=\(y)");outsideChecks += 1
                 }
             }
         }
@@ -105,6 +119,43 @@ final class LegacyFilterAndFaceTests: XCTestCase {
         let legacy = try XCTUnwrap(UIImage(cgImage:sourceImage).filteredImage(Filters.filter(.PixellateFace)).cgImage)
         XCTAssertTrue(pixels(CIImage(cgImage:sourceImage),input.extent,context) == pixels(CIImage(cgImage:native),input.extent,context))
         XCTAssertTrue(pixels(CIImage(cgImage:legacy),input.extent,context) == pixels(CIImage(cgImage:native),input.extent,context))
+    }
+    private func decodedFilter(_ raw: String) -> FilterType { FilterType(rawValue:raw)! }
+    /// Diagnostic only: none of these variants replace the strict production oracle.
+    private func diagnoseMaterialization(graph: CIImage, legacy: CGImage, native: CGImage, tag: String) {
+        let bounds = graph.extent, read = CIContext()
+        let expected = pixels(CIImage(cgImage:legacy),bounds,read)
+        print("NATIVE_MATERIALIZATION tag=\(tag) legacyAlpha=\(legacy.alphaInfo.rawValue) nativeAlpha=\(native.alphaInfo.rawValue) legacyBits=\(legacy.bitsPerComponent)/\(legacy.bitsPerPixel) nativeBits=\(native.bitsPerComponent)/\(native.bitsPerPixel) legacyBitmap=\(legacy.bitmapInfo.rawValue) nativeBitmap=\(native.bitmapInfo.rawValue)")
+        let contexts: [(String,[CIContextOption:Any])] = [("default",[:]),("cacheOff",[.cacheIntermediates:false]),("native",[.outputColorSpace:RasterCodec.colorSpace,.cacheIntermediates:false])]
+        for (label,options) in contexts {
+            let materializer = CIContext(options:options)
+            for explicit in [false,true] {
+                for identityAndCrop in [false,true] {
+                    let candidate = identityAndCrop ? graph.transformed(by:.identity).cropped(to:bounds) : graph
+                    let rendered = explicit ? materializer.createCGImage(candidate,from:bounds,format:.RGBA8,colorSpace:RasterCodec.colorSpace) : materializer.createCGImage(candidate,from:bounds)
+                    guard let rendered else { XCTFail("Diagnostic materialization failed"); continue }
+                    let raw = pixels(CIImage(cgImage:rendered),bounds,read)
+                    print("NATIVE_MATERIALIZATION tag=\(tag) context=\(label) explicit=\(explicit) identityCrop=\(identityAndCrop) directMax=\(maximumDelta(expected,raw)) alpha=\(rendered.alphaInfo.rawValue) bits=\(rendered.bitsPerComponent) bitmap=\(rendered.bitmapInfo.rawValue)")
+                    if label == "native" && explicit && identityAndCrop {
+                        for quality in [CGInterpolationQuality.none,.high] {
+                            guard let canvas = try? RasterCodec.bitmap(width:legacy.width,height:legacy.height) else { continue }
+                            canvas.interpolationQuality = quality; canvas.draw(rendered,in:bounds)
+                            if let result = canvas.makeImage() { print("NATIVE_MATERIALIZATION tag=\(tag) canvasQuality=\(quality.rawValue) max=\(maximumDelta(expected,pixels(CIImage(cgImage:result),bounds,read)))") }
+                        }
+                    }
+                }
+            }
+            materializer.clearCaches()
+        }
+        for background in [Optional<CGFloat>.none,0,1] {
+            func normalized(_ image:CGImage) -> [UInt8] {
+                let c = try! RasterCodec.bitmap(width:image.width,height:image.height)
+                if let gray = background { c.setFillColor(CGColor(gray:gray,alpha:1));c.fill(bounds) }
+                c.draw(image,in:bounds)
+                return Array(UnsafeBufferPointer(start:c.data!.assumingMemoryBound(to:UInt8.self),count:image.width*image.height*4))
+            }
+            print("NATIVE_MATERIALIZATION tag=\(tag) CGContextBackground=\(background.map { String(describing:$0) } ?? "transparent") max=\(maximumDelta(normalized(legacy),normalized(native)))")
+        }
     }
     private func maximumDelta(_ lhs: [UInt8], _ rhs: [UInt8]) -> Int {
         zip(lhs,rhs).map { abs(Int($0)-Int($1)) }.max() ?? 0

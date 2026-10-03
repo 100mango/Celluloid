@@ -100,6 +100,18 @@ struct TVSavedRecipe: Codable, Equatable {
             // Only one bounded metadata record. No image data, thumbnails or documents in defaults.
             defaults.set(bytes, forKey: Self.savedKey)
             guard defaults.data(forKey: Self.savedKey) == bytes else { throw RecipeError.invalidDocument }
+            #if DEBUG
+            if let mode = ProcessInfo.processInfo.environment["CELLULOID_TV_COMPOSITION_PROOF"], ["2","3","4"].contains(mode) {
+                let root = try FileManager.default.url(for:.cachesDirectory,in:.userDomainMask,appropriateFor:nil,create:true).appendingPathComponent("TVCompositionProof/" + mode,isDirectory:true)
+                try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
+                for source in recipe.sources {
+                    guard let original = originals[source.id], original.count <= 5_000_000 else { throw RecipeError.resourceLimit }
+                    try original.write(to:root.appendingPathComponent(source.id.uuidString + ".image"),options:.atomic)
+                }
+                // The bytes actually accepted by defaults, not a separately fabricated recipe.
+                try bytes.write(to:root.appendingPathComponent("kept-recipe.json"),options:.atomic)
+            }
+            #endif
             status = NSLocalizedString("Recipe kept on this TV. Source photos must remain available in Photos.", comment: "TV status")
         } catch { self.error = error.localizedDescription }
     }

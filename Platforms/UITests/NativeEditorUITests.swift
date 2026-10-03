@@ -196,7 +196,24 @@ final class NativeEditorUITests: XCTestCase {
         app.descendants(matching: .any)["editor.import-photos"].firstMatch.click()
         print("NATIVE_MAC_PHOTOS_PICKER_AX " + app.debugDescription)
         let image = app.images["PXGGridLayout-Info"].firstMatch
-        XCTAssertTrue(image.waitForExistence(timeout: 20), app.debugDescription); image.click()
+        let found = image.waitForExistence(timeout: 30)
+        if !found {
+            // Empty app AX is not evidence of empty pixels or an empty library.
+            let screen = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); screen.name = "native-mac-photos-picker-failure-full-screen"; screen.lifetime = .keepAlways; add(screen)
+            print("NATIVE_MAC_PHOTOS_PICKER_FAILURE_AX " + app.debugDescription)
+            let helpers = NSWorkspace.shared.runningApplications.filter {
+                ($0.bundleIdentifier?.hasPrefix("com.apple.") == true) &&
+                (($0.bundleIdentifier?.localizedCaseInsensitiveContains("photos") == true) || ($0.localizedName?.localizedCaseInsensitiveContains("photos") == true))
+            }.prefix(8)
+            for helper in helpers {
+                print("NATIVE_MAC_PHOTOS_HELPER bundle=\(helper.bundleIdentifier ?? "nil") name=\(helper.localizedName ?? "nil") pid=\(helper.processIdentifier) active=\(helper.isActive) hidden=\(helper.isHidden)")
+                if let identifier = helper.bundleIdentifier, identifier != "com.apple.Photos" {
+                    let surface = XCUIApplication(bundleIdentifier: identifier)
+                    if surface.state != .notRunning { print("NATIVE_MAC_PHOTOS_HELPER_AX " + String(surface.debugDescription.prefix(24_000))) }
+                }
+            }
+        }
+        XCTAssertTrue(found, app.debugDescription); image.click()
         let addButton = app.buttons["Add"].firstMatch
         XCTAssertTrue(addButton.waitForExistence(timeout: 10), app.debugDescription); addButton.click()
         XCTAssertTrue(app.staticTexts["1200 × 800 px"].waitForExistence(timeout: 20), app.debugDescription)
@@ -225,6 +242,15 @@ final class NativeEditorUITests: XCTestCase {
         // The external sandbox lane retains its own real document operations;
         // do not audit the deliberately visible Debug entitlement probe overlay.
         guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] != "YES" else { return }
+        if state == "unreadable-image-error" {
+            print("NATIVE_MODAL_WINDOWS_AX " + String(app.windows.debugDescription.prefix(24_000)))
+            print("NATIVE_MODAL_DIALOGS_AX " + String(app.dialogs.debugDescription.prefix(12_000)))
+            print("NATIVE_MODAL_SHEETS_AX " + String(app.sheets.debugDescription.prefix(12_000)))
+        }
+        // Record every reported issue in this audit, without turning any of them
+        // into an ignore. UI action assertions outside the audit still stop early.
+        let previous = continueAfterFailure; continueAfterFailure = true
+        defer { continueAfterFailure = previous }
         if #available(macOS 27.0, *) { try app.performAccessibilityAudit(for: .all) { issue in
             print("NATIVE_ACCESSIBILITY_ISSUE state=\(state) description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
             return false

@@ -174,7 +174,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidTV -destination 'generic/platform=tvOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-tv" CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee "$RUNNER_TEMP/tv-build.log"
+          python3 Scripts/probe_tv_text_input.py
+          conditions=DEBUG
+          if test -f "$RUNNER_TEMP/tv-typetext-supported"; then conditions="DEBUG CELLULOID_TV_TYPETEXT_SUPPORTED"; fi
+          xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidTV -destination 'generic/platform=tvOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-tv" CODE_SIGNING_ALLOWED=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS="$conditions" build-for-testing 2>&1 | tee "$RUNNER_TEMP/tv-build.log
           cmp Platforms/tvOS/PrivacyInfo.xcprivacy "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/PrivacyInfo.xcprivacy"
           plutil -p "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/PrivacyInfo.xcprivacy"
           test -f "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/zh-Hans.lproj/InfoPlist.strings"

@@ -49,6 +49,11 @@ enum TVPhotoError: Error, LocalizedError {
         print("TV_PHOTOS_FETCH count=\(assets.count)")
         #endif
     }
+    func displayName(_ asset: PHAsset) -> String {
+        let resources = PHAssetResource.assetResources(for: asset)
+        let name = (resources.first(where: { $0.type == .fullSizePhoto }) ?? resources.first(where: { $0.type == .photo }))?.originalFilename
+        return name.map { String($0.prefix(100)) } ?? NSLocalizedString("Selected Photo", comment: "Photos asset")
+    }
     func thumbnail(_ asset: PHAsset) async -> CGImage? {
         let options = PHImageRequestOptions(); options.deliveryMode = .highQualityFormat
         options.resizeMode = .fast; options.isNetworkAccessAllowed = false
@@ -116,6 +121,14 @@ enum TVPhotoError: Error, LocalizedError {
             try readback.write(to: root.appendingPathComponent("\(index).png"), options: .atomic)
             let metadata: [String: Any] = ["photosAssetIdentifier": identifier, "bytes": readback.count, "sha256": TVSavedRecipe.fingerprint(readback), "width": actual.pixelWidth, "height": actual.pixelHeight]
             try JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]).write(to: root.appendingPathComponent("\(index).json"), options: .atomic)
+        }
+        if let mode = ProcessInfo.processInfo.environment["CELLULOID_TV_COMPOSITION_PROOF"], ["2","3","4"].contains(mode) {
+            let root = try FileManager.default.url(for:.cachesDirectory,in:.userDomainMask,appropriateFor:nil,create:true).appendingPathComponent("TVCompositionProof/" + mode,isDirectory:true)
+            try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
+            guard readback.count <= 5_000_000 else { throw RecipeError.resourceLimit }
+            try readback.write(to:root.appendingPathComponent("photos-output.png"),options:.atomic)
+            let proof: [String:Any] = ["assetIdentifier":identifier,"sha256":TVSavedRecipe.fingerprint(readback),"width":actual.pixelWidth,"height":actual.pixelHeight]
+            try JSONSerialization.data(withJSONObject:proof,options:[.sortedKeys]).write(to:root.appendingPathComponent("photos-output.json"),options:.atomic)
         }
         #endif
         return identifier

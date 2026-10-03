@@ -12,13 +12,8 @@ final class NativeVisionUITests: XCTestCase {
         defer { app.terminate() }
         print("VISION_NATIVE_UI_AX " + app.debugDescription)
         let capture = XCTAttachment(screenshot: app.screenshot()); capture.name = "native-vision-launch"; capture.lifetime = .keepAlways; add(capture)
+        try openEditor(in:app)
         let editor = app.buttons["editor.import-files"]
-        if !editor.exists {
-            let create = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Create' OR label CONTAINS[c] 'New Document'")).firstMatch
-            XCTAssertTrue(create.waitForExistence(timeout: 15), "Inspect native launch capture before adapting document-browser controls")
-            create.tap()
-        }
-        XCTAssertTrue(editor.waitForExistence(timeout: 15))
         XCTAssertTrue(editor.isHittable)
         print("VISION_NATIVE_EDITOR_AX " + app.debugDescription)
         let editorCapture = XCTAttachment(screenshot: app.screenshot()); editorCapture.name = "native-vision-editor-ready"; editorCapture.lifetime = .keepAlways; add(editorCapture)
@@ -34,17 +29,9 @@ extension NativeVisionUITests {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch(); defer { app.terminate() }
+        try openEditor(in:app)
         let importButton = app.buttons["editor.import-files"]
-        // Give an already-restoring document time to appear before requesting a
-        // second new window. Cold document-provider transitions were observed here.
-        if !importButton.waitForExistence(timeout: 10) {
-            print("VISION_DOCUMENT_BEFORE_CREATE_AX " + app.debugDescription)
-            let create = app.buttons["FullDocumentManagerViewControllerNavigationBarCreateButtonIdentifier"]
-            XCTAssertTrue(create.waitForExistence(timeout: 30)); XCTAssertTrue(create.isHittable); create.tap()
-        }
-        let editorReady = importButton.waitForExistence(timeout: 60)
-        if !editorReady { capture(app, name: "vision-document-transition-failure"); print("VISION_DOCUMENT_TRANSITION_FAILURE_AX " + app.debugDescription) }
-        XCTAssertTrue(editorReady); importButton.tap()
+        importButton.tap()
         print("VISION_FILES_PICKER_AX " + app.debugDescription)
         let file = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'VisionSynthetic' OR label == 'VisionSynthetic.png'")).firstMatch
         if !file.waitForExistence(timeout: 4) {
@@ -82,6 +69,25 @@ extension NativeVisionUITests {
             print("NATIVE_ACCESSIBILITY_ISSUE description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
             return false // Report every real issue; this callback suppresses nothing.
         } }
+    }
+    private func openEditor(in app:XCUIApplication) throws {
+        let editor = app.buttons["editor.import-files"]
+        if editor.waitForExistence(timeout:5) { return }
+        let create = app.buttons["FullDocumentManagerViewControllerNavigationBarCreateButtonIdentifier"]
+        if !create.waitForExistence(timeout:3) {
+            // The exact f9 hierarchy showed the native No Document shell, with
+            // a Documents navigation button. Opening that real browser is a
+            // required user action, not an arbitrary additional wait for Create.
+            let documents = app.navigationBars.buttons["Documents"].firstMatch
+            print("VISION_DOCUMENT_BEFORE_BROWSER_AX " + String(app.debugDescription.prefix(32000)))
+            if documents.waitForExistence(timeout:10) && documents.isHittable { documents.tap() }
+        }
+        let found = create.waitForExistence(timeout:45)
+        if !found { capture(app,name:"vision-document-browser-create-failure");print("VISION_DOCUMENT_CREATE_FAILURE_AX " + String(app.debugDescription.prefix(40000))) }
+        XCTAssertTrue(found);XCTAssertTrue(create.isHittable);create.tap()
+        let ready = editor.waitForExistence(timeout:60)
+        if !ready { capture(app,name:"vision-document-transition-failure");print("VISION_DOCUMENT_TRANSITION_FAILURE_AX " + String(app.debugDescription.prefix(40000))) }
+        XCTAssertTrue(ready)
     }
     private func capture(_ app: XCUIApplication, name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)

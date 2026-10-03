@@ -42,7 +42,7 @@ if PLATFORM=='mac' and (TEMP/'mac.log').is_file():
     except (ValueError,KeyError) as error:
         manifest['omissions'].append({'name':'mac-filter-fixtures.json','reason':str(error)})
 
-logs=['mac-release.log','tv-release.log','watch-release.log','vision-release.log','domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox-app-build.log','sandbox.log','mac-photos-build.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log','tv-build.log','tv-runtime.log','tv-runtime-tests.log','tv-filter-oracle.log','watch-build.log','watch-runtime.log','watch-runtime-tests.log','phone-build.log','phone-runtime.log','phone-runtime-tests.log']
+logs=['mac-release.log','tv-release.log','watch-release.log','vision-release.log','domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox-app-build.log','sandbox.log','mac-photos-build.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log','tv-build.log','tv-runtime.log','tv-runtime-tests.log','tv-filter-oracle.log','tv-composition-oracle.log','watch-build.log','watch-runtime.log','watch-runtime-tests.log','phone-build.log','phone-runtime.log','phone-runtime-tests.log']
 markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|VISION_TEXT_|VISION_FILES_|VISION_EXPORT_|VISION_DOCUMENT_|TV_NATIVE_|TV_PHOTOS_|TV_FOCUS_|WATCH_NATIVE_|PHONE_COMPANION_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|FACE_DETECTOR_ACTUAL|MAC_NEW_FILTER_UIKIT_ROUNDTRIP|MAC_FILTER_ONLY_FIXTURE|MAC_BAKED_BASE_|MAC_LEGACY_CANDIDATE)')
 for name in logs:
     path=TEMP/name
@@ -56,7 +56,7 @@ for name in logs:
             line=part.decode('utf8','replace')
             if markers.search(line):selected.append(line[:2000].rstrip())
     retain_bytes(name+'.summary.txt',('\n'.join(selected)+'\n').encode(),name+' (test/error markers)')
-for name in ['native-icon-provenance-runtime.json','mac-release-packaging.json','tv-release-packaging.json','watch-release-packaging.json','vision-release-packaging.json','vision-runtime-evidence.json','tv-runtime-evidence.json','watch-runtime-evidence.json','phone-runtime-evidence.json','sandbox-entitlements.plist','sandbox-debug-entitlements.plist','sandbox-debug-actual.plist','sandbox-entitlements-after.plist']:
+for name in ['native-icon-provenance-runtime.json','mac-release-packaging.json','tv-release-packaging.json','watch-release-packaging.json','vision-release-packaging.json','vision-runtime-evidence.json','tv-runtime-evidence.json','tv-text-input-probe.json','watch-runtime-evidence.json','phone-runtime-evidence.json','sandbox-entitlements.plist','sandbox-debug-entitlements.plist','sandbox-debug-actual.plist','sandbox-entitlements-after.plist']:
     path=TEMP/name
     if path.is_file():retain_file(name,path,name)
 
