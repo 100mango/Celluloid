@@ -28,6 +28,7 @@ jobs:
           xcodebuild -version | grep -Fx 'Xcode 27.0'
           xcodebuild -showsdks
           python3 Scripts/validate_native_sources.py
+          python3 Scripts/test_native_evidence.py
       - name: Portable domain tests
         shell: bash
         run: |
@@ -58,6 +59,9 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacUI -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-sandbox" CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual CELLULOID_EXPECT_SANDBOX=YES build-for-testing 2>&1 | tee "$RUNNER_TEMP/sandbox-build.log"
+          # The test build instruments its target with broad temporary exceptions.
+          # Rebuild the app for ordinary execution, while keeping the external UI bundle.
+          xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMac -configuration Debug -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-sandbox" CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual ENABLE_TESTABILITY=NO build 2>&1 | tee "$RUNNER_TEMP/sandbox-app-build.log"
           APP="$RUNNER_TEMP/celluloid-sandbox/Build/Products/Debug/CelluloidMac.app"
           codesign --verify --strict --deep "$APP"
           codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/sandbox-entitlements.plist"
@@ -86,6 +90,32 @@ jobs:
         run: |
           set -euo pipefail
           python3 Scripts/run_native_tv.py 2>&1 | tee "$RUNNER_TEMP/tv-runtime.log"
+      - name: Native Watch build
+        id: watch_build
+        if: success() || failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidWatch -destination 'generic/platform=watchOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-watch" CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee "$RUNNER_TEMP/watch-build.log"
+      - name: Native Watch runtime
+        if: (success() || failure()) && steps.watch_build.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Scripts/run_native_watch.py 2>&1 | tee "$RUNNER_TEMP/watch-runtime.log"
+      - name: Native Phone companion build
+        id: phone_build
+        if: success() || failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidPhoneCompanion -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-phone" CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee "$RUNNER_TEMP/phone-build.log"
+      - name: Native Phone companion runtime
+        if: (success() || failure()) && steps.phone_build.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Scripts/run_native_phone.py 2>&1 | tee "$RUNNER_TEMP/phone-runtime.log"
       - name: Native Vision build
         id: vision_build
         if: success() || failure()

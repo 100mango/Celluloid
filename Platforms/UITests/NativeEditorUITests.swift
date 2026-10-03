@@ -12,7 +12,7 @@ final class NativeEditorUITests: XCTestCase {
         let app = XCUIApplication(url: expected)
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
         if ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" { app.launchEnvironment["CELLULOID_SANDBOX_DIAGNOSTICS"] = "YES" }
-        app.launch(); defer { app.terminate() }
+        try launch(app); defer { app.terminate() }
         let candidates = NSRunningApplication.runningApplications(withBundleIdentifier: "Mango.Celluloid")
         let actual = try XCTUnwrap(candidates.first { $0.bundleURL?.standardizedFileURL.resolvingSymlinksInPath().path == expected.path })
         XCTAssertEqual(actual.bundleURL?.standardizedFileURL.resolvingSymlinksInPath().path, expected.path)
@@ -68,7 +68,7 @@ final class NativeEditorUITests: XCTestCase {
         let app = XCUIApplication(url: URL(fileURLWithPath: path))
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
         if ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" { app.launchEnvironment["CELLULOID_SANDBOX_DIAGNOSTICS"] = "YES" }
-        app.launch(); defer { app.terminate() }
+        try launch(app); defer { app.terminate() }
         let cancel = app.windows["open-panel"].buttons["CancelButton"]
         if cancel.waitForExistence(timeout: 3) { cancel.click() }
         app.typeKey("n", modifierFlags: .command)
@@ -119,6 +119,22 @@ final class NativeEditorUITests: XCTestCase {
         }
         let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "native-mac-saved-reopened-exported"; screenshot.lifetime = .keepAlways; add(screenshot)
     }
+    @MainActor private func launch(_ app: XCUIApplication) throws {
+        guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" else { app.launch(); return }
+        let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.arguments = app.launchArguments
+        configuration.environment = app.launchEnvironment
+        configuration.createsNewApplicationInstance = true
+        let opened = expectation(description: "Ordinary sandbox app launch without XCTest library injection")
+        var launchError: Error?
+        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: configuration) { _, error in
+            launchError = error; opened.fulfill()
+        }
+        wait(for: [opened], timeout: 15)
+        if let launchError { throw launchError }
+        // XCUIApplication is only an external accessibility client for this running process.
+    }
     @MainActor private func assertSandboxIfRequested(_ app: XCUIApplication) throws {
         guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" else { return }
         let probe = app.staticTexts["sandbox.probe"]
@@ -155,7 +171,7 @@ final class NativeEditorUITests: XCTestCase {
         let app = XCUIApplication(url: URL(fileURLWithPath: path))
         app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN", "-ApplePersistenceIgnoreState", "YES"]
         if ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" { app.launchEnvironment["CELLULOID_SANDBOX_DIAGNOSTICS"] = "YES" }
-        app.launch(); defer { app.terminate() }
+        try launch(app); defer { app.terminate() }
         let cancel = app.windows["open-panel"].buttons["CancelButton"]
         if cancel.waitForExistence(timeout: 3) { cancel.click() }
         app.typeKey("n", modifierFlags: .command)

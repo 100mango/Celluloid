@@ -2,6 +2,7 @@
 """Export only bounded synthetic evidence: <=5 MB/file, <=20 MB/run, no xcresults."""
 from pathlib import Path
 import hashlib,json,os,re,shutil,subprocess,tempfile
+from collections import deque
 ROOT=Path(__file__).resolve().parents[1]
 TEMP=Path(os.environ['RUNNER_TEMP']).resolve()
 OUT=TEMP/'celluloid-bounded-evidence'
@@ -25,20 +26,31 @@ def retain_bytes(name,data,source):
     manifest['files'].append({'name':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'source':source})
     return True
 
-logs=['domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log','tv-build.log','tv-runtime.log','tv-runtime-tests.log']
-markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|TV_NATIVE_|TV_PHOTOS_|TV_FOCUS_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|MAC_LEGACY_CANDIDATE)')
+def retain_file(name,path,source):
+    count=path.stat().st_size
+    if count>MAX_FILE or size+count>MAX_TOTAL-RESERVE:
+        manifest['omissions'].append({'name':name,'reason':'evidence byte cap','bytes':count});return False
+    return retain_bytes(name,path.read_bytes(),source)
+
+logs=['domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox-app-build.log','sandbox.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log','tv-build.log','tv-runtime.log','tv-runtime-tests.log','watch-build.log','watch-runtime.log','watch-runtime-tests.log','phone-build.log','phone-runtime.log','phone-runtime-tests.log']
+markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|TV_NATIVE_|TV_PHOTOS_|TV_FOCUS_|WATCH_NATIVE_|PHONE_COMPANION_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|MAC_LEGACY_CANDIDATE)')
 for name in logs:
     path=TEMP/name
     if not path.is_file():continue
-    data=path.read_bytes()
-    retain_bytes(name+'.tail.txt',data[-200_000:],name+' (last200000 bytes)')
-    selected=[line[:2000] for line in data.decode('utf8','replace').splitlines() if markers.search(line)]
-    retain_bytes(name+'.summary.txt',('\n'.join(selected[-1500:])+'\n').encode(),name+' (test/error markers)')
-for name in ['vision-runtime-evidence.json','tv-runtime-evidence.json','sandbox-entitlements.plist','sandbox-entitlements-after.plist']:
+    with path.open('rb') as handle:
+        handle.seek(max(0,path.stat().st_size-200_000))
+        retain_bytes(name+'.tail.txt',handle.read(200_000),name+' (last200000 bytes)')
+    selected=deque(maxlen=1500)
+    with path.open('rb') as handle:
+        while part:=handle.readline(256_000):
+            line=part.decode('utf8','replace')
+            if markers.search(line):selected.append(line[:2000].rstrip())
+    retain_bytes(name+'.summary.txt',('\n'.join(selected)+'\n').encode(),name+' (test/error markers)')
+for name in ['vision-runtime-evidence.json','tv-runtime-evidence.json','watch-runtime-evidence.json','phone-runtime-evidence.json','sandbox-entitlements.plist','sandbox-entitlements-after.plist']:
     path=TEMP/name
-    if path.is_file():retain_bytes(name,path.read_bytes(),name)
+    if path.is_file():retain_file(name,path,name)
 
-bundles=['CelluloidMac.xcresult','CelluloidMacUI.xcresult','CelluloidSandbox.xcresult','CelluloidVision.xcresult','CelluloidTV.xcresult']
+bundles=['CelluloidMac.xcresult','CelluloidMacUI.xcresult','CelluloidSandbox.xcresult','CelluloidVision.xcresult','CelluloidTV.xcresult','CelluloidWatch.xcresult','CelluloidPhoneCompanion.xcresult']
 for name in bundles:
     bundle=TEMP/name
     if not bundle.is_dir():continue
@@ -70,11 +82,11 @@ for name in bundles:
                 candidates.append((priority,human,path,extension))
         for index,(_,human,path,extension) in enumerate(sorted(candidates,key=lambda x:(x[0],x[1]))[:8]):
             safe=re.sub(r'[^A-Za-z0-9_-]+','-',human)[:100]
-            retain_bytes(f'{name.removesuffix(".xcresult")}-{index}-{safe}{extension}',path.read_bytes(),name+' selected screenshot')
+            retain_file(f'{name.removesuffix(".xcresult")}-{index}-{safe}{extension}',path,name+' selected screenshot')
 
-for name in ['native-vision-launch.png','native-tv-launch.png']:
+for name in ['native-vision-launch.png','native-tv-launch.png','native-watch-launch.png','native-phone-launch.png']:
     path=TEMP/name
-    if path.is_file():retain_bytes(path.name,path.read_bytes(),'simctl native launch screenshot')
+    if path.is_file():retain_file(path.name,path,'simctl native launch screenshot')
 manifest['retained_bytes_before_manifest']=size
 payload=(json.dumps(manifest,indent=2,ensure_ascii=False)+'\n').encode()
 if len(payload)>RESERVE:raise RuntimeError('Evidence manifest exceeded its reserved budget')

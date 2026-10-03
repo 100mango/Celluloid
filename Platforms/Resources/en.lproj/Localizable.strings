@@ -94,3 +94,37 @@
 "Recipe kept on this TV. Source photos must remain available in Photos." = "Recipe kept on this TV. Source photos must remain available in Photos.";
 "Saved to Photos and verified by reading the image back." = "Saved to Photos and verified by reading the image back.";
 "This photo is not stored on this Apple TV. Download it in Photos and try again." = "This photo is not stored on this Apple TV. Download it in Photos and try again.";
+
+/* Explicit paired-phone and offline Watch workflows */
+"Choose Photo" = "Choose Photo";
+"Selected Photo" = "Selected Photo";
+"Selected photos stay on this Watch and can be viewed offline." = "Selected photos stay on this Watch and can be viewed offline.";
+"Selected photo preview" = "Selected photo preview";
+"Preview up to 512 pixels" = "Preview up to 512 pixels";
+"Phone Filter" = "Phone Filter";
+"Process on iPhone" = "Process on iPhone";
+"Cancel Request" = "Cancel Request";
+"Pending" = "Pending";
+"Processing" = "Processing";
+"Completed" = "Completed";
+"Failed" = "Failed";
+"Cancelled" = "Cancelled";
+"Sends only this selected image to your paired iPhone. A returned preview is not a Photos save. Open the phone app to save the full result." = "Sends only this selected image to your paired iPhone. A returned preview is not a Photos save. Open the phone app to save the full result.";
+"Remove from Watch" = "Remove from Watch";
+"Remove this local photo?" = "Remove this local photo?";
+"This removes only the Watch copy. Photos and the paired iPhone stay unchanged." = "This removes only the Watch copy. Photos and the paired iPhone stay unchanged.";
+"Use a still photo up to 8 MB. The Watch gallery holds up to 20 photos and 32 MB; remove a local copy to make room." = "Use a still photo up to 8 MB. The Watch gallery holds up to 20 photos and 32 MB; remove a local copy to make room.";
+"Open Celluloid on your paired iPhone, then try again." = "Open Celluloid on your paired iPhone, then try again.";
+"Wait for the current phone request, or cancel it first." = "Wait for the current phone request, or cancel it first.";
+"The phone transfer failed. You can request processing again." = "The phone transfer failed. You can request processing again.";
+"Another image is being processed. Request this image again when it finishes." = "Another image is being processed. Request this image again when it finishes.";
+"No Watch processing results yet. Choose a photo on your Watch and request phone processing." = "No Watch processing results yet. Choose a photo on your Watch and request phone processing.";
+"Watch Photos" = "Watch Photos";
+"Watch Photo" = "Watch Photo";
+"Processed photo" = "Processed photo";
+"Full-size result kept on this iPhone. Saving creates a new Photos image and keeps the original unchanged." = "Full-size result kept on this iPhone. Saving creates a new Photos image and keeps the original unchanged.";
+"Delete Phone Result" = "Delete Phone Result";
+"Delete this phone processing result?" = "Delete this phone processing result?";
+"Existing Photos images and Watch copies stay unchanged." = "Existing Photos images and Watch copies stay unchanged.";
+"Ready on iPhone; Watch delivery is pending or failed." = "Ready on iPhone; Watch delivery is pending or failed.";
+"The image is ready on your iPhone, but its Watch preview could not be delivered. Open the phone app to view or save it." = "The image is ready on your iPhone, but its Watch preview could not be delivered. Open the phone app to view or save it.";

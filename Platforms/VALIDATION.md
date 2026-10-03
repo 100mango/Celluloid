@@ -1,6 +1,8 @@
 # Native Celluloid implementation checkpoint
 
-This is an **unsigned native implementation candidate**, not a release. Native macOS27 builds and core/rendering/document tests have run successfully; the complete UI/export gate is still being closed. Vision remains an unbuilt isolated scene at this checkpoint. No platform registration, entitlement, signing, Store mutation, or physical-device result exists.
+This branch is an **implementation and validation candidate**, not a release. Native Mac document and full Files/save/reopen/PNG/JPEG UI workflows passed at `3a3e8df` and again at `fbac333`. These results are unsigned and non-sandboxed. Native Vision app, two hosted tests and one real launch/new-document UI test passed at `5a326a4`; its successor had a simulator installation timeout and does not inherit that runtime result. App Sandbox source entitlements and ephemeral ad-hoc build checks are present, but strict verification has so far rejected Xcode-injected root/Mach exceptions before runtime. No Apple account registration, production signing or Store mutation is performed by this workflow.
+
+TV production app source compiled at `fbac333`; two test-only missing `try` annotations blocked its first runtime and are corrected in this candidate. Watch and isolated phone-companion source/targets are awaiting first Apple compilation. Real Photos-picker traversal, Photos save on TV, Watch system import, and background paired-device delivery remain open gates.
 
 ## Isolation and data contract
 
@@ -16,7 +18,13 @@ This is an **unsigned native implementation candidate**, not a release. Native m
 
 Mac: Files/Photos/drop/paste import, 1-photo editing and 2–4-photo collage with per-source1–5×zoom/focal-point crop, source reorder/remove/reset, all preset IDs, layer selection, editable multilingual bubble text, independent width/height/position/rotation/mirror, keyboard nudges/rotation, undo, native document save/reopen, PNG/JPEG encoding and destination byte readback.
 
-Vision: native document scene using the same import-first editor, file/Photos import, the same renderer and portable document/export format. No passthrough camera promise. Spatial input is untested.
+Vision: native document scene using the same import-first editor, file/Photos import, the same renderer and portable document/export format. Actual simulator scene plus programmatic document pipeline and native new-document UI are proved at the named checkpoint. System picker/export UI and physical spatial input are not yet proved. No passthrough camera promise.
+
+TV: focus-based PhotoKit selection, all shared filters/assets/text/crop/transform controls, and explicit Photos output creation followed by actual asset fetch, ImageIO decode and normalized pixel proof. Up to 200 recent photos are displayed; one to four ordered sources are loaded locally. A single optional 192 KiB recipe+Photos-identifier record is stored in defaults; no image bytes enter defaults. Images are reconstructed from Photos on reopen. System cache or library loss never triggers upstream deletion. First real focus/Photos runtime is still pending.
+
+Watch: offline selected-photo gallery in application support, no Core Image, bounded ImageIO 512px previews. At most 20 photos, 8 MiB/source and 32 MiB combined are accepted without silent eviction. Phone processing is an explicit selected-file action with durable pending/processing/completed/failed/cancelled states. Preview delivery is distinct from saving a full-size Photos result. The phone processor validates fingerprints, renders locally, keeps full-size results, deduplicates request IDs and refuses bounded-storage overflow. A captured activation epoch prevents sending a completed old render to a newly activated counterpart. An isolated unsigned iOS companion host tests this source while the original UIKit shipping app remains untouched; final lifecycle/navigation integration is still required.
+
+Apple documents that Simulator does not implement the background `transferUserInfo`/received-file route. Therefore local Watch UI, store, state-machine and phone processor tests are separate from physical paired-device delivery. No simulator protocol injection is labeled a real WatchConnectivity end-to-end pass.
 
 ## Runner commands
 
@@ -31,7 +39,7 @@ xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidVision -destinati
 
 Tests exercise new-format roundtrip and rejection, actual image filter outputs and Fade mapping, all 25 collage compositions containing every requested source color, multilingual overlay raster changes, PNG/JPEG decode and dimensions, document filesystem save/reopen, original-byte preservation, independent documents, atomic failed import, corrupted packages and Undo/Redo.
 
-Still required: compile/fix against exact SDK; all tests actually run; native UI launch/screenshots and interactive Files/Photos/drop/paste, cancel/reselect, save-close-cancel/reopen, keyboard, resize and accessibility checks; orientation and original renderer equivalence; real face fixture/pixelation checks; actual native Photos interchange before any Mac extension; hardware-only Vision/Watch/TV evidence; oldest supported OS runtime/weak-link checks. Deployment floors are proposals, not proven support.
+Still required on the exact final integrated head: native UI launch/screenshots and interactive Files/Photos/drop/paste, cancel/reselect, save-close-cancel/reopen, keyboard, resize and accessibility checks; orientation and original renderer equivalence; real face fixture/pixelation checks; actual native Photos interchange before any Mac extension; hardware-only Vision/Watch/TV evidence; oldest supported OS runtime/weak-link checks. Deployment floors are proposals, not proven support.
 
 ## Bounded work
 
@@ -51,8 +59,19 @@ The original iOS `CollageContentView` draws a3-point black CAShapeLayer stroke a
 
 ## Observed validation milestones
 
-- `42270fac`, run37117674534:11 domain cases,20 renderer passes plus one explicit HEIF-encoder skip,7 hosted Mac tests passed. Actual UIKit-produced synthetic1.0 archives securely decoded with exact values on Mac; reverse UIKit re-decode is coordinated separately.
+- `42270fac`, run37117674534:11 domain cases,20 renderer passes plus one explicit HEIF-encoder skip,7 hosted Mac tests passed. Actual UIKit-produced synthetic1.0 archives securely decoded with exact values on Mac; The exact Mac re-archive candidates were subsequently decoded and re-encoded by the original UIKit reader on iPhone18ProMax and SE3 at `189e5da` / run37120477839. These are synthetic compatibility fixtures, not recovered historical user archives; they do not prove a newly manufactured native geometry writer or typography equivalence.
 - `ea066501`, run37117969381: first real Mac Files import, multilingual edit, resize and canceled unsaved-close UI passed. Legacy-context oracle exposed a real working-color-space mismatch, subsequently corrected without loosening the oracle.
 - `6cb1165`, run37118858668: all nine non-face filter outputs matched legacy default-context gradients/alpha/P3 exactly; bounded maximum-source rendering stabilized. English visual picker/edit/resize passed; Chinese resource packaging then needed repair.
 - `b51baa7`, run37119355791:13 domain cases,25 renderer passes plus one HEIF skip,8 hosted Mac tests and Chinese visual-picker UI passed.8064×6048 input/memory passed. Save/export UI was still red and must not be described as fully verified.
+- `3a3e8df`, run37121035423:13 domain,26 renderer passes plus one explicit HEIF skip,12 hosted Mac cases and all3 native Mac Files/editor/save-reopen/PNG+JPEG/Chinese UI workflows passed. Earlier artifact packaging violated the retention/size policy and was corrected in `c76b1e7`; it does not invalidate test execution, and no further raw xcresults are uploaded.
+- `5a326a4`, run37122766289: native Vision app and test bundles built; two hosted document/runtime tests and one actual new-document UI test passed on visionOS27. Mac failed a new debug-probe compile error, subsequently corrected. Bounded evidence retained835,698 bytes, max200,000 per file, one-day retention.
+- `fbac333`, run37123937017: unsigned Mac tests/UI green again; the sandbox build signed but exact-entitlement verification rejected temporary root/Mach access before launch; TV app compiled but two test assertion annotations blocked tests; Vision boot passed, then installation exceeded120 seconds. The complete job is red. Bounded retained evidence1,809,986 bytes, one-day retention.
 - Latest runtime commits and evidence are available in the branch’s Apple platform validation workflow. No fixture screenshot is Store marketing evidence. The earlier120×80 fixture was replaced by1200×800 for readable native UI captures.
+
+## Remaining native Photos extension gate
+
+Mac Photos editing extension is not implemented or runtime-proved. Main-app document editing does not replace it. For legacy payloads without safely reconstructible geometry, the planned `PHContentEditingController.canHandle(_:)` false path uses Photos' rendered appearance; it must not invent a reference canvas or advertise recovered editable layers. A future native writer must prove newly manufactured geometry bytes through the original UIKit reader. Actual Mac Photos host edit/save/reopen/revert pixels and a supported synthetic library seeding route remain required.
+
+## CI evidence policy
+
+One push-only feature-branch workflow runs platforms serially on the standard Xcode runner. The uploader reads only `celluloid-bounded-evidence`, and only if the collector succeeds. Limits are5,000,000 bytes/file and20,000,000 bytes total including the manifest, with1-day retention. Raw xcresults, archives and video are excluded. Oversized screenshots are recorded as omissions; bounded log tails/marker summaries are selected with streaming reads. `Scripts/test_native_evidence.py` exercises oversized logs, screenshot omission, hashes, aggregate bounds and nonempty-destination rejection on Linux.

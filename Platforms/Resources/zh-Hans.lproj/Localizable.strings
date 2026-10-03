@@ -94,3 +94,37 @@
 "Recipe kept on this TV. Source photos must remain available in Photos." = "编辑记录已保留在这台电视上。原图必须继续保留在照片图库中。";
 "Saved to Photos and verified by reading the image back." = "已存入照片图库，并重新读取图片验证成功。";
 "This photo is not stored on this Apple TV. Download it in Photos and try again." = "这台 Apple TV 上没有此照片。请先在照片中下载，再重试。";
+
+/* Explicit paired-phone and offline Watch workflows */
+"Choose Photo" = "选择照片";
+"Selected Photo" = "所选照片";
+"Selected photos stay on this Watch and can be viewed offline." = "所选照片保存在这只手表上，可离线查看。";
+"Selected photo preview" = "所选照片预览";
+"Preview up to 512 pixels" = "预览图最长边为 512 像素";
+"Phone Filter" = "手机处理滤镜";
+"Process on iPhone" = "在 iPhone 上处理";
+"Cancel Request" = "取消请求";
+"Pending" = "等待处理";
+"Processing" = "正在处理";
+"Completed" = "已完成";
+"Failed" = "处理失败";
+"Cancelled" = "已取消";
+"Sends only this selected image to your paired iPhone. A returned preview is not a Photos save. Open the phone app to save the full result." = "仅将此照片发送到配对的 iPhone。返回的预览图尚未存入照片图库。请在手机应用中保存完整结果。";
+"Remove from Watch" = "从手表移除";
+"Remove this local photo?" = "移除这张本地照片？";
+"This removes only the Watch copy. Photos and the paired iPhone stay unchanged." = "仅移除手表上的副本，不会更改照片图库或配对的 iPhone。";
+"Use a still photo up to 8 MB. The Watch gallery holds up to 20 photos and 32 MB; remove a local copy to make room." = "请选择不超过 8 MB 的静态照片。手表图库最多保留 20 张、共 32 MB；可移除本地副本以腾出空间。";
+"Open Celluloid on your paired iPhone, then try again." = "请在配对的 iPhone 上打开 Celluloid，然后重试。";
+"Wait for the current phone request, or cancel it first." = "请等待当前手机处理请求完成，或先取消该请求。";
+"The phone transfer failed. You can request processing again." = "传输到手机失败，可以重新请求处理。";
+"Another image is being processed. Request this image again when it finishes." = "另一张图片正在处理，请等待完成后重新请求处理此图片。";
+"No Watch processing results yet. Choose a photo on your Watch and request phone processing." = "尚无手表处理结果。请在手表上选择照片，并请求手机处理。";
+"Watch Photos" = "手表照片";
+"Watch Photo" = "手表照片";
+"Processed photo" = "已处理的照片";
+"Full-size result kept on this iPhone. Saving creates a new Photos image and keeps the original unchanged." = "完整尺寸结果已保存在这台 iPhone 上。保存会在照片图库中创建新图片，原图保持不变。";
+"Delete Phone Result" = "删除手机处理结果";
+"Delete this phone processing result?" = "删除这项手机处理结果？";
+"Existing Photos images and Watch copies stay unchanged." = "不会更改照片图库中的图片或手表副本。";
+"Ready on iPhone; Watch delivery is pending or failed." = "结果已保存在 iPhone 上；手表传输仍在等待或已失败。";
+"The image is ready on your iPhone, but its Watch preview could not be delivered. Open the phone app to view or save it." = "图片已在 iPhone 上处理完成，但未能传送预览图到手表。请在手机应用中查看或保存。";

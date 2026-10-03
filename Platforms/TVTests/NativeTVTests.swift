@@ -33,8 +33,8 @@ final class NativeTVTests: XCTestCase {
             return try RasterCodec.encode(XCTUnwrap(context.makeImage()), as: .png)
         }
         let a = try picture(1), b = try picture(0)
-        XCTAssertEqual(try TVPhotoLibrary.normalizedProof(a), TVPhotoLibrary.normalizedProof(a))
-        XCTAssertNotEqual(try TVPhotoLibrary.normalizedProof(a), TVPhotoLibrary.normalizedProof(b))
+        XCTAssertEqual(try TVPhotoLibrary.normalizedProof(a), try TVPhotoLibrary.normalizedProof(a))
+        XCTAssertNotEqual(try TVPhotoLibrary.normalizedProof(a), try TVPhotoLibrary.normalizedProof(b))
         XCTAssertThrowsError(try TVPhotoLibrary.normalizedProof(Data()))
     }
 }

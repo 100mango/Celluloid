@@ -31,4 +31,16 @@ final class CompanionJobTests: XCTestCase {
         try job.accept(CompanionResult(requestID: job.request.id, sourceSHA256: job.request.sourceSHA256, previewSHA256: nil, pixelWidth: nil, pixelHeight: nil, failure: "Phone processing failed"))
         XCTAssertEqual(job.phase, .failed)
     }
+    func testFailedResponseDeliveryCanRecoverAndLateFailureCannotDowngradeCompletion() throws {
+        var job = CompanionJob(request: request)
+        let failure = CompanionResult(requestID: job.request.id, sourceSHA256: job.request.sourceSHA256, previewSHA256: nil, pixelWidth: nil, pixelHeight: nil, failure: "Preview transfer failed")
+        try job.accept(failure); XCTAssertEqual(job.phase, .failed)
+        let delivered = CompanionResult(requestID: job.request.id, sourceSHA256: job.request.sourceSHA256, previewSHA256: String(repeating: "b", count: 64), pixelWidth: 512, pixelHeight: 340, failure: nil)
+        try job.accept(delivered); XCTAssertEqual(job.phase, .completed)
+        try job.accept(failure); XCTAssertEqual(job.phase, .completed); XCTAssertEqual(job.result, delivered)
+        try job.validate()
+        let altered = CompanionResult(requestID: job.request.id, sourceSHA256: job.request.sourceSHA256, previewSHA256: String(repeating: "c", count: 64), pixelWidth: 512, pixelHeight: 340, failure: nil)
+        XCTAssertThrowsError(try job.accept(altered))
+    }
+
 }

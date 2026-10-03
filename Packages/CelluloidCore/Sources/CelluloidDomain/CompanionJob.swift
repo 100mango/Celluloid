@@ -55,13 +55,23 @@ public struct CompanionJob: Codable, Equatable, Sendable {
     public private(set) var phase: Phase = .pending
     public private(set) var result: CompanionResult?
     public init(request: CompanionRequest) { self.request = request }
+    public func validate() throws {
+        try request.validate(); try result?.validate()
+        if let result {
+            guard result.requestID == request.id, result.sourceSHA256 == request.sourceSHA256,
+                  (phase == .completed && result.failure == nil) || (phase == .failed && result.failure != nil) else { throw RecipeError.invalidDocument }
+        } else { guard phase != .completed && phase != .failed else { throw RecipeError.invalidDocument } }
+    }
     public mutating func accept(_ result: CompanionResult) throws {
         try request.validate(); try result.validate()
         guard result.requestID == request.id, result.sourceSHA256 == request.sourceSHA256 else { throw RecipeError.invalidDocument }
         guard phase != .cancelled else { return }
         if let previous = self.result {
-            guard previous == result else { throw RecipeError.invalidDocument }
-            return // idempotent acknowledgement of an already applied response
+            if previous == result { return }
+            // A verified delivered preview may arrive after a transport error. Completion wins.
+            // A delayed error must never downgrade a successfully received image.
+            if previous.failure == nil && result.failure != nil { return }
+            guard previous.failure != nil && result.failure == nil else { throw RecipeError.invalidDocument }
         }
         self.result = result; phase = result.failure == nil ? .completed : .failed
     }

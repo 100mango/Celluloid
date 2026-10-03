@@ -26,7 +26,9 @@ types=json.loads(run(['xcrun','simctl','list','devicetypes','--json']).stdout)['
 possible=[r for r in runtimes if r.get('isAvailable') and ('tvos' in r.get('name','').lower() or 'tvos' in r.get('identifier','').lower())]
 if not possible:raise RuntimeError('No available native tvOS runtime was found; SDK build does not establish runtime coverage')
 runtime=sorted(possible,key=lambda r:tuple(int(x) for x in r['version'].split('.')),reverse=True)[0]
-device_type=next(t for t in types if 'Apple TV 4K' in t['name'])
+supported={t['identifier'] for t in runtime.get('supportedDeviceTypes',[])}
+compatible=[t for t in types if not supported or t['identifier'] in supported]
+device_type=next(t for t in compatible if 'Apple TV 4K' in t['name'])
 udid=run(['xcrun','simctl','create','Celluloid Native TV Validation',device_type['identifier'],runtime['identifier']]).stdout.strip()
 app=temp/'celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app'
 evidence={'runtime':runtime,'device_type':device_type,'udid':udid,'head':os.environ['GITHUB_SHA']}
@@ -55,5 +57,10 @@ except Exception as error:
     raise
 finally:
     (temp/'tv-runtime-evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')
-    run(['xcrun','simctl','shutdown',udid],timeout=45,check=False)
-    run(['xcrun','simctl','delete',udid],timeout=45,check=False)
+    evidence['cleanup']=[]
+    for action in ['shutdown','delete']:
+        try:
+            result=run(['xcrun','simctl',action,udid],timeout=45,check=False)
+            evidence['cleanup'].append({'action':action,'exit_code':result.returncode})
+        except Exception as error:evidence['cleanup'].append({'action':action,'error':str(error)})
+    (temp/'tv-runtime-evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')

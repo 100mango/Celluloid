@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded native visionOS simulator run; no broad service-dump readiness gate."""
+"""Bounded native iOS companion simulator run; no broad service-dump readiness gate."""
 import json,os,signal,subprocess,sys,time
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];temp=Path(os.environ['RUNNER_TEMP'])
@@ -23,14 +23,14 @@ def run(args,timeout=180,check=True,log_name=None):
     return result
 runtimes=json.loads(run(['xcrun','simctl','list','runtimes','--json']).stdout)['runtimes']
 types=json.loads(run(['xcrun','simctl','list','devicetypes','--json']).stdout)['devicetypes']
-possible=[r for r in runtimes if r.get('isAvailable') and ('vision' in r.get('name','').lower() or 'xros' in r.get('identifier','').lower())]
-if not possible:raise RuntimeError('No available native visionOS runtime was found; SDK build does not establish runtime coverage')
+possible=[r for r in runtimes if r.get('isAvailable') and ('ios' == r.get('name','').lower().split(' ')[0])]
+if not possible:raise RuntimeError('No available native iOS companion runtime was found; SDK build does not establish runtime coverage')
 runtime=sorted(possible,key=lambda r:tuple(int(x) for x in r['version'].split('.')),reverse=True)[0]
 supported={t['identifier'] for t in runtime.get('supportedDeviceTypes',[])}
 compatible=[t for t in types if not supported or t['identifier'] in supported]
-device_type=next(t for t in compatible if 'Apple Vision Pro' in t['name'])
-udid=run(['xcrun','simctl','create','Celluloid Native Vision Validation',device_type['identifier'],runtime['identifier']]).stdout.strip()
-app=temp/'celluloid-vision/Build/Products/Debug-xrsimulator/CelluloidVision.app'
+device_type=next(t for t in compatible if t['name'].startswith('iPhone'))
+udid=run(['xcrun','simctl','create','Celluloid Native Phone Companion Validation',device_type['identifier'],runtime['identifier']]).stdout.strip()
+app=temp/'celluloid-phone/Build/Products/Debug-iphonesimulator/CelluloidPhoneCompanion.app'
 evidence={'runtime':runtime,'device_type':device_type,'udid':udid,'head':os.environ['GITHUB_SHA']}
 try:
     run(['xcrun','simctl','boot',udid]);run(['xcrun','simctl','bootstatus',udid,'-b'],timeout=240)
@@ -40,20 +40,20 @@ try:
     pid=launch.stdout.strip().rsplit(':',1)[-1].strip(); assert pid.isdigit()
     time.sleep(4)
     proc=run(['ps','-p',pid,'-o','pid=,comm='],timeout=20)
-    evidence['process']=proc.stdout;assert 'CelluloidVision' in proc.stdout
-    run(['xcrun','simctl','io',udid,'screenshot',temp/'native-vision-launch.png'],timeout=45,check=False)
-    result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidVision','-destination',f'platform=visionOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-vision','-resultBundlePath',temp/'CelluloidVision.xcresult','CODE_SIGNING_ALLOWED=NO','test-without-building'],timeout=600,check=False,log_name='vision-runtime-tests.log')
+    evidence['process']=proc.stdout;assert 'CelluloidPhoneCompanion' in proc.stdout
+    run(['xcrun','simctl','io',udid,'screenshot',temp/'native-phone-launch.png'],timeout=45,check=False)
+    result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidPhoneCompanion','-destination',f'platform=iOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-phone','-resultBundlePath',temp/'CelluloidPhoneCompanion.xcresult','CODE_SIGNING_ALLOWED=NO','test-without-building'],timeout=600,check=False,log_name='phone-runtime-tests.log')
     evidence['test_exit_code']=result.returncode
-    if result.returncode:raise RuntimeError('Native Vision test invocation failed; inspect actual error/attachments, do not equate build or boot with E2E coverage')
+    if result.returncode:raise RuntimeError('Native Phone Companion test invocation failed; inspect actual error/attachments, do not equate build or boot with E2E coverage')
 except Exception as error:
     evidence['error']=str(error)
     raise
 finally:
-    (temp/'vision-runtime-evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')
+    (temp/'phone-runtime-evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')
     evidence['cleanup']=[]
     for action in ['shutdown','delete']:
         try:
             result=run(['xcrun','simctl',action,udid],timeout=45,check=False)
             evidence['cleanup'].append({'action':action,'exit_code':result.returncode})
         except Exception as error:evidence['cleanup'].append({'action':action,'error':str(error)})
-    (temp/'vision-runtime-evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')
+    (temp/'phone-runtime-evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')
