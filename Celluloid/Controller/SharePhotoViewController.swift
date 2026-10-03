@@ -148,7 +148,30 @@ class SharePhotoViewController: UIViewController {
         hideUnusedSystemToolbar()
         let axis: NSLayoutConstraint.Axis = view.bounds.width > view.bounds.height ? .horizontal : .vertical
         if actions.axis != axis { actions.axis = axis }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-diagnostics") {
+            DispatchQueue.main.async { [weak self] in self?.updateHitTestDiagnostics() }
+        }
+        #endif
     }
+
+    #if DEBUG
+    private func updateHitTestDiagnostics() {
+        guard let window = view.window else { return }
+        let frame = doneButton.convert(doneButton.bounds, to: window)
+        let hit = window.hitTest(CGPoint(x: frame.midX, y: frame.midY), with: nil)
+        var ancestry: [String] = []
+        var ancestor = hit
+        while let current = ancestor, ancestry.count < 12 {
+            ancestry.append(String(describing: type(of: current)))
+            ancestor = current.superview
+        }
+        let toolbar = navigationController?.toolbar
+        toolbar?.accessibilityIdentifier = "diagnostic-public-navigation-toolbar"
+        let toolbarState = toolbar.map { "id=\($0.accessibilityIdentifier ?? ""),frame=\($0.frame),hidden=\($0.isHidden),axHidden=\($0.accessibilityElementsHidden),alpha=\($0.alpha),items=\($0.items?.count ?? 0)" } ?? "nil"
+        doneButton.accessibilityValue = "DIAGNOSTIC window=\(window.bounds) done=\(frame) actualHitIsDone=\(hit === doneButton || hit?.isDescendant(of: doneButton) == true) ancestry=\(ancestry) logicalToolbarHidden=\(navigationController?.isToolbarHidden ?? true) toolbar=\(toolbarState)"
+    }
+    #endif
 
     
 }

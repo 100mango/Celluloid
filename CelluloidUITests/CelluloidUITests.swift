@@ -16,12 +16,42 @@ final class CelluloidUITests: XCTestCase {
         }
         super.record(issue)
     }
-    override func setUp() { super.setUp(); continueAfterFailure = false; app = XCUIApplication() }
+    override func setUp() { super.setUp(); continueAfterFailure = false; recordedFailure = false; app = XCUIApplication() }
     override func tearDown() { XCUIDevice.shared.orientation = .portrait; app.terminate(); super.tearDown() }
     private func launch(_ arguments: [String] = [], language: String = "en") {
-        app.launchArguments = arguments + ["-AppleLanguages", "(\(language))", "-AppleLocale", language == "zh-Hans" ? "zh_CN" : "en_US"]
+        app.launchArguments = arguments + ["--ui-diagnostics", "-AppleLanguages", "(\(language))", "-AppleLocale", language == "zh-Hans" ? "zh_CN" : "en_US"]
         app.launch()
         XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 10))
+        waitForStableLayout([app.buttons["edit-photo"], app.buttons["make-collage"], app.buttons["privacy-policy"]],
+                            landscape: XCUIDevice.shared.orientation.isLandscape)
+    }
+
+    private func rotate(_ orientation: UIDeviceOrientation, observing elements: [XCUIElement]) {
+        XCUIDevice.shared.orientation = orientation
+        waitForStableLayout(elements, landscape: orientation.isLandscape)
+    }
+
+    private func waitForStableLayout(_ elements: [XCUIElement], landscape: Bool? = nil,
+                                     file: StaticString = #filePath, line: UInt = #line) {
+        var prior: [CGRect] = []
+        var stableSince = ProcessInfo.processInfo.systemUptime
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard self.app.state == .runningForeground, elements.allSatisfy({ $0.exists }) else { return false }
+            let frames = [self.app.frame] + elements.map { $0.frame }
+            guard frames.allSatisfy({ $0.width > 0 && $0.height > 0 && $0.minX.isFinite && $0.minY.isFinite }) else { return false }
+            if let landscape = landscape, (frames[0].width > frames[0].height) != landscape { return false }
+            let unchanged = prior.count == frames.count && zip(prior, frames).allSatisfy { pair in
+                let (a, b) = pair
+                return abs(a.minX - b.minX) < 0.25 && abs(a.minY - b.minY) < 0.25 && abs(a.width - b.width) < 0.25 && abs(a.height - b.height) < 0.25
+            }
+            if unchanged { return ProcessInfo.processInfo.systemUptime - stableSince >= 0.4 }
+            prior = frames
+            stableSince = ProcessInfo.processInfo.systemUptime
+            return false
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 8), .completed,
+                       "Assert settled interface geometry rather than an in-flight rotation/foreground frame", file: file, line: line)
+        print("LAYOUT_STABLE landscape=\(String(describing: landscape)) frames=\(prior)")
     }
     func testHomeChoiceGeometryInEnglishAndChineseAcrossRotation() {
         for language in ["en", "zh-Hans"] {
@@ -33,10 +63,10 @@ final class CelluloidUITests: XCTestCase {
                 if category == .large { normalFooterHeight = initialFooterHeight }
                 else { XCTAssertGreaterThan(initialFooterHeight, normalFooterHeight, "The largest text setting must actually affect the app") }
                 for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
-                    XCUIDevice.shared.orientation = orientation
                     let edit = app.buttons["edit-photo"]
                     let collage = app.buttons["make-collage"]
                     let footer = app.buttons["privacy-policy"]
+                    rotate(orientation, observing: [edit, collage, footer])
                     XCTAssertTrue(edit.isHittable && collage.isHittable && footer.isHittable)
                     XCTAssertGreaterThanOrEqual(edit.frame.height, 120)
                     XCTAssertGreaterThanOrEqual(collage.frame.height, 120)
@@ -54,7 +84,7 @@ final class CelluloidUITests: XCTestCase {
         let policy = app.buttons["privacy-policy"]
         XCTAssertTrue(policy.isHittable)
         XCTAssertEqual(policy.label, "Privacy Policy")
-        XCUIDevice.shared.orientation = .landscapeLeft
+        rotate(.landscapeLeft, observing: [policy])
         XCTAssertTrue(policy.isHittable)
         policy.tap()
         // The browser's Close action is available even when external networking is offline.
@@ -88,9 +118,9 @@ final class CelluloidUITests: XCTestCase {
         app.buttons["make-collage"].tap()
         XCTAssertTrue(app.buttons["manage-photos"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["photos-state"].label.contains("No photos"))
-        XCUIDevice.shared.orientation = .landscapeLeft
         let cancel = app.buttons["Cancel"]
         let manage = app.buttons["manage-photos"]
+        rotate(.landscapeLeft, observing: [cancel, manage])
         XCTAssertTrue(cancel.isHittable)
         XCTAssertTrue(manage.isHittable)
         XCTAssertTrue(app.frame.contains(manage.frame))
@@ -137,14 +167,28 @@ final class CelluloidUITests: XCTestCase {
         emitScreenshot("edited-fixture")
         XCUIDevice.shared.press(.home)
         app.activate()
+        waitForStableLayout([done])
+        XCTAssertTrue(done.isEnabled && done.isHittable)
         done.tap()
         XCTAssertTrue(app.staticTexts["photo-saved"].waitForExistence(timeout: 20))
-        XCUIDevice.shared.orientation = .landscapeLeft
         let shareDone = app.buttons["share-done"]
-        XCTAssertTrue(shareDone.isHittable, "Saved-photo dismissal must remain visible in compact landscape")
+        rotate(.landscapeLeft, observing: [shareDone, app.buttons["share-photo"]])
+        continueAfterFailure = true
+        let settledHittable = shareDone.isHittable
+        print("SHARE_HIT_DIAGNOSTIC " + String(describing: shareDone.value))
+        XCTAssertTrue(settledHittable, "Saved-photo dismissal must remain visible in compact landscape")
         XCTAssertTrue(app.frame.contains(shareDone.frame))
-        shareDone.tap()
-        XCUIDevice.shared.orientation = .portrait
+        if settledHittable { shareDone.tap() }
+        else {
+            // Preserve the failure. This diagnostic establishes actual touch
+            // behavior separately from XCTest's inaccessible activation point.
+            shareDone.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            let dismissed = app.buttons["edit-photo"].waitForExistence(timeout: 5)
+            print("SHARE_CENTER_TAP_DISMISSED \(dismissed)")
+            XCTAssertTrue(dismissed)
+            if !dismissed { return }
+        }
+        rotate(.portrait, observing: [app.buttons["edit-photo"], app.buttons["make-collage"]])
         app.buttons["edit-photo"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["photo-0"].waitForExistence(timeout: 10))
         app.descendants(matching: .any)["photo-0"].tap()
@@ -169,13 +213,13 @@ final class CelluloidUITests: XCTestCase {
         XCTAssertTrue(image.waitForExistence(timeout: 5))
         image.pinch(withScale: 1.5, velocity: 1)
         image.swipeLeft()
-        XCUIDevice.shared.orientation = .landscapeLeft
+        rotate(.landscapeLeft, observing: [done, image])
         XCTAssertTrue(done.isHittable)
-        XCUIDevice.shared.orientation = .portrait
+        rotate(.portrait, observing: [done, image])
         emitScreenshot("collage-preview")
         done.tap()
         XCTAssertTrue(app.staticTexts["photo-saved"].waitForExistence(timeout: 20))
-        XCUIDevice.shared.orientation = .landscapeLeft
+        rotate(.landscapeLeft, observing: [app.buttons["share-done"], app.buttons["share-photo"]])
         XCTAssertTrue(app.buttons["share-done"].isHittable)
         app.buttons["share-done"].tap()
         XCTAssertTrue(app.buttons["make-collage"].waitForExistence(timeout: 5))
