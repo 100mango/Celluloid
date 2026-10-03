@@ -132,7 +132,7 @@ class SharePhotoViewController: UIViewController {
         // iOS27 can leave an empty, full-window toolbar accessibility surface after
         // pushing from the editor and rotating. Hide that unused surface explicitly
         // rather than allowing it to obscure the actual controls' activation points.
-        let toolbar = navigation.toolbar
+        guard let toolbar = navigation.toolbar else { return }
         if !navigation.isToolbarHidden || !toolbar.isHidden || !toolbar.accessibilityElementsHidden {
             #if DEBUG
             print("SHARE_NATIVE_TOOLBAR_HIDE logicalHidden=\(navigation.isToolbarHidden) viewHidden=\(toolbar.isHidden) axHidden=\(toolbar.accessibilityElementsHidden) frame=\(toolbar.frame)")

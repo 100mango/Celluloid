@@ -148,7 +148,7 @@ final class AdaptiveInterfaceTests: XCTestCase {
         }
     }
 
-    func testSavedScreenHidesItsUnusedNativeToolbarAfterLayout() {
+    func testSavedScreenHidesItsUnusedNativeToolbarAfterLayout() throws {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { _ in }
         let share = SharePhotoViewController(image: image)
         let navigation = UINavigationController(rootViewController: share)
@@ -156,12 +156,13 @@ final class AdaptiveInterfaceTests: XCTestCase {
         for size in [CGSize(width: 440, height: 956), CGSize(width: 956, height: 440)] {
             navigation.view.frame = CGRect(origin: .zero, size: size)
             navigation.setToolbarHidden(false, animated: false)
-            navigation.toolbar.isHidden = false
-            navigation.toolbar.accessibilityElementsHidden = false
+            let toolbar = try XCTUnwrap(navigation.toolbar)
+            toolbar.isHidden = false
+            toolbar.accessibilityElementsHidden = false
             share.viewDidLayoutSubviews()
             XCTAssertTrue(navigation.isToolbarHidden)
-            XCTAssertTrue(navigation.toolbar.isHidden)
-            XCTAssertTrue(navigation.toolbar.accessibilityElementsHidden)
+            XCTAssertTrue(toolbar.isHidden)
+            XCTAssertTrue(toolbar.accessibilityElementsHidden)
             XCTAssertFalse(share.shareButton.isHidden)
             XCTAssertFalse(share.doneButton.isHidden)
         }
