@@ -59,11 +59,35 @@ actor WatchGalleryStore {
         let file = url(id, "source"), bytes = try read(url(id, "source"), maximum: 8 * 1024 * 1024)
         return (file, bytes)
     }
-    func setJob(_ job: CompanionJob, for id: UUID) throws {
+    /// Admission and enqueue are one actor operation: a second caller cannot pass
+    /// a stale pending check, and cancel cannot run between persistence and enqueue.
+    func beginRequest(_ id: UUID, filter: FilterPreset, enqueue: @Sendable (URL, CompanionRequest) throws -> Void) throws -> CompanionRequest {
         var items = try load()
-        guard let index = items.firstIndex(where: { $0.id == id }), job.request.sourceID == id,
-              job.request.sourceSHA256 == items[index].sourceSHA256 else { throw RecipeError.invalidDocument }
-        try job.validate(); items[index].job = job; try save(items)
+        guard !items.contains(where: { $0.job?.phase == .pending || $0.job?.phase == .processing }) else {
+            throw NSError(domain: "Celluloid.Companion", code: 2, userInfo: [NSLocalizedDescriptionKey: NSLocalizedString("Wait for the current phone request, or cancel it first.", comment: "Watch companion")])
+        }
+        guard let index = items.firstIndex(where: { $0.id == id }) else { throw RecipeError.missingSource }
+        let bytes = try read(url(id, "source"), maximum: 8 * 1024 * 1024)
+        guard Self.digest(bytes) == items[index].sourceSHA256 else { throw RecipeError.invalidDocument }
+        let request = CompanionRequest(sourceID: id, sourceSHA256: items[index].sourceSHA256, sourceBytes: bytes.count, filter: filter)
+        let previous = items[index].job
+        items[index].job = CompanionJob(request: request); try save(items)
+        do { try enqueue(url(id, "source"), request) }
+        catch { items[index].job = previous; try save(items); throw error }
+        return request
+    }
+    func cancelRequest(sourceID: UUID, requestID: UUID) throws -> CompanionRequest? {
+        var items = try load()
+        guard let index = items.firstIndex(where: { $0.id == sourceID }), var current = items[index].job,
+              current.request.id == requestID, current.phase == .pending || current.phase == .processing else { return nil }
+        current.cancel(); items[index].job = current; try save(items)
+        return current.request
+    }
+    func markProcessing(_ request: CompanionRequest) throws {
+        var items = try load()
+        guard let index = items.firstIndex(where: { $0.id == request.sourceID }), var current = items[index].job,
+              current.request == request, current.phase == .pending else { return }
+        current.markProcessing(); items[index].job = current; try save(items)
     }
     func receive(_ result: CompanionResult, preview: Data?) throws {
         var items = try load()

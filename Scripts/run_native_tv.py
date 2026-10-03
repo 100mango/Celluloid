@@ -48,7 +48,7 @@ try:
     time.sleep(4)
     proc=run(['ps','-p',pid,'-o','pid=,comm='],timeout=20)
     evidence['process']=proc.stdout;assert 'CelluloidTV' in proc.stdout
-    run(['xcrun','simctl','io',udid,'screenshot',temp/'native-tv-launch.png'],timeout=45,check=False)
+    run(['xcrun','simctl','io',udid,'screenshot','--type=jpeg',temp/'native-tv-launch.jpg'],timeout=45,check=False)
     result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidTV','-destination',f'platform=tvOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-tv','-resultBundlePath',temp/'CelluloidTV.xcresult','CODE_SIGNING_ALLOWED=NO','test-without-building'],timeout=600,check=False,log_name='tv-runtime-tests.log')
     evidence['test_exit_code']=result.returncode
     if result.returncode:raise RuntimeError('Native TV test invocation failed; inspect actual error/attachments, do not equate build or boot with E2E coverage')

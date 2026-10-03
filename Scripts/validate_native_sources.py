@@ -13,7 +13,7 @@ for entry in manifest:
 assert (root/'LICENSE.txt').read_bytes()==(resources/'LICENSE.txt').read_bytes()
 assert (root/'Celluloid/collage.json').read_bytes()==(resources/'collage.json').read_bytes()
 assert (root/'CelluloidKit/bubble.json').read_bytes()==(resources/'bubble.json').read_bytes()
-for path in (root/'Platforms').rglob('*.plist'):
+for path in [*(root/'Platforms').rglob('*.plist'), *(root/'Platforms').rglob('*.xcprivacy')]:
     plistlib.loads(path.read_bytes())
 for path in (root/'CelluloidNative.xcodeproj/xcshareddata/xcschemes').glob('*.xcscheme'):
     ET.parse(path)

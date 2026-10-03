@@ -5,7 +5,7 @@ import Security
 /// Only enabled by the disposable CI runtime test. No network, account or user data.
 /// The Release build does not contain this diagnostic or its temporary write.
 enum SandboxDiagnostics {
-    static let enabled = ProcessInfo.processInfo.environment["CELLULOID_SANDBOX_DIAGNOSTICS"] == "YES"
+    static let enabled = ProcessInfo.processInfo.environment["CELLULOID_SANDBOX_DIAGNOSTICS"] == "YES" || ProcessInfo.processInfo.arguments.contains("--celluloid-sandbox-diagnostics")
     static let report: String = makeReport()
     private static func makeReport() -> String {
         guard enabled else { return "" }

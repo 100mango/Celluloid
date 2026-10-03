@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Bounded native visionOS simulator run; no broad service-dump readiness gate."""
-import json,os,signal,subprocess,sys,time
+import json,os,signal,subprocess,sys,time,struct,zlib
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];temp=Path(os.environ['RUNNER_TEMP'])
 def run(args,timeout=180,check=True,log_name=None):
@@ -35,13 +35,21 @@ evidence={'runtime':runtime,'device_type':device_type,'udid':udid,'head':os.envi
 try:
     run(['xcrun','simctl','boot',udid]);run(['xcrun','simctl','bootstatus',udid,'-b'],timeout=240)
     run(['xcrun','simctl','install',udid,app],timeout=120)
+    # Seed a generated PNG in our own disposable app's Documents for real Files-picker traversal.
+    container=Path(run(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data']).stdout.strip())
+    documents=container/'Documents';documents.mkdir(exist_ok=True)
+    def chunk(kind,data):return struct.pack('>I',len(data))+kind+data+struct.pack('>I',zlib.crc32(kind+data)&0xffffffff)
+    row=b''.join(bytes((240,40,30,255)) if x<600 else bytes((30,110,240,255)) for x in range(1200))
+    png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',1200,800,8,6,0,0,0))+chunk(b'sRGB',b'\0')+chunk(b'IDAT',zlib.compress((b'\0'+row)*800))+chunk(b'IEND',b'')
+    (documents/'VisionSynthetic.png').write_bytes(png)
+    evidence['fixture']='Own app Documents/VisionSynthetic.png, generated1200x800 sRGB; real user-selected Files import remains under XCTest'
     launch=run(['xcrun','simctl','launch',udid,'Mango.Celluloid'],timeout=60)
     evidence['launch_output']=launch.stdout
     pid=launch.stdout.strip().rsplit(':',1)[-1].strip(); assert pid.isdigit()
     time.sleep(4)
     proc=run(['ps','-p',pid,'-o','pid=,comm='],timeout=20)
     evidence['process']=proc.stdout;assert 'CelluloidVision' in proc.stdout
-    run(['xcrun','simctl','io',udid,'screenshot',temp/'native-vision-launch.png'],timeout=45,check=False)
+    run(['xcrun','simctl','io',udid,'screenshot','--type=jpeg',temp/'native-vision-launch.jpg'],timeout=45,check=False)
     result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidVision','-destination',f'platform=visionOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-vision','-resultBundlePath',temp/'CelluloidVision.xcresult','CODE_SIGNING_ALLOWED=NO','test-without-building'],timeout=600,check=False,log_name='vision-runtime-tests.log')
     evidence['test_exit_code']=result.returncode
     if result.returncode:raise RuntimeError('Native Vision test invocation failed; inspect actual error/attachments, do not equate build or boot with E2E coverage')

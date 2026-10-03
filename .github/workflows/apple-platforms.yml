@@ -10,7 +10,7 @@ concurrency:
 jobs:
   native-mac-core:
     runs-on: xcode-27
-    timeout-minutes: 35
+    timeout-minutes: 90
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
     steps:
@@ -29,6 +29,7 @@ jobs:
           xcodebuild -showsdks
           python3 Scripts/validate_native_sources.py
           python3 Scripts/test_native_evidence.py
+          python3 Scripts/validate_native_localization.py
       - name: Portable domain tests
         shell: bash
         run: |
@@ -77,6 +78,12 @@ jobs:
           codesign --verify --strict --deep "$APP"
           codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/sandbox-entitlements-after.plist"
           cmp "$RUNNER_TEMP/sandbox-entitlements.plist" "$RUNNER_TEMP/sandbox-entitlements-after.plist"
+      - name: Isolated native Mac Photos extension build
+        if: success() || failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacPhotosExtension -configuration Release -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-mac-photos" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$RUNNER_TEMP/mac-photos-build.log"
       - name: Native TV build
         id: tv_build
         if: success() || failure()
@@ -84,6 +91,9 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidTV -destination 'generic/platform=tvOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-tv" CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee "$RUNNER_TEMP/tv-build.log"
+          cmp Platforms/tvOS/PrivacyInfo.xcprivacy "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/PrivacyInfo.xcprivacy"
+          plutil -p "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/PrivacyInfo.xcprivacy"
+          test -f "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/zh-Hans.lproj/InfoPlist.strings"
       - name: Native TV focus and Photos runtime
         if: (success() || failure()) && steps.tv_build.outcome == 'success'
         shell: bash

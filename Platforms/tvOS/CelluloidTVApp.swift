@@ -40,6 +40,7 @@ struct TVEditorView: View {
                         Button("Keep Editable Recipe") { editor.keepRecipe() }.accessibilityIdentifier("tv.keep-recipe")
                         Button("Save Picture to Photos") { Task { await editor.saveToPhotos(library: library) } }.accessibilityIdentifier("tv.save-photos")
                     }.disabled(editor.recipe.sources.isEmpty || editor.busy)
+                    if editor.recipe.filter == .pixellateFace { Text("Face detection can miss faces. Check the result before sharing.").font(.caption) }
                     Text("Static photos · sRGB SDR export").font(.caption)
                     Text("TV image caches can be removed by the system. Keep originals in Photos and save finished pictures to Photos.").font(.caption)
                     Button("Privacy Policy") { panel = .privacy }
@@ -201,8 +202,8 @@ private struct TVAdjustButtons: View {
     var body: some View {
         HStack(spacing: 30) {
             Text(LocalizedStringKey(title)); Text(value, format: .number.precision(.fractionLength(2)))
-            Button("−") { change(max(range.lowerBound, value - step)) }.accessibilityLabel("Decrease " + title)
-            Button("+") { change(min(range.upperBound, value + step)) }.accessibilityLabel("Increase " + title)
+            Button("−") { change(max(range.lowerBound, value - step)) }.accessibilityLabel(String(format: NSLocalizedString("Decrease %@", comment: "TV focus"), NSLocalizedString(title, comment: "Property")))
+            Button("+") { change(min(range.upperBound, value + step)) }.accessibilityLabel(String(format: NSLocalizedString("Increase %@", comment: "TV focus"), NSLocalizedString(title, comment: "Property")))
         }
     }
 }

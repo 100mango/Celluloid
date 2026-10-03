@@ -128,3 +128,13 @@
 "Existing Photos images and Watch copies stay unchanged." = "Existing Photos images and Watch copies stay unchanged.";
 "Ready on iPhone; Watch delivery is pending or failed." = "Ready on iPhone; Watch delivery is pending or failed.";
 "The image is ready on your iPhone, but its Watch preview could not be delivered. Open the phone app to view or save it." = "The image is ready on your iPhone, but its Watch preview could not be delivered. Open the phone app to view or save it.";
+"Cancel" = "Cancel";
+"Undo" = "Undo";
+"%@ for %@" = "%@ for %@";
+"Decrease %@" = "Decrease %@";
+"Increase %@" = "Increase %@";
+"A Photos source has changed since this recipe was saved. Your current edit is unchanged; choose the photos again to start a new composition." = "A Photos source has changed since this recipe was saved. Your current edit is unchanged; choose the photos again to start a new composition.";
+"Starting image" = "Starting image";
+"Previous edits are included in the starting image. Their layers cannot be edited here." = "Previous edits are included in the starting image. Their layers cannot be edited here.";
+"This native Photos extension currently edits filters. Use the Celluloid document app for stickers, bubbles and collages." = "This native Photos extension currently edits filters. Use the Celluloid document app for stickers, bubbles and collages.";
+"Face detection can miss faces. Check the result before sharing." = "Face detection can miss faces. Check the result before sharing.";

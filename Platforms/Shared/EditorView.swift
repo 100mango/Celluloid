@@ -38,7 +38,8 @@ struct EditorView: View {
         .overlay(alignment: .bottomLeading) {
             if SandboxDiagnostics.enabled {
                 Text(verbatim: SandboxDiagnostics.report).font(.system(size: 8)).lineLimit(1)
-                    .accessibilityIdentifier("sandbox.probe").padding(2).background(Color.yellow)
+                    .padding(2).background(Color.yellow).accessibilityElement(children: .ignore)
+                    .accessibilityLabel(SandboxDiagnostics.report).accessibilityIdentifier("sandbox.probe")
             }
         }
         #endif
@@ -95,7 +96,7 @@ struct EditorView: View {
             HStack {
                 Text(verbatim: document.recipe.sources.isEmpty ? NSLocalizedString("No photos imported", comment: "Empty editor") : "\(document.recipe.canvasWidth) × \(document.recipe.canvasHeight) px").accessibilityIdentifier("editor.dimensions")
                 Spacer()
-                Text(status)
+                Text(status).accessibilityIdentifier("editor.status")
             }.font(.caption).foregroundStyle(.secondary).padding(.horizontal).padding(.bottom, 8)
         }
     }
@@ -146,9 +147,11 @@ struct EditorView: View {
                 var imported: [(String, Data)] = []
                 for (index, item) in items.enumerated() {
                     try Task.checkCancellation()
-                    guard let data = try await item.loadTransferable(type: Data.self) else { throw RenderError.invalidImage }
+                    guard let file = try await item.loadTransferable(type: NativePickedFile.self) else { throw RenderError.invalidImage }
+                    defer { file.owned.discard() }
                     try Task.checkCancellation()
-                    guard data.count <= RasterCodec.maxSourceBytes, imported.reduce(0, { $0 + $1.1.count }) + data.count <= 64 * 1024 * 1024 else { throw RecipeError.resourceLimit }
+                    let remaining = 64 * 1024 * 1024 - imported.reduce(0, { $0 + $1.1.count })
+                    let data = try await NativeImportQueue.shared.read([file.owned.url], budget: remaining)[0].1
                     imported.append(("Photo \(index + 1)", data))
                 }
                 finishImport(imported, generation: generation)
@@ -164,30 +167,15 @@ struct EditorView: View {
                 var items: [(String, Data)] = []
                 for (index, provider) in providers.enumerated() {
                     try Task.checkCancellation()
-                    let data: Data
-                    if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-                        let urlData = try await loadData(provider, type: UTType.fileURL.identifier)
-                        guard let url = URL(dataRepresentation: urlData, relativeTo: nil) else { throw RenderError.invalidImage }
-                        data = try await NativeImportQueue.shared.read([url])[0].1
-                    } else {
-                        data = try await loadData(provider, type: UTType.image.identifier)
-                    }
+                    let remaining = 64 * 1024 * 1024 - items.reduce(0, { $0 + $1.1.count })
+                    let data = try await NativeProviderImport.read(provider, limit: remaining)
                     try Task.checkCancellation()
-                    guard data.count <= RasterCodec.maxSourceBytes, items.reduce(0, { $0 + $1.1.count }) + data.count <= 64 * 1024 * 1024 else { throw RecipeError.resourceLimit }
                     items.append((provider.suggestedName ?? "Dropped Photo \(index + 1)", data))
                 }
                 finishImport(items, generation: generation)
             } catch { if generation == importGeneration { importing = false; self.error = error.localizedDescription } }
         }
         return true
-    }
-    private func loadData(_ provider: NSItemProvider, type: String) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            provider.loadDataRepresentation(forTypeIdentifier: type) { data, error in
-                if let data { continuation.resume(returning: data) }
-                else { continuation.resume(throwing: error ?? RenderError.invalidImage) }
-            }
-        }
     }
     #if os(macOS)
     private func paste() {
@@ -266,20 +254,5 @@ private struct NativeEditorSplit<Content: View>: View {
         #else
         HStack(spacing: 0, content: content)
         #endif
-    }
-}
-
-private actor NativeImportQueue {
-    static let shared = NativeImportQueue()
-    func read(_ urls: [URL]) throws -> [(String, Data)] {
-        var results: [(String, Data)] = []
-        var remaining = 64 * 1024 * 1024
-        for url in urls {
-            try Task.checkCancellation()
-            guard remaining > 0 else { throw RecipeError.resourceLimit }
-            let data = try NativeFileAccess.readImage(url, limit: remaining)
-            results.append((url.lastPathComponent, data)); remaining -= data.count
-        }
-        return results
     }
 }

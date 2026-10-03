@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Bounded native iOS companion simulator run; no broad service-dump readiness gate."""
-import json,os,signal,subprocess,sys,time
+import json,os,signal,subprocess,sys,time,re,base64,hashlib
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];temp=Path(os.environ['RUNNER_TEMP'])
 def run(args,timeout=180,check=True,log_name=None):
@@ -35,13 +35,23 @@ evidence={'runtime':runtime,'device_type':device_type,'udid':udid,'head':os.envi
 try:
     run(['xcrun','simctl','boot',udid]);run(['xcrun','simctl','bootstatus',udid,'-b'],timeout=240)
     run(['xcrun','simctl','install',udid,app],timeout=120)
+    # Forward only newly generated synthetic Mac filter archives, with verified hashes.
+    matches=re.findall(r'MAC_FILTER_ONLY_FIXTURE filter=(\w+) sha256=([0-9a-f]{64}) base64=([A-Za-z0-9+/=]+)',(temp/'mac.log').read_text())
+    if len(matches)!=10:raise RuntimeError('Expected all ten newly authored Mac filter archives before UIKit compatibility gate')
+    fixtures=[]
+    for preset,digest,encoded in matches:
+        assert hashlib.sha256(base64.b64decode(encoded)).hexdigest()==digest
+        fixtures.append({'filter':preset,'sha256':digest,'base64':encoded})
+    container=Path(run(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data']).stdout.strip())
+    documents=container/'Documents';documents.mkdir(exist_ok=True)
+    (documents/'mac-filter-fixtures.json').write_text(json.dumps(fixtures))
     launch=run(['xcrun','simctl','launch',udid,'Mango.Celluloid'],timeout=60)
     evidence['launch_output']=launch.stdout
     pid=launch.stdout.strip().rsplit(':',1)[-1].strip(); assert pid.isdigit()
     time.sleep(4)
     proc=run(['ps','-p',pid,'-o','pid=,comm='],timeout=20)
     evidence['process']=proc.stdout;assert 'CelluloidPhoneCompanion' in proc.stdout
-    run(['xcrun','simctl','io',udid,'screenshot',temp/'native-phone-launch.png'],timeout=45,check=False)
+    run(['xcrun','simctl','io',udid,'screenshot','--type=jpeg',temp/'native-phone-launch.jpg'],timeout=45,check=False)
     result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidPhoneCompanion','-destination',f'platform=iOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-phone','-resultBundlePath',temp/'CelluloidPhoneCompanion.xcresult','CODE_SIGNING_ALLOWED=NO','test-without-building'],timeout=600,check=False,log_name='phone-runtime-tests.log')
     evidence['test_exit_code']=result.returncode
     if result.returncode:raise RuntimeError('Native Phone Companion test invocation failed; inspect actual error/attachments, do not equate build or boot with E2E coverage')

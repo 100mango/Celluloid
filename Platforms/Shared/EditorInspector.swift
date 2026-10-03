@@ -19,6 +19,7 @@ struct EditorInspector: View {
                 })) {
                     ForEach(FilterPreset.allCases, id: \.rawValue) { Text($0.localizedTitle).tag($0) }
                 }.accessibilityIdentifier("editor.filter")
+                if recipe.filter == .pixellateFace { Text("Face detection can miss faces. Check the result before sharing.").font(.caption) }
                 if recipe.sources.count > 1 {
                     CollagePicker(recipe: recipe, change: change)
                 }

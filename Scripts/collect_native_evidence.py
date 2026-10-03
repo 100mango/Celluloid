@@ -32,8 +32,8 @@ def retain_file(name,path,source):
         manifest['omissions'].append({'name':name,'reason':'evidence byte cap','bytes':count});return False
     return retain_bytes(name,path.read_bytes(),source)
 
-logs=['domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox-app-build.log','sandbox.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log','tv-build.log','tv-runtime.log','tv-runtime-tests.log','watch-build.log','watch-runtime.log','watch-runtime-tests.log','phone-build.log','phone-runtime.log','phone-runtime-tests.log']
-markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|TV_NATIVE_|TV_PHOTOS_|TV_FOCUS_|WATCH_NATIVE_|PHONE_COMPANION_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|MAC_LEGACY_CANDIDATE)')
+logs=['domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox-app-build.log','sandbox.log','mac-photos-build.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log','tv-build.log','tv-runtime.log','tv-runtime-tests.log','watch-build.log','watch-runtime.log','watch-runtime-tests.log','phone-build.log','phone-runtime.log','phone-runtime-tests.log']
+markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|TV_NATIVE_|TV_PHOTOS_|TV_FOCUS_|WATCH_NATIVE_|PHONE_COMPANION_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|FACE_DETECTOR_ACTUAL|MAC_NEW_FILTER_UIKIT_ROUNDTRIP|MAC_FILTER_ONLY_FIXTURE|MAC_LEGACY_CANDIDATE)')
 for name in logs:
     path=TEMP/name
     if not path.is_file():continue
@@ -84,7 +84,7 @@ for name in bundles:
             safe=re.sub(r'[^A-Za-z0-9_-]+','-',human)[:100]
             retain_file(f'{name.removesuffix(".xcresult")}-{index}-{safe}{extension}',path,name+' selected screenshot')
 
-for name in ['native-vision-launch.png','native-tv-launch.png','native-watch-launch.png','native-phone-launch.png']:
+for name in [f'native-{platform}-launch.{extension}' for platform in ['vision','tv','watch','phone'] for extension in ['png','jpg']]:
     path=TEMP/name
     if path.is_file():retain_file(path.name,path,'simctl native launch screenshot')
 manifest['retained_bytes_before_manifest']=size

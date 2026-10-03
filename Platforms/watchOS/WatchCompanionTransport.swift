@@ -17,23 +17,20 @@ final class WatchCompanionTransport: NSObject, WCSessionDelegate {
         guard session.activationState == .activated, session.isCompanionAppInstalled else {
             throw NSError(domain: "Celluloid.Companion", code: 1, userInfo: [NSLocalizedDescriptionKey: NSLocalizedString("Open Celluloid on your paired iPhone, then try again.", comment: "Watch companion")])
         }
-        let items = try await store.load()
-        guard !items.contains(where: { $0.job?.phase == .pending || $0.job?.phase == .processing }) else {
-            throw NSError(domain: "Celluloid.Companion", code: 2, userInfo: [NSLocalizedDescriptionKey: NSLocalizedString("Wait for the current phone request, or cancel it first.", comment: "Watch companion")])
+        _ = try await store.beginRequest(photo.id, filter: filter) { url, request in
+            guard session.activationState == .activated, session.isCompanionAppInstalled else {
+                throw NSError(domain: "Celluloid.Companion", code: 1, userInfo: [NSLocalizedDescriptionKey: NSLocalizedString("Open Celluloid on your paired iPhone, then try again.", comment: "Watch companion")])
+            }
+            session.transferFile(url, metadata: ["celluloid.request.v1": try request.encoded()])
         }
-        let (url, bytes) = try await store.source(photo.id)
-        guard WatchGalleryStore.digest(bytes) == photo.sourceSHA256 else { throw RecipeError.invalidDocument }
-        let request = CompanionRequest(sourceID: photo.id, sourceSHA256: photo.sourceSHA256, sourceBytes: bytes.count, filter: filter)
-        try await store.setJob(CompanionJob(request: request), for: photo.id)
-        session.transferFile(url, metadata: ["celluloid.request.v1": try request.encoded()])
         await notify()
     }
     func cancel(_ photo: WatchPhoto) async throws {
-        guard var job = photo.job else { return }
-        job.cancel(); try await store.setJob(job, for: photo.id)
+        guard let previous = photo.job,
+              let cancelled = try await store.cancelRequest(sourceID: photo.id, requestID: previous.request.id) else { return }
         for transfer in WCSession.default.outstandingFileTransfers {
             if let bytes = transfer.file.metadata?["celluloid.request.v1"] as? Data,
-               let request = try? CompanionRequest.decode(bytes), request.id == job.request.id { transfer.cancel() }
+               let request = try? CompanionRequest.decode(bytes), request.id == cancelled.id { transfer.cancel() }
         }
         // Cancellation stops applying late responses. The phone may already have processed it.
         await notify()
@@ -70,9 +67,7 @@ final class WatchCompanionTransport: NSObject, WCSessionDelegate {
             Task {
                 do {
                     let request = try CompanionRequest.decode(data)
-                    let items = try await store.load()
-                    guard let photo = items.first(where: { $0.job?.request == request }), var job = photo.job else { return }
-                    job.markProcessing(); try await store.setJob(job, for: photo.id); await notify()
+                    try await store.markProcessing(request); await notify()
                 } catch { report(error) }
             }
         }

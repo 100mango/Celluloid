@@ -16,8 +16,7 @@ final class NativeWatchTests: XCTestCase {
         let reopened = try WatchGalleryStore(folder: folder)
         let rows = try await reopened.load(); XCTAssertEqual(rows, [photo])
         let image = try await reopened.preview(photo.id); XCTAssertEqual(image.width, 64); XCTAssertEqual(image.height, 40)
-        let request = CompanionRequest(sourceID: photo.id, sourceSHA256: photo.sourceSHA256, sourceBytes: bytes.count, filter: .fade)
-        try await reopened.setJob(CompanionJob(request: request), for: photo.id)
+        let request = try await reopened.beginRequest(photo.id, filter: .fade) { _, _ in }
         let pending = try await store.load(); XCTAssertEqual(pending.first?.job?.phase, .pending)
         let response = CompanionResult(requestID: request.id, sourceSHA256: request.sourceSHA256, previewSHA256: WatchGalleryStore.digest(bytes), pixelWidth: 64, pixelHeight: 40, failure: nil)
         try await store.receive(response, preview: bytes)
@@ -34,6 +33,28 @@ final class NativeWatchTests: XCTestCase {
         let rows = try await store.load(); XCTAssertEqual(rows.count, 20)
         do { _ = try await store.importPhoto(Data(repeating: 0, count: 8 * 1024 * 1024 + 1), name: "Too large"); XCTFail("Oversize must fail") } catch { }
         XCTAssertThrowsError(try WatchGalleryStore.thumbnail(Data()))
+    }
+    func testAtomicTransitionsRejectStaleProcessingCancelAndDoubleAdmission() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = try WatchGalleryStore(folder: folder), bytes = try fixture()
+        let photo = try await store.importPhoto(bytes, name: "Atomic fixture")
+        let request = try await store.beginRequest(photo.id, filter: .fade) { _, _ in }
+        let response = CompanionResult(requestID: request.id, sourceSHA256: request.sourceSHA256, previewSHA256: WatchGalleryStore.digest(bytes), pixelWidth: 64, pixelHeight: 40, failure: nil)
+        try await store.receive(response, preview: bytes)
+        // Model the formerly unsafe copied callbacks arriving after completion.
+        try await store.markProcessing(request)
+        let cancelled = try await store.cancelRequest(sourceID: photo.id, requestID: request.id)
+        XCTAssertNil(cancelled)
+        let completed = try await store.load(); XCTAssertEqual(completed.first?.job?.phase, .completed)
+        let admitted = await withTaskGroup(of: Bool.self, returning: Int.self) { group in
+            for _ in 0..<12 { group.addTask { do { _ = try await store.beginRequest(photo.id, filter: .chrome) { _, _ in }; return true } catch { return false } } }
+            var count = 0; for await succeeded in group { if succeeded { count += 1 } }; return count
+        }
+        XCTAssertEqual(admitted, 1)
+        // A stale cancellation for the earlier completed request cannot cancel the new one.
+        let stale = try await store.cancelRequest(sourceID: photo.id, requestID: request.id); XCTAssertNil(stale)
+        let pending = try await store.load(); XCTAssertEqual(pending.first?.job?.phase, .pending)
     }
     private func fixture() throws -> Data {
         let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))

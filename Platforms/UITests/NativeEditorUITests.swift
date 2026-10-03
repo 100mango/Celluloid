@@ -119,11 +119,22 @@ final class NativeEditorUITests: XCTestCase {
         }
         let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "native-mac-saved-reopened-exported"; screenshot.lifetime = .keepAlways; add(screenshot)
     }
+    @MainActor func testAccessibilityOfNativeEmptyEditor() throws {
+        guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] != "YES" else { throw XCTSkip("The audit runs on the ordinary UI lane without the debug sandbox diagnostic overlay") }
+        continueAfterFailure = false
+        let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
+        let app = XCUIApplication(url: URL(fileURLWithPath: path)); app.launch(); defer { app.terminate() }
+        let cancel = app.windows["open-panel"].buttons["CancelButton"]; if cancel.waitForExistence(timeout: 3) { cancel.click() }
+        app.typeKey("n", modifierFlags: .command)
+        let control = app.descendants(matching: .any)["editor.import-files"].firstMatch
+        XCTAssertTrue(control.waitForExistence(timeout: 10)); XCTAssertTrue(control.isHittable)
+        if #available(macOS 27.0, *) { try app.performAccessibilityAudit(for: .all) }
+    }
     @MainActor private func launch(_ app: XCUIApplication) throws {
         guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" else { app.launch(); return }
         let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
         let configuration = NSWorkspace.OpenConfiguration()
-        configuration.arguments = app.launchArguments
+        configuration.arguments = app.launchArguments + ["--celluloid-sandbox-diagnostics"]
         configuration.environment = app.launchEnvironment
         configuration.createsNewApplicationInstance = true
         let opened = expectation(description: "Ordinary sandbox app launch without XCTest library injection")
@@ -137,8 +148,13 @@ final class NativeEditorUITests: XCTestCase {
     }
     @MainActor private func assertSandboxIfRequested(_ app: XCUIApplication) throws {
         guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" else { return }
-        let probe = app.staticTexts["sandbox.probe"]
-        XCTAssertTrue(probe.waitForExistence(timeout: 10))
+        let probe = app.descendants(matching: .any)["sandbox.probe"].firstMatch
+        let found = probe.waitForExistence(timeout: 10)
+        if !found {
+            print("NATIVE_SANDBOX_MISSING_PROBE_AX " + app.debugDescription)
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "sandbox-probe-missing"; shot.lifetime = .keepAlways; add(shot)
+        }
+        XCTAssertTrue(found)
         let value = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(probe.label.utf8)) as? [String: Any])
         XCTAssertEqual(value["passed"] as? Bool, true, probe.label)
         print("NATIVE_SANDBOX_RUNTIME " + probe.label)

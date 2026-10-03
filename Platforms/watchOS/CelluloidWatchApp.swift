@@ -90,6 +90,7 @@ private struct WatchPhotoView: View {
                 if let photo {
                     Text("Preview up to 512 pixels").font(.footnote)
                     if let job = photo.job {
+                        Text(job.request.filter.localizedTitle).font(.footnote)
                         Text(LocalizedStringKey(job.phase.rawValue.capitalized)).accessibilityIdentifier("watch.job-status")
                         if let failure = job.result?.failure { Text(failure).font(.footnote) }
                         if job.phase == .pending || job.phase == .processing {
@@ -99,6 +100,7 @@ private struct WatchPhotoView: View {
                     Picker("Phone Filter", selection: $filter) {
                         ForEach(FilterPreset.allCases, id: \.rawValue) { Text($0.localizedTitle).tag($0) }
                     }
+                    if filter == .pixellateFace { Text("Face detection can miss faces. Check the result before sharing.").font(.caption) }
                     Button("Process on iPhone") { Task { do { try await model.transport?.request(photo, filter: filter) } catch { model.error = error.localizedDescription } } }
                         .accessibilityIdentifier("watch.process-phone")
                     Text("Sends only this selected image to your paired iPhone. A returned preview is not a Photos save. Open the phone app to save the full result.").font(.footnote)

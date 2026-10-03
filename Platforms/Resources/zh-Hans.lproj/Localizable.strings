@@ -128,3 +128,13 @@
 "Existing Photos images and Watch copies stay unchanged." = "不会更改照片图库中的图片或手表副本。";
 "Ready on iPhone; Watch delivery is pending or failed." = "结果已保存在 iPhone 上；手表传输仍在等待或已失败。";
 "The image is ready on your iPhone, but its Watch preview could not be delivered. Open the phone app to view or save it." = "图片已在 iPhone 上处理完成，但未能传送预览图到手表。请在手机应用中查看或保存。";
+"Cancel" = "取消";
+"Undo" = "撤销";
+"%@ for %@" = "%@（%@）";
+"Decrease %@" = "减小%@";
+"Increase %@" = "增大%@";
+"A Photos source has changed since this recipe was saved. Your current edit is unchanged; choose the photos again to start a new composition." = "一张图库原图在保存编辑记录后发生了变化。当前编辑保持不变；请重新选择照片以开始新的作品。";
+"Starting image" = "起始图片";
+"Previous edits are included in the starting image. Their layers cannot be edited here." = "起始图片包含之前的编辑效果。无法在此编辑这些已有图层。";
+"This native Photos extension currently edits filters. Use the Celluloid document app for stickers, bubbles and collages." = "此原生照片扩展目前支持滤镜编辑。贴纸、气泡和拼图请使用 Celluloid 文稿应用。";
+"Face detection can miss faces. Check the result before sharing." = "人脸检测可能遗漏。分享前请检查处理结果。";
