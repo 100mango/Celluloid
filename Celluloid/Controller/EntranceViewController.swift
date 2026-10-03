@@ -18,11 +18,14 @@ enum AppLinks {
 
 class EntranceViewController: UIViewController {
     private var horizontalLayout: Bool?
+    private var footerHeight: CGFloat = 44
     lazy var privacyPolicyButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle(NSLocalizedString("Privacy Policy", comment: "Privacy policy link"), for: .normal)
         button.titleLabel?.font = .preferredFont(forTextStyle: .footnote)
         button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.titleLabel?.numberOfLines = 0
+        button.titleLabel?.textAlignment = .center
         button.tintColor = .alphaWhiteColor
         button.accessibilityIdentifier = "privacy-policy"
         button.accessibilityHint = NSLocalizedString("Opens the app privacy policy.", comment: "Privacy link accessibility hint")
@@ -72,7 +75,7 @@ class EntranceViewController: UIViewController {
         privacyPolicyButton.snp.makeConstraints { make in
             make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(16)
             make.bottom.equalTo(view.safeAreaLayoutGuide).offset(-4)
-            make.height.greaterThanOrEqualTo(44)
+            make.height.equalTo(footerHeight)
         }
         self.view.addSubview(stackView)
         stackView.snp.makeConstraints { (make) in
@@ -89,6 +92,16 @@ class EntranceViewController: UIViewController {
     }
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        // A lower-bound-only footer could absorb all free space because IconButton
+        // intentionally has no intrinsic size. Keep a definite, Dynamic-Type-aware
+        // footer so the two primary choices always receive the remaining area.
+        let footerWidth = max(1, view.safeAreaLayoutGuide.layoutFrame.width - 32)
+        let textHeight = privacyPolicyButton.titleLabel?.sizeThatFits(CGSize(width: footerWidth, height: .greatestFiniteMagnitude)).height ?? 0
+        let preferredHeight = max(44, textHeight + 16)
+        if preferredHeight != footerHeight {
+            footerHeight = preferredHeight
+            privacyPolicyButton.snp.updateConstraints { $0.height.equalTo(footerHeight) }
+        }
         let horizontal = view.bounds.width > view.bounds.height
         guard horizontal != horizontalLayout else { return }
         horizontalLayout = horizontal
@@ -154,7 +167,9 @@ class IconButton: UIControl {
     
     lazy var label: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 18)
+        label.font = .preferredFont(forTextStyle: .body)
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 0
         label.textColor = .white
         label.textAlignment = .center
         return label
@@ -190,6 +205,8 @@ class IconButton: UIControl {
         self.addSubview(stackView)
         stackView.snp.makeConstraints  { (make) in
             make.center.equalTo(stackView.superview!)
+            make.leading.greaterThanOrEqualToSuperview().offset(12)
+            make.trailing.lessThanOrEqualToSuperview().offset(-12)
         }
         
         isAccessibilityElement = true

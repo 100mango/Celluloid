@@ -19,6 +19,43 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertTrue(entrance.privacyPolicyButton.isEnabled)
     }
 
+    func testHomeLayoutDoesNotCollapseOrOverlapAcrossPhoneAndPadSizes() {
+        let entrance = EntranceViewController()
+        entrance.loadViewIfNeeded()
+        for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+            let traits = UITraitCollection(preferredContentSizeCategory: category)
+            entrance.privacyPolicyButton.titleLabel?.font = .preferredFont(forTextStyle: .footnote, compatibleWith: traits)
+            entrance.editPhotoButton.label.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+            entrance.makeCollageButton.label.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+            for size in [CGSize(width: 320, height: 568), CGSize(width: 568, height: 320),
+                         CGSize(width: 390, height: 844), CGSize(width: 844, height: 390),
+                         CGSize(width: 1032, height: 1376), CGSize(width: 1376, height: 1032)] {
+                entrance.view.frame = CGRect(origin: .zero, size: size)
+                entrance.view.setNeedsLayout()
+                entrance.view.layoutIfNeeded()
+                entrance.viewDidLayoutSubviews()
+                entrance.view.layoutIfNeeded()
+                let edit = entrance.editPhotoButton.convert(entrance.editPhotoButton.bounds, to: entrance.view)
+                let collage = entrance.makeCollageButton.convert(entrance.makeCollageButton.bounds, to: entrance.view)
+                let editContent = entrance.editPhotoButton.stackView.convert(entrance.editPhotoButton.stackView.bounds, to: entrance.view)
+                let collageContent = entrance.makeCollageButton.stackView.convert(entrance.makeCollageButton.stackView.bounds, to: entrance.view)
+                let footer = entrance.privacyPolicyButton.frame
+                XCTAssertGreaterThanOrEqual(edit.height, 120, "\(size), \(category)")
+                XCTAssertGreaterThanOrEqual(collage.height, 120, "\(size), \(category)")
+                XCTAssertGreaterThanOrEqual(edit.width, 150, "\(size), \(category)")
+                XCTAssertGreaterThanOrEqual(collage.width, 150, "\(size), \(category)")
+                XCTAssertFalse(edit.intersects(collage), "Primary choices overlap at \(size)")
+                XCTAssertTrue(edit.insetBy(dx: -1, dy: -1).contains(editContent), "Edit content escapes its choice at \(size), \(category)")
+                XCTAssertTrue(collage.insetBy(dx: -1, dy: -1).contains(collageContent), "Collage content escapes its choice at \(size), \(category)")
+                XCTAssertFalse(editContent.intersects(collageContent), "Icons/text overlap at \(size)")
+                XCTAssertGreaterThan(footer.minY, size.height * 0.60)
+                XCTAssertGreaterThanOrEqual(footer.minY, max(edit.maxY, collage.maxY))
+                let textHeight = entrance.privacyPolicyButton.titleLabel?.sizeThatFits(CGSize(width: size.width - 32, height: .greatestFiniteMagnitude)).height ?? 0
+                XCTAssertEqual(footer.height, max(44, textHeight + 16), accuracy: 1)
+            }
+        }
+    }
+
     func testEditorRendersAndRestoresWithoutDuplicatingOverlays() throws {
         let editor = BaseEditPhotoController()
         editor.loadViewIfNeeded()

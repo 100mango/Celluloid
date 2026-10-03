@@ -49,3 +49,8 @@ The fixed `codex/ios-modernization` branch has an unsigned push-triggered run. C
 ## Bundled dependency notice
 
 The exact MIT notice from official SnapKit revision `2842e6e84e82eb9a8dac0100ca90d9444b0307f4` is bundled as `CelluloidKit.framework/SnapKit-LICENSE.txt`; source and archive checks enforce SHA-256 `7c0d21cf5314759fd35a22e42a52099d9cad2570db55a78e4eda26c82493b96b`. The source is https://github.com/SnapKit/SnapKit/blob/2842e6e84e82eb9a8dac0100ca90d9444b0307f4/LICENSE. This packaging correction adds the notice resource/project membership and validation only; it does not change app behavior, UI, build settings, or the visuals captured from `738b45f0c53f724d6f782d6346bb43c19c2f69d7`. The new candidate still requires a full source-bound CI pass.
+
+
+## Visual home-layout correction
+
+Native Release store-capture review caught a collapsed home layout that simple hittability assertions missed: the privacy footer's minimum-only height could absorb the available area. The footer now has a definite Dynamic-Type-aware height. New model geometry and simulator UI checks cover usable, non-overlapping primary choices in phone/iPad portrait/landscape and English/Chinese. The two rejected home images from the earlier capture run must be replaced; screenshot and release-source provenance must be refreshed for this behavioral fix.

@@ -5,11 +5,37 @@ final class CelluloidUITests: XCTestCase {
     private var app: XCUIApplication!
     override func setUp() { super.setUp(); continueAfterFailure = false; app = XCUIApplication() }
     override func tearDown() { XCUIDevice.shared.orientation = .portrait; app.terminate(); super.tearDown() }
-    private func launch(_ arguments: [String] = []) {
-        app.launchArguments = arguments + ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+    private func launch(_ arguments: [String] = [], language: String = "en") {
+        app.launchArguments = arguments + ["-AppleLanguages", "(\(language))", "-AppleLocale", language == "zh-Hans" ? "zh_CN" : "en_US"]
         app.launch()
         XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 10))
     }
+    func testHomeChoiceGeometryInEnglishAndChineseAcrossRotation() {
+        for language in ["en", "zh-Hans"] {
+            var normalFooterHeight: CGFloat = 0
+            for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+                XCUIDevice.shared.orientation = .portrait
+                launch(["-UIPreferredContentSizeCategoryName", category.rawValue], language: language)
+                let initialFooterHeight = app.buttons["privacy-policy"].frame.height
+                if category == .large { normalFooterHeight = initialFooterHeight }
+                else { XCTAssertGreaterThan(initialFooterHeight, normalFooterHeight, "The largest text setting must actually affect the app") }
+                for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
+                    XCUIDevice.shared.orientation = orientation
+                    let edit = app.buttons["edit-photo"]
+                    let collage = app.buttons["make-collage"]
+                    let footer = app.buttons["privacy-policy"]
+                    XCTAssertTrue(edit.isHittable && collage.isHittable && footer.isHittable)
+                    XCTAssertGreaterThanOrEqual(edit.frame.height, 120)
+                    XCTAssertGreaterThanOrEqual(collage.frame.height, 120)
+                    XCTAssertFalse(edit.frame.intersects(collage.frame), "Primary choices must not collapse together")
+                    XCTAssertGreaterThanOrEqual(footer.frame.minY + 1, max(edit.frame.maxY, collage.frame.maxY))
+                    XCTAssertLessThan(footer.frame.height, app.frame.height * 0.40)
+                }
+                app.terminate()
+            }
+        }
+    }
+
     func testPrivacyPolicyEntryRemainsAccessibleAndCanClose() {
         launch()
         let policy = app.buttons["privacy-policy"]
