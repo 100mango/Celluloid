@@ -6,8 +6,7 @@
 //  Copyright © 2016年 Mango. All rights reserved.
 //
 
-import Foundation
-import JSONCodable
+import UIKit
 
 enum CollageImageCount: Int {
     case two = 2

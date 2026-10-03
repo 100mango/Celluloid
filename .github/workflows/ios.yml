@@ -1,0 +1,61 @@
+name: iOS 27 regression
+on:
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-and-test:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify stable Apple environment
+        run: |
+          set -euo pipefail
+          sw_vers
+          xcodebuild -version
+          xcodebuild -showsdks
+          xcrun simctl list runtimes
+          xcrun simctl list devices available
+          xcodebuild -version | grep -q '^Xcode 27.0$'
+          xcrun simctl list runtimes | grep 'iOS 27.0'
+      - name: Verify reproducible project
+        run: |
+          python3 Scripts/generate_project.py
+          git diff --exit-code -- Celluloid.xcodeproj Celluloid.xcworkspace
+      - name: Build and run regression suites on iPhone and iPad
+        run: |
+          set -euo pipefail
+          python3 Scripts/create_fixture.py
+          xcrun simctl list devices available -j > /tmp/devices.json
+          python3 - <<'PY' > /tmp/test-devices.txt
+          import json
+          runtimes=json.load(open('/tmp/devices.json'))['devices']
+          devices=next(v for k,v in runtimes.items() if k.endswith('iOS-27-0'))
+          for prefix in ['iPhone', 'iPad']:
+              d=next(d for d in devices if d['name'].startswith(prefix))
+              print(d['udid'],d['name'])
+          PY
+          while read -r id name; do
+            echo "Testing $name ($id)"
+            xcrun simctl boot "$id" || true
+            xcrun simctl bootstatus "$id" -b
+            xcrun simctl addmedia "$id" /tmp/celluloid-fixture.png
+            xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build build-for-testing CODE_SIGNING_ALLOWED=NO | tee "build-$id.log"
+            xcrun simctl install "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app
+            xcrun simctl privacy "$id" grant photos Mango.Celluloid
+            xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-$id.xcresult" -parallel-testing-enabled NO test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-$id.log"
+            xcrun xcresulttool get test-results summary --path "TestResults-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY"
+            xcrun simctl shutdown "$id"
+          done < /tmp/test-devices.txt
+      - name: Build unsigned distribution archive including Photos extension
+        run: |
+          set -euo pipefail
+          xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Release -destination 'generic/platform=iOS' -archivePath .build/Celluloid.xcarchive archive CODE_SIGNING_ALLOWED=NO | tee archive.log

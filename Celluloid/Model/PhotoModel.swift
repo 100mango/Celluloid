@@ -6,7 +6,7 @@
 //  Copyright © 2016年 Mango. All rights reserved.
 //
 
-import Foundation
+import UIKit
 import Photos
 
 class PhotoModel {
@@ -32,10 +32,15 @@ extension PhotoModel {
         if let image = image {
             completion(image)
         }else{
-            PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 512, height: 512), contentMode: .aspectFill, options: nil, resultHandler: { (image, info) in
+            let options = PHImageRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .highQualityFormat
+            PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 512, height: 512), contentMode: .aspectFill, options: options, resultHandler: { (image, info) in
                 if let image = image {
-                    self.image = image
-                    completion(image)
+                    DispatchQueue.main.async {
+                        self.image = image
+                        completion(image)
+                    }
                 }
             })
         }

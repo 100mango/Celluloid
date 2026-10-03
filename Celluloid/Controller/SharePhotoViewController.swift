@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import SnapKit
 import CelluloidKit
 
 class SharePhotoViewController: UIViewController {
@@ -37,6 +38,7 @@ class SharePhotoViewController: UIViewController {
     let savedLabel: UILabel = {
         let label = UILabel()
         label.text = tr(.saved)
+        label.accessibilityIdentifier = "photo-saved"
         label.font = .systemFont(ofSize: 20)
         label.textColor = .white
         return label
@@ -102,6 +104,7 @@ extension SharePhotoViewController {
     @objc func share() {
         let activityViewController = UIActivityViewController(activityItems: [image], applicationActivities: nil)
         activityViewController.popoverPresentationController?.sourceView = self.shareButton
+        activityViewController.popoverPresentationController?.sourceRect = self.shareButton.bounds
         present(activityViewController, animated: true, completion: nil)
     }
     

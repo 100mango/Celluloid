@@ -7,21 +7,24 @@
 //
 
 import UIKit
+import SnapKit
 import CelluloidKit
-import BSImagePicker
-import Async
 import Photos
 
 class EntranceViewController: UIViewController {
     
     lazy var editPhotoButton: IconButton = {
         let button = IconButton(image: UIImage(named: "EditPhotoEntranceButton")!, title: tr(.beautify))
+        button.accessibilityIdentifier = "edit-photo"
+        button.accessibilityLabel = tr(.beautify)
         button.addTarget(self, action: .editPhoto, for: .touchUpInside)
         return button
     }()
     
     lazy var makeCollageButton: IconButton = {
         let button = IconButton(image: UIImage(named: "CollageEntranceButton")!, title: tr(.collage))
+        button.accessibilityIdentifier = "make-collage"
+        button.accessibilityLabel = tr(.collage)
         button.addTarget(self, action: .makeCollage, for: .touchUpInside)
         return button
     }()
@@ -49,7 +52,7 @@ class EntranceViewController: UIViewController {
         self.view.backgroundColor = .black
         self.view.addSubview(stackView)
         stackView.snp.makeConstraints { (make) in
-            make.edges.equalTo(stackView.superview!)
+            make.edges.equalTo(view.safeAreaLayoutGuide)
         }
         
         self.view.addSubview(line)
@@ -69,59 +72,26 @@ private extension Selector {
 
 
 private extension EntranceViewController {
-    
-    @objc func editPhoto() {
-        
-        let picker = BSImagePickerViewController()
-        picker.maxNumberOfSelections = 1
-        
-        presentPicker(picker) { assets in
-            Async.main {
-                if let asset = assets.first {
-                    
-                    let editVC = EditPhotoViewController(model: PhotoModel(asset: asset))
-                    let navVC = UINavigationController(rootViewController: editVC)
-                    
-                    self.present(navVC, animated: true, completion: nil)
-                    
-                }
+    @objc func editPhoto() { presentPhotoPicker(maximum: 1) }
+    @objc func makeCollage() { presentPhotoPicker(maximum: 4) }
+
+    func presentPhotoPicker(maximum: Int) {
+        let picker = PhotoPickerViewController(maximumSelection: maximum) { [weak self] assets in
+            guard let self = self, !assets.isEmpty else { return }
+            let editor: UIViewController
+            if assets.count == 1 {
+                editor = EditPhotoViewController(model: PhotoModel(asset: assets[0]))
+            } else {
+                editor = CollageViewController(assets: assets)
             }
+            let navigation = UINavigationController(rootViewController: editor)
+            navigation.modalPresentationStyle = .fullScreen
+            self.present(navigation, animated: true)
         }
+        let navigation = UINavigationController(rootViewController: picker)
+        navigation.modalPresentationStyle = .fullScreen
+        present(navigation, animated: true)
     }
-    
-    @objc func makeCollage() {
-        
-        let picker = BSImagePickerViewController()
-        picker.maxNumberOfSelections = 4
-        
-        presentPicker(picker) { assets in
-            
-            Async.main {
-                
-                if assets.count == 1 {
-                    
-                    let editVC = EditPhotoViewController(model: PhotoModel(asset: assets.first!))
-                    let navVC = UINavigationController(rootViewController: editVC)
-                    
-                    self.present(navVC, animated: true, completion: nil)
-                    
-                } else {
-                    
-                    let collageVC = CollageViewController(assets: assets)
-                    let navVC = UINavigationController(rootViewController: collageVC)
-                    
-                    self.present(navVC, animated: true, completion: nil)
-                }
-                
-            }
-        }
-        
-    }
-    
-    func presentPicker(_ picker: BSImagePickerViewController,finish: @escaping ([PHAsset]) -> Void ) {
-        bs_presentImagePickerController(picker, animated: true, select: nil, deselect: nil, cancel: nil, finish: finish, completion: nil)
-    }
-    
 }
 
 
@@ -178,6 +148,8 @@ class IconButton: UIControl {
             make.center.equalTo(stackView.superview!)
         }
         
+        isAccessibilityElement = true
+        accessibilityTraits = .button
         self.addSubview(button)
         button.snp.makeConstraints  { (make) in
             make.edges.equalTo(button.superview!)

@@ -9,7 +9,7 @@
 import UIKit
 import SnapKit
 
-public protocol EditBubbleViewControllerDelegate: class {
+public protocol EditBubbleViewControllerDelegate: AnyObject {
     func editBubbleViewController(_ editBubbleViewController: EditBubbleViewController, didEditedBubbleModel bubbleModel: BubbleModel)
     
 }

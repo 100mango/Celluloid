@@ -6,17 +6,17 @@
 //  Copyright © 2016年 Mango. All rights reserved.
 //
 
-import Foundation
+import UIKit
 
 open class ImageOverlayView: UIView {
     
     open var bubbleModels: [BubbleModel] {
-        return self.subviews.flatMap { $0 as? BubbleView }
+        return self.subviews.compactMap { $0 as? BubbleView }
             .map({ $0.bubbleModel })
     }
     
     open var stickerModels: [StickerModel] {
-        return self.subviews.flatMap({ $0 as? StickerView })
+        return self.subviews.compactMap({ $0 as? StickerView })
             .map({ $0.stickerModel })
     }
     
@@ -65,7 +65,7 @@ open class ImageOverlayView: UIView {
 //MARK: Action
 extension ImageOverlayView {
     @objc func touch() {
-        self.subviews.flatMap({ $0 as? AttachView }).forEach{
+        self.subviews.compactMap({ $0 as? AttachView }).forEach{
             $0.hideButtonEnable = true
         }
     }

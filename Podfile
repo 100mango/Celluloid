@@ -1,23 +1,2 @@
-use_frameworks!
-
-def shared_pods
-	pod 'AsyncSwift'
-	pod 'SnapKit' 
-	pod 'UIColor_Hex_Swift'
-	pod 'MZFormSheetPresentationController'
-	pod 'JSONCodable'
-	pod 'BSImagePicker'
-	pod 'AssistantKit'
-end
-
-target 'Celluloid' do
-    shared_pods
-end
-
-target 'CelluloidKit’ do
-    shared_pods
-end
-
-target 'CelluloidPhotoExtension' do
-    shared_pods
-end
+# Retired: open Celluloid.xcworkspace directly. SnapKit 5.7.1 is pinned through SwiftPM.
+# Historical vendored Pods and licenses are retained for attribution only; no target builds them.

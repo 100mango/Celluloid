@@ -6,7 +6,7 @@
 //  Copyright © 2016年 Mango. All rights reserved.
 //
 
-import Foundation
+import UIKit
 
 open class AttachView: UIView {
     //MARK: Property
@@ -23,7 +23,7 @@ open class AttachView: UIView {
         let button = UIButton(type: .custom)
         button.isHidden = true
         button.frame = CGRect(x: self.bounds.width - self.buttonWidth, y: 0, width: self.buttonWidth, height: self.buttonWidth)
-        button.setImage(UIImage(asset: .Btn_icon_sticker_delete_normal), for: UIControlState())
+        button.setImage(UIImage(asset: .Btn_icon_sticker_delete_normal), for: .normal)
         button.addTarget(self, action: .removeSelf, for: .touchUpInside)
         return button
     }()
@@ -32,7 +32,7 @@ open class AttachView: UIView {
         let button = UIButton(type: .custom)
         button.isHidden = true
         button.frame = CGRect(x: self.bounds.width - self.buttonWidth, y: self.bounds.height - self.buttonWidth, width: self.buttonWidth, height: self.buttonWidth)
-        button.setImage(UIImage(asset: .Btn_icon_sticker_edit_normal), for: UIControlState())
+        button.setImage(UIImage(asset: .Btn_icon_sticker_edit_normal), for: .normal)
         let panGesture = UIPanGestureRecognizer(target: self, action: .rotateAndResize)
         button.addGestureRecognizer(panGesture)
         

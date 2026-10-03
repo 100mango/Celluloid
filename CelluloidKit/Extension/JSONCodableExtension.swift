@@ -1,52 +1,75 @@
 //
 //  JSONCodableExtension.swift
-//  Celluloid
+//  CelluloidKit
 //
-//  Created by Mango on 16/4/5.
-//  Copyright © 2016年 Mango. All rights reserved.
+//  Foundation-backed helpers for the original Photos adjustment archive.
+//  Keep NSValue geometry rather than changing the version 1.0 wire format.
 //
 
 import Foundation
-import JSONCodable
+import UIKit
 
-extension JSONEncoder {
-    func encode(_ value: CGAffineTransform, key: String) {
-        object[key] = NSValue(cgAffineTransform: value)
-    }
-    
-    func encode(_ value: CGRect, key: String) {
-        object[key] = NSValue(cgRect: value)
-    }
-    
-    func encode(_ value: CGPoint, key: String) {
-        object[key] = NSValue(cgPoint: value)
-    }
+public enum AdjustmentDataError: Error {
+    case invalidArchive
+    case missingValue(String)
+    case invalidValue(String)
 }
 
-extension JSONDecoder {
-    
-    func decode(_ key: String, type: Any.Type) throws -> NSValue {
-        guard let value = get(key) else {
-            throw JSONDecodableError.missingTypeError(key: key)
+struct AdjustmentDictionary {
+    let object: [String: Any]
+
+    func string(_ key: String) throws -> String {
+        guard let value = object[key] else {
+            throw AdjustmentDataError.missingValue(key)
         }
-        guard let compatible = value as? NSValue else {
-            throw JSONDecodableError.incompatibleTypeError(key: key, elementType: type(of: value), expectedType: NSValue.self)
+        guard let string = value as? String else {
+            throw AdjustmentDataError.invalidValue(key)
         }
-        guard let objcType = String(validatingUTF8: compatible.objCType), objcType.contains("\(type)") else {
-            throw JSONDecodableError.incompatibleTypeError(key: key, elementType: type(of: value), expectedType: type)
+        return string
+    }
+
+    func objects(_ key: String) throws -> [[String: Any]] {
+        // JSONCodable 3 omitted empty collections in existing Photos archives.
+        guard let value = object[key] else { return [] }
+        guard let objects = value as? [[String: Any]] else {
+            throw AdjustmentDataError.invalidValue(key)
         }
-        return compatible
+        return objects
     }
-    
-    func decode(_ key: String) throws -> CGAffineTransform {
-        return try decode(key, type: CGAffineTransform.self).cgAffineTransformValue
+
+    private func value(_ key: String, matching expected: NSValue) throws -> NSValue {
+        guard let rawValue = object[key] else {
+            throw AdjustmentDataError.missingValue(key)
+        }
+        guard let value = rawValue as? NSValue,
+              String(cString: value.objCType) == String(cString: expected.objCType) else {
+            throw AdjustmentDataError.invalidValue(key)
+        }
+        return value
     }
-    
-    func decode(_ key: String) throws -> CGRect {
-        return try decode(key, type: CGRect.self).cgRectValue
+
+    func transform(_ key: String) throws -> CGAffineTransform {
+        let transform = try value(key, matching: NSValue(cgAffineTransform: .identity)).cgAffineTransformValue
+        guard [transform.a, transform.b, transform.c, transform.d, transform.tx, transform.ty].allSatisfy({ $0.isFinite }) else {
+            throw AdjustmentDataError.invalidValue(key)
+        }
+        return transform
     }
-    
-    func decode(_ key: String) throws -> CGPoint {
-        return try decode(key, type: CGPoint.self).cgPointValue
+
+    func rect(_ key: String) throws -> CGRect {
+        let rect = try value(key, matching: NSValue(cgRect: .zero)).cgRectValue
+        guard [rect.origin.x, rect.origin.y, rect.size.width, rect.size.height].allSatisfy({ $0.isFinite }),
+              rect.size.width >= 0, rect.size.height >= 0 else {
+            throw AdjustmentDataError.invalidValue(key)
+        }
+        return rect
+    }
+
+    func point(_ key: String) throws -> CGPoint {
+        let point = try value(key, matching: NSValue(cgPoint: .zero)).cgPointValue
+        guard point.x.isFinite, point.y.isFinite else {
+            throw AdjustmentDataError.invalidValue(key)
+        }
+        return point
     }
 }

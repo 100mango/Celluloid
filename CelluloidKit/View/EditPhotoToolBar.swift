@@ -7,9 +7,9 @@
 //
 
 import UIKit
-import MZFormSheetPresentationController
+import SnapKit
 
-public protocol EditPhotoToolBarDelegate: class {
+public protocol EditPhotoToolBarDelegate: AnyObject {
     
     func editPhotoToolBar(_ editPhotoToolBar: EditPhotoToolBar, didSelectBubble bubble: BubbleModel)
     
@@ -34,18 +34,24 @@ open class EditPhotoToolBar: UIView {
     
     fileprivate lazy var filterButton: EditPhotoToolBarItem = {
         let item = EditPhotoToolBarItem(image: UIImage(asset: .FilterButton), title: tr(.filter))
+        item.accessibilityIdentifier = "tool-filter"
+        item.accessibilityLabel = tr(.filter)
         item.addTarget(self, action: .touchFilterButton, for: .touchUpInside)
         return item
     }()
     
     fileprivate lazy var bubleButton: EditPhotoToolBarItem = {
         let item = EditPhotoToolBarItem(image: UIImage(asset: .BubbleButton), title: tr(.bubble))
+        item.accessibilityIdentifier = "tool-bubble"
+        item.accessibilityLabel = tr(.bubble)
         item.addTarget(self, action: .touchBubbleButton, for: .touchUpInside)
         return item
     }()
     
     fileprivate lazy var stickerButton: EditPhotoToolBarItem = {
         let item = EditPhotoToolBarItem(image: UIImage(asset: .StickerButton), title: tr(.sticker))
+        item.accessibilityIdentifier = "tool-sticker"
+        item.accessibilityLabel = tr(.sticker)
         item.addTarget(self, action: .touchStickerButton, for: .touchUpInside)
         return item
     }()
@@ -80,8 +86,7 @@ open class EditPhotoToolBar: UIView {
     }
     
     //MARK: layout
-    open override func layoutSubviews() {
-    }
+    open override func layoutSubviews() { super.layoutSubviews() }
 }
 
 //MARK: Action
@@ -130,10 +135,10 @@ private extension EditPhotoToolBar {
     
     func presentViewControllerFromSheet(_ vc: UIViewController) {
         let navigationVC = UINavigationController(rootViewController: vc)
-        let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
-        formSheetController.presentationController?.shouldUseMotionEffect = true
-        formSheetController.presentationController?.shouldCenterVertically = true
-        self.parentViewController?.present(formSheetController, animated: true, completion: nil)
+        navigationVC.modalPresentationStyle = .formSheet
+        navigationVC.sheetPresentationController?.detents = [.medium(), .large()]
+        navigationVC.sheetPresentationController?.prefersGrabberVisible = true
+        self.parentViewController?.present(navigationVC, animated: true)
     }
 }
 
@@ -227,6 +232,8 @@ private class EditPhotoToolBarItem: UIControl {
             make.centerX.bottom.equalTo(line.superview!)
         }
         
+        isAccessibilityElement = true
+        accessibilityTraits = .button
         self.addSubview(button)
         button.snp.makeConstraints  { (make) in
             make.edges.equalTo(button.superview!)

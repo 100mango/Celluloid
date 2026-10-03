@@ -9,7 +9,7 @@
 import UIKit
 import SnapKit
 
-public protocol BubblePickerViewControllerDelegate: class {
+public protocol BubblePickerViewControllerDelegate: AnyObject {
     func bubblePickerViewController(_ bubblePickerViewController: BubblePickerViewController, didSelectBubble bubble: BubbleModel)
 }
 

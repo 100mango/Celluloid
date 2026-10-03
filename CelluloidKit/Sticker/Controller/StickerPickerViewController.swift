@@ -6,9 +6,9 @@
 //  Copyright © 2016年 Mango. All rights reserved.
 //
 
-import Foundation
+import UIKit
 
-public protocol StickerPickerViewControllerDelegate: class {
+public protocol StickerPickerViewControllerDelegate: AnyObject {
     func stickerPickerViewController(_ stickerPickerViewController: StickerPickerViewController, didSelectSticker sticker: StickerModel)
 }
 

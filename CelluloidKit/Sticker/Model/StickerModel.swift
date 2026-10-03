@@ -7,70 +7,42 @@
 //
 
 import Foundation
-import JSONCodable
+import UIKit
 
 public struct StickerModel {
-    
-    //MARK: Property
-    //Stored property
     let imageName: String
     public var transform = CGAffineTransform.identity
     public var bounds = CGRect(x: 0, y: 0, width: 100, height: 100)
     public var center = CGPoint(x: 100, y: 100)
-    //Computed property
+
     public var stickerImage: UIImage {
-        return UIImage(named: imageName, in: extensionBundle, compatibleWith: nil)!
+        return UIImage(named: imageName, in: extensionBundle, compatibleWith: nil) ?? UIImage()
     }
 
-    //MARK: init
-    public static let stickers: [StickerModel] = {
-        var stickers = [StickerModel]()
-        for i in 32...54 {
-            let sticker = StickerModel(imageName: String(i))
-            stickers.append(sticker)
-        }
-        return stickers
-    }()
-    
+    public static let stickers = (32...54).map { StickerModel(imageName: String($0)) }
+
     fileprivate init(imageName: String) {
         self.imageName = imageName
     }
-}
 
-//MARK: JSONCodable
-extension StickerModel: JSONEncodable {
     public func toJSON() -> AnyObject {
-        do {
-            return try JSONEncoder.create({ encoder in
-                try encoder.encode(imageName, key: .imageName)
-                encoder.encode(transform, key: .transform)
-                encoder.encode(bounds, key: .bounds)
-                encoder.encode(center, key: .center)
-            }) as AnyObject
-        }catch{
-            fatalError("\(error)")
-        }
+        return [
+            "imageName": imageName,
+            "transform": NSValue(cgAffineTransform: transform),
+            "bounds": NSValue(cgRect: bounds),
+            "center": NSValue(cgPoint: center)
+        ] as NSDictionary
     }
-}
 
-extension StickerModel: JSONDecodable {
-    public init(object: JSONObject) {
-        do {
-            let decoder = JSONDecoder(object: object)
-            imageName = try decoder.decode(.imageName)
-            transform = try decoder.decode(.transform)
-            bounds = try decoder.decode(.bounds)
-            center = try decoder.decode(.center)
-        }catch{
-            fatalError("\(error)")
+    public init(object: [String: Any]) throws {
+        let decoder = AdjustmentDictionary(object: object)
+        let imageName = try decoder.string("imageName")
+        guard let number = Int(imageName), (32...54).contains(number), String(number) == imageName else {
+            throw AdjustmentDataError.invalidValue("imageName")
         }
+        self.imageName = imageName
+        transform = try decoder.transform("transform")
+        bounds = try decoder.rect("bounds")
+        center = try decoder.point("center")
     }
-}
-
-//MARK: Constant
-private extension String {
-    static let imageName = "imageName"
-    static let transform = "transform"
-    static let bounds = "bounds"
-    static let center = "center"
 }

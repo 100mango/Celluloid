@@ -6,7 +6,7 @@
 //  Copyright © 2016年 Mango. All rights reserved.
 //
 
-import Foundation
+import UIKit
 
 open class StickerView: AttachView {
     

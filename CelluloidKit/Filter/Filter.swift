@@ -7,20 +7,21 @@
 //
 
 import Foundation
-import ImageIO
+import CoreImage
+import UIKit
 
 public typealias Filter = (CIImage) -> CIImage
 
-//https://github.com/apple/swift-evolution/blob/master/proposals/0077-operator-precedence.md
-precedencegroup myPrecedencegroup {
+precedencegroup FilterCompositionPrecedence {
     associativity: left
 }
-infix operator >>> : myPrecedencegroup
+infix operator >>>: FilterCompositionPrecedence
 func >>> (filter1: @escaping Filter, filter2: @escaping Filter) -> Filter {
     return { image in filter2(filter1(image)) }
 }
 
 public enum FilterType: String {
+    // Raw values are persisted in Photos adjustment data. Do not rename them.
     case Original
     case Sepia
     case Chrome
@@ -34,10 +35,11 @@ public enum FilterType: String {
 }
 
 public struct Filters {
-    
     public static func filter(_ type: FilterType) -> Filter {
         switch type {
-        case .Sepia, .Original:
+        case .Original:
+            return { $0 }
+        case .Sepia:
             return sepia
         case .Chrome:
             return chrome
@@ -57,148 +59,138 @@ public struct Filters {
             return pixellateFace()
         }
     }
-    
-    fileprivate static func simpleFilter(_ name: String) -> Filter {
+
+    private static func simpleFilter(_ name: String) -> Filter {
         return { image in
-            let parameters = [kCIInputImageKey: image]
-            guard let filter = CIFilter(name: name, withInputParameters: parameters) else {
-                fatalError("no filter")
-            }
-            guard let outputImage = filter.outputImage else {
-                fatalError("no output image")
-            }
-            return outputImage
+            // Construct a filter for each call: CIFilter instances are mutable and
+            // must not be shared by concurrent preview/export work.
+            return CIFilter(name: name, withInputParameters: [kCIInputImageKey: image])?.outputImage ?? image
         }
     }
 
-    public static let sepia = Filters.simpleFilter("CISepiaTone")
-    
-    public static let chrome = Filters.simpleFilter("CIPhotoEffectChrome")
-    
-    public static let fade = Filters.simpleFilter("CIPhotoEffectInstant")
-    
-    public static let invert = Filters.simpleFilter("CIColorInvert")
-    
-    public static let posterize = Filters.simpleFilter("CIColorPosterize")
-    
-    public static let sketch = Filters.simpleFilter("CILineOverlay")
-    
-    public static let comic =  Filters.simpleFilter("CIComicEffect")
-    
-    public static let crystal = Filters.simpleFilter("CICrystallize")
-    
+    public static let sepia = simpleFilter("CISepiaTone")
+    public static let chrome = simpleFilter("CIPhotoEffectChrome")
+    // The shipped version 1.0 Fade preset used Instant. Preserve saved edits.
+    public static let fade = simpleFilter("CIPhotoEffectInstant")
+    public static let invert = simpleFilter("CIColorInvert")
+    public static let posterize = simpleFilter("CIColorPosterize")
+    public static let sketch = simpleFilter("CILineOverlay")
+    public static let comic = simpleFilter("CIComicEffect")
+    public static let crystal = simpleFilter("CICrystallize")
+
     public static func pixellate() -> Filter {
         return { image in
-            let parameters = [
+            guard hasRenderableExtent(image) else { return image }
+            let parameters: [String: Any] = [
                 kCIInputImageKey: image,
-                "inputScale": max(image.extent.width, image.extent.height)/60
-            ] as [String : Any]
-            guard let filter = CIFilter(name: "CIPixellate", withInputParameters: parameters) else {
-                fatalError("filter not found")
-            }
-            guard let outputImgae = filter.outputImage else { fatalError() }
-            return outputImgae
+                kCIInputScaleKey: max(1, max(image.extent.width, image.extent.height) / 60)
+            ]
+            return CIFilter(name: "CIPixellate", withInputParameters: parameters)?.outputImage ?? image
         }
     }
-    
+
     public static func sourceOver(_ inputImage: CIImage) -> Filter {
         return { image in
             let parameters = [
                 kCIInputImageKey: inputImage,
                 kCIInputBackgroundImageKey: image
             ]
-            guard let filter = CIFilter(name: "CISourceOverCompositing", withInputParameters: parameters) else {
-                fatalError("filter not found")
-            }
-            guard let outputImgae = filter.outputImage else { fatalError() }
-            return outputImgae
+            return CIFilter(name: "CISourceOverCompositing", withInputParameters: parameters)?.outputImage ?? image
         }
     }
-    
+
     static func makeRadialGradientCImage(inputRadius0: CGFloat,
-                               inputRadius1: CGFloat,
-                               inputColor0: CIColor,
-                               inputColor1: CIColor,
-                               inputCenter: CIVector) -> CIImage? {
-        let parameters = ["inputRadius0": inputRadius0,
-                          "inputRadius1": inputRadius1,
-                          "inputColor0": inputColor0,
-                          "inputColor1": inputColor1,
-                          kCIInputCenterKey: inputCenter] as [String : Any]
-        let radialGradient = CIFilter(name: "CIRadialGradient", withInputParameters: parameters)
-        return radialGradient?.outputImage
+                                        inputRadius1: CGFloat,
+                                        inputColor0: CIColor,
+                                        inputColor1: CIColor,
+                                        inputCenter: CIVector) -> CIImage? {
+        let parameters: [String: Any] = [
+            "inputRadius0": inputRadius0,
+            "inputRadius1": inputRadius1,
+            "inputColor0": inputColor0,
+            "inputColor1": inputColor1,
+            kCIInputCenterKey: inputCenter
+        ]
+        return CIFilter(name: "CIRadialGradient", withInputParameters: parameters)?.outputImage
     }
-    
+
     public static func pixellateFace() -> Filter {
         return { image in
-            
-            guard let detector = CIDetector(ofType: CIDetectorTypeFace, context: context, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]) else {
-                fatalError("create detector fail")
-            }
-            let faces = detector.features(in: image)
-            guard faces.count > 0 else {
+            guard hasRenderableExtent(image),
+                  let detector = CIDetector(ofType: CIDetectorTypeFace, context: context,
+                                            options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]) else {
                 return image
             }
-            
-            let mask = faces.flatMap({ face -> CIImage? in
-                
+            let masks = detector.features(in: image).compactMap { face -> CIImage? in
                 let radius = min(face.bounds.width, face.bounds.height / 1.5)
-                return self.makeRadialGradientCImage(inputRadius0: radius,
-                    inputRadius1:radius + 1,
-                    inputColor0: CIColor(red: 0, green: 1, blue: 0, alpha: 1),
+                return makeRadialGradientCImage(
+                    inputRadius0: radius,
+                    inputRadius1: radius + 1,
+                    inputColor0: CIColor(red: 1, green: 1, blue: 1, alpha: 1),
                     inputColor1: CIColor(red: 0, green: 0, blue: 0, alpha: 0),
                     inputCenter: CIVector(x: face.bounds.midX, y: face.bounds.midY))
-
-            }).reduce(CIImage(), { sourceOver($0)($1) })
-            
-            let pixellatedImage = pixellate()(image)
-            
-            if let blendImage = CIFilter(name: "CIBlendWithMask", withInputParameters: [
-                kCIInputImageKey: pixellatedImage,
-                kCIInputBackgroundImageKey: image,
-                kCIInputMaskImageKey: mask
-                ])?.outputImage {
-                return blendImage
-            }else{
-                fatalError("no output image")
             }
+            guard let firstMask = masks.first else { return image }
+            let mask = masks.dropFirst().reduce(firstMask) { sourceOver($1)($0) }
+            let parameters = [
+                kCIInputImageKey: pixellate()(image),
+                kCIInputBackgroundImageKey: image,
+                kCIInputMaskImageKey: mask.cropped(to: image.extent)
+            ]
+            return CIFilter(name: "CIBlendWithMask", withInputParameters: parameters)?.outputImage?.cropped(to: image.extent) ?? image
         }
     }
-    
+
     public static func blur(_ radius: Double) -> Filter {
         return { image in
-            let parameters = [
+            guard radius.isFinite, radius >= 0 else { return image }
+            let parameters: [String: Any] = [
                 kCIInputRadiusKey: radius,
                 kCIInputImageKey: image
-            ] as [String : Any]
-            guard let filter = CIFilter(name: "CIGaussianBlur",
-                                        withInputParameters: parameters) else { fatalError() }
-            guard let outputImage = filter.outputImage else { fatalError() }
-            return outputImage
+            ]
+            return CIFilter(name: "CIGaussianBlur", withInputParameters: parameters)?.outputImage ?? image
         }
     }
-    
+
     public static func blurAndSepia() -> Filter {
         return blur(5) >>> sepia
     }
 }
 
-
 private let context = CIContext()
-extension UIImage {
-    
-    public func filteredImage(_ filter: Filter) -> UIImage {
-        let inputImage = self.ciImage ?? CoreImage.CIImage(cgImage: self.cgImage!)
-        let outputImage = filter(inputImage)
-        let cgImage = context.createCGImage(outputImage, from: inputImage.extent)
-        return UIImage(cgImage: cgImage!)
+
+private func hasRenderableExtent(_ image: CIImage) -> Bool {
+    let extent = image.extent
+    return !extent.isNull && !extent.isInfinite && !extent.isEmpty
+        && [extent.origin.x, extent.origin.y, extent.width, extent.height].allSatisfy { $0.isFinite }
+}
+
+public extension UIImage {
+    func filteredImage(_ filter: Filter) -> UIImage {
+        guard let inputImage = filterInputImage, hasRenderableExtent(inputImage),
+              let cgImage = context.createCGImage(filter(inputImage), from: inputImage.extent) else {
+            return self
+        }
+        return UIImage(cgImage: cgImage, scale: scale, orientation: imageOrientation)
     }
-    
-    public func filteredImage(_ orientation: Int32, filter: Filter) -> UIImage {
-        var inputImage = self.ciImage ?? CoreImage.CIImage(cgImage: self.cgImage!)
-        inputImage = inputImage.applyingOrientation(orientation)
-        let outputImage = filter(inputImage)
-        let cgImage = context.createCGImage(outputImage, from: inputImage.extent)
-        return UIImage(cgImage: cgImage!)
+
+    func filteredImage(_ orientation: Int32, filter: Filter) -> UIImage {
+        guard (1...8).contains(orientation), let inputImage = filterInputImage else {
+            return filteredImage(filter)
+        }
+        let orientedImage = inputImage.oriented(forExifOrientation: orientation)
+        guard hasRenderableExtent(orientedImage),
+              let cgImage = context.createCGImage(filter(orientedImage), from: orientedImage.extent) else {
+            return self
+        }
+        return UIImage(cgImage: cgImage, scale: scale, orientation: .up)
+    }
+}
+
+private extension UIImage {
+    var filterInputImage: CIImage? {
+        if let ciImage = ciImage { return ciImage }
+        guard let cgImage = cgImage else { return nil }
+        return CIImage(cgImage: cgImage)
     }
 }

@@ -70,7 +70,7 @@ extension CollageContentView {
         
         setup()
         //从model的相关参数恢复相关放大，偏移状态
-        let scale = scrollView.size.width / model.oldScrollViewSize.width
+        let scale = scrollView.size.width / max(1, model.oldScrollViewSize.width)
         let tranfrom = CGAffineTransform(scaleX: scale, y: scale)
         let newOffset = (model.contentOffset).applying(tranfrom)
         scrollView.zoomScale = model.zoomScale

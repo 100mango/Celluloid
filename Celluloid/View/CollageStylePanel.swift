@@ -7,9 +7,10 @@
 //
 
 import UIKit
+import SnapKit
 import CelluloidKit
 
-protocol CollageStylePanelDelegate: class {
+protocol CollageStylePanelDelegate: AnyObject {
     func collageStylePanel(_ collageStylePanel: CollageStylePanel, didSelctModel model: CollageModel)
 }
 

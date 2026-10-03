@@ -7,96 +7,66 @@
 //
 
 import Foundation
-import JSONCodable
-
+import UIKit
 
 public struct BubbleModel {
-    
-    //MARK: Property
-    //Stored property
     let asset: UIImage.Asset
     public var content = ""
     public var transform = CGAffineTransform.identity
     public var bounds = CGRect(x: 0, y: 0, width: 100, height: 100)
     public var center = CGPoint(x: 100, y: 100)
-    
-    //Computed property
-    public var bubbleImage: UIImage {
-        return UIImage(asset: self.asset)
-    }
-    public var area: [CGFloat] {
-        return areaDic[asset.rawValue]!
-    }
-    
-}
 
-//MARK: init
-extension BubbleModel {
-    
-    public static let bubbles: [BubbleModel] = {
-        var bubbles = [BubbleModel]()
-        for asset in bubbleAssets {
-            let bubble = BubbleModel(asset: asset)
-            bubbles.append(bubble)
-        }
-        return bubbles
-    }()
-    
-    fileprivate init(asset: UIImage.Asset){
+    public var bubbleImage: UIImage {
+        return UIImage(asset: asset) ?? UIImage()
+    }
+
+    public var area: [CGFloat] {
+        return areaDic[asset.rawValue] ?? [0, 100, 0, 100]
+    }
+
+    public static let bubbles = bubbleAssets.map { BubbleModel(asset: $0) }
+
+    fileprivate init(asset: UIImage.Asset) {
         self.asset = asset
     }
-}
 
-//MARK: JSONCodable
-
-extension BubbleModel: JSONEncodable {
     public func toJSON() -> AnyObject {
-        do {
-            return try (JSONEncoder.create({ encoder in
-                try encoder.encode(asset, key: .asset)
-                try encoder.encode(content, key: .content)
-                encoder.encode(transform, key: .transform)
-                encoder.encode(bounds, key: .bounds)
-                encoder.encode(center, key: .center)
-            }) as AnyObject)
-        }catch{
-            fatalError("\(error)")
+        return [
+            "asset": asset.rawValue,
+            "content": content,
+            "transform": NSValue(cgAffineTransform: transform),
+            "bounds": NSValue(cgRect: bounds),
+            "center": NSValue(cgPoint: center)
+        ] as NSDictionary
+    }
+
+    public init(object: [String: Any]) throws {
+        let decoder = AdjustmentDictionary(object: object)
+        let rawAsset = try decoder.string("asset")
+        guard let asset = UIImage.Asset(rawValue: rawAsset), bubbleAssets.contains(asset) else {
+            throw AdjustmentDataError.invalidValue("asset")
         }
+        self.asset = asset
+        content = try decoder.string("content")
+        transform = try decoder.transform("transform")
+        bounds = try decoder.rect("bounds")
+        center = try decoder.point("center")
     }
 }
 
-extension BubbleModel: JSONDecodable {
-    public init(object: JSONObject) {
-        do {
-            let decoder = JSONDecoder(object: object)
-            asset = try decoder.decode(.asset)
-            content = try decoder.decode(.content)
-            transform = try decoder.decode(.transform)
-            bounds = try decoder.decode(.bounds)
-            center = try decoder.decode(.center)
-        }catch{
-            fatalError("\(error)")
-        }
+private let bubbleAssets: [UIImage.Asset] = [.Aside1, .Call1, .Call2, .Call3, .Say1, .Say2, .Say3, .Think1, .Think2, .Think3]
+
+private let areaDic: [String: [CGFloat]] = {
+    guard let url = extensionBundle.url(forResource: "bubble", withExtension: "json"),
+          let data = try? Data(contentsOf: url),
+          let json = try? JSONSerialization.jsonObject(with: data),
+          let values = json as? [String: [NSNumber]] else {
+        return [:]
     }
-}
-
-//MARK: Constant
-private extension String {
-    static let content = "content"
-    static let asset = "asset"
-    static let transform = "transform"
-    static let bounds = "bounds"
-    static let center = "center"
-}
-
-private let bubbleAssets:[UIImage.Asset] = [.Aside1,.Call1,.Call2,.Call3,.Say1,.Say2,.Say3,.Think1,.Think2,.Think3]
-
-private let areaDic:[String:[CGFloat]] = {
-    let path = extensionBundle.path(forResource: "bubble", ofType: "json")
-    if let jsonData = try? Data(contentsOf: URL(fileURLWithPath: path!)){
-        let json = try! JSONSerialization.jsonObject(with: jsonData, options: JSONSerialization.ReadingOptions.mutableContainers)
-        return json as! [String:[CGFloat]]
-    }else{
-        return [String:[CGFloat]]()
+    return values.reduce(into: [String: [CGFloat]]()) { result, entry in
+        let area = entry.value.map { CGFloat(truncating: $0) }
+        if area.count == 4 && area.allSatisfy({ $0.isFinite }) {
+            result[entry.key] = area
+        }
     }
 }()

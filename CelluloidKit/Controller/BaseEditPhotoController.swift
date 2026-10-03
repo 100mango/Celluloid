@@ -7,13 +7,19 @@
 //
 
 import UIKit
+import SnapKit
 import Photos
 
 open class BaseEditPhotoController: UIViewController {
     
     //MARK: Property
-    open var input: PHContentEditingInput = PHContentEditingInput()
-    open let preview: UIImageView = {
+    open var input: PHContentEditingInput? {
+        didSet { sourceImage = input?.displaySizeImage }
+    }
+    public var sourceImage: UIImage? {
+        didSet { preview.image = sourceImage }
+    }
+    public let preview: UIImageView = {
         let preview = UIImageView()
         preview.contentMode = .scaleAspectFit
         preview.isUserInteractionEnabled = true
@@ -29,10 +35,10 @@ open class BaseEditPhotoController: UIViewController {
                 return
             }
             if filterType == .Original {
-                self.preview.image = input.displaySizeImage
+                self.preview.image = sourceImage
             }else{
             
-                self.preview.image = input.displaySizeImage?.filteredImage(input.fullSizeImageOrientation, filter: Filters.filter(filterType))
+                self.preview.image = sourceImage?.filteredImage((input?.fullSizeImageOrientation ?? 1), filter: Filters.filter(filterType))
 
             }
         }
@@ -48,7 +54,8 @@ open class BaseEditPhotoController: UIViewController {
     }
     
     open var outputImage: UIImage? {
-        if let fullSizeImage = UIImage(contentsOfFile: input.fullSizeImageURL?.path ?? "") {
+        if let fullSizeImage = input?.fullSizeImageURL.flatMap({ UIImage(contentsOfFile: $0.path) }) ?? sourceImage {
+            guard preview.imageRect.width > 0, fullSizeImage.size.width > 0, fullSizeImage.size.height > 0 else { return nil }
             let fullSizeImageView = UIImageView()
             fullSizeImageView.image = fullSizeImage
             fullSizeImageView.size = fullSizeImage.size
@@ -57,7 +64,7 @@ open class BaseEditPhotoController: UIViewController {
             //filter
             if filterType != .Original {
                 
-                fullSizeImageView.image = fullSizeImage.filteredImage(input.fullSizeImageOrientation, filter: Filters.filter(filterType))
+                fullSizeImageView.image = fullSizeImage.filteredImage((input?.fullSizeImageOrientation ?? 1), filter: Filters.filter(filterType))
                 
             }
             
@@ -102,18 +109,19 @@ open class BaseEditPhotoController: UIViewController {
         
         self.view.addSubview(preview)
         preview.snp.makeConstraints { (make) in
-            make.edges.equalTo(preview.superview!)
+            make.edges.equalTo(view.safeAreaLayoutGuide).inset(UIEdgeInsets(top: 0, left: 0, bottom: 49, right: 0))
         }
         
         toolBar.delegate = self
         self.view.addSubview(toolBar)
         toolBar.snp.makeConstraints  { (make) in
             make.height.equalTo(49)
-            make.left.right.bottom.equalTo(toolBar.superview!)
+            make.left.right.bottom.equalTo(view.safeAreaLayoutGuide)
         }
     }
     
     override open func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
         overlayView.adjustFrame()
     }
 }
@@ -122,6 +130,7 @@ open class BaseEditPhotoController: UIViewController {
 // MARK: - Public
 public extension BaseEditPhotoController {
     func restoreFromData(_ data: AdjustmentData) {
+        overlayView.subviews.forEach { $0.removeFromSuperview() }
         filterType = data.filterType
         data.bubbles.forEach{ self.overlayView.addBubble($0) }
         data.stickers.forEach{ self.overlayView.addSticker($0) }

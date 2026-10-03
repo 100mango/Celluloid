@@ -41,7 +41,7 @@ open class BubbleLabel: UILabel {
                 left: width * area[2]/100 + 4,
                 bottom: height * (100 - area[1])/100,
                 right: width * (100 - area[3])/100)
-            self.frame = UIEdgeInsetsInsetRect(imageRect, insets)
+            self.frame = imageRect.inset(by: insets)
             self.adjustFontSizeToFitBounds()
         }
     }

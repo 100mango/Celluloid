@@ -6,9 +6,9 @@
 //  Copyright © 2016年 Mango. All rights reserved.
 //
 
-import Foundation
+import UIKit
 
-public protocol FilterPickerViewControllerDelegate: class {
+public protocol FilterPickerViewControllerDelegate: AnyObject {
     func filterPickerViewController(_ filterPickerViewController: FilterPickerViewController, didSelectFilter filter: FilterType)
 }
 

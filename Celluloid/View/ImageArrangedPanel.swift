@@ -7,8 +7,9 @@
 //
 
 import UIKit
+import SnapKit
 
-protocol ImageArrangedPanelDelegate: class {
+protocol ImageArrangedPanelDelegate: AnyObject {
     func imageArrangedPanel(_ imageArrangedPanel: ImageArrangedPanel, didEditModels models: [PhotoModel])
 }
 
@@ -147,7 +148,7 @@ extension ImageArrangedPanel: UICollectionViewDelegate {
 
 
 //MARK: ArrangedCollectionViewCell
-private protocol ArrangedCollectionViewCellDelegate: class {
+private protocol ArrangedCollectionViewCellDelegate: AnyObject {
     func shouldRemoveCell(_ cell: ArrangedCollectionViewCell)
 }
 

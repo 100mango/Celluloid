@@ -7,7 +7,6 @@
 //
 
 import UIKit
-import MZFormSheetPresentationController
 
 open class BubbleView: AttachView {
     //MARK: Property
@@ -15,7 +14,7 @@ open class BubbleView: AttachView {
         let button = UIButton(type: .custom)
         button.isHidden = true
         button.frame = CGRect(x: 0, y: 0, width: self.buttonWidth, height: self.buttonWidth)
-        button.setImage(UIImage(asset: .Btn_icon_sticker_text_normal), for: UIControlState())
+        button.setImage(UIImage(asset: .Btn_icon_sticker_text_normal), for: .normal)
         button.addTarget(self, action: #selector(editText), for: .touchUpInside)
         return button
     }()
@@ -80,10 +79,10 @@ extension BubbleView {
         let editBubbleVC = EditBubbleViewController(bubbleModel: self.bubbleModel)
         editBubbleVC.delegate = self
         let navigationVC = UINavigationController(rootViewController: editBubbleVC)
-        let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
-        formSheetController.presentationController?.shouldUseMotionEffect = true
-        formSheetController.presentationController?.shouldCenterVertically = true
-        self.parentViewController?.present(formSheetController, animated: true, completion: nil)
+        navigationVC.modalPresentationStyle = .formSheet
+        navigationVC.sheetPresentationController?.detents = [.medium(), .large()]
+        navigationVC.sheetPresentationController?.prefersGrabberVisible = true
+        self.parentViewController?.present(navigationVC, animated: true)
     }
 }
 
