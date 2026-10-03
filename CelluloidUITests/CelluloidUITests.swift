@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 final class CelluloidUITests: XCTestCase {
     private var app: XCUIApplication!
@@ -48,6 +49,11 @@ final class CelluloidUITests: XCTestCase {
         app.collectionViews.cells.element(boundBy: 1).tap()
         // Picker selection dismisses its sheet; the editor should survive backgrounding.
         if app.buttons["Cancel"].exists && !done.isHittable { app.buttons["Cancel"].tap() }
+        app.buttons["tool-sticker"].tap()
+        XCTAssertTrue(app.collectionViews.cells.firstMatch.waitForExistence(timeout: 5))
+        app.collectionViews.cells.firstMatch.tap()
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        emitScreenshot("edited-fixture")
         XCUIDevice.shared.press(.home)
         app.activate()
         done.tap()
@@ -80,8 +86,25 @@ final class CelluloidUITests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         XCTAssertTrue(done.isHittable)
         XCUIDevice.shared.orientation = .portrait
+        emitScreenshot("collage-preview")
         done.tap()
         XCTAssertTrue(app.staticTexts["photo-saved"].waitForExistence(timeout: 20))
+    }
+
+    private func emitScreenshot(_ name: String) {
+        // Two bounded screenshots per CI job, from the iPhone run and synthetic data only.
+        guard UIDevice.current.userInterfaceIdiom == .phone,
+              let image = UIImage(data: app.screenshot().pngRepresentation),
+              let jpeg = image.jpegData(compressionQuality: 0.55), jpeg.count <= 500_000 else { return }
+        let base64 = jpeg.base64EncodedString()
+        print("SCREENSHOT_BEGIN:\(name)")
+        var index = base64.startIndex
+        while index < base64.endIndex {
+            let end = base64.index(index, offsetBy: 4000, limitedBy: base64.endIndex) ?? base64.endIndex
+            print(String(base64[index..<end]))
+            index = end
+        }
+        print("SCREENSHOT_END:\(name)")
     }
 
 }

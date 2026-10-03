@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import CelluloidKit
 
 class CollageView: UIView {
     

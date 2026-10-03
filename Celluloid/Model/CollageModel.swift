@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import CelluloidKit
 
 enum CollageImageCount: Int {
     case two = 2

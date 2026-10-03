@@ -36,7 +36,7 @@ open class ImageOverlayView: UIView {
         self.commonInit()
     }
     
-    open static func makeViewOverlaysImageView(_ imageView: UIImageView) -> ImageOverlayView {
+    public static func makeViewOverlaysImageView(_ imageView: UIImageView) -> ImageOverlayView {
         let overlayView = ImageOverlayView()
         imageView.addSubview(overlayView)
         overlayView.frame = imageView.imageRect

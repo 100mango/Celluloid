@@ -45,10 +45,10 @@ jobs:
           PY
           while read -r id name; do
             echo "Testing $name ($id)"
+            xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build build-for-testing CODE_SIGNING_ALLOWED=NO | tee "build-$id.log"
             xcrun simctl boot "$id" || true
             xcrun simctl bootstatus "$id" -b
             xcrun simctl addmedia "$id" /tmp/celluloid-fixture.png /tmp/celluloid-fixture-2.png
-            xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build build-for-testing CODE_SIGNING_ALLOWED=NO | tee "build-$id.log"
             xcrun simctl install "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app
             xcrun simctl privacy "$id" grant photos Mango.Celluloid
             xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-$id.xcresult" -parallel-testing-enabled NO test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-$id.log"

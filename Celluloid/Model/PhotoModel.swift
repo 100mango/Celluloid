@@ -1,4 +1,5 @@
 import UIKit
+import CelluloidKit
 import Photos
 
 final class PhotoModel {

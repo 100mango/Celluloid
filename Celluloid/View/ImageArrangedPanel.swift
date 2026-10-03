@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import CelluloidKit
 import SnapKit
 
 protocol ImageArrangedPanelDelegate: AnyObject {
@@ -65,6 +66,7 @@ class ImageArrangedPanel: UIView {
     }
     
     override func layoutSubviews() {
+        super.layoutSubviews()
         if self.width > self.height {
             let width = self.height - (spacing * 2)
             flowLayout.itemSize = CGSize(width:  width, height: width)
@@ -125,16 +127,20 @@ extension ImageArrangedPanel: UICollectionViewDataSource {
         
         let cell = collectionView.dequeueReusableCellForIndexPath(indexPath) as ArrangedCollectionViewCell
         cell.delegate = self
-        
-        photoModels[indexPath.row].requstImage { image in
-            cell.imageView.image = image
+        let model = photoModels[indexPath.row]
+        cell.representedIdentifier = model.asset.localIdentifier
+        cell.imageView.image = nil
+        model.requstImage { [weak cell] image in
+            guard cell?.representedIdentifier == model.asset.localIdentifier else { return }
+            cell?.imageView.image = image
         }
         return cell
     }
     
     func collectionView(_ collectionView: UICollectionView, moveItemAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
     
-        photoModels.swapAt(sourceIndexPath.row, destinationIndexPath.row)
+        let moved = photoModels.remove(at: sourceIndexPath.item)
+        photoModels.insert(moved, at: destinationIndexPath.item)
         self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
     }
     
@@ -154,6 +160,7 @@ private protocol ArrangedCollectionViewCellDelegate: AnyObject {
 
 
 private class ArrangedCollectionViewCell: UICollectionViewCell {
+    var representedIdentifier: String?
     
     let imageView: UIImageView = {
         let imageView = UIImageView()
@@ -169,7 +176,7 @@ private class ArrangedCollectionViewCell: UICollectionViewCell {
         return button
     }()
     
-    var delegate: ArrangedCollectionViewCellDelegate?
+    weak var delegate: ArrangedCollectionViewCellDelegate?
     
     override init(frame: CGRect) {
         

@@ -59,7 +59,7 @@ open class AttachView: UIView {
         self.addSubview(deleteButton)
         self.addSubview(resizeButton)
         
-        let moveGesture = UIPanGestureRecognizer(target: self, action: .move)
+        let moveGesture = UIPanGestureRecognizer(target: self, action: .moveAttachment)
         self.addGestureRecognizer(moveGesture)
         
         let tapGesture = UITapGestureRecognizer(target: self, action: .tap)
@@ -92,7 +92,7 @@ open class AttachView: UIView {
 private extension Selector {
     static let removeSelf = #selector(AttachView.removeSelf)
     static let rotateAndResize = #selector(AttachView.rotateAndResize(_:))
-    static let move = #selector(AttachView.move(_:))
+    static let moveAttachment = #selector(AttachView.moveAttachment(_:))
     static let tap = #selector(AttachView.tap)
 }
 
@@ -146,7 +146,7 @@ extension AttachView{
         }
     }
     
-    @objc func move (_ gestureRecognizer: UIPanGestureRecognizer) {
+    @objc func moveAttachment (_ gestureRecognizer: UIPanGestureRecognizer) {
         struct Static {
             static var touchPoint = CGPoint.zero
             static var beginningCenter = CGPoint.zero
