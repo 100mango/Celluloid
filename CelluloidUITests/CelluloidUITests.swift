@@ -456,6 +456,7 @@ extension XCTestCase {
 final class CelluloidCaptureTests: XCTestCase {
     private var app = XCUIApplication()
     private var capturedFailure = false
+    private var hostInterruption: NSObjectProtocol?
     override func record(_ issue: XCTIssue) {
         if !capturedFailure {
             capturedFailure = true
@@ -478,7 +479,12 @@ final class CelluloidCaptureTests: XCTestCase {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
     }
-    override func tearDown() { app.terminate(); super.tearDown() }
+    override func tearDown() {
+        app.terminate()
+        if let monitor = hostInterruption { removeUIInterruptionMonitor(monitor) }
+        hostInterruption = nil
+        super.tearDown()
+    }
 
     private func launchChinese() {
         app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
@@ -651,9 +657,44 @@ final class CelluloidCaptureTests: XCTestCase {
         let hostBaseline = baselineSources[0]
         guard hostBaseline.creationDate > baselineSources[1].creationDate else { throw captureProbeError("Newest synthetic asset must have an unambiguous creation date") }
         try logSelection(hostBaseline, phase: "photos-host-newest")
+        let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
+        let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let notificationTitle = "“Photos” Would Like to Send You Notifications"
+        func declineObservedNotification(_ alert: XCUIElement) -> Bool {
+            guard alert.exists && alert.label == notificationTitle else { return false }
+            let deny = alert.buttons.matching(NSPredicate(format: "label IN %@", ["Don’t Allow", "Don't Allow"]))
+            guard deny.count == 1, deny.element.isEnabled, deny.element.isHittable else { return false }
+            print("PHOTOS_EXPECTED_NOTIFICATION_DECLINED label=\(alert.label)")
+            deny.element.tap()
+            let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: alert)
+            return XCTWaiter.wait(for: [gone], timeout: 10) == .completed
+        }
+        func haltForUnexpectedAlert(_ reason: String) -> Never {
+            // No UI action, XCTFail, or throwable recorder here: XCTest may catch
+            // a test failure inside its callback. A Never-returning process abort
+            // cannot fall through to the default permission-accepting monitor.
+            // The bounded text is the diagnostic; it contains no account values.
+            print("PHOTOS_HOST_FAIL_CLOSED_ABORT " + String(reason.prefix(300)))
+            fatalError("Photos-host test stopped before any unknown alert action")
+        }
+        hostInterruption = addUIInterruptionMonitor(withDescription: "Decline only observed Photos notifications; abort on every other interruption") { alert in
+            if declineObservedNotification(alert) { return true }
+            haltForUnexpectedAlert("Interruption was not the single supported Photos notification decline")
+        }
+        func promptFree() -> Bool {
+            let notification = system.alerts[notificationTitle]
+            if notification.exists && !declineObservedNotification(notification) {
+                haltForUnexpectedAlert("Observed Photos notification could not be explicitly declined")
+            }
+            guard !system.alerts.firstMatch.exists && !photos.alerts.firstMatch.exists else {
+                haltForUnexpectedAlert("Unexpected alert before host interaction or pixel capture")
+            }
+            return true
+        }
+        // Install the fail-closed monitor before the first app launch, and keep
+        // it installed through tearDown's last app action.
         launchChinese()
         app.terminate()
-        let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
         photos.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         photos.launch()
         Thread.sleep(forTimeInterval: 3)
@@ -663,6 +704,7 @@ final class CelluloidCaptureTests: XCTestCase {
             print("PHOTOS_HOST_HIERARCHY_END:\(stage)")
         }
         func tapLabel(_ labels: [String]) -> Bool {
+            guard promptFree() else { return false }
             for label in labels {
                 for control in photos.buttons.matching(NSPredicate(format: "label == %@", label)).allElementsBoundByIndex {
                     if control.exists && control.isEnabled && control.isHittable { control.tap(); return true }
@@ -681,11 +723,11 @@ final class CelluloidCaptureTests: XCTestCase {
             return true
         }
         func tapReady(_ control: XCUIElement, timeout: TimeInterval = 10) -> Bool {
-            guard waitReady(control, timeout: timeout) else { return false }
+            guard promptFree(), waitReady(control, timeout: timeout) else { return false }
             control.tap()
             return true
         }
-        func visiblePhotoMatches(_ expected: UIImage, label: String, phase: String) throws -> Bool {
+        func visiblePhotoMatches(_ expected: UIImage, label: String, phase: String, cropEditor: Bool = false) throws -> Bool {
             let source = try XCTUnwrap(expected.cgImage)
             // Inspect the observed one-up image, never a toolbar thumbnail. The
             // 3x3 interior samples avoid borders and system controls. The small
@@ -695,7 +737,9 @@ final class CelluloidCaptureTests: XCTestCase {
             var attempt = 0
             repeat {
                 attempt += 1
-                let images = photos.images.matching(NSPredicate(format: "label == %@", label)).allElementsBoundByIndex
+                guard promptFree() else { return false }
+                let images = cropEditor ? [photos.otherElements["cropView"].firstMatch] :
+                    photos.images.matching(NSPredicate(format: "label == %@", label)).allElementsBoundByIndex
                 let candidates = images.filter {
                     let frame = $0.frame
                     return $0.exists && frame.width > photos.frame.width * 0.7 &&
@@ -808,12 +852,14 @@ final class CelluloidCaptureTests: XCTestCase {
         let images = photos.images.matching(identifier: "PXGGridLayout-Info").allElementsBoundByIndex.filter { $0.exists && $0.isHittable }
         print("PHOTOS_HOST_GRID_LABELS: " + images.map { $0.label }.joined(separator: " | "))
         let latest = Array(images.suffix(2))
-        let today = Calendar.current.dateComponents([.month, .day], from: Date())
-        let datePattern = "\\b\(today.month!)月0?\(today.day!)日"
+        let seededDatePatterns = baselineSources.map { source -> String in
+            let date = Calendar.current.dateComponents([.month, .day], from: source.creationDate)
+            return "\\b\(date.month!)月0?\(date.day!)日"
+        }
         guard latest.count == 2,
-              latest.allSatisfy({ $0.label.range(of: datePattern, options: .regularExpression) != nil }),
+              latest.allSatisfy({ image in seededDatePatterns.contains { image.label.range(of: $0, options: .regularExpression) != nil } }),
               let fixture = latest.last else {
-            print("PHOTOS_HOST_RESULT:BLOCKED latest two accessible Photos grid images cannot be verified as today's seeded fixtures")
+            print("PHOTOS_HOST_RESULT:BLOCKED latest two accessible Photos grid images cannot be verified against the actual seeded creation dates")
                 XCTFail("Photos-host qualification did not reach the required restoration gate; see observed hierarchy")
             return
         }
@@ -902,6 +948,7 @@ final class CelluloidCaptureTests: XCTestCase {
         try captureJSON("PHOTOS_HOST_SEPIA_DISPLAY_RESULT", ["immediate_matches": sepiaImmediate,
             "after_representation_probe_matches": sepiaAfterRepresentationProbe, "final_reopened_matches": sepiaDisplayVerified])
         print("PHOTOS_HOST_SEPIA_DISPLAY_VERIFIED \(sepiaDisplayVerified)")
+        guard promptFree() else { return }
         attachHostScreenshot("celluloid-host-saved-sepia")
         guard tapLabel(["编辑", "Edit"]) else {
             print("PHOTOS_HOST_RESULT:PARTIAL extension rendering attempted; save/reopen not established")
@@ -988,24 +1035,19 @@ final class CelluloidCaptureTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 15), .completed)
         try captureHostSystemRevertedOriginal(hostBaseline)
         hierarchy("after-system-revert")
-        if !photos.buttons["编辑"].firstMatch.exists {
-            // Revert may leave Photos' native editor open. Resolve only the
-            // observed native Cancel action after confirming persisted Revert.
-            let nativeCancel = photos.navigationBars["PUPhotoEditView"].buttons["取消"].firstMatch
-            guard tapReady(nativeCancel) else {
-                hierarchy("after-revert-exit-unavailable")
-                XCTFail("No observed normal exit from the reverted Photos editor"); return
-            }
-        }
-        guard waitReady(photos.buttons["编辑"].firstMatch) else {
-            hierarchy("after-revert-one-up-unavailable")
-            XCTFail("Could not return to the reverted asset's one-up view"); return
-        }
-        let revertedDisplayVerified = try visiblePhotoMatches(hostBaseline.originalImage, label: fixtureLabel, phase: "after-system-revert")
+        let remainsInNativeEditor = photos.navigationBars["PUPhotoEditView"].exists && photos.otherElements["cropView"].firstMatch.exists
+        let revertedDisplayVerified = try visiblePhotoMatches(hostBaseline.originalImage, label: fixtureLabel,
+            phase: "after-system-revert", cropEditor: remainsInNativeEditor)
 
+        // Actual retained pixels show Revert leaves the native crop editor open.
+        // Verify its original raster, then use its existing Filters control. The
+        // previously ineffective native Cancel action is not claimed as passed.
+        if !remainsInNativeEditor && !tapReady(photos.buttons["编辑"].firstMatch) {
+            hierarchy("after-revert-edit-unavailable")
+            XCTFail("Neither observed native editor nor one-up Edit is available"); return
+        }
         // Controlled system-Photos edit on the same verified synthetic asset.
-        // Do not infer a cause for the extension-preview mismatch without this.
-        guard tapReady(photos.buttons["编辑"].firstMatch), tapReady(photos.buttons["edit.tool.filters"].firstMatch) else {
+        guard tapReady(photos.buttons["edit.tool.filters"].firstMatch) else {
             hierarchy("native-filter-control-unavailable")
             XCTFail("Observed Photos filter tool was unavailable"); return
         }
@@ -1049,6 +1091,7 @@ final class CelluloidCaptureTests: XCTestCase {
             XCTFail("Native filtered asset could not be reopened normally"); return
         }
         let nativeReopened = try visiblePhotoMatches(nativeCurrent.currentImage, label: fixtureLabel, phase: "native-after-library-reopen")
+        guard promptFree() else { return }
         attachHostScreenshot("celluloid-host-native-filter")
         try captureJSON("NATIVE_PHOTOS_DISPLAY_CONTROL_RESULT", ["same_asset_identifier": hostBaseline.assetIdentifier,
             "rendered_monochrome_sample": nativeSample, "current_pixel_sha256": nativeCurrent.currentPixelSHA,
