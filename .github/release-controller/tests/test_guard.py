@@ -41,6 +41,24 @@ class GuardTests(unittest.TestCase):
         self.r['sticker_rights_review_complete']=False
         g.load_release(self.manifest(),'approved','export')
         with self.assertRaisesRegex(ValueError,'build-upload metadata'):g.load_release(self.manifest(),'approved','upload')
+    def test_export_preserves_legacy_http_support_without_support_review(self):
+        legacy='http://legacy.example.invalid/support?documentary=unchanged'
+        self.r.update(support_url=legacy,privacy_review_reference='Fixture approved privacy policy',privacy_support_review_reference=None)
+        approved=g.load_release(self.manifest(),'approved','export')
+        self.assertEqual(approved['support_url'],legacy)
+        with self.assertRaisesRegex(ValueError,'HTTPS support URL'):g.load_release(self.manifest(),'approved','upload')
+    def test_export_allows_missing_support_with_privacy_only_review(self):
+        self.r.update(support_url=None,privacy_review_reference='Fixture approved privacy policy',privacy_support_review_reference=None)
+        g.load_release(self.manifest(),'approved','export')
+    def test_export_still_requires_privacy_review(self):
+        self.r.update(privacy_review_reference=None,privacy_support_review_reference=None)
+        with self.assertRaisesRegex(ValueError,'Privacy policy review'):g.load_release(self.manifest(),'approved','export')
+    def test_upload_still_requires_combined_privacy_support_review(self):
+        self.r.update(privacy_review_reference='Fixture privacy-only review',privacy_support_review_reference=None)
+        with self.assertRaisesRegex(ValueError,'Privacy/support review'):g.load_release(self.manifest(),'approved','upload')
+    def test_existing_combined_review_remains_compatible_with_export(self):
+        self.r.pop('privacy_review_reference',None)
+        g.load_release(self.manifest(),'approved','export')
     def test_clean_checkout_verification(self):
         with mock.patch.object(g.subprocess,'check_output',side_effect=['a'*40+'\n',b'',b'']),mock.patch.object(g.subprocess,'run',return_value=mock.Mock(returncode=0)):
             g.verify_source_tree_clean(self.dir,'a'*40)
@@ -195,9 +213,28 @@ class GuardTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Unsafe'):g.secure_extract_ipa(p,self.dir/'out')
     def app_fixture(self,bid='100mango.QRCatcher'):
         p=self.dir/'QRCatcher.app';p.mkdir();(p/'QRCatcher').write_bytes(b'fake binary')
-        with (p/'Info.plist').open('wb') as f:plistlib.dump({'CFBundleIdentifier':bid,'CFBundleShortVersionString':'2.0','CFBundleVersion':'42','CFBundleSupportedPlatforms':['iPhoneOS'],'CFBundleExecutable':'QRCatcher'},f)
+        with (p/'Info.plist').open('wb') as f:plistlib.dump({'CFBundleIdentifier':bid,'CFBundleShortVersionString':'2.0','CFBundleVersion':'42','CFBundleSupportedPlatforms':['iPhoneOS'],'CFBundleExecutable':'QRCatcher','UIDeviceFamily':[1,2] if bid=='Mango.Celluloid' else [1]},f)
         return p
     def test_bundle_identity_and_version(self):self.assertEqual(g.inspect_app(self.r,self.app_fixture())['bundles'],['100mango.QRCatcher'])
+    def test_touchcolor_iphone_only_scope_is_accepted(self):
+        self.r['app']='ColorPicker';self.r['repository']='100mango/ColorPicker'
+        self.assertEqual(g.inspect_app(self.r,self.app_fixture('com.mango.touchColor'))['bundles'],['com.mango.touchColor'])
+    def test_touchcolor_universal_scope_is_rejected(self):
+        self.r['app']='ColorPicker';self.r['repository']='100mango/ColorPicker'
+        app=self.app_fixture('com.mango.touchColor');p=app/'Info.plist'
+        info=plistlib.loads(p.read_bytes());info['UIDeviceFamily']=[1,2];p.write_bytes(plistlib.dumps(info))
+        with self.assertRaisesRegex(ValueError,'device families'):g.inspect_app(self.r,app)
+    def test_qrcatcher_universal_scope_is_rejected(self):
+        app=self.app_fixture();p=app/'Info.plist'
+        info=plistlib.loads(p.read_bytes());info['UIDeviceFamily']=[1,2];p.write_bytes(plistlib.dumps(info))
+        with self.assertRaisesRegex(ValueError,'device families'):g.inspect_app(self.r,app)
+    def test_missing_or_invalid_main_app_family_is_rejected(self):
+        app=self.app_fixture();p=app/'Info.plist';info=plistlib.loads(p.read_bytes())
+        for families in [None,[],[True],['1'],[2]]:
+            info['UIDeviceFamily']=families if families is not None else []
+            if families is None:info.pop('UIDeviceFamily')
+            p.write_bytes(plistlib.dumps(info))
+            with self.subTest(families=families),self.assertRaisesRegex(ValueError,'device families'):g.inspect_app(self.r,app)
     def test_wrong_bundle_rejected(self):
         with self.assertRaisesRegex(ValueError,'identity'):g.inspect_app(self.r,self.app_fixture('changed.identifier'))
     def celluloid_fixture(self):
@@ -244,6 +281,14 @@ class GuardTests(unittest.TestCase):
             (fw/'Framework').write_bytes(b'fixture')
             with (fw/'Info.plist').open('wb') as f:plistlib.dump(info,f)
         return app
+    def test_celluloid_universal_scope_accepts_familyless_frameworks_and_extension(self):
+        app=self.full_celluloid_app()
+        self.assertEqual(g.plist(app/'Info.plist')['UIDeviceFamily'],[1,2])
+        g.inspect_app(self.r,app)
+    def test_celluloid_iphone_only_scope_is_rejected(self):
+        app=self.full_celluloid_app();p=app/'Info.plist'
+        info=plistlib.loads(p.read_bytes());info['UIDeviceFamily']=[1];p.write_bytes(plistlib.dumps(info))
+        with self.assertRaisesRegex(ValueError,'device families'):g.inspect_app(self.r,app)
     def test_framework_own_versions_are_accepted(self):
         app=self.full_celluloid_app();result=g.inspect_app(self.r,app)
         self.assertEqual(len(result['bundles']),4)

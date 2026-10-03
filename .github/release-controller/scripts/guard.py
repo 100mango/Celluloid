@@ -5,9 +5,9 @@ from __future__ import annotations
 import argparse, base64, datetime as dt, hashlib, json, os, pathlib, plistlib, re, shutil, stat, subprocess, sys, tarfile, urllib.request, urllib.parse, zipfile
 
 APPS = {
-    'Celluloid': {'repository':'100mango/Celluloid','project':'Celluloid.xcodeproj','scheme':'Celluloid','app':'Mango.Celluloid','extensions':['Mango.Celluloid.CelluloidPhotoExtension']},
-    'QRCatcher': {'repository':'100mango/QRCatcher','project':'QRCatcher.xcodeproj','scheme':'QRCatcher','app':'100mango.QRCatcher','extensions':[]},
-    'ColorPicker': {'repository':'100mango/ColorPicker','project':'TouchColor.xcodeproj','scheme':'TouchColor','app':'com.mango.touchColor','extensions':[]},
+    'Celluloid': {'repository':'100mango/Celluloid','project':'Celluloid.xcodeproj','scheme':'Celluloid','app':'Mango.Celluloid','device_families':[1,2],'extensions':['Mango.Celluloid.CelluloidPhotoExtension']},
+    'QRCatcher': {'repository':'100mango/QRCatcher','project':'QRCatcher.xcodeproj','scheme':'QRCatcher','app':'100mango.QRCatcher','device_families':[1],'extensions':[]},
+    'ColorPicker': {'repository':'100mango/ColorPicker','project':'TouchColor.xcodeproj','scheme':'TouchColor','app':'com.mango.touchColor','device_families':[1],'extensions':[]},
 }
 SHA = re.compile(r'[0-9a-f]{40}\Z')
 RELEASE_ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z')
@@ -129,8 +129,9 @@ def load_release(path, release_id, mode='dry-run'):
     if mode != 'dry-run':
         require(type(r.get('app_store_record_id')) is str and r['app_store_record_id'].isdigit(), 'Existing App Store record ID required')
         require(https_url(r.get('privacy_policy_url')), 'Final HTTPS privacy policy URL required')
-        require(https_url(r.get('support_url')), 'Final HTTPS support URL required')
-        require(nonempty(r.get('privacy_support_review_reference')), 'Export privacy/support basics must be reviewed; App Review readiness is a later separate gate')
+        # Export submits no App Store metadata. Keep any legacy support URL
+        # documentary and unchanged; support validation belongs to upload.
+        require(nonempty(r.get('privacy_review_reference')) or nonempty(r.get('privacy_support_review_reference')), 'Privacy policy review required for export')
         storage=r.get('unsigned_artifact_storage',{})
         require(storage.get('approved') is True and storage.get('quota_verified') is True, 'Short-lived unsigned artifact storage/quota not approved and verified')
         require(storage.get('max_compressed_bytes')==MAX_COMPRESSED_BYTES and storage.get('max_expanded_bytes')==MAX_EXPANDED_BYTES and storage.get('retention_days')==1, 'Artifact limits must be reviewed 100 MiB compressed, 512 MiB expanded and one day')
@@ -157,6 +158,8 @@ def load_release(path, release_id, mode='dry-run'):
         require(isinstance(ent,dict) and set(ent) == expected, 'Explicit entitlement allowlist required for app and every extension')
         require(all(isinstance(v,dict) and v for v in ent.values()), 'Approved exact entitlement dictionaries required')
         if mode == 'upload':
+            require(https_url(r.get('support_url')), 'Final HTTPS support URL required for upload')
+            require(nonempty(r.get('privacy_support_review_reference')), 'Privacy/support review required for upload')
             require(approvals.get('upload_build_to_existing_app_store_record') is True, 'Build upload not approved')
             require(nonempty(r.get('build_upload_review_reference')), 'Separate build-upload metadata decision required; this does not authorize App Review or release')
             require(r.get('upload_purpose') in ('internal-device-validation','release-candidate'), 'Reviewed build upload purpose required')
@@ -284,6 +287,9 @@ def inspect_app(r,app, signed=False, team=None):
     for p in bundle_dirs:
         info=plist(p/'Info.plist'); bid=info.get('CFBundleIdentifier')
         require(bid in expected and bid not in found,'Unexpected/duplicate embedded bundle identity')
+        if p==app:
+            families=info.get('UIDeviceFamily')
+            require(isinstance(families,list) and all(type(family) is int for family in families) and families==a['device_families'],'Main app device families differ from approved shipped scope')
         found[bid]=(p,info)
         if p.suffix=='.framework':
             require(bid in frameworks and p.name==frameworks[bid]['directory'],'Framework product-directory mismatch')

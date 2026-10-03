@@ -23,7 +23,9 @@ Environment protection must require owner review, exact `master` branch policy a
 
 ## Evidence and resource limits
 
-Each allowlist entry requires exact source/tree/workflow hashes, successful CI run/attempt/jobs/required steps, fixed toolchain evidence, app/version identity, approved privacy/support basics, exact entitlements and observed framework inventory. App Review questionnaires and rights decisions are separate later gates, not prerequisites for an export-only integration probe. Optional build upload needs its own metadata review and approval reference.
+Each allowlist entry requires exact source/tree/workflow hashes, successful CI run/attempt/jobs/required steps, fixed toolchain evidence, app/version identity, approved privacy basics, exact entitlements and observed framework inventory. App Review questionnaires and rights decisions are separate later gates, not prerequisites for an export-only integration probe. Optional build upload needs its own metadata review and approval reference. Export requires an approved HTTPS privacy-policy URL and `privacy_review_reference` (an existing combined `privacy_support_review_reference` also qualifies). It does not require a Support URL or support-page review and does not submit App Store metadata. Preserve known legacy `support_url` values exactly, including HTTP values; do not rewrite them to make an export probe pass. Upload retains the existing HTTPS Support URL and combined privacy/support-review gates, plus its separate build-upload review and approval.
+
+The main app's `UIDeviceFamily` must preserve shipped scope exactly: Celluloid `[1, 2]`, QRCatcher `[1]`, and ColorPicker/TouchColor `[1]`. Framework and extension plists are not assumed to contain this app-only field.
 
 Celluloid requires first-party CelluloidKit and exact observed metadata for the synthesized SnapKit package framework. SnapKit is pinned to its official repository, version 5.7.1, revision `2842e6e84e82eb9a8dac0100ca90d9444b0307f4`; both tracked lockfiles are checked. Unknown framework metadata blocks release. No wildcard IDs or app-version defaults are accepted for frameworks.
 
