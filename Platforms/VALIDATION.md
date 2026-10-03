@@ -36,3 +36,9 @@ Still required: compile/fix against exact SDK; all tests actually run; native UI
 ## Bounded work
 
 A process-wide serial actor renders previews/exports with cancellation checks. The original-pixel filter graph is transformed and clipped to the visible tile before CGImage materialization, even at5×source zoom. CIContext intermediate caching is disabled and caches clear after each render. Core Text fitting uses at most17 shaping passes per bubble and errors instead of silently truncating text that cannot fit. These bounds are source-level; practical peak-memory and cancellation measurements remain to be executed.
+
+## Static-photo contract
+
+Native documents retain imported original file bytes. Rendering is a static-image, sRGB, 8-bit SDR workflow; PNG preserves alpha and JPEG composites onto white. No claim is made for editable HDR gain maps, Live Photo motion/audio, depth, RAW development controls, animation, or retention of camera metadata in finished exports. Opening a source does not modify its Photos-library asset. The separate iOS Photos-host non-destructive workflow remains on its original implementation.
+
+Image-format tests use Apple ImageIO to encode synthetic PNG/JPEG/HEIC/HEIF when the runner advertises that encoder, then compare oriented output with an independent ImageIO thumbnail transform oracle. Missing HEIC/HEIF encoders are explicit unverified coverage, not product passes.

@@ -1,0 +1,53 @@
+{
+  "bubble": {
+    "asset": "say1",
+    "bounds": [
+      0,
+      0,
+      180,
+      96
+    ],
+    "center": [
+      240,
+      320
+    ],
+    "content": "Hello, 世界 🎬",
+    "transform": [
+      1.5,
+      0.25,
+      -0.25,
+      1.5,
+      10,
+      -4
+    ]
+  },
+  "bytes": 1107,
+  "filterType": "Chrome",
+  "formatIdentifier": "Mango.CelluloidPhotoExtension",
+  "formatVersion": "1.0",
+  "name": "legacy-points",
+  "referenceCanvasSize": [],
+  "runtime": "27.0",
+  "sha256": "81708fde38d83189bffdb76ca17cc14e3afaf573f729d7ede390f57d286f8e92",
+  "sticker": {
+    "bounds": [
+      2,
+      3,
+      72,
+      80
+    ],
+    "center": [
+      44,
+      -12
+    ],
+    "imageName": "32",
+    "transform": [
+      0.5,
+      0,
+      0,
+      0.75,
+      0,
+      0
+    ]
+  }
+}

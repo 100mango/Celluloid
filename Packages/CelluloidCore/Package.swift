@@ -7,6 +7,6 @@ let package = Package(
     products: [.library(name: "CelluloidDomain", targets: ["CelluloidDomain"])],
     targets: [
         .target(name: "CelluloidDomain"),
-        .testTarget(name: "CelluloidDomainTests", dependencies: ["CelluloidDomain"])
+        .testTarget(name: "CelluloidDomainTests", dependencies: ["CelluloidDomain"], resources: [.process("Fixtures")])
     ]
 )

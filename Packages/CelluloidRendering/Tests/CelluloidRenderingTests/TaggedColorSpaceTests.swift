@@ -6,8 +6,11 @@ import CelluloidDomain
 
 final class TaggedColorSpaceTests: XCTestCase {
     func testGenericAndP3TaggedSourcesMatchIndependentCoreGraphicsSRGBConversion() throws {
-        for name in [CGColorSpace.genericRGB, CGColorSpace.displayP3] {
-            let sourceSpace = try XCTUnwrap(CGColorSpace(name: name))
+        let spaces: [(String, CGColorSpace)] = [
+            ("Generic RGB", try XCTUnwrap(CGColor(red: 1, green: 0, blue: 0, alpha: 1).colorSpace)),
+            ("Display P3", try XCTUnwrap(CGColorSpace(name: CGColorSpace.displayP3)))
+        ]
+        for (name, sourceSpace) in spaces {
             let sourceContext = try XCTUnwrap(CGContext(data: nil, width: 24, height: 16, bitsPerComponent: 8,
                                                        bytesPerRow: 24 * 4, space: sourceSpace,
                                                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))

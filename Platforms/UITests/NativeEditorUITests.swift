@@ -12,9 +12,9 @@ final class NativeEditorUITests: XCTestCase {
         let app = XCUIApplication(url: expected)
         app.launch(); defer { app.terminate() }
         let candidates = NSRunningApplication.runningApplications(withBundleIdentifier: "Mango.Celluloid")
-        let actual = try XCTUnwrap(candidates.first { $0.bundleURL?.standardizedFileURL.resolvingSymlinksInPath() == expected })
-        XCTAssertEqual(actual.bundleURL?.standardizedFileURL.resolvingSymlinksInPath(), expected)
-        XCTAssertEqual(actual.executableURL?.standardizedFileURL.resolvingSymlinksInPath(), expected.appendingPathComponent("Contents/MacOS/CelluloidMac"))
+        let actual = try XCTUnwrap(candidates.first { $0.bundleURL?.standardizedFileURL.resolvingSymlinksInPath().path == expected.path })
+        XCTAssertEqual(actual.bundleURL?.standardizedFileURL.resolvingSymlinksInPath().path, expected.path)
+        XCTAssertEqual(actual.executableURL?.standardizedFileURL.resolvingSymlinksInPath().path, expected.appendingPathComponent("Contents/MacOS/CelluloidMac").path)
         print("CELLULOID_UI_LAUNCH expected=\(expected.path) actual=\(actual.bundleURL!.path) executable=\(actual.executableURL!.path) pid=\(actual.processIdentifier)")
         if app.buttons["Cancel"].waitForExistence(timeout: 3) { app.buttons["Cancel"].click() }
         app.typeKey("n", modifierFlags: .command)
