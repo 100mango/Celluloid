@@ -90,7 +90,13 @@ open class BaseEditPhotoController: UIViewController {
             Self.exportQueue.async {
                 autoreleasepool {
                     guard !task.isCancelled else { finish(.failure(.cancelled)); return }
+                    #if DEBUG
+                    PhotoExportDiagnostics.trace("jpeg-start", source: image.cgImage)
+                    #endif
                     guard let jpeg = image.jpegData(compressionQuality: 1) else { finish(.failure(.encodingFailed)); return }
+                    #if DEBUG
+                    PhotoExportDiagnostics.trace("jpeg-finished", source: image.cgImage)
+                    #endif
                     guard let archive = try? data.encode() else { finish(.failure(.invalidState)); return }
                     finish(.success(PhotoExport(image: image, jpegData: jpeg, adjustmentData: archive)))
                 }
@@ -103,6 +109,9 @@ open class BaseEditPhotoController: UIViewController {
                     finish(.failure(.missingImage)); return
                 }
                 guard !task.isCancelled else { finish(.failure(.cancelled)); return }
+                #if DEBUG
+                PhotoExportDiagnostics.trace("source-prepared-not-necessarily-decoded", source: image.cgImage)
+                #endif
                 if data.bubbles.isEmpty && data.stickers.isEmpty {
                     // No UIKit render or additional full-size backing surface.
                     encode(image)
@@ -119,10 +128,18 @@ open class BaseEditPhotoController: UIViewController {
                             // is independent immutable-image work on the serial queue.
                             let format = UIGraphicsImageRendererFormat()
                             format.scale = 1
+                            guard let source = image.cgImage else { finish(.failure(.missingImage)); return }
+                            let outputSize = image.size
+                            #if DEBUG
+                            PhotoExportDiagnostics.trace("artwork-tiles-ready", source: source, format: format)
+                            #endif
                             Self.exportQueue.async {
                                 autoreleasepool {
                                     guard !task.isCancelled else { finish(.failure(.cancelled)); return }
-                                    let output = Self.compositeOffMain(image, overlays: overlays, format: format)
+                                    let output = Self.compositeOffMain(source, size: outputSize, overlays: overlays, format: format)
+                                    #if DEBUG
+                                    PhotoExportDiagnostics.trace("composition-returned", source: output.cgImage)
+                                    #endif
                                     guard !task.isCancelled else { finish(.failure(.cancelled)); return }
                                     encode(output)
                                 }
@@ -167,7 +184,7 @@ open class BaseEditPhotoController: UIViewController {
     }
 
     private struct OverlayRaster {
-        let image: UIImage
+        let image: CGImage
         let rect: CGRect
     }
 
@@ -181,7 +198,7 @@ open class BaseEditPhotoController: UIViewController {
               data.stickers.allSatisfy({ hasRenderableGeometry(center: CGPoint(x: $0.center.x * sx, y: $0.center.y * sy), bounds: $0.bounds, transform: $0.transform.scaledInCanvas(x: sx, y: sy)) }) else { return nil }
         let canvasRect = CGRect(origin: .zero, size: size)
         var rasters: [OverlayRaster] = []
-        func rasterize(_ artwork: AttachView) {
+        func rasterize(_ artwork: AttachView) -> Bool {
             autoreleasepool {
                 let holder = UIView(frame: canvasRect)
                 holder.isOpaque = false
@@ -192,14 +209,16 @@ open class BaseEditPhotoController: UIViewController {
                 // and antialiasing. No image or text is downsampled. Crop only pixels
                 // outside the final canvas, which the original renderer also clips.
                 let rect = artwork.frame.insetBy(dx: -1, dy: -1).integral.intersection(canvasRect)
-                guard !rect.isNull, !rect.isEmpty else { return }
+                guard !rect.isNull, !rect.isEmpty else { return true }
                 let format = UIGraphicsImageRendererFormat()
                 format.scale = 1
                 let image = UIGraphicsImageRenderer(size: rect.size, format: format).image { context in
                     context.cgContext.translateBy(x: -rect.minX, y: -rect.minY)
                     holder.layer.render(in: context.cgContext)
                 }
-                rasters.append(OverlayRaster(image: image, rect: rect))
+                guard let pixels = image.cgImage else { return false }
+                rasters.append(OverlayRaster(image: pixels, rect: rect))
+                return true
             }
         }
         // Preserve the original renderer's z-order and exact UIKit text fitting.
@@ -208,26 +227,42 @@ open class BaseEditPhotoController: UIViewController {
             var scaled = model
             scaled.center = CGPoint(x: sx * model.center.x, y: sy * model.center.y)
             scaled.transform = model.transform.scaledInCanvas(x: sx, y: sy)
-            rasterize(BubbleView(bubbleModel: scaled))
+            guard rasterize(BubbleView(bubbleModel: scaled)) else { return nil }
         }
         for model in data.stickers {
             guard !task.isCancelled else { return nil }
             var scaled = model
             scaled.center = CGPoint(x: sx * model.center.x, y: sy * model.center.y)
             scaled.transform = model.transform.scaledInCanvas(x: sx, y: sy)
-            rasterize(StickerView(stickerModel: scaled))
+            guard rasterize(StickerView(stickerModel: scaled)) else { return nil }
         }
         return rasters
     }
 
-    private nonisolated static func compositeOffMain(_ image: UIImage, overlays: [OverlayRaster],
+    private nonisolated static func compositeOffMain(_ source: CGImage, size: CGSize, overlays: [OverlayRaster],
                                                      format: UIGraphicsImageRendererFormat) -> UIImage {
         precondition(!Thread.isMainThread)
-        // Preserve the renderer's existing range/alpha policy. Explicit opaque or
-        // standard-range shortcuts require separate color/alpha equivalence proof.
-        return UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: image.size))
-            for overlay in overlays { overlay.image.draw(in: overlay.rect) }
+        // Preserve the renderer's existing range/alpha policy. Draw immutable
+        // normalized CGImages directly, avoiding UIImage display-decode caches.
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            #if DEBUG
+            PhotoExportDiagnostics.trace("composition-buffer-created", source: source, context: context.cgContext, format: format)
+            #endif
+            func draw(_ image: CGImage, in rect: CGRect) {
+                context.cgContext.saveGState()
+                context.cgContext.translateBy(x: rect.minX, y: rect.maxY)
+                context.cgContext.scaleBy(x: 1, y: -1)
+                context.cgContext.draw(image, in: CGRect(origin: .zero, size: rect.size))
+                context.cgContext.restoreGState()
+            }
+            draw(source, in: CGRect(origin: .zero, size: size))
+            #if DEBUG
+            PhotoExportDiagnostics.trace("source-drawn-in-destination", source: source, context: context.cgContext, format: format)
+            #endif
+            for overlay in overlays { draw(overlay.image, in: overlay.rect) }
+            #if DEBUG
+            PhotoExportDiagnostics.trace("overlays-drawn", source: source, context: context.cgContext, format: format)
+            #endif
         }
     }
 

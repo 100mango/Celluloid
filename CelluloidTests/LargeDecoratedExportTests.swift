@@ -9,6 +9,8 @@ import Darwin
 @MainActor
 final class LargeDecoratedExportTests: XCTestCase {
     func testFortyEightMegapixelDecoratedExportAndInFlightCancellation() throws {
+        setenv("CELLULOID_EXPORT_METRICS", "1", 1)
+        defer { unsetenv("CELLULOID_EXPORT_METRICS") }
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
         defer { try? FileManager.default.removeItem(at: path) }
         // Keep fixture creation outside export metrics and release its bitmap.

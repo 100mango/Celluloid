@@ -29,7 +29,7 @@ jobs:
           git fetch --no-tags origin 088fdf33d252ec8672a6bc434f8112438fbc75c4
           python3 - <<'PY'
           import subprocess
-          allowed = {'CelluloidKit/Controller/BaseEditPhotoController.swift','CelluloidKit/Bubble/Controller/EditBubbleViewController.swift','CelluloidKit/Constant/en.lproj/Localizable.strings','CelluloidKit/Constant/zh-Hans.lproj/Localizable.strings','CelluloidTests/ExportAndInteractionTests.swift','CelluloidKit/Bubble/View/BubbleLabel.swift','CelluloidKit/Bubble/View/BubbleView.swift','CelluloidTests/AdaptiveInterfaceTests.swift','CelluloidTests/LargeDecoratedExportTests.swift','CelluloidUITests/CelluloidUITests.swift','Celluloid.xcodeproj/project.pbxproj','Scripts/prepare_simulator.py','.github/workflows/ios-a11y-performance.yml'}
+          allowed = {'CelluloidKit/Controller/PhotoExport.swift','CelluloidKit/Controller/BaseEditPhotoController.swift','CelluloidKit/Bubble/Controller/EditBubbleViewController.swift','CelluloidKit/Constant/en.lproj/Localizable.strings','CelluloidKit/Constant/zh-Hans.lproj/Localizable.strings','CelluloidTests/ExportAndInteractionTests.swift','CelluloidKit/Bubble/View/BubbleLabel.swift','CelluloidKit/Bubble/View/BubbleView.swift','CelluloidTests/AdaptiveInterfaceTests.swift','CelluloidTests/LargeDecoratedExportTests.swift','CelluloidUITests/CelluloidUITests.swift','Celluloid.xcodeproj/project.pbxproj','Scripts/prepare_simulator.py','.github/workflows/ios-a11y-performance.yml'}
           changed = set(subprocess.check_output(['git','diff','--name-only','088fdf33d252ec8672a6bc434f8112438fbc75c4','HEAD'], text=True).splitlines())
           assert changed <= allowed, changed - allowed
           print('FOCUSED_REPAIR_DELTA', sorted(changed))

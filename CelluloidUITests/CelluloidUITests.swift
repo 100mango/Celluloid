@@ -35,6 +35,7 @@ final class CelluloidUITests: XCTestCase {
                                      file: StaticString = #filePath, line: UInt = #line) {
         var prior: [CGRect] = []
         var stableSince = ProcessInfo.processInfo.systemUptime
+        var lastSnapshotDetails = "No snapshot captured"
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             // One public snapshot is a coherent, local tree. Querying exists/frame
             // separately for every element made two polls consume the whole bound
@@ -46,6 +47,10 @@ final class CelluloidUITests: XCTestCase {
             let nodes = descendants(snapshot)
             let matches = identifiers.compactMap { identifier in
                 nodes.first { $0.identifier == identifier || ($0.identifier.isEmpty && $0.label == identifier) }
+            }
+            lastSnapshotDetails = "root=\(snapshot.frame) matches=\(matches.map { $0.identifier }) frames=\(matches.map { $0.frame }) node_count=\(nodes.count)"
+            if identifiers.contains("bubble-text") {
+                print("SHEET_LAYOUT_SNAPSHOT " + lastSnapshotDetails + " available_identifiers=\(nodes.map { $0.identifier }.filter { !$0.isEmpty })")
             }
             guard matches.count == identifiers.count else { return false }
             let frames = [snapshot.frame] + matches.map { $0.frame }
@@ -60,7 +65,9 @@ final class CelluloidUITests: XCTestCase {
             stableSince = ProcessInfo.processInfo.systemUptime
             return false
         }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 8), .completed,
+        let outcome = XCTWaiter.wait(for: [ready], timeout: 8)
+        print("LAYOUT_WAIT_RESULT outcome=\(outcome.rawValue) " + lastSnapshotDetails)
+        XCTAssertEqual(outcome, .completed,
                        "Assert settled interface geometry rather than an in-flight rotation/foreground frame", file: file, line: line)
         print("LAYOUT_STABLE landscape=\(String(describing: landscape)) frames=\(prior)")
     }
