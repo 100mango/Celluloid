@@ -10,6 +10,7 @@ This controller is installed disabled: `release-manifest.json` contains `enabled
 - Qualifying app CI uses exact-head push/manual runs on `codex/ios-modernization`, with unchanged-source provenance; pull-request merge evidence is rejected
 - App archive builds run without signing credentials on a separate runner; a fresh protected runner performs export and optional build upload
 - All jobs require standard `xcode-27`, Xcode 27.0 build 27A266a and the iPhoneOS27.0 SDK
+- Signing refuses non-GitHub-hosted/non-macOS environments. Cleanup removes only its newly created marked temporary workspace; it never deletes HOME provisioning-profile directories. Remaining runner caches disappear with disposal of the ephemeral hosted VM
 - `export` never uploads; `upload` requires separate explicit build-upload approval. Neither mode submits App Review or publishes an app
 
 ## Protected environment fields

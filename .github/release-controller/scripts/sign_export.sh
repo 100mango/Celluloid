@@ -4,6 +4,7 @@
 set +x
 set -euo pipefail
 : "${CONTROLLER_DIR:?}" "${RELEASE_ID:?}" "${RELEASE_MODE:?}" "${ARCHIVE_PATH:?}" "${RUNNER_TEMP:?}"
+python3 "$CONTROLLER_DIR/scripts/private_workspace.py" check-runner
 : "${ASC_PRIVATE_KEY_P8:?Missing protected environment secret}" "${ASC_KEY_ID:?}" "${ASC_ISSUER_ID:?}" "${APPLE_TEAM_ID:?}"
 : "${SIGNING_ENABLED:?}" "${TRUSTED_CONTROLLER_SHA:?}" "${GITHUB_WORKFLOW_SHA:?}" "${GITHUB_SHA:?}" "${GITHUB_REF:?}"
 test "$SIGNING_ENABLED" = true
@@ -21,12 +22,20 @@ xcodebuild -version | grep -F '27A266a'
 # in command arguments. Raw Apple diagnostics stay private; a closed-set
 # classifier emits only fixed categories/codes before the raw log is deleted.
 umask 077
-PRIVATE_ROOT=$(mktemp -d "$RUNNER_TEMP/cloud-signing.XXXXXXXX")
+PRIVATE_ROOT=$(python3 "$CONTROLLER_DIR/scripts/private_workspace.py" create --root "$RUNNER_TEMP")
 cleanup() {
+  local status=$?
   set +x
   unset ASC_PRIVATE_KEY_P8
-  if [ -n "${PRIVATE_ROOT:-}" ] && [[ "$PRIVATE_ROOT" == "$RUNNER_TEMP"/cloud-signing.* ]]; then rm -rf "$PRIVATE_ROOT"; fi
-  rm -rf "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+  if [ -n "${PRIVATE_ROOT:-}" ]; then
+    if ! python3 "$CONTROLLER_DIR/scripts/private_workspace.py" cleanup --root "$RUNNER_TEMP" --workspace "$PRIVATE_ROOT"; then
+      echo 'Signing workspace cleanup was not confirmed; hosted-runner disposal remains required.' >&2
+      if [ "$status" -eq 0 ]; then status=1; fi
+    fi
+  fi
+  # Never delete HOME's profile directories. This fixed workflow uses a fresh
+  # GitHub-hosted runner, which GitHub discards after the job completes.
+  exit "$status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
