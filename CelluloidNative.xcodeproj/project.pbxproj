@@ -13,6 +13,27 @@
 			"isa" = "XCLocalSwiftPackageReference";
 			"relativePath" = "Packages/CelluloidRendering";
 		};
+		"5CCD50722BDB2F8B77EC37DD" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.application";
+			"path" = "CelluloidTV.app";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+			"includeInIndex" = "0";
+		};
+		"AD2B7A8EEC352046F5432936" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.cfbundle";
+			"path" = "CelluloidTVTests.xctest";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+			"includeInIndex" = "0";
+		};
+		"4D089C507CDF610D0B56C29B" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.cfbundle";
+			"path" = "CelluloidTVUITests.xctest";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+			"includeInIndex" = "0";
+		};
 		"2355AC81A5EA82D139D94882" = {
 			"isa" = "PBXFileReference";
 			"explicitFileType" = "wrapper.application";
@@ -75,7 +96,7 @@
 			"name" = "Localizable.strings";
 			"sourceTree" = "<group>";
 		};
-		"492E5EE31E7A61E8627BA7F4" = {
+		"B0BD9FB42AA0901DCF6E69BE" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "CF9728FDF59D3B41358595B6";
 		};
@@ -84,6 +105,403 @@
 			"lastKnownFileType" = "text";
 			"path" = "Platforms/Resources/PrivacyPolicy.txt";
 			"sourceTree" = "<group>";
+		};
+		"52A9721EFDDEA8B1768D0D6C" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "659F58CF1E20A8C9BA70CAA5";
+		};
+		"27CFBAF1A071B3D78CE34F1C" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/tvOS/CelluloidTVApp.swift";
+			"sourceTree" = "<group>";
+		};
+		"B3BBD2436E86E9A773739305" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "27CFBAF1A071B3D78CE34F1C";
+		};
+		"B71975C38FA0E10D786813A7" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/tvOS/TVEditorModel.swift";
+			"sourceTree" = "<group>";
+		};
+		"EA4032FEC232EBF48A9516E7" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "B71975C38FA0E10D786813A7";
+		};
+		"83132D67BA78C06EB934A65B" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/tvOS/TVPhotoLibrary.swift";
+			"sourceTree" = "<group>";
+		};
+		"73E14851A4FDCBA48DAB28D7" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "83132D67BA78C06EB934A65B";
+		};
+		"341D8A695B58007B3273983C" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "1956D5CADB6B83076877198D";
+			"productName" = "CelluloidDomain";
+		};
+		"591F71FCFB5C3C7466AD1316" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "341D8A695B58007B3273983C";
+		};
+		"DD71F260E9B138489E13926E" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "6B70AD80DCFEDAB4F8B18304";
+			"productName" = "CelluloidRendering";
+		};
+		"7174DCCAB4407BA6E3BF6632" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "DD71F260E9B138489E13926E";
+		};
+		"1A8368BEC58A0350078A2710" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("B3BBD2436E86E9A773739305", "EA4032FEC232EBF48A9516E7", "73E14851A4FDCBA48DAB28D7");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"A4DFFC185A702CA05545E5F4" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("591F71FCFB5C3C7466AD1316", "7174DCCAB4407BA6E3BF6632");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"B57AAA3741401D65E4D6F288" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("B0BD9FB42AA0901DCF6E69BE", "52A9721EFDDEA8B1768D0D6C");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"2A861BC5B554D8C2817B61A0" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Debug";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"CODE_SIGNING_ALLOWED" = "NO";
+				"CODE_SIGNING_REQUIRED" = "NO";
+				"CODE_SIGN_IDENTITY" = "";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"MARKETING_VERSION" = "2.0";
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
+				"SDKROOT" = "appletvos";
+				"SUPPORTED_PLATFORMS" = "appletvos appletvsimulator";
+				"TVOS_DEPLOYMENT_TARGET" = "17.0";
+				"TARGETED_DEVICE_FAMILY" = "3";
+				"INFOPLIST_FILE" = "Platforms/tvOS/Info.plist";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"ENABLE_TESTABILITY" = "YES";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"ONLY_ACTIVE_ARCH" = "YES";
+			};
+		};
+		"FEF3AC01A509274977CE2FA0" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Release";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"CODE_SIGNING_ALLOWED" = "NO";
+				"CODE_SIGNING_REQUIRED" = "NO";
+				"CODE_SIGN_IDENTITY" = "";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"MARKETING_VERSION" = "2.0";
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
+				"SDKROOT" = "appletvos";
+				"SUPPORTED_PLATFORMS" = "appletvos appletvsimulator";
+				"TVOS_DEPLOYMENT_TARGET" = "17.0";
+				"TARGETED_DEVICE_FAMILY" = "3";
+				"INFOPLIST_FILE" = "Platforms/tvOS/Info.plist";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+			};
+		};
+		"C5DC5C50F318E56E1EF18506" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("2A861BC5B554D8C2817B61A0", "FEF3AC01A509274977CE2FA0");
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"46C9607DBDFA63C943B0D927" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "CelluloidTV";
+			"productName" = "CelluloidTV";
+			"productReference" = "5CCD50722BDB2F8B77EC37DD";
+			"productType" = "com.apple.product-type.application";
+			"buildConfigurationList" = "C5DC5C50F318E56E1EF18506";
+			"buildPhases" = ("1A8368BEC58A0350078A2710", "A4DFFC185A702CA05545E5F4", "B57AAA3741401D65E4D6F288");
+			"buildRules" = ();
+			"dependencies" = ();
+			"packageProductDependencies" = ("341D8A695B58007B3273983C", "DD71F260E9B138489E13926E");
+		};
+		"6905B9041FA9C5095C031CDB" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/TVTests/NativeTVTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"9AFE47884F2907DCA47C813A" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "6905B9041FA9C5095C031CDB";
+		};
+		"DB2B9AA7838FE7492ECA7969" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "1956D5CADB6B83076877198D";
+			"productName" = "CelluloidDomain";
+		};
+		"37239A7484BA5B88F0BECD00" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "DB2B9AA7838FE7492ECA7969";
+		};
+		"DFD2967CC0DBCB3935E1173E" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "6B70AD80DCFEDAB4F8B18304";
+			"productName" = "CelluloidRendering";
+		};
+		"724BB148BA519A540A9FBFA2" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "DFD2967CC0DBCB3935E1173E";
+		};
+		"63933A4C525B8E4E6A7C232D" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "87F32FC03770D1E2B6D2558C";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "46C9607DBDFA63C943B0D927";
+			"remoteInfo" = "CelluloidTV";
+		};
+		"F0789EB2C42387F3596F346F" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "46C9607DBDFA63C943B0D927";
+			"targetProxy" = "63933A4C525B8E4E6A7C232D";
+		};
+		"45E105662EF3639725843710" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("9AFE47884F2907DCA47C813A");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"1573ABAB276CA5846BD3EC8F" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("37239A7484BA5B88F0BECD00", "724BB148BA519A540A9FBFA2");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"792AE4212ED5FEF622FAF474" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ();
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"9ED8940A4FFF2CDAE107AD09" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Debug";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.CelluloidTVTests";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"CODE_SIGNING_ALLOWED" = "NO";
+				"CODE_SIGNING_REQUIRED" = "NO";
+				"CODE_SIGN_IDENTITY" = "";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"MARKETING_VERSION" = "2.0";
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
+				"SDKROOT" = "appletvos";
+				"SUPPORTED_PLATFORMS" = "appletvos appletvsimulator";
+				"TVOS_DEPLOYMENT_TARGET" = "17.0";
+				"TARGETED_DEVICE_FAMILY" = "3";
+				"TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/CelluloidTV.app/CelluloidTV";
+				"BUNDLE_LOADER" = "$(TEST_HOST)";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"ENABLE_TESTABILITY" = "YES";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"ONLY_ACTIVE_ARCH" = "YES";
+			};
+		};
+		"068F655CE8E33E1175E805DA" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Release";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.CelluloidTVTests";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"CODE_SIGNING_ALLOWED" = "NO";
+				"CODE_SIGNING_REQUIRED" = "NO";
+				"CODE_SIGN_IDENTITY" = "";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"MARKETING_VERSION" = "2.0";
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
+				"SDKROOT" = "appletvos";
+				"SUPPORTED_PLATFORMS" = "appletvos appletvsimulator";
+				"TVOS_DEPLOYMENT_TARGET" = "17.0";
+				"TARGETED_DEVICE_FAMILY" = "3";
+				"TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/CelluloidTV.app/CelluloidTV";
+				"BUNDLE_LOADER" = "$(TEST_HOST)";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+			};
+		};
+		"4635755AE26B05753A91F2F7" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("9ED8940A4FFF2CDAE107AD09", "068F655CE8E33E1175E805DA");
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"63F7E7833B0908AFFD299A34" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "CelluloidTVTests";
+			"productName" = "CelluloidTVTests";
+			"productReference" = "AD2B7A8EEC352046F5432936";
+			"productType" = "com.apple.product-type.bundle.unit-test";
+			"buildConfigurationList" = "4635755AE26B05753A91F2F7";
+			"buildPhases" = ("45E105662EF3639725843710", "1573ABAB276CA5846BD3EC8F", "792AE4212ED5FEF622FAF474");
+			"buildRules" = ();
+			"dependencies" = ("F0789EB2C42387F3596F346F");
+			"packageProductDependencies" = ("DB2B9AA7838FE7492ECA7969", "DFD2967CC0DBCB3935E1173E");
+		};
+		"ACFBF0810E14CF3B407F6087" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/TVUITests/NativeTVUITests.swift";
+			"sourceTree" = "<group>";
+		};
+		"9F6D814711D59F7C48BDAD4F" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "ACFBF0810E14CF3B407F6087";
+		};
+		"4FE4645F2FE14751BC21EAB1" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "1956D5CADB6B83076877198D";
+			"productName" = "CelluloidDomain";
+		};
+		"FF5B4F770C6D3A095ECE7285" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "4FE4645F2FE14751BC21EAB1";
+		};
+		"DE7A219456D3AF116CC0F01F" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "6B70AD80DCFEDAB4F8B18304";
+			"productName" = "CelluloidRendering";
+		};
+		"F10E72416C653C95B619796D" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "DE7A219456D3AF116CC0F01F";
+		};
+		"AF922D57A6ED157AED2E59AE" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "87F32FC03770D1E2B6D2558C";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "46C9607DBDFA63C943B0D927";
+			"remoteInfo" = "CelluloidTV";
+		};
+		"B4FA50CE4AAF727D7BB8CF4D" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "46C9607DBDFA63C943B0D927";
+			"targetProxy" = "AF922D57A6ED157AED2E59AE";
+		};
+		"C6A12DBD2F9C8FAED4F1CAD8" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("9F6D814711D59F7C48BDAD4F");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"1CF9BABAF7C80B5C9CC7FA77" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("FF5B4F770C6D3A095ECE7285", "F10E72416C653C95B619796D");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"9552BCFB26B5F98F8B824F35" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ();
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"7B2D9959EDCADF631EF03396" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Debug";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.CelluloidTVUITests";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"CODE_SIGNING_ALLOWED" = "NO";
+				"CODE_SIGNING_REQUIRED" = "NO";
+				"CODE_SIGN_IDENTITY" = "";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"MARKETING_VERSION" = "2.0";
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
+				"SDKROOT" = "appletvos";
+				"SUPPORTED_PLATFORMS" = "appletvos appletvsimulator";
+				"TVOS_DEPLOYMENT_TARGET" = "17.0";
+				"TARGETED_DEVICE_FAMILY" = "3";
+				"TEST_TARGET_NAME" = "CelluloidTV";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"ENABLE_TESTABILITY" = "YES";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"ONLY_ACTIVE_ARCH" = "YES";
+			};
+		};
+		"10D97CDBC7C111E7331B1880" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Release";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.CelluloidTVUITests";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"CODE_SIGNING_ALLOWED" = "NO";
+				"CODE_SIGNING_REQUIRED" = "NO";
+				"CODE_SIGN_IDENTITY" = "";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"MARKETING_VERSION" = "2.0";
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
+				"SDKROOT" = "appletvos";
+				"SUPPORTED_PLATFORMS" = "appletvos appletvsimulator";
+				"TVOS_DEPLOYMENT_TARGET" = "17.0";
+				"TARGETED_DEVICE_FAMILY" = "3";
+				"TEST_TARGET_NAME" = "CelluloidTV";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+			};
+		};
+		"BC7E3A4415E0FA84E2CB285F" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("7B2D9959EDCADF631EF03396", "10D97CDBC7C111E7331B1880");
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"BC6AC756FA295765F52443EB" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "CelluloidTVUITests";
+			"productName" = "CelluloidTVUITests";
+			"productReference" = "4D089C507CDF610D0B56C29B";
+			"productType" = "com.apple.product-type.bundle.ui-testing";
+			"buildConfigurationList" = "BC7E3A4415E0FA84E2CB285F";
+			"buildPhases" = ("C6A12DBD2F9C8FAED4F1CAD8", "1CF9BABAF7C80B5C9CC7FA77", "9552BCFB26B5F98F8B824F35");
+			"buildRules" = ();
+			"dependencies" = ("B4FA50CE4AAF727D7BB8CF4D");
+			"packageProductDependencies" = ("4FE4645F2FE14751BC21EAB1", "DE7A219456D3AF116CC0F01F");
+		};
+		"492E5EE31E7A61E8627BA7F4" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "CF9728FDF59D3B41358595B6";
 		};
 		"C9CC31206280D216AB174703" = {
 			"isa" = "PBXBuildFile";
@@ -1000,12 +1418,12 @@
 		"C275A667CEA49A4BEB9C5D81" = {
 			"isa" = "PBXGroup";
 			"name" = "Products";
-			"children" = ("2355AC81A5EA82D139D94882", "33517A0555587B8A7314175F", "93506CEDBD2ED7AC44CA04EF", "8FD803587693323ECCFEE395", "4CDDF93E27FBA5DA5508EBC2", "67A226CA56047A1191144BEF");
+			"children" = ("5CCD50722BDB2F8B77EC37DD", "AD2B7A8EEC352046F5432936", "4D089C507CDF610D0B56C29B", "2355AC81A5EA82D139D94882", "33517A0555587B8A7314175F", "93506CEDBD2ED7AC44CA04EF", "8FD803587693323ECCFEE395", "4CDDF93E27FBA5DA5508EBC2", "67A226CA56047A1191144BEF");
 			"sourceTree" = "<group>";
 		};
 		"C3C8853CC2AF9E3CF862AA78" = {
 			"isa" = "PBXGroup";
-			"children" = ("CF9728FDF59D3B41358595B6", "659F58CF1E20A8C9BA70CAA5", "CEC90113D30C18038D38A890", "FD487CF6F9095694E5C931A3", "15E4AE0E4F10C1CCED2C1AE4", "BA1EE020EAA817969B9AF6D0", "15CB0613891975E941DDB140", "E13835FF6F860A539DFDDDFB", "4D53B861CB96DE6DF4DCA745", "EDEEACE576FA2E263E7A5785", "15ECB0C351A51871CB00A8D3", "3E687546CEA8F826F2ACF52B", "34CD17BD0B21355F501346C8", "ACB4CD484C3942647B95548A", "9E1942CFF9A0FF9F9D2F521F", "BA91D03DE64529F8FED4C192", "99DD9D813FB8A17E64801B21", "8A0098842FEB43E7E61319AC", "276DDD039BAAABAC8C9A74FF", "399C234FAAD22663EAA8B41A", "D0D7EEB49C632C56F7D022C7", "C275A667CEA49A4BEB9C5D81");
+			"children" = ("CF9728FDF59D3B41358595B6", "659F58CF1E20A8C9BA70CAA5", "27CFBAF1A071B3D78CE34F1C", "B71975C38FA0E10D786813A7", "83132D67BA78C06EB934A65B", "6905B9041FA9C5095C031CDB", "ACFBF0810E14CF3B407F6087", "CEC90113D30C18038D38A890", "FD487CF6F9095694E5C931A3", "15E4AE0E4F10C1CCED2C1AE4", "BA1EE020EAA817969B9AF6D0", "15CB0613891975E941DDB140", "E13835FF6F860A539DFDDDFB", "4D53B861CB96DE6DF4DCA745", "EDEEACE576FA2E263E7A5785", "15ECB0C351A51871CB00A8D3", "3E687546CEA8F826F2ACF52B", "34CD17BD0B21355F501346C8", "ACB4CD484C3942647B95548A", "9E1942CFF9A0FF9F9D2F521F", "BA91D03DE64529F8FED4C192", "99DD9D813FB8A17E64801B21", "8A0098842FEB43E7E61319AC", "276DDD039BAAABAC8C9A74FF", "399C234FAAD22663EAA8B41A", "D0D7EEB49C632C56F7D022C7", "C275A667CEA49A4BEB9C5D81");
 			"sourceTree" = "<group>";
 		};
 		"DED267C77AB07A6FF4168D2F" = {
@@ -1045,6 +1463,12 @@
 				"LastUpgradeCheck" = "2700";
 				"BuildIndependentTargetsInParallel" = "YES";
 				"TargetAttributes" = {
+					"63F7E7833B0908AFFD299A34" = {
+						"TestTargetID" = "46C9607DBDFA63C943B0D927";
+					};
+					"BC6AC756FA295765F52443EB" = {
+						"TestTargetID" = "46C9607DBDFA63C943B0D927";
+					};
 					"1786364ED0E2311A5CD33803" = {
 						"TestTargetID" = "9A651FCEC4C2DF0939D398BB";
 					};
@@ -1068,7 +1492,7 @@
 			"productRefGroup" = "C275A667CEA49A4BEB9C5D81";
 			"projectDirPath" = "";
 			"projectRoot" = "";
-			"targets" = ("AC8FC0BF7A55AD36C59A04F7", "9A651FCEC4C2DF0939D398BB", "1786364ED0E2311A5CD33803", "BA647F12D435C4F242F919F2", "BC8C0C44E2BBFED3A9F5383E", "D21117425E7F28CC55766CC2");
+			"targets" = ("46C9607DBDFA63C943B0D927", "63F7E7833B0908AFFD299A34", "BC6AC756FA295765F52443EB", "AC8FC0BF7A55AD36C59A04F7", "9A651FCEC4C2DF0939D398BB", "1786364ED0E2311A5CD33803", "BA647F12D435C4F242F919F2", "BC8C0C44E2BBFED3A9F5383E", "D21117425E7F28CC55766CC2");
 			"packageReferences" = ("1956D5CADB6B83076877198D", "6B70AD80DCFEDAB4F8B18304");
 		};
 	};

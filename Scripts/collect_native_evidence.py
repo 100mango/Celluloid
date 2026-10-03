@@ -25,8 +25,8 @@ def retain_bytes(name,data,source):
     manifest['files'].append({'name':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'source':source})
     return True
 
-logs=['domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log']
-markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|MAC_LEGACY_CANDIDATE)')
+logs=['domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log','tv-build.log','tv-runtime.log','tv-runtime-tests.log']
+markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|TV_NATIVE_|TV_PHOTOS_|TV_FOCUS_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|MAC_LEGACY_CANDIDATE)')
 for name in logs:
     path=TEMP/name
     if not path.is_file():continue
@@ -34,11 +34,11 @@ for name in logs:
     retain_bytes(name+'.tail.txt',data[-200_000:],name+' (last200000 bytes)')
     selected=[line[:2000] for line in data.decode('utf8','replace').splitlines() if markers.search(line)]
     retain_bytes(name+'.summary.txt',('\n'.join(selected[-1500:])+'\n').encode(),name+' (test/error markers)')
-for name in ['vision-runtime-evidence.json','sandbox-entitlements.plist','sandbox-entitlements-after.plist']:
+for name in ['vision-runtime-evidence.json','tv-runtime-evidence.json','sandbox-entitlements.plist','sandbox-entitlements-after.plist']:
     path=TEMP/name
     if path.is_file():retain_bytes(name,path.read_bytes(),name)
 
-bundles=['CelluloidMac.xcresult','CelluloidMacUI.xcresult','CelluloidSandbox.xcresult','CelluloidVision.xcresult']
+bundles=['CelluloidMac.xcresult','CelluloidMacUI.xcresult','CelluloidSandbox.xcresult','CelluloidVision.xcresult','CelluloidTV.xcresult']
 for name in bundles:
     bundle=TEMP/name
     if not bundle.is_dir():continue
@@ -72,8 +72,9 @@ for name in bundles:
             safe=re.sub(r'[^A-Za-z0-9_-]+','-',human)[:100]
             retain_bytes(f'{name.removesuffix(".xcresult")}-{index}-{safe}{extension}',path.read_bytes(),name+' selected screenshot')
 
-path=TEMP/'native-vision-launch.png'
-if path.is_file():retain_bytes(path.name,path.read_bytes(),'simctl native Vision launch screenshot')
+for name in ['native-vision-launch.png','native-tv-launch.png']:
+    path=TEMP/name
+    if path.is_file():retain_bytes(path.name,path.read_bytes(),'simctl native launch screenshot')
 manifest['retained_bytes_before_manifest']=size
 payload=(json.dumps(manifest,indent=2,ensure_ascii=False)+'\n').encode()
 if len(payload)>RESERVE:raise RuntimeError('Evidence manifest exceeded its reserved budget')

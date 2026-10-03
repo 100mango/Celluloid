@@ -48,7 +48,7 @@ struct EditorView: View {
                     .help("Choose one photo, or two to four photos for a collage").accessibilityIdentifier("editor.import-files")
                 PhotosPicker(selection: $photos, maxSelectionCount: 4, selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
                     Label("Photos", systemImage: "photo")
-                }
+                }.accessibilityIdentifier("editor.import-photos")
                 #if os(macOS)
                 Button(action: paste) { Label("Paste", systemImage: "doc.on.clipboard") }.keyboardShortcut("v", modifiers: .command)
                 #endif

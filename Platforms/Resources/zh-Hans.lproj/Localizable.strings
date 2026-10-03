@@ -75,3 +75,22 @@
 "Privacy Policy" = "隐私政策";
 "Open Privacy Policy" = "打开隐私政策网页";
 "The offline privacy policy is unavailable." = "无法读取离线隐私政策。";
+
+/* Native television workflow */
+"Choose Photos" = "选择照片";
+"Choose one photo to edit, or 2–4 for a collage." = "选择一张照片进行编辑，或选择 2–4 张制作拼图。";
+"Reopen Kept Recipe" = "重新打开保留的编辑";
+"Keep Editable Recipe" = "保留可编辑记录";
+"Save Picture to Photos" = "将图片存入照片图库";
+"TV image caches can be removed by the system. Keep originals in Photos and save finished pictures to Photos." = "系统可能清除电视上的图片缓存。请将原图保留在照片图库中，并将完成的图片存入图库。";
+"Up to 200 recent photos. Select one to four in the order you want." = "显示最近的 200 张照片。请按需要的顺序选择 1–4 张。";
+"No pictures are available. Add photos to Photos, then choose Photos again." = "没有可用的图片。请先向照片图库添加图片，再重新选择照片。";
+"Edit Selected Photos (%lld)" = "编辑已选照片（%lld）";
+"A source photo is no longer available. Choose it again from Photos." = "一张原图已不可用。请从照片图库中重新选择。";
+"Allow Photos access in Settings to import and save pictures." = "请在系统设置中允许访问照片，以导入和保存图片。";
+"Editable recipe reopened from Photos sources." = "已通过照片图库中的原图重新打开可编辑记录。";
+"Photos did not return a matching saved image. Check Photos before saving again." = "图库未返回匹配的已保存图片。请先检查照片图库，再尝试保存。";
+"Photos imported. Save the finished picture to Photos before leaving." = "照片已导入。离开前请将完成的图片保存到照片图库。";
+"Recipe kept on this TV. Source photos must remain available in Photos." = "编辑记录已保留在这台电视上。原图必须继续保留在照片图库中。";
+"Saved to Photos and verified by reading the image back." = "已存入照片图库，并重新读取图片验证成功。";
+"This photo is not stored on this Apple TV. Download it in Photos and try again." = "这台 Apple TV 上没有此照片。请先在照片中下载，再重试。";

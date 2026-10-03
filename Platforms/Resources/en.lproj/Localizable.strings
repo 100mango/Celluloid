@@ -75,3 +75,22 @@
 "Privacy Policy" = "Privacy Policy";
 "Open Privacy Policy" = "Open Privacy Policy";
 "The offline privacy policy is unavailable." = "The offline privacy policy is unavailable.";
+
+/* Native television workflow */
+"Choose Photos" = "Choose Photos";
+"Choose one photo to edit, or 2–4 for a collage." = "Choose one photo to edit, or 2–4 for a collage.";
+"Reopen Kept Recipe" = "Reopen Kept Recipe";
+"Keep Editable Recipe" = "Keep Editable Recipe";
+"Save Picture to Photos" = "Save Picture to Photos";
+"TV image caches can be removed by the system. Keep originals in Photos and save finished pictures to Photos." = "TV image caches can be removed by the system. Keep originals in Photos and save finished pictures to Photos.";
+"Up to 200 recent photos. Select one to four in the order you want." = "Up to 200 recent photos. Select one to four in the order you want.";
+"No pictures are available. Add photos to Photos, then choose Photos again." = "No pictures are available. Add photos to Photos, then choose Photos again.";
+"Edit Selected Photos (%lld)" = "Edit Selected Photos (%lld)";
+"A source photo is no longer available. Choose it again from Photos." = "A source photo is no longer available. Choose it again from Photos.";
+"Allow Photos access in Settings to import and save pictures." = "Allow Photos access in Settings to import and save pictures.";
+"Editable recipe reopened from Photos sources." = "Editable recipe reopened from Photos sources.";
+"Photos did not return a matching saved image. Check Photos before saving again." = "Photos did not return a matching saved image. Check Photos before saving again.";
+"Photos imported. Save the finished picture to Photos before leaving." = "Photos imported. Save the finished picture to Photos before leaving.";
+"Recipe kept on this TV. Source photos must remain available in Photos." = "Recipe kept on this TV. Source photos must remain available in Photos.";
+"Saved to Photos and verified by reading the image back." = "Saved to Photos and verified by reading the image back.";
+"This photo is not stored on this Apple TV. Download it in Photos and try again." = "This photo is not stored on this Apple TV. Download it in Photos and try again.";

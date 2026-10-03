@@ -10,7 +10,7 @@ concurrency:
 jobs:
   native-mac-core:
     runs-on: xcode-27
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
     steps:
@@ -73,6 +73,19 @@ jobs:
           codesign --verify --strict --deep "$APP"
           codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/sandbox-entitlements-after.plist"
           cmp "$RUNNER_TEMP/sandbox-entitlements.plist" "$RUNNER_TEMP/sandbox-entitlements-after.plist"
+      - name: Native TV build
+        id: tv_build
+        if: success() || failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidTV -destination 'generic/platform=tvOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-tv" CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee "$RUNNER_TEMP/tv-build.log"
+      - name: Native TV focus and Photos runtime
+        if: (success() || failure()) && steps.tv_build.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Scripts/run_native_tv.py 2>&1 | tee "$RUNNER_TEMP/tv-runtime.log"
       - name: Native Vision build
         id: vision_build
         if: success() || failure()

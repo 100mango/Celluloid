@@ -15,5 +15,8 @@ final class NativeVisionUITests: XCTestCase {
             create.tap()
         }
         XCTAssertTrue(editor.waitForExistence(timeout: 15))
+        XCTAssertTrue(editor.isHittable)
+        print("VISION_NATIVE_EDITOR_AX " + app.debugDescription)
+        let editorCapture = XCTAttachment(screenshot: app.screenshot()); editorCapture.name = "native-vision-editor-ready"; editorCapture.lifetime = .keepAlways; add(editorCapture)
     }
 }

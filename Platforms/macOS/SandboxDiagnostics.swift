@@ -13,8 +13,11 @@ enum SandboxDiagnostics {
         do {
             var code: SecCode?
             guard SecCodeCopySelf(SecCSFlags(), &code) == errSecSuccess, let code else { throw CocoaError(.fileReadNoPermission) }
+            guard SecCodeCheckValidity(code, SecCSFlags(), nil) == errSecSuccess else { throw CocoaError(.fileReadNoPermission) }
+            var staticCode: SecStaticCode?
+            guard SecCodeCopyStaticCode(code, SecCSFlags(), &staticCode) == errSecSuccess, let staticCode else { throw CocoaError(.fileReadNoPermission) }
             var raw: CFDictionary?
-            guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &raw) == errSecSuccess,
+            guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &raw) == errSecSuccess,
                   let info = raw as? [String: Any],
                   let entitlements = info[kSecCodeInfoEntitlementsDict as String] as? [String: Any] else { throw CocoaError(.fileReadNoPermission) }
             let keys = Set(entitlements.keys)
