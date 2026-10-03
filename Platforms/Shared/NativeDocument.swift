@@ -20,14 +20,14 @@ struct NativeDocument: FileDocument, Equatable {
         guard wrapper.isDirectory,
               let children = wrapper.fileWrappers,
               let manifest = children["recipe.json"], manifest.isRegularFile,
-              ((manifest.fileAttributes[.size] as? NSNumber)?.intValue ?? 0) <= 2_000_000,
+              ((manifest.fileAttributes[FileAttributeKey.size.rawValue] as? NSNumber)?.intValue ?? 0) <= 2_000_000,
               let data = manifest.regularFileContents else { throw RecipeError.invalidDocument }
         recipe = try EditRecipe.decode(data)
         guard children.count == recipe.sources.count + 1 else { throw RecipeError.invalidDocument }
         var total = 0
         for source in recipe.sources {
             guard let file = children[source.filename], file.isRegularFile,
-                  ((file.fileAttributes[.size] as? NSNumber)?.intValue ?? 0) <= RasterCodec.maxSourceBytes,
+                  ((file.fileAttributes[FileAttributeKey.size.rawValue] as? NSNumber)?.intValue ?? 0) <= RasterCodec.maxSourceBytes,
                   let bytes = file.regularFileContents else { throw RecipeError.missingSource }
             total += bytes.count
             guard total <= 64 * 1024 * 1024 else { throw RecipeError.resourceLimit }
