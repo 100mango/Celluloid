@@ -1,5 +1,7 @@
 name: iOS 27 regression
 on:
+  push:
+    branches: [codex/ios-modernization]
   pull_request:
     branches: [master]
   workflow_dispatch:
@@ -10,12 +12,32 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build-and-test:
+    # The fixed release branch is fully tested by its source-bound push run.
+    # Avoid a second macOS job for its automatically emitted PR event.
+    if: github.event_name != 'pull_request' || github.head_ref != 'codex/ios-modernization'
     runs-on: xcode-27
     timeout-minutes: 60
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # reviewed official v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Verify exact tested commit
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$GITHUB_EVENT_NAME" in push|workflow_dispatch) ;; *) exit 1 ;; esac
+          test "$GITHUB_REPOSITORY" = 100mango/Celluloid
+          test "$GITHUB_REF" = refs/heads/codex/ios-modernization
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code HEAD --
+          echo "Tested commit: $(git rev-parse HEAD)"
+          echo "Tested tree: $(git rev-parse 'HEAD^{tree}')"
+          shasum -a 256 .github/workflows/ios.yml
       - name: Verify stable Apple environment
         run: |
           set -euo pipefail
@@ -60,3 +82,14 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Release -destination 'generic/platform=iOS' -archivePath .build/Celluloid.xcarchive archive CODE_SIGNING_ALLOWED=NO | tee archive.log
+          python3 Scripts/archive_inventory.py .build/Celluloid.xcarchive
+          git diff --exit-code HEAD --
+      - name: Verify tested source stayed unchanged
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code HEAD --
+          echo "Final tested tree: $(git rev-parse 'HEAD^{tree}')"
+          shasum -a 256 .github/workflows/ios.yml

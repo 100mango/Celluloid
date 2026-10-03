@@ -10,6 +10,22 @@ final class CelluloidUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 10))
     }
+    func testPrivacyPolicyEntryRemainsAccessibleAndCanClose() {
+        launch()
+        let policy = app.buttons["privacy-policy"]
+        XCTAssertTrue(policy.isHittable)
+        XCTAssertEqual(policy.label, "Privacy Policy")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(policy.isHittable)
+        policy.tap()
+        // The browser's Close action is available even when external networking is offline.
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 15))
+        done.tap()
+        XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 5))
+        XCTAssertTrue(policy.isHittable)
+    }
+
     func testDeniedPhotosShowsRecoveryAndCanCancelRepeatedly() {
         launch(["--photos-denied"])
         for _ in 0..<2 {

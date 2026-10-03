@@ -10,8 +10,26 @@ import UIKit
 import SnapKit
 import CelluloidKit
 import Photos
+import SafariServices
+
+enum AppLinks {
+    static let privacyPolicyURL = URL(string: "https://100mango.github.io/app-privacy/")!
+}
 
 class EntranceViewController: UIViewController {
+    private var horizontalLayout: Bool?
+    lazy var privacyPolicyButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle(NSLocalizedString("Privacy Policy", comment: "Privacy policy link"), for: .normal)
+        button.titleLabel?.font = .preferredFont(forTextStyle: .footnote)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.tintColor = .alphaWhiteColor
+        button.accessibilityIdentifier = "privacy-policy"
+        button.accessibilityHint = NSLocalizedString("Opens the app privacy policy.", comment: "Privacy link accessibility hint")
+        button.addTarget(self, action: #selector(showPrivacyPolicy), for: .touchUpInside)
+        return button
+    }()
+
     
     lazy var editPhotoButton: IconButton = {
         let button = IconButton(image: UIImage(named: "EditPhotoEntranceButton")!, title: tr(.beautify))
@@ -50,18 +68,43 @@ class EntranceViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         self.view.backgroundColor = .black
+        view.addSubview(privacyPolicyButton)
+        privacyPolicyButton.snp.makeConstraints { make in
+            make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(16)
+            make.bottom.equalTo(view.safeAreaLayoutGuide).offset(-4)
+            make.height.greaterThanOrEqualTo(44)
+        }
         self.view.addSubview(stackView)
         stackView.snp.makeConstraints { (make) in
-            make.edges.equalTo(view.safeAreaLayoutGuide)
+            make.top.leading.trailing.equalTo(view.safeAreaLayoutGuide)
+            make.bottom.equalTo(privacyPolicyButton.snp.top).offset(-4)
         }
         
         self.view.addSubview(line)
         line.snp.makeConstraints  { (make) in
             make.width.equalTo(245)
             make.height.equalTo(1)
-            make.center.equalTo(line.superview!)
+            make.center.equalTo(stackView)
         }
     }
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let horizontal = view.bounds.width > view.bounds.height
+        guard horizontal != horizontalLayout else { return }
+        horizontalLayout = horizontal
+        stackView.axis = horizontal ? .horizontal : .vertical
+        line.snp.remakeConstraints { make in
+            make.center.equalTo(stackView)
+            if horizontal { make.width.equalTo(1); make.height.equalTo(stackView).multipliedBy(0.65) }
+            else { make.height.equalTo(1); make.width.equalTo(stackView).multipliedBy(0.65) }
+        }
+    }
+
+    @objc private func showPrivacyPolicy() {
+        let policy = SFSafariViewController(url: AppLinks.privacyPolicyURL)
+        present(policy, animated: true)
+    }
+
 }
 
 //MARK: Action

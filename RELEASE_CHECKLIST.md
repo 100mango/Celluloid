@@ -34,3 +34,13 @@ Commit `5b6f0a4ca4a4d4316bfc7e48959eb960374752e2` passed [run 37093925564](https
 The 1.1/build 2 metadata, Chinese permission/error translations, and recovered marketing artwork must pass the next exact-commit run before that candidate inherits this validation. Shipping deployment target remains iOS 15; test bundles target iOS 17+ because Xcode 27's XCTest runtime requires it. Only iOS 27 runtime execution is established by this CI job.
 
 Candidate `ba50ccf88a03ab203644b2a205a2ce3940fdadd8` (1.1/build 2 with Chinese copy and marketing artwork) subsequently passed [run 37094983300](https://github.com/100mango/Celluloid/actions/runs/37094983300), job 111122966442, with the same 54 test executions and unsigned archive. The additional direct-extension output tests and opaque small-icon set require their own exact-commit CI result.
+
+
+## Approved privacy-policy destination
+
+The in-app localized Privacy Policy entry uses https://100mango.github.io/app-privacy/ (verified HTTP 200, unchanged final URL, bilingual approved content). Unit coverage checks the exact HTTPS URL and minimum hit target; UI coverage checks reachability after rotation and closing the in-app browser. The release workflow also emits `ARCHIVE_INVENTORY_BEGIN`/`END` JSON containing each app/extension/framework bundle identifier, versions, Mach-O architectures and linked libraries for independent signing allowlist review.
+
+
+## Exact-source release proof
+
+The fixed `codex/ios-modernization` branch has an unsigned push-triggered run. Checkout is pinned to the official action commit and explicitly to `github.sha`, with persisted checkout credentials disabled. Named beginning/end provenance steps check the exact commit and clean tracked source; the beginning also requires the fixed same-repository branch and `GITHUB_WORKFLOW_SHA == GITHUB_SHA`. Both ends log the reviewed workflow digest. The duplicate PR event for that branch does not start a second macOS job; ordinary other PRs still run regressions but do not qualify as release-source proof. No source merge, secrets, signing or upload is included.

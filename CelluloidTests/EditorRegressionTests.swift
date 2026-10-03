@@ -6,6 +6,19 @@ import Photos
 
 @MainActor
 final class EditorRegressionTests: XCTestCase {
+    func testPrivacyPolicyUsesApprovedHTTPSDestinationAndAccessibleControl() {
+        XCTAssertEqual(AppLinks.privacyPolicyURL.absoluteString, "https://100mango.github.io/app-privacy/")
+        XCTAssertEqual(AppLinks.privacyPolicyURL.scheme, "https")
+        let entrance = EntranceViewController()
+        entrance.loadViewIfNeeded()
+        entrance.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        entrance.view.layoutIfNeeded()
+        XCTAssertEqual(entrance.privacyPolicyButton.accessibilityIdentifier, "privacy-policy")
+        XCTAssertFalse(entrance.privacyPolicyButton.currentTitle?.isEmpty ?? true)
+        XCTAssertGreaterThanOrEqual(entrance.privacyPolicyButton.bounds.height, 44)
+        XCTAssertTrue(entrance.privacyPolicyButton.isEnabled)
+    }
+
     func testEditorRendersAndRestoresWithoutDuplicatingOverlays() throws {
         let editor = BaseEditPhotoController()
         editor.loadViewIfNeeded()
