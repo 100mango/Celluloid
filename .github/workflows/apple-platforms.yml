@@ -53,6 +53,25 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacUI -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-native" -resultBundlePath "$RUNNER_TEMP/CelluloidMacUI.xcresult" CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/mac-ui.log"
+      - name: Export compact native UI attachments
+        if: always()
+        shell: bash
+        run: |
+          if test -d "$RUNNER_TEMP/CelluloidMacUI.xcresult"; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/CelluloidMacUI.xcresult" --output-path "$RUNNER_TEMP/native-ui-attachments"
+          fi
+      - name: Preserve compact native UI evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: celluloid-native-ui-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/native-ui-attachments/**/*.png
+            ${{ runner.temp }}/native-ui-attachments/**/*.jpg
+            ${{ runner.temp }}/native-ui-attachments/**/*.jpeg
+            ${{ runner.temp }}/native-ui-attachments/**/*.json
+            ${{ runner.temp }}/mac-ui.log
+          retention-days: 14
       - name: Preserve native validation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

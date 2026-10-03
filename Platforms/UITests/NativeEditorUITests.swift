@@ -16,7 +16,8 @@ final class NativeEditorUITests: XCTestCase {
         XCTAssertEqual(actual.bundleURL?.standardizedFileURL.resolvingSymlinksInPath().path, expected.path)
         XCTAssertEqual(actual.executableURL?.standardizedFileURL.resolvingSymlinksInPath().path, expected.appendingPathComponent("Contents/MacOS/CelluloidMac").path)
         print("CELLULOID_UI_LAUNCH expected=\(expected.path) actual=\(actual.bundleURL!.path) executable=\(actual.executableURL!.path) pid=\(actual.processIdentifier)")
-        if app.buttons["Cancel"].waitForExistence(timeout: 3) { app.buttons["Cancel"].click() }
+        let startupCancel = app.windows["open-panel"].buttons["CancelButton"]
+        if startupCancel.waitForExistence(timeout: 3) { startupCancel.click() }
         app.typeKey("n", modifierFlags: .command)
         let importButton = app.descendants(matching: .any)["editor.import-files"].firstMatch
         XCTAssertTrue(importButton.waitForExistence(timeout: 10))
@@ -24,10 +25,10 @@ final class NativeEditorUITests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
         importButton.click()
         app.typeKey("g", modifierFlags: [.command, .shift])
-        let pathField = app.textFields.firstMatch
+        let pathField = app.windows.textFields.firstMatch
         XCTAssertTrue(pathField.waitForExistence(timeout: 5))
         pathField.typeText(fixture.path); app.typeKey(.return, modifierFlags: [])
-        let open = app.buttons["Open"].firstMatch
+        let open = app.windows.buttons["Open"].firstMatch
         XCTAssertTrue(open.waitForExistence(timeout: 5)); open.click()
         XCTAssertTrue(app.staticTexts["120 × 80 px"].waitForExistence(timeout: 10))
         let bubble = app.descendants(matching: .any)["editor.add-bubble"].firstMatch
@@ -46,8 +47,9 @@ final class NativeEditorUITests: XCTestCase {
         let resized = XCTAttachment(screenshot: app.screenshot()); resized.name = "native-mac-resized"; resized.lifetime = .keepAlways; add(resized)
         // Closing an edited untitled document must offer saving or canceling.
         app.typeKey("w", modifierFlags: .command)
-        XCTAssertTrue(app.buttons["Cancel"].waitForExistence(timeout: 5))
-        app.buttons["Cancel"].click()
+        let closeCancel = app.windows.buttons["Cancel"].firstMatch
+        XCTAssertTrue(closeCancel.waitForExistence(timeout: 5))
+        closeCancel.click()
         XCTAssertTrue(text.waitForExistence(timeout: 5))
     }
     private func makeFixture() throws -> URL {

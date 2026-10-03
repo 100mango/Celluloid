@@ -111,7 +111,10 @@ public enum NativeResources {
 public final class RecipeRenderer {
     private let context = CIContext(options: [.workingColorSpace: RasterCodec.colorSpace,
                                               .outputColorSpace: RasterCodec.colorSpace, .cacheIntermediates: false])
-    public init() {}
+    private let testFaceRegions: ((CIImage) throws -> [CGRect])?
+    public init() { testFaceRegions = nil }
+    /// Controlled geometry seam for mask-composition tests; production uses CIDetector.
+    init(faceRegions: @escaping (CIImage) throws -> [CGRect]) { testFaceRegions = faceRegions }
 
     public func render(_ recipe: EditRecipe, sources: [UUID: Data], maximumDimension: Int? = nil) throws -> CGImage {
         try recipe.validate()
@@ -176,20 +179,24 @@ public final class RecipeRenderer {
     }
 
     private func pixelateFaces(_ image: CIImage) throws -> CIImage {
-        guard let detector = CIDetector(ofType: CIDetectorTypeFace, context: context,
-                                        options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]) else {
-            throw RenderError.unavailableFilter(FilterPreset.pixellateFace.rawValue)
+        let faces: [CGRect]
+        if let testFaceRegions { faces = try testFaceRegions(image) }
+        else {
+            guard let detector = CIDetector(ofType: CIDetectorTypeFace, context: context,
+                                            options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]) else {
+                throw RenderError.unavailableFilter(FilterPreset.pixellateFace.rawValue)
+            }
+            faces = detector.features(in: image).map(\.bounds)
         }
-        let faces = detector.features(in: image)
         if faces.isEmpty { return image }
         var mask: CIImage?
         for face in faces {
-            let radius = min(face.bounds.width, face.bounds.height / 1.5)
+            let radius = min(face.width, face.height / 1.5)
             guard let circle = CIFilter(name: "CIRadialGradient", parameters: [
                 "inputRadius0": radius, "inputRadius1": radius + 1,
                 "inputColor0": CIColor(red: 1, green: 1, blue: 1, alpha: 1),
                 "inputColor1": CIColor(red: 0, green: 0, blue: 0, alpha: 0),
-                kCIInputCenterKey: CIVector(x: face.bounds.midX, y: face.bounds.midY)
+                kCIInputCenterKey: CIVector(x: face.midX, y: face.midY)
             ])?.outputImage else { throw RenderError.unavailableFilter("CIRadialGradient") }
             mask = mask.map { circle.composited(over: $0) } ?? circle
         }
