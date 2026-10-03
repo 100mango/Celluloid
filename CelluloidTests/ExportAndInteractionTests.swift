@@ -6,6 +6,19 @@ import CryptoKit
 
 @MainActor
 final class ExportAndInteractionTests: XCTestCase {
+    func testFullCanvasControlsKeepEveryStrictPixelOracle() throws {
+        defer { unsetenv("CELLULOID_EXPORT_FULL_CANVAS_CONTROL") }
+        for mode in ["layer", "direct"] {
+            setenv("CELLULOID_EXPORT_FULL_CANVAS_CONTROL", mode, 1)
+            print("FULL_CANVAS_CONTROL_ORACLES mode=\(mode)")
+            try testAsyncDecoratedExportExcludesVisibleEditorHandles()
+            try testOffMainCompositeMatchesLegacyAffineAlphaAndColorRendering()
+            try testStreamingTileBoundariesAndManyOverlaysMatchLegacyPixels()
+            try testExtendedRangeSourceMatchesLegacyRendererBitmapAndPixels()
+            testSourceScaleAndExifDoNotChangeFullResolutionWhenDecorated()
+        }
+    }
+
     func testTwelveMegapixelExportPreservesDimensionsAndAllowsMainQueueHeartbeat() {
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
         let source = UIGraphicsImageRenderer(size: CGSize(width: 4000, height: 3000), format: format).image { context in
@@ -317,6 +330,26 @@ final class ExportAndInteractionTests: XCTestCase {
                 }
                 if !samples.isEmpty { print("SPATIAL_PIXEL_DIFFERENCE_LOCATIONS " + String(decoding: try! JSONSerialization.data(withJSONObject: samples, options: [.sortedKeys]), as: UTF8.self)) }
                 print("STREAMING_MANY_OVERLAY_EQUIVALENCE maximum_channel_delta=\(maximum) changed_channels=\(changed) channels=\(actual.count)")
+                if maximum != 0 {
+                    // Diagnose coordinate/clip behavior without changing the strict oracle.
+                    let regions = [("full-canvas", CGRect(x: 0, y: 0, width: 1600, height: 1200)),
+                                   ("lower-left", CGRect(x: 0, y: 1018, width: 1022, height: 182)),
+                                   ("full-height-left", CGRect(x: 0, y: 0, width: 800, height: 1200)),
+                                   ("full-width-bottom", CGRect(x: 0, y: 1018, width: 1600, height: 182))]
+                    for (name, region) in regions {
+                        guard let cropped = reference.cgImage?.cropping(to: region) else { XCTFail("Diagnostic crop missing"); continue }
+                        let expectedRegion = self.rgba(UIImage(cgImage: cropped, scale: 1, orientation: .up))
+                        for boundsAPI in [false, true] {
+                            guard let tile = editor.diagnosticSpatialRender(rect: region, globalBounds: boundsAPI) else { XCTFail("Diagnostic renderer failed"); continue }
+                            let actualRegion = self.rgba(tile)
+                            var count = 0, delta = 0
+                            for pair in zip(actualRegion, expectedRegion) {
+                                let d = abs(Int(pair.0) - Int(pair.1)); delta = max(delta, d); if d != 0 { count += 1 }
+                            }
+                            print("SPATIAL_COORDINATE_PROBE region=\(name) bounds_api=\(boundsAPI) actual_channels=\(actualRegion.count) reference_channels=\(expectedRegion.count) changed=\(count) max_delta=\(delta)")
+                        }
+                    }
+                }
                 XCTAssertEqual(maximum, 0, "Do not accept tile seams or altered overlapping alpha/text pixels")
             }
             finished.fulfill()

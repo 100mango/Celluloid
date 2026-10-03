@@ -62,6 +62,7 @@ jobs:
         python3 Scripts/run_bounded.py --seconds 120 --label install xcrun simctl install "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app
         python3 Scripts/run_bounded.py --seconds 60 --label grant xcrun simctl privacy "$id" grant photos Mango.Celluloid
     - name: Validate pure units before media import
+      id: units
       run: |
         set -euo pipefail
         id=$(cat /tmp/current-celluloid-simulator)
@@ -70,16 +71,16 @@ jobs:
         python3 - <<'PY'
         import json
         d=json.load(open('/tmp/unit-summary.json'))
-        assert d['totalTestCount'] ==61 and d['passedTests'] ==61 and d['failedTests'] ==0, d
+        assert d['totalTestCount'] ==63 and d['passedTests'] ==63 and d['failedTests'] ==0, d
         PY
     - name: Read PhotoKit readiness and reconcile fixtures
       id: photos
-      if: ${{ !cancelled() && steps.preparation.conclusion == 'success' }}
+      if: ${{ !cancelled() && steps.preparation.conclusion == 'success' && steps.units.conclusion == 'success' }}
       run: |
         set -euo pipefail
         python3 -u Scripts/probe_photos_bootstrap.py "$(cat /tmp/current-celluloid-simulator)" --already-prepared
     - name: Validate original Photos integration cases
-      if: ${{ !cancelled() && steps.preparation.conclusion == 'success' }}
+      if: ${{ !cancelled() && steps.preparation.conclusion == 'success' && steps.units.conclusion == 'success' }}
       run: |
         set -euo pipefail
         # A reconciled timeout stays red, but verified assets permit independent tests.
@@ -88,7 +89,7 @@ jobs:
         python3 Scripts/run_bounded.py --seconds 600 --label Photos-integration xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-Photos-integration.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests/CollageCompositionTests -only-testing:CelluloidTests/OverlayResizeTests/testPhotosExtensionRestartWithoutAdjustmentClearsDecorationsFilterAndCancellation -only-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation test-without-building CODE_SIGNING_ALLOWED=NO
         xcrun xcresulttool get test-results summary --path TestResults-Photos-integration.xcresult | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Validate artwork semantics and official accessibility audits
-      if: ${{ !cancelled() && steps.preparation.conclusion == 'success' }}
+      if: ${{ !cancelled() && steps.preparation.conclusion == 'success' && steps.units.conclusion == 'success' }}
       run: |
         set -euo pipefail
         # A reconciled timeout stays red, but verified assets permit independent tests.

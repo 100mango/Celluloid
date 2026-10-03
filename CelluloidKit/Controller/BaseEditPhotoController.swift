@@ -83,6 +83,9 @@ open class BaseEditPhotoController: UIViewController {
         let fallback = input == nil ? sourceImage : nil
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
+        #if DEBUG
+        let fullCanvasControl = getenv("CELLULOID_EXPORT_FULL_CANVAS_CONTROL").map { String(cString: $0) }
+        #endif
         func finish(_ result: Result<PhotoExport, PhotoExportError>) {
             DispatchQueue.main.async {
                 completion(task.isCancelled ? .failure(.cancelled) : result)
@@ -120,6 +123,24 @@ open class BaseEditPhotoController: UIViewController {
                 } else {
                     guard let models = Self.scaledOverlayModels(for: image.size, data: data),
                           let source = image.cgImage else { finish(.failure(.invalidState)); return }
+                    #if DEBUG
+                    if let mode = fullCanvasControl {
+                        // Experimental control: original global layer coordinates,
+                        // warmed off-main, with one full-canvas UIKit surface.
+                        guard let warmed = Self.materializedImage(source) else { finish(.failure(.encodingFailed)); return }
+                        defer { withExtendedLifetime(warmed.pixels) {} }
+                        let control: Result<OverlayRaster, PhotoExportError> = DispatchQueue.main.sync {
+                            guard self != nil, !task.isCancelled else { return .failure(.cancelled) }
+                            return Self.rasterizeScene(warmed.image, size: image.size, models: models,
+                                rect: CGRect(origin: .zero, size: image.size), format: format, directSource: mode == "direct")
+                        }
+                        switch control {
+                        case .failure(let error): finish(.failure(error))
+                        case .success(let tile): encode(UIImage(cgImage: tile.image, scale: 1, orientation: .up))
+                        }
+                        return
+                    }
+                    #endif
                     let result = Self.compositeOffMain(source, size: image.size, models: models, task: task) { decoded, rect in
                         DispatchQueue.main.sync {
                             guard self != nil, !task.isCancelled else { return .failure(.cancelled) }
@@ -196,12 +217,12 @@ open class BaseEditPhotoController: UIViewController {
     }
 
     private static func rasterizeScene(_ source: CGImage, size: CGSize, models: [OverlayModel], rect: CGRect,
-                                       format: UIGraphicsImageRendererFormat) -> Result<OverlayRaster, PhotoExportError> {
+                                       format: UIGraphicsImageRendererFormat, globalBounds: Bool = false, directSource: Bool = false) -> Result<OverlayRaster, PhotoExportError> {
         precondition(Thread.isMainThread)
         return autoreleasepool {
             // Render the complete original layer stack in each final-output tile.
             // Quantizing each decoration separately changes overlapping alpha/HDR.
-            let holder = UIImageView(image: UIImage(cgImage: source, scale: 1, orientation: .up))
+            let holder: UIView = directSource ? UIView() : UIImageView(image: UIImage(cgImage: source, scale: 1, orientation: .up))
             holder.frame = CGRect(origin: .zero, size: size)
             for model in models {
                 switch model {
@@ -210,14 +231,38 @@ open class BaseEditPhotoController: UIViewController {
                 }
             }
             holder.layoutIfNeeded(); holder.subviews.forEach { $0.layoutIfNeeded() }
-            let image = UIGraphicsImageRenderer(size: rect.size, format: format).image { context in
-                context.cgContext.translateBy(x: -rect.minX, y: -rect.minY)
+            let renderer = globalBounds ? UIGraphicsImageRenderer(bounds: rect, format: format) : UIGraphicsImageRenderer(size: rect.size, format: format)
+            let image = renderer.image { context in
+                if !globalBounds { context.cgContext.translateBy(x: -rect.minX, y: -rect.minY) }
+                if directSource {
+                    context.cgContext.saveGState()
+                    context.cgContext.translateBy(x: 0, y: size.height)
+                    context.cgContext.scaleBy(x: 1, y: -1)
+                    context.cgContext.draw(source, in: CGRect(origin: .zero, size: size))
+                    context.cgContext.restoreGState()
+                }
                 holder.layer.render(in: context.cgContext)
             }
             guard let pixels = image.cgImage else { return .failure(.encodingFailed) }
             return .success(OverlayRaster(image: pixels, rect: rect))
         }
     }
+
+    #if DEBUG
+    // Bounded synthetic failure diagnostics; never used by the shipping save path.
+    func diagnosticSpatialRender(rect: CGRect, globalBounds: Bool) -> UIImage? {
+        precondition(Thread.isMainThread)
+        let data = adjustmentData
+        guard let image = Self.prepareFullSizeImage(url: input?.fullSizeImageURL,
+                orientation: input?.fullSizeImageOrientation, fallback: input == nil ? sourceImage : nil, filter: data.filterType),
+              let source = image.cgImage, let models = Self.scaledOverlayModels(for: image.size, data: data) else { return nil }
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        switch Self.rasterizeScene(source, size: image.size, models: models, rect: rect, format: format, globalBounds: globalBounds) {
+        case .failure: return nil
+        case .success(let tile): return UIImage(cgImage: tile.image, scale: 1, orientation: .up)
+        }
+    }
+    #endif
 
     private nonisolated static func materializedImage(_ source: CGImage) -> (image: CGImage, pixels: CFData)? {
         // Warm native pixels on the export queue, but retain the original CGImage.
