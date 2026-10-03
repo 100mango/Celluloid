@@ -1,0 +1,163 @@
+name: Celluloid actual Photos restoration gate
+on:
+  push:
+    branches: [codex/ios-photos-host-restore-v2]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-photos-host-restore-v2
+  cancel-in-progress: false
+jobs:
+  host:
+    name: Actual Photos host restore and system Revert
+    runs-on: xcode-27
+    timeout-minutes: 40
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Verify frozen production source and test-only delta
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 100mango/Celluloid
+          test "$GITHUB_REF" = refs/heads/codex/ios-photos-host-restore-v2
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code HEAD --
+          python3 - <<'PY'
+          import hashlib,json,pathlib,subprocess
+          frozen='0f9e329de9540505b7246a62fdff9d371d5dbade'
+          allowed={'.github/workflows/ios-photos-host.yml','CelluloidUITests/CelluloidUITests.swift','Celluloid.xcodeproj/xcshareddata/xcschemes/CelluloidCapture.xcscheme'}
+          changed=set(p for p in subprocess.check_output(['git','diff','--name-only','-z',frozen,'HEAD']).decode().split('\0') if p)
+          assert changed and changed <= allowed,changed
+          paths=[p for p in subprocess.check_output(['git','ls-files','-z','Celluloid','CelluloidKit','CelluloidPhotoExtension']).decode().split('\0') if p]
+          rows=[]
+          for p in paths:
+              data=pathlib.Path(p).read_bytes()
+              assert data==subprocess.check_output(['git','show',frozen+':'+p]),p
+              rows.append((p,hashlib.sha256(data).hexdigest()))
+          digest=hashlib.sha256(json.dumps(rows,separators=(',',':')).encode()).hexdigest()
+          assert len(rows)==315 and digest=='a8d03b2e2876168fbbc61ec3314f8d8dace013cc6336e94a445fba7ed9ae538a'
+          settings=[p for p in subprocess.check_output(['git','ls-files','-z','*pbxproj','*xcworkspacedata','*Package.resolved']).decode().split('\0') if p]
+          for p in settings:
+              assert pathlib.Path(p).read_bytes()==subprocess.check_output(['git','show',frozen+':'+p]),p
+          print('FROZEN_PRODUCTION_SOURCE',frozen,'FILES',len(rows),'SHA256',digest)
+          print('UNCHANGED_BUILD_SETTINGS',json.dumps(settings))
+          print('HOST_TEST_ONLY_DELTA',json.dumps(sorted(changed)))
+          print('HOST_TEST_COMMIT',subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
+          print('HOST_TEST_TREE',subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip())
+          PY
+          shasum -a256 .github/workflows/ios-photos-host.yml
+          sw_vers
+          xcodebuild -version
+          xcodebuild -showsdks
+          xcrun simctl list runtimes
+          xcrun simctl list devices available
+          xcodebuild -version | grep '^Xcode 27.0$'
+      - name: Prepare one clean synthetic Release Photos host
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          python3 Scripts/select_test_devices.py 'iPhone 18 Pro Max' --pre-provisioned > /tmp/host-device.txt
+          id=$(cut -d' ' -f1 /tmp/host-device.txt)
+          echo "$id" > /tmp/current-celluloid-simulator
+          python3 Scripts/run_bounded.py --seconds 900 --label host-build xcodebuild -project Celluloid.xcodeproj -scheme CelluloidCapture -configuration Release -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-host -jobs 2 build-for-testing CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO > host-build.log 2>&1 || { tail -200 host-build.log; exit 1; }
+          python3 Scripts/run_bounded.py --seconds 60 --label host-boot xcrun simctl boot "$id"
+          python3 Scripts/run_bounded.py --seconds 600 --label host-bootstatus xcrun simctl bootstatus "$id" -b
+          python3 Scripts/run_bounded.py --seconds 180 --label Photos-warm-up xcrun simctl launch "$id" com.apple.mobileslideshow
+          python3 Scripts/create_fixture.py
+          cp /tmp/celluloid-fixture.png /tmp/celluloid-fixture-a.png
+          python3 Scripts/run_bounded.py --seconds 480 --label single-import-a xcrun simctl addmedia "$id" /tmp/celluloid-fixture-a.png
+          sleep 3
+          cp /tmp/celluloid-fixture-2.png /tmp/celluloid-fixture-b.png
+          python3 Scripts/run_bounded.py --seconds 180 --label single-import-b xcrun simctl addmedia "$id" /tmp/celluloid-fixture-b.png
+          shasum -a256 /tmp/celluloid-fixture-{a,b}.png
+          python3 Scripts/run_bounded.py --seconds 120 --label install-host-app xcrun simctl install "$id" .build-host/Build/Products/Release-iphonesimulator/Celluloid.app
+          runner=$(find .build-host/Build/Products/Release-iphonesimulator -maxdepth 1 -name '*UITests-Runner.app')
+          test -n "$runner" && test -d "$runner"
+          runner_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$runner/Info.plist")
+          test -n "$runner_id"
+          echo "HOST_UI_RUNNER $runner_id"
+          python3 Scripts/run_bounded.py --seconds 120 --label install-host-runner xcrun simctl install "$id" "$runner"
+          for bundle in Mango.Celluloid "$runner_id"; do
+            python3 Scripts/run_bounded.py --seconds 60 --label reset-synthetic-Photos xcrun simctl privacy "$id" reset photos "$bundle"
+            python3 Scripts/run_bounded.py --seconds 60 --label grant-synthetic-Photos xcrun simctl privacy "$id" grant photos "$bundle"
+          done
+          echo 'HOST_AUTHORIZATION_SCOPE pre-granted ephemeral synthetic library; this is not user-consent coverage'
+          python3 Scripts/run_bounded.py --seconds 60 --label host-light xcrun simctl ui "$id" appearance light
+      - name: Verify actual Photos edit save reopen Original and system Revert
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          id=$(cat /tmp/current-celluloid-simulator)
+          python3 Scripts/run_bounded.py --seconds 900 --label actual-Photos-host xcodebuild -project Celluloid.xcodeproj -scheme CelluloidCapture -configuration Release -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-host -resultBundlePath PhotosHost.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidCaptureTests/testPhotosHostAssessment test-without-building CODE_SIGNING_ALLOWED=NO | tee photos-host.log
+          grep '^PHOTOS_HOST_PRISTINE_FIXTURES_VERIFIED' photos-host.log
+          grep '^PHOTOS_HOST_ORIGINAL_RESTORATION_PASS' photos-host.log
+          grep '^PHOTOS_HOST_SYSTEM_REVERT_PASS' photos-host.log
+          grep '^PHOTOS_HOST_RESULT:VERIFIED_EDITOR_AND_SYSTEM_REVERT' photos-host.log
+          xcrun xcresulttool get test-results summary --path PhotosHost.xcresult | tee /tmp/host-summary.json | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/host-summary.json'))
+          assert d['totalTestCount']==1 and d['passedTests']==1 and d['failedTests']==0,d
+          PY
+      - name: Emit at most two bounded synthetic host images
+        if: always()
+        timeout-minutes: 3
+        run: |
+          python3 -u - <<'PY'
+          import base64,hashlib,json,pathlib,subprocess
+          result=pathlib.Path('PhotosHost.xcresult')
+          if not result.exists():
+              print('HOST_IMAGE_RESULT_ABSENT');raise SystemExit(0)
+          dest=pathlib.Path('.build-host/host-images');dest.mkdir(parents=True,exist_ok=True)
+          subprocess.run(['xcrun','xcresulttool','export','attachments','--path',str(result),'--output-path',str(dest)],check=True,timeout=60)
+          def records(v):
+              if isinstance(v,dict):
+                  if 'exportedFileName' in v:yield v
+                  for child in v.values():yield from records(child)
+              elif isinstance(v,list):
+                  for child in v:yield from records(child)
+          names=['celluloid-capture-failure','celluloid-host-system-reverted','celluloid-host-saved-sepia']
+          found={}
+          for row in records(json.loads((dest/'manifest.json').read_text())):
+              fields=' '.join(x for x in row.values() if isinstance(x,str))
+              matched=[n for n in names if n in fields]
+              if not matched:continue
+              assert len(matched)==1
+              path=(dest/row['exportedFileName']).resolve();assert path.is_relative_to(dest.resolve())
+              found.setdefault(matched[0],path.read_bytes())
+          chosen=[n for n in names if n in found][:2]
+          total=0
+          for name in chosen:
+              data=found[name];assert data.startswith(b'\xff\xd8') and len(data)<=500000
+              total+=len(data);assert total<=1000000
+              print('HOST_IMAGE_META',json.dumps({'name':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'provisional_QA_only':True}))
+              print('HOST_IMAGE_BEGIN:'+name)
+              encoded=base64.b64encode(data).decode()
+              for i in range(0,len(encoded),4096):print('HOST_IMAGE_CHUNK:'+encoded[i:i+4096])
+              print('HOST_IMAGE_END:'+name,flush=True)
+          print('HOST_IMAGE_TOTAL',len(chosen),total,flush=True)
+          log=pathlib.Path('photos-host.log')
+          if log.exists() and 'PHOTOS_HOST_RESULT:VERIFIED_EDITOR_AND_SYSTEM_REVERT' in log.read_text():
+              assert set(chosen)==set(names[1:]),chosen
+          PY
+      - name: Collect bounded failure diagnostics
+        if: failure()
+        timeout-minutes: 3
+        run: python3 Scripts/collect_simulator_diagnostics.py
+      - name: Verify final source and stop owned simulator
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -f /tmp/current-celluloid-simulator ]]; then
+            python3 Scripts/run_bounded.py --seconds 60 --label host-shutdown xcrun simctl shutdown "$(cat /tmp/current-celluloid-simulator)" || true
+          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code HEAD --
+          echo "HOST_FINAL_TREE $(git rev-parse 'HEAD^{tree}')"
+          shasum -a256 .github/workflows/ios-photos-host.yml
