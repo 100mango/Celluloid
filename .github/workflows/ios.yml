@@ -56,6 +56,7 @@ jobs:
           python3 Scripts/select_test_devices.py > /tmp/test-devices.txt
           cat /tmp/test-devices.txt
           small_id=$(grep 'iPhone SE (3rd generation)$' /tmp/test-devices.txt | cut -d' ' -f1)
+          failures=0
           while read -r id name; do
             echo "Testing $name ($id)"
             echo "$id" > /tmp/current-celluloid-simulator
@@ -68,7 +69,7 @@ jobs:
             xcrun simctl ui "$id" appearance light
             if [[ "$name" = 'iPhone 18 Pro Max' ]]; then
               echo 'FOCUSED_LANDSCAPE_HIT_TEST_PREFLIGHT'
-              xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-rotation-preflight.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests/testLimitedEmptyPhotosHasManagementAndAdaptiveLayout test-without-building CODE_SIGNING_ALLOWED=NO | tee test-rotation-preflight.log
+              xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-rotation-preflight.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests/testLimitedEmptyPhotosHasManagementAndAdaptiveLayout -only-testing:CelluloidUITests/CelluloidUITests/testSeededPhotoEditingSaveAndReopen test-without-building CODE_SIGNING_ALLOWED=NO | tee test-rotation-preflight.log
               xcrun xcresulttool get test-results summary --path TestResults-rotation-preflight.xcresult | tee -a "$GITHUB_STEP_SUMMARY"
             fi
             if [[ "$id" = "$small_id" ]]; then
@@ -79,21 +80,32 @@ jobs:
                   limited) xcrun simctl privacy "$id" reset photos Mango.Celluloid; method=testRealLimitedSelectionAndManagement ;;
                 esac
                 echo "SYSTEM_PHOTOS_STATE $state"
-                xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-permission-$state.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never "-only-testing:CelluloidUITests/CelluloidSystemPermissionTests/$method" test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-permission-$state.log"
-                xcrun xcresulttool get test-results summary --path "TestResults-permission-$state.xcresult" | tee -a "$GITHUB_STEP_SUMMARY"
+                if ! xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-permission-$state.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never "-only-testing:CelluloidUITests/CelluloidSystemPermissionTests/$method" test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-permission-$state.log"; then
+                  failures=$((failures + 1))
+                  echo "REGRESSION_PHASE_FAILED device=$name; continuing independent phases"
+                fi
+                xcrun xcresulttool get test-results summary --path "TestResults-permission-$state.xcresult" | tee -a "$GITHUB_STEP_SUMMARY" || { failures=$((failures + 1)); echo "RESULT_SUMMARY_FAILED device=$name"; }
               done
               xcrun simctl privacy "$id" grant photos Mango.Celluloid
             fi
-            xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never -skip-testing:CelluloidUITests/CelluloidSystemPermissionTests test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-$id.log"
-            xcrun xcresulttool get test-results summary --path "TestResults-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY"
+            if ! xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never -skip-testing:CelluloidUITests/CelluloidSystemPermissionTests test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-$id.log"; then
+              failures=$((failures + 1))
+              echo "REGRESSION_PHASE_FAILED device=$name; continuing independent phases"
+            fi
+            xcrun xcresulttool get test-results summary --path "TestResults-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY" || { failures=$((failures + 1)); echo "RESULT_SUMMARY_FAILED device=$name"; }
             if [[ "$id" = "$small_id" || "$name" = 'iPad Pro 13-inch (M5)' ]]; then
               xcrun simctl ui "$id" appearance dark
               echo "DARK_APPEARANCE_REGRESSION $name"
-              xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-dark-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests/testSeededPhotoEditingSaveAndReopen -only-testing:CelluloidUITests/CelluloidUITests/testTwoPhotoCollageZoomRotateAndSave test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-dark-$id.log"
-              xcrun xcresulttool get test-results summary --path "TestResults-dark-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY"
+              if ! xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-dark-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests/testSeededPhotoEditingSaveAndReopen -only-testing:CelluloidUITests/CelluloidUITests/testTwoPhotoCollageZoomRotateAndSave test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-dark-$id.log"; then
+                failures=$((failures + 1))
+                echo "REGRESSION_PHASE_FAILED device=$name; continuing independent phases"
+              fi
+              xcrun xcresulttool get test-results summary --path "TestResults-dark-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY" || { failures=$((failures + 1)); echo "RESULT_SUMMARY_FAILED device=$name"; }
             fi
             xcrun simctl shutdown "$id"
           done < /tmp/test-devices.txt
+          echo "REGRESSION_FAILED_PHASES=$failures" | tee -a "$GITHUB_STEP_SUMMARY"
+          test "$failures" -eq 0
       - name: Export bounded synthetic UI evidence
         if: always()
         timeout-minutes: 3

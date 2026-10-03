@@ -148,6 +148,25 @@ final class AdaptiveInterfaceTests: XCTestCase {
         }
     }
 
+    func testSavedScreenHidesItsUnusedNativeToolbarAfterLayout() {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { _ in }
+        let share = SharePhotoViewController(image: image)
+        let navigation = UINavigationController(rootViewController: share)
+        navigation.loadViewIfNeeded()
+        for size in [CGSize(width: 440, height: 956), CGSize(width: 956, height: 440)] {
+            navigation.view.frame = CGRect(origin: .zero, size: size)
+            navigation.setToolbarHidden(false, animated: false)
+            navigation.toolbar.isHidden = false
+            navigation.toolbar.accessibilityElementsHidden = false
+            share.viewDidLayoutSubviews()
+            XCTAssertTrue(navigation.isToolbarHidden)
+            XCTAssertTrue(navigation.toolbar.isHidden)
+            XCTAssertTrue(navigation.toolbar.accessibilityElementsHidden)
+            XCTAssertFalse(share.shareButton.isHidden)
+            XCTAssertFalse(share.doneButton.isHidden)
+        }
+    }
+
     private func assertFullTitle(_ label: UILabel, within container: UIView,
                                  file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertFalse(label.text?.isEmpty ?? true, file: file, line: line)

@@ -121,8 +121,31 @@ class SharePhotoViewController: UIViewController {
         doneButton.snp.makeConstraints { $0.height.greaterThanOrEqualTo(44) }
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        hideUnusedSystemToolbar()
+    }
+
+    private func hideUnusedSystemToolbar() {
+        guard let navigation = navigationController else { return }
+        // This screen has its own Share/Done controls and no system toolbar items.
+        // iOS27 can leave an empty, full-window toolbar accessibility surface after
+        // pushing from the editor and rotating. Hide that unused surface explicitly
+        // rather than allowing it to obscure the actual controls' activation points.
+        let toolbar = navigation.toolbar
+        if !navigation.isToolbarHidden || !toolbar.isHidden || !toolbar.accessibilityElementsHidden {
+            #if DEBUG
+            print("SHARE_NATIVE_TOOLBAR_HIDE logicalHidden=\(navigation.isToolbarHidden) viewHidden=\(toolbar.isHidden) axHidden=\(toolbar.accessibilityElementsHidden) frame=\(toolbar.frame)")
+            #endif
+            navigation.setToolbarHidden(true, animated: false)
+            toolbar.isHidden = true
+            toolbar.accessibilityElementsHidden = true
+        }
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        hideUnusedSystemToolbar()
         let axis: NSLayoutConstraint.Axis = view.bounds.width > view.bounds.height ? .horizontal : .vertical
         if actions.axis != axis { actions.axis = axis }
     }
