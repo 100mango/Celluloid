@@ -4,7 +4,9 @@ import PhotosUI
 import CelluloidKit
 
 /// Keeps selection tied to PHAsset so non-destructive edits remain reversible in Photos.
-final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibraryChangeObserver {
+final class PhotoPickerViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate, PHPhotoLibraryChangeObserver {
+    let collectionView: UICollectionView
+    private let collectionViewLayout: UICollectionViewFlowLayout
     private let maximumSelection: Int
     private let completion: ([PHAsset]) -> Void
     private var assets = PHFetchResult<PHAsset>()
@@ -12,6 +14,19 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
     private let message = UILabel()
     private let stateBackground = PhotoPickerStateBackground()
     private var observing = false
+    private(set) lazy var manageButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle(NSLocalizedString("Manage Photos", comment: "Limited photo selection"), for: .normal)
+        button.titleLabel?.font = .preferredFont(forTextStyle: .body)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.titleLabel?.numberOfLines = 0
+        button.titleLabel?.textAlignment = .center
+        button.contentEdgeInsets = UIEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
+        button.accessibilityIdentifier = "manage-photos"
+        button.addTarget(self, action: #selector(managePhotos), for: .touchUpInside)
+        button.isHidden = true
+        return button
+    }()
     private lazy var settingsButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle(NSLocalizedString("Open Settings", comment: "Photos permission recovery"), for: .normal)
@@ -29,7 +44,9 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         let layout = UICollectionViewFlowLayout()
         layout.minimumInteritemSpacing = 4
         layout.minimumLineSpacing = 4
-        super.init(collectionViewLayout: layout)
+        collectionViewLayout = layout
+        collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     deinit {
@@ -40,7 +57,29 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
     override func viewDidLoad() {
         super.viewDidLoad()
         title = tr(.beautify)
+        view.backgroundColor = .systemBackground
         collectionView.backgroundColor = .systemBackground
+        collectionView.dataSource = self
+        collectionView.delegate = self
+        collectionView.contentInsetAdjustmentBehavior = .never
+        // Keep management in a bounded, ordinary accessibility surface. On iOS27
+        // the navigation controller's floating UIToolbar can expose a full-window
+        // AX frame after rotation, hiding Cancel from accessibility hit calculation
+        // even though an actual touch at Cancel's visible center still works.
+        let content = UIStackView(arrangedSubviews: [collectionView, manageButton])
+        content.axis = .vertical
+        content.spacing = 8
+        content.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(content)
+        let minimumManageHeight = manageButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+        minimumManageHeight.priority = .defaultHigh
+        minimumManageHeight.isActive = true
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            content.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            content.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor)
+        ])
         collectionView.register(PhotoCell.self, forCellWithReuseIdentifier: "photo")
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: tr(.cancel), style: .plain, target: self, action: #selector(cancel))
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: tr(.done), style: .done, target: self, action: #selector(finish))
@@ -54,7 +93,7 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         message.textColor = .label
         // UICollectionView.backgroundView does not inherit bar occlusion insets.
         // Its scroll frame is inset explicitly from the collection's actual
-        // adjustedContentInset during layout, including navigation and toolbar.
+        // adjustedContentInset; the containing stack stays inside the safe area.
         let background = stateBackground
         let state = background.scrollView
         let stateStack = UIStackView(arrangedSubviews: [message, settingsButton])
@@ -82,9 +121,10 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         super.viewDidLayoutSubviews()
         stateBackground.occlusionInsets = collectionView.adjustedContentInset
         stateBackground.layoutIfNeeded()
-        let columns = max(2, Int(view.bounds.width / 140))
-        let side = (view.safeAreaLayoutGuide.layoutFrame.width - CGFloat(columns - 1) * 4) / CGFloat(columns)
-        (collectionViewLayout as? UICollectionViewFlowLayout)?.itemSize = CGSize(width: side, height: side)
+        let columns = max(2, Int(collectionView.bounds.width / 140))
+        let side = max(1, (collectionView.bounds.width - CGFloat(columns - 1) * 4) / CGFloat(columns))
+        let size = CGSize(width: side, height: side)
+        if collectionViewLayout.itemSize != size { collectionViewLayout.itemSize = size }
     }
     @objc private func refreshAuthorization() {
         #if DEBUG
@@ -103,8 +143,7 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
             assets = PHFetchResult<PHAsset>()
             selected.removeAll()
             settingsButton.isHidden = false
-            toolbarItems = []
-            navigationController?.setToolbarHidden(true, animated: false)
+            manageButton.isHidden = true
             navigationItem.rightBarButtonItem?.isEnabled = false
             navigationItem.leftBarButtonItems = [UIBarButtonItem(title: tr(.cancel), style: .plain, target: self, action: #selector(cancel))]
             collectionView.reloadData()
@@ -113,17 +152,7 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         }
         navigationItem.leftBarButtonItems = [UIBarButtonItem(title: tr(.cancel), style: .plain, target: self, action: #selector(cancel))]
         settingsButton.isHidden = true
-        toolbarItems = []
-        navigationController?.setToolbarHidden(true, animated: false)
-        if status == .limited {
-            let manage = UIBarButtonItem(title: NSLocalizedString("Manage Photos", comment: "Limited photo selection"), style: .plain, target: self, action: #selector(managePhotos))
-            manage.accessibilityIdentifier = "manage-photos"
-            // Keep Cancel alone in the compact navigation bar. Two leading text
-            // actions can overlap the title or lose activation points on SE landscape.
-            toolbarItems = [UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil), manage,
-                            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)]
-            navigationController?.setToolbarHidden(false, animated: false)
-        }
+        manageButton.isHidden = status != .limited
         if !forceEmpty {
             let options = PHFetchOptions()
             options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
@@ -157,8 +186,8 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         let result = selected
         dismiss(animated: true) { self.completion(result) }
     }
-    override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { assets.count }
-    override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { assets.count }
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "photo", for: indexPath) as! PhotoCell
         let asset = assets.object(at: indexPath.item)
         cell.representedIdentifier = asset.localIdentifier
@@ -178,7 +207,7 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         }
         return cell
     }
-    override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         let asset = assets.object(at: indexPath.item)
         if let index = selected.firstIndex(where: { $0.localIdentifier == asset.localIdentifier }) { selected.remove(at: index) }
         else if selected.count < maximumSelection { selected.append(asset) }

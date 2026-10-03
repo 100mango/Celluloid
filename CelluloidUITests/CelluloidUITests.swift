@@ -89,25 +89,14 @@ final class CelluloidUITests: XCTestCase {
         XCTAssertTrue(app.buttons["manage-photos"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["photos-state"].label.contains("No photos"))
         XCUIDevice.shared.orientation = .landscapeLeft
-        // Retain a strict failure, then collect whether actual interaction or only
-        // the immediate accessibility activation calculation is affected.
-        continueAfterFailure = true
         let cancel = app.buttons["Cancel"]
-        let immediatelyHittable = cancel.isHittable
-        XCTAssertTrue(immediatelyHittable)
-        if !immediatelyHittable {
-            let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in cancel.isHittable }, object: nil)
-            let settledResult = XCTWaiter.wait(for: [settled], timeout: 3)
-            print("ROTATION_HIT_DIAGNOSTIC initial=\(immediatelyHittable) settled=\(settledResult.rawValue) app=\(app.frame) cancel=\(cancel.frame)")
-            // This targets the visible native button's observed center. A passing
-            // dismissal here is diagnostic only; it cannot erase the failure above.
-            cancel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-            let dismissed = app.buttons["make-collage"].waitForExistence(timeout: 5)
-            print("ROTATION_CENTER_TAP_DISMISSED \(dismissed)")
-            attachScreenshot("celluloid-failure-cancel-after-center-tap")
-            print("ROTATION_AFTER_TAP_APP " + String(app.debugDescription.prefix(16000)))
-            XCTAssertTrue(dismissed)
-        } else { cancel.tap() }
+        let manage = app.buttons["manage-photos"]
+        XCTAssertTrue(cancel.isHittable)
+        XCTAssertTrue(manage.isHittable)
+        XCTAssertTrue(app.frame.contains(manage.frame))
+        XCTAssertFalse(app.navigationBars.firstMatch.frame.intersects(manage.frame))
+        cancel.tap()
+        XCTAssertTrue(app.buttons["make-collage"].waitForExistence(timeout: 5))
         XCUIDevice.shared.press(.home)
         app.activate()
         XCTAssertTrue(app.buttons["make-collage"].waitForExistence(timeout: 5))

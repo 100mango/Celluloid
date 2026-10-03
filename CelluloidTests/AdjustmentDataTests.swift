@@ -1,6 +1,7 @@
 import XCTest
 import UIKit
 import CoreImage
+import CryptoKit
 @testable import CelluloidKit
 
 final class AdjustmentDataTests: XCTestCase {
@@ -55,6 +56,36 @@ final class AdjustmentDataTests: XCTestCase {
         XCTAssertTrue(AdjustmentData.supportIdentifier("Mango.CelluloidPhotoExtension", version: "1.0"))
         XCTAssertFalse(AdjustmentData.supportIdentifier("Mango.CelluloidPhotoExtension", version: "2.0"))
         XCTAssertFalse(AdjustmentData.supportIdentifier("Other", version: "1.0"))
+    }
+
+    func testExportSyntheticUIKitCompatibilityFixtures() throws {
+        // Contemporary UIKit-produced reproductions of the shipping dictionary,
+        // not recovered user archives. Bounded output supports independent AppKit
+        // compatibility tests without guessing NSValue's serialized representation.
+        for name in ["legacy-points", "reference-canvas"] {
+            var object = legacyObject
+            if name == "reference-canvas" { object["referenceCanvasSize"] = NSValue(cgSize: CGSize(width: 480, height: 640)) }
+            let input = try legacyArchive(object)
+            let decoded = try AdjustmentData.decode(input)
+            let bytes: Data
+            if name == "legacy-points" { bytes = input }
+            else { bytes = try decoded.encode() }
+            let verified = try AdjustmentData.decode(bytes)
+            XCTAssertTrue(try XCTUnwrap(verified.toJSON() as? NSDictionary).isEqual(to: object))
+            XCTAssertEqual(verified.referenceCanvasSize, name == "legacy-points" ? nil : CGSize(width: 480, height: 640))
+            XCTAssertLessThanOrEqual(bytes.count, 8_000)
+            let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+            let metadata: [String: Any] = ["name": name, "sha256": digest, "bytes": bytes.count,
+                "runtime": UIDevice.current.systemVersion, "formatIdentifier": AdjustmentData.formatIdentifier,
+                "formatVersion": AdjustmentData.formatVersion, "filterType": "Chrome",
+                "bubble": ["asset": "say1", "content": "Hello, 世界 🎬", "center": [240, 320], "bounds": [0, 0, 180, 96], "transform": [1.5, 0.25, -0.25, 1.5, 10, -4]],
+                "sticker": ["imageName": "32", "center": [44, -12], "bounds": [2, 3, 72, 80], "transform": [0.5, 0, 0, 0.75, 0, 0]],
+                "referenceCanvasSize": name == "legacy-points" ? [] : [480, 640]]
+            print("UIKIT_ARCHIVE_FIXTURE_META " + String(decoding: try JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]), as: UTF8.self))
+            print("UIKIT_ARCHIVE_FIXTURE_BEGIN:" + name)
+            print(bytes.base64EncodedString())
+            print("UIKIT_ARCHIVE_FIXTURE_END:" + name)
+        }
     }
 
     func testLegacyArchivesMayOmitEmptyArrays() throws {

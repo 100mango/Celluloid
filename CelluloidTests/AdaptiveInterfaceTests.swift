@@ -87,6 +87,81 @@ final class AdaptiveInterfaceTests: XCTestCase {
         XCTAssertLessThanOrEqual(label.font.pointSize, 16)
     }
 
+    func testFullLocalizedTitlesFitAtNormalAndLargestTextAcrossViewports() throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { _ in }
+        let sizes = [CGSize(width: 320, height: 568), CGSize(width: 568, height: 320),
+                     CGSize(width: 375, height: 667), CGSize(width: 667, height: 375),
+                     CGSize(width: 440, height: 956), CGSize(width: 956, height: 440),
+                     CGSize(width: 744, height: 1133), CGSize(width: 1133, height: 744),
+                     CGSize(width: 1032, height: 1376), CGSize(width: 1376, height: 1032)]
+        for language in ["en", "zh-Hans"] {
+            let kitURL = try XCTUnwrap(Bundle(for: BubbleLabel.self).url(forResource: language, withExtension: "lproj"))
+            let kit = try XCTUnwrap(Bundle(url: kitURL))
+            // English app strings use their source keys; Chinese has a resource table.
+            let chineseURL = try XCTUnwrap(Bundle(for: EntranceViewController.self).url(forResource: "zh-Hans", withExtension: "lproj"))
+            let chinese = try XCTUnwrap(Bundle(url: chineseURL))
+            func appTitle(_ key: String) -> String {
+                language == "en" ? key : chinese.localizedString(forKey: key, value: nil, table: nil)
+            }
+            for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+                let traits = UITraitCollection(preferredContentSizeCategory: category)
+                let home = EntranceViewController()
+                home.loadViewIfNeeded()
+                home.editPhotoButton.label.text = kit.localizedString(forKey: "beautify", value: nil, table: nil)
+                home.makeCollageButton.label.text = kit.localizedString(forKey: "collage", value: nil, table: nil)
+                home.editPhotoButton.label.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+                home.makeCollageButton.label.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+                home.privacyPolicyButton.setTitle(appTitle("Privacy Policy"), for: .normal)
+                home.privacyPolicyButton.titleLabel?.font = .preferredFont(forTextStyle: .footnote, compatibleWith: traits)
+                let share = SharePhotoViewController(image: image)
+                share.loadViewIfNeeded()
+                share.shareButton.setTitle(kit.localizedString(forKey: "share", value: nil, table: nil), for: .normal)
+                share.doneButton.setTitle(kit.localizedString(forKey: "done", value: nil, table: nil), for: .normal)
+                share.savedLabel.text = kit.localizedString(forKey: "saved", value: nil, table: nil)
+                share.shareButton.titleLabel?.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+                share.doneButton.titleLabel?.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+                share.savedLabel.font = .preferredFont(forTextStyle: .title3, compatibleWith: traits)
+                let picker = PhotoPickerViewController(maximumSelection: 4) { _ in }
+                picker.loadViewIfNeeded()
+                picker.manageButton.isHidden = false
+                picker.manageButton.setTitle(appTitle("Manage Photos"), for: .normal)
+                picker.manageButton.titleLabel?.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+                for size in sizes {
+                    for controller in [home as UIViewController, share, picker] {
+                        controller.view.frame = CGRect(origin: .zero, size: size)
+                        controller.view.setNeedsLayout()
+                        controller.view.layoutIfNeeded()
+                        controller.viewDidLayoutSubviews()
+                        controller.view.layoutIfNeeded()
+                    }
+                    assertFullTitle(home.editPhotoButton.label, within: home.editPhotoButton)
+                    assertFullTitle(home.makeCollageButton.label, within: home.makeCollageButton)
+                    assertFullTitle(try XCTUnwrap(home.privacyPolicyButton.titleLabel), within: home.privacyPolicyButton)
+                    assertFullTitle(try XCTUnwrap(share.shareButton.titleLabel), within: share.shareButton)
+                    assertFullTitle(try XCTUnwrap(share.doneButton.titleLabel), within: share.doneButton)
+                    assertFullTitle(share.savedLabel, within: share.view)
+                    assertFullTitle(try XCTUnwrap(picker.manageButton.titleLabel), within: picker.manageButton)
+                    XCTAssertGreaterThanOrEqual(picker.manageButton.bounds.height, 44)
+                    XCTAssertLessThanOrEqual(picker.collectionView.frame.maxY, picker.manageButton.frame.minY)
+                }
+            }
+        }
+    }
+
+    private func assertFullTitle(_ label: UILabel, within container: UIView,
+                                 file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertFalse(label.text?.isEmpty ?? true, file: file, line: line)
+        XCTAssertGreaterThan(label.bounds.width, 0, file: file, line: line)
+        let fullText = label.sizeThatFits(CGSize(width: label.bounds.width, height: .greatestFiniteMagnitude))
+        XCTAssertGreaterThanOrEqual(label.bounds.height + 1, ceil(fullText.height),
+                                   "Full title is vertically clipped: \(label.text ?? "")", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(label.bounds.width + 1, ceil(fullText.width),
+                                   "Full title is horizontally clipped: \(label.text ?? "")", file: file, line: line)
+        let visibleTitle = label.convert(label.bounds, to: container)
+        XCTAssertTrue(container.bounds.insetBy(dx: -1, dy: -1).contains(visibleTitle),
+                      "Title escapes its actual control: \(label.text ?? "")", file: file, line: line)
+    }
+
     private func contrast(_ foreground: UIColor, _ background: UIColor, style: UIUserInterfaceStyle) -> CGFloat {
         func luminance(_ color: UIColor) -> CGFloat {
             var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
