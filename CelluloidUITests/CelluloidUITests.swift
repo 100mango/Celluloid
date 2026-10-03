@@ -78,6 +78,7 @@ final class CelluloidUITests: XCTestCase {
                 // exposes its text to VoiceOver and a separate Dynamic Type text
                 // editor, both asserted below. No other category/class is ignored.
                 if screen == "editor-with-decorations", issue.auditType == .dynamicType,
+                   element?.identifier == "bubble-artwork-text",
                    issue.detailedDescription == "User will not be able to change the font size of this CelluloidKit.BubbleLabel" {
                     print("ACCESSIBILITY_AUDIT_FIXED_ARTWORK_EXCEPTION class=CelluloidKit.BubbleLabel category=dynamicType reason=persisted_photo_typography text_editing_audited_separately")
                     return true
@@ -131,6 +132,8 @@ final class CelluloidUITests: XCTestCase {
         editText?.tap()
         XCTAssertTrue(text.waitForExistence(timeout: 5))
         XCTAssertEqual(text.value as? String, "Accessible caption")
+        XCTAssertEqual(text.label, "Bubble Text")
+        waitForStableLayout(["bubble-text", "bubble-text-done"])
         audit("bubble-text-editor")
         app.buttons["bubble-text-done"].tap()
         waitForStableLayout(["editor-done", "tool-filter"])

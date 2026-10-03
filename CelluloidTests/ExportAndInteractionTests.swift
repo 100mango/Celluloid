@@ -191,6 +191,78 @@ final class ExportAndInteractionTests: XCTestCase {
         XCTAssertEqual(count, 1)
     }
 
+    func testOffMainCompositeMatchesLegacyAffineAlphaAndColorRendering() throws {
+        let variants: [(CFString, Bool, UIImage.Orientation, CGFloat)] = [
+            (CGColorSpace.sRGB, false, .up, 1),
+            (CGColorSpace.sRGB, true, .up, 2),
+            (CGColorSpace.displayP3, true, .right, 3)
+        ]
+        for (index, variant) in variants.enumerated() {
+            let space = try XCTUnwrap(CGColorSpace(name: variant.0))
+            let context = try XCTUnwrap(CGContext(data: nil, width: 480, height: 320, bitsPerComponent: 8,
+                bytesPerRow: 480 * 4, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.setFillColor(try XCTUnwrap(CGColor(colorSpace: space, components: [1, 0.1, 0.2, variant.1 ? 0.35 : 1])))
+            context.fill(CGRect(x: 0, y: 0, width: 240, height: 320))
+            context.setFillColor(try XCTUnwrap(CGColor(colorSpace: space, components: [0.1, 0.7, 1, variant.1 ? 0.8 : 1])))
+            context.fill(CGRect(x: 240, y: 0, width: 240, height: 320))
+            let source = UIImage(cgImage: try XCTUnwrap(context.makeImage()), scale: variant.3, orientation: variant.2)
+            for clipped in [false, true] {
+                let editor = BaseEditPhotoController()
+                editor.loadViewIfNeeded(); editor.view.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+                editor.sourceImage = source
+                editor.view.layoutIfNeeded()
+                var data = editor.adjustmentData
+                let canvas = try XCTUnwrap(data.referenceCanvasSize)
+                var bubble = BubbleModel.bubbles[4]
+                bubble.content = "Sharp文字"
+                bubble.bounds = CGRect(x: 0, y: 0, width: 128, height: 104)
+                bubble.center = CGPoint(x: canvas.width * 0.43 + 0.3, y: canvas.height * 0.53 + 0.7)
+                bubble.transform = CGAffineTransform(a: 0.94, b: 0.24, c: -0.2, d: 1.12, tx: 3.2, ty: -4.6)
+                var sticker = StickerModel.stickers[0]
+                sticker.center = clipped ? CGPoint(x: -8.4, y: 2.6) : CGPoint(x: canvas.width * 0.6, y: canvas.height * 0.5)
+                sticker.transform = CGAffineTransform(rotationAngle: -0.27).scaledBy(x: 1.14, y: 0.86)
+                data.bubbles = [bubble]; data.stickers = [sticker]
+                editor.restoreFromData(data)
+                // The synchronous compatibility implementation remains the old
+                // full-canvas UIKit renderer, an independent reference here.
+                let reference = try XCTUnwrap(editor.outputImage)
+                let referencePixels = rgba(reference)
+                let finished = expectation(description: "Affine/alpha/color equivalence \(index)/\(clipped)")
+                editor.exportPhoto { result in
+                    switch result {
+                    case .failure(let error): XCTFail("Equivalence export failed: \(error)")
+                    case .success(let output):
+                        XCTAssertEqual(output.image.cgImage?.width, reference.cgImage?.width)
+                        XCTAssertEqual(output.image.cgImage?.height, reference.cgImage?.height)
+                        XCTAssertNotNil(reference.cgImage?.colorSpace?.name)
+                        XCTAssertEqual(String(describing: output.image.cgImage?.colorSpace?.name), String(describing: reference.cgImage?.colorSpace?.name))
+                        XCTAssertEqual(output.image.cgImage?.bitsPerComponent, reference.cgImage?.bitsPerComponent)
+                        XCTAssertEqual(output.image.cgImage?.alphaInfo, reference.cgImage?.alphaInfo)
+                        let actual = self.rgba(output.image)
+                        let differences = zip(actual, referencePixels).map { abs(Int($0.0) - Int($0.1)) }
+                        let maximum = differences.max() ?? 0
+                        let changed = differences.filter { $0 != 0 }.count
+                        print("COMPOSITE_EQUIVALENCE variant=\(index) clipped=\(clipped) maximum_channel_delta=\(maximum) changed_channels=\(changed) total_channels=\(differences.count)")
+                        XCTAssertEqual(actual.count, referencePixels.count)
+                        XCTAssertEqual(maximum, 0, "Full-resolution affine artwork and alpha/color semantics must match the reference")
+                    }
+                    finished.fulfill()
+                }
+                wait(for: [finished], timeout: 15)
+            }
+        }
+    }
+
+    private func rgba(_ image: UIImage) -> [UInt8] {
+        let cg = image.cgImage!
+        var result = [UInt8](repeating: 0, count: cg.width * cg.height * 4)
+        let context = CGContext(data: &result, width: cg.width, height: cg.height, bitsPerComponent: 8,
+            bytesPerRow: cg.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue)!
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        return result
+    }
+
     private func pixel(_ image: UIImage, x: Int, y: Int) -> [UInt8] {
         let part = image.cgImage!.cropping(to: CGRect(x: x, y: y, width: 1, height: 1))!
         var bytes = [UInt8](repeating: 0, count: 4)

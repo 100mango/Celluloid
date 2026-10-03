@@ -110,10 +110,23 @@ open class BaseEditPhotoController: UIViewController {
                     DispatchQueue.main.async { [weak self] in
                         autoreleasepool {
                             guard !task.isCancelled else { finish(.failure(.cancelled)); return }
-                            guard let self = self, let output = self.composite(image, data: data) else {
-                                finish(.failure(.missingImage)); return
+                            guard let self = self,
+                                  let overlays = self.rasterizeOverlays(for: image.size, data: data, task: task) else {
+                                finish(task.isCancelled ? .failure(.cancelled) : .failure(.missingImage)); return
                             }
-                            encode(output)
+                            // Detached UIKit artwork is rasterized on main at its
+                            // final pixel size. Source decoding/full-canvas blending
+                            // is independent immutable-image work on the serial queue.
+                            let format = UIGraphicsImageRendererFormat()
+                            format.scale = 1
+                            Self.exportQueue.async {
+                                autoreleasepool {
+                                    guard !task.isCancelled else { finish(.failure(.cancelled)); return }
+                                    let output = Self.compositeOffMain(image, overlays: overlays, format: format)
+                                    guard !task.isCancelled else { finish(.failure(.cancelled)); return }
+                                    encode(output)
+                                }
+                            }
                         }
                     }
                 }
@@ -150,6 +163,71 @@ open class BaseEditPhotoController: UIViewController {
                 fullSizeImageView.addSubview(StickerView(stickerModel: scaled))
             }
             return fullSizeImageView.render()
+        }
+    }
+
+    private struct OverlayRaster {
+        let image: UIImage
+        let rect: CGRect
+    }
+
+    private func rasterizeOverlays(for size: CGSize, data: AdjustmentData, task: PhotoExportTask) -> [OverlayRaster]? {
+        precondition(Thread.isMainThread)
+        guard let canvas = data.referenceCanvasSize, AdjustmentData.isValidReferenceCanvas(canvas),
+              size.width > 0, size.height > 0 else { return nil }
+        let sx = size.width / canvas.width, sy = size.height / canvas.height
+        guard sx.isFinite, sy.isFinite, sx > 0, sy > 0,
+              data.bubbles.allSatisfy({ hasRenderableGeometry(center: CGPoint(x: $0.center.x * sx, y: $0.center.y * sy), bounds: $0.bounds, transform: $0.transform.scaledInCanvas(x: sx, y: sy)) }),
+              data.stickers.allSatisfy({ hasRenderableGeometry(center: CGPoint(x: $0.center.x * sx, y: $0.center.y * sy), bounds: $0.bounds, transform: $0.transform.scaledInCanvas(x: sx, y: sy)) }) else { return nil }
+        let canvasRect = CGRect(origin: .zero, size: size)
+        var rasters: [OverlayRaster] = []
+        func rasterize(_ artwork: AttachView) {
+            autoreleasepool {
+                let holder = UIView(frame: canvasRect)
+                holder.isOpaque = false
+                holder.backgroundColor = .clear
+                holder.addSubview(artwork)
+                holder.layoutIfNeeded(); artwork.layoutIfNeeded()
+                // Integral full-resolution tiles retain subpixel affine positions
+                // and antialiasing. No image or text is downsampled. Crop only pixels
+                // outside the final canvas, which the original renderer also clips.
+                let rect = artwork.frame.insetBy(dx: -1, dy: -1).integral.intersection(canvasRect)
+                guard !rect.isNull, !rect.isEmpty else { return }
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1
+                let image = UIGraphicsImageRenderer(size: rect.size, format: format).image { context in
+                    context.cgContext.translateBy(x: -rect.minX, y: -rect.minY)
+                    holder.layer.render(in: context.cgContext)
+                }
+                rasters.append(OverlayRaster(image: image, rect: rect))
+            }
+        }
+        // Preserve the original renderer's z-order and exact UIKit text fitting.
+        for model in data.bubbles {
+            guard !task.isCancelled else { return nil }
+            var scaled = model
+            scaled.center = CGPoint(x: sx * model.center.x, y: sy * model.center.y)
+            scaled.transform = model.transform.scaledInCanvas(x: sx, y: sy)
+            rasterize(BubbleView(bubbleModel: scaled))
+        }
+        for model in data.stickers {
+            guard !task.isCancelled else { return nil }
+            var scaled = model
+            scaled.center = CGPoint(x: sx * model.center.x, y: sy * model.center.y)
+            scaled.transform = model.transform.scaledInCanvas(x: sx, y: sy)
+            rasterize(StickerView(stickerModel: scaled))
+        }
+        return rasters
+    }
+
+    private nonisolated static func compositeOffMain(_ image: UIImage, overlays: [OverlayRaster],
+                                                     format: UIGraphicsImageRendererFormat) -> UIImage {
+        precondition(!Thread.isMainThread)
+        // Preserve the renderer's existing range/alpha policy. Explicit opaque or
+        // standard-range shortcuts require separate color/alpha equivalence proof.
+        return UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+            for overlay in overlays { overlay.image.draw(in: overlay.rect) }
         }
     }
 
