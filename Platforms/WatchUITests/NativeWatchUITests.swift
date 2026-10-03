@@ -12,7 +12,10 @@ final class NativeWatchUITests: XCTestCase {
         XCTAssertTrue(app.images["watch.preview"].waitForExistence(timeout: 10))
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-watch-offline-photo"; shot.lifetime = .keepAlways; add(shot)
         print("WATCH_NATIVE_UI_AX " + app.debugDescription)
-        if #available(watchOS 27.0, *) { try app.performAccessibilityAudit(for: .all) }
+        if #available(watchOS 27.0, *) { try app.performAccessibilityAudit(for: .all) { issue in
+            print("NATIVE_ACCESSIBILITY_ISSUE description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
+            return false // Report every real issue; this callback suppresses nothing.
+        } }
         // Real system Photos selection and paired-phone file transport are separate gates.
     }
     func testSystemPhotosPickerReportsSimulatorLimitationAndCloses() {

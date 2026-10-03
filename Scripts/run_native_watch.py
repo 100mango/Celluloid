@@ -3,26 +3,9 @@
 import json,os,signal,subprocess,sys,time,struct,zlib,hashlib
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];temp=Path(os.environ['RUNNER_TEMP'])
-def run(args,timeout=180,check=True,log_name=None):
-    print('+ '+' '.join(map(str,args)),flush=True)
-    process=subprocess.Popen(list(map(str,args)),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,start_new_session=True)
-    timed_out=False
-    try:
-        stdout,stderr=process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        timed_out=True
-        os.killpg(process.pid,signal.SIGTERM)
-        try: stdout,stderr=process.communicate(timeout=10)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid,signal.SIGKILL);stdout,stderr=process.communicate()
-    print(stdout,flush=True);print(stderr,file=sys.stderr,flush=True)
-    if log_name:(temp/log_name).write_text(stdout+'\n'+stderr)
-    if timed_out:raise TimeoutError(f'{args[0]} exceeded {timeout}s; process group stopped and partial output retained')
-    result=subprocess.CompletedProcess(args,process.returncode,stdout,stderr)
-    if check and result.returncode:raise RuntimeError(f'{args[0]} exited {result.returncode}')
-    return result
-runtimes=json.loads(run(['xcrun','simctl','list','runtimes','--json']).stdout)['runtimes']
-types=json.loads(run(['xcrun','simctl','list','devicetypes','--json']).stdout)['devicetypes']
+from native_process import run
+runtimes=json.loads(run(['xcrun','simctl','list','runtimes','--json'],echo=False).stdout)['runtimes']
+types=json.loads(run(['xcrun','simctl','list','devicetypes','--json'],echo=False).stdout)['devicetypes']
 possible=[r for r in runtimes if r.get('isAvailable') and ('watchos' in r.get('name','').lower() or 'watchos' in r.get('identifier','').lower())]
 if not possible:raise RuntimeError('No available native watchOS runtime was found; SDK build does not establish runtime coverage')
 runtime=sorted(possible,key=lambda r:tuple(int(x) for x in r['version'].split('.')),reverse=True)[0]

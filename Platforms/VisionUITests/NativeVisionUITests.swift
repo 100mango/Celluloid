@@ -18,7 +18,10 @@ final class NativeVisionUITests: XCTestCase {
         XCTAssertTrue(editor.isHittable)
         print("VISION_NATIVE_EDITOR_AX " + app.debugDescription)
         let editorCapture = XCTAttachment(screenshot: app.screenshot()); editorCapture.name = "native-vision-editor-ready"; editorCapture.lifetime = .keepAlways; add(editorCapture)
-        if #available(visionOS 27.0, *) { try app.performAccessibilityAudit(for: .all) }
+        if #available(visionOS 27.0, *) { try app.performAccessibilityAudit(for: .all) { issue in
+            print("NATIVE_ACCESSIBILITY_ISSUE description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
+            return false // Report every real issue; this callback suppresses nothing.
+        } }
     }
 }
 
@@ -64,7 +67,10 @@ extension NativeVisionUITests {
         if !completed { capture(app, name: "vision-export-readback-failure"); print("VISION_EXPORT_RESULT_AX " + app.debugDescription) }
         XCTAssertTrue(completed)
         capture(app, name: "vision-png-export-verified")
-        if #available(visionOS 27.0, *) { try app.performAccessibilityAudit(for: .all) }
+        if #available(visionOS 27.0, *) { try app.performAccessibilityAudit(for: .all) { issue in
+            print("NATIVE_ACCESSIBILITY_ISSUE description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
+            return false // Report every real issue; this callback suppresses nothing.
+        } }
     }
     private func capture(_ app: XCUIApplication, name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)

@@ -24,7 +24,8 @@ enum SandboxDiagnostics {
             record["entitlements"] = entitlements
             guard entitlements["com.apple.security.app-sandbox"] as? Bool == true,
                   entitlements["com.apple.security.files.user-selected.read-write"] as? Bool == true,
-                  keys.isSubset(of: ["com.apple.security.app-sandbox", "com.apple.security.files.user-selected.read-write"]) else {
+                  entitlements["com.apple.security.get-task-allow"] as? Bool == true,
+                  keys == Set(["com.apple.security.app-sandbox", "com.apple.security.files.user-selected.read-write", "com.apple.security.get-task-allow"]) else {
                 throw CocoaError(.fileReadNoPermission)
             }
             let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,

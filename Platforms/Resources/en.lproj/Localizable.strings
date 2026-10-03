@@ -138,3 +138,7 @@
 "Previous edits are included in the starting image. Their layers cannot be edited here." = "Previous edits are included in the starting image. Their layers cannot be edited here.";
 "This native Photos extension currently edits filters. Use the Celluloid document app for stickers, bubbles and collages." = "This native Photos extension currently edits filters. Use the Celluloid document app for stickers, bubbles and collages.";
 "Face detection can miss faces. Check the result before sharing." = "Face detection can miss faces. Check the result before sharing.";
+"Photo %d" = "Photo %d";
+"Selected %d" = "Selected %d";
+"The starting image is preserved as provided by Photos. Previous layers cannot be restored here." = "The starting image is preserved as provided by Photos. Previous layers cannot be restored here.";
+"Waiting for Photos access…" = "Waiting for Photos access…";

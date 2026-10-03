@@ -59,7 +59,7 @@ struct TVSavedRecipe: Codable, Equatable {
             for (index, id) in ids.enumerated() {
                 let bytes = try await library.currentImageData(id, limit: 64 * 1024 * 1024 - data.values.reduce(0, { $0 + $1.count }))
                 guard data.values.reduce(0, { $0 + $1.count }) + bytes.count <= 64 * 1024 * 1024 else { throw RecipeError.resourceLimit }
-                let source = try RasterCodec.metadata(bytes, name: "Photo \(index + 1)")
+                let source = try RasterCodec.metadata(bytes, name: String(format: NSLocalizedString("Photo %d", comment: "Imported photo name"), index + 1))
                 next.sources.append(source); data[source.id] = bytes; references[source.id] = id; hashes[source.id] = TVSavedRecipe.fingerprint(bytes)
             }
             try Self.configureCanvas(&next)

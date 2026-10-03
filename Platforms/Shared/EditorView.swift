@@ -34,6 +34,8 @@ struct EditorView: View {
                 .frame(minWidth: 250, idealWidth: 290, maxWidth: 360)
         }
         .frame(minWidth: 640, minHeight: 480)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Native photo editor")
         #if os(macOS) && DEBUG
         .overlay(alignment: .bottomLeading) {
             if SandboxDiagnostics.enabled {
@@ -152,7 +154,7 @@ struct EditorView: View {
                     try Task.checkCancellation()
                     let remaining = 64 * 1024 * 1024 - imported.reduce(0, { $0 + $1.1.count })
                     let data = try await NativeImportQueue.shared.read([file.owned.url], budget: remaining)[0].1
-                    imported.append(("Photo \(index + 1)", data))
+                    imported.append((String(format: NSLocalizedString("Photo %d", comment: "Imported photo name"), index + 1), data))
                 }
                 finishImport(imported, generation: generation)
             } catch { if generation == importGeneration { importing = false; self.error = error.localizedDescription } }

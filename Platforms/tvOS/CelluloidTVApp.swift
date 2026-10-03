@@ -11,6 +11,7 @@ struct TVEditorView: View {
     @StateObject private var library = TVPhotoLibrary()
     @StateObject private var editor = TVEditorModel()
     @State private var panel: Panel?
+    @State private var requestingPhotos = false
     enum Panel: String, Identifiable { case photos, filters, stickers, bubbles, sources, layers, privacy; var id: String { rawValue } }
     var body: some View {
         HStack(spacing: 40) {
@@ -28,7 +29,24 @@ struct TVEditorView: View {
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    Button("Choose Photos") { Task { do { try await library.requestAccessAndRefresh(); panel = .photos } catch { editor.error = error.localizedDescription } } }.accessibilityIdentifier("tv.choose-photos")
+                    Button("Choose Photos") {
+                        guard !requestingPhotos else { return }
+                        requestingPhotos = true
+                        #if DEBUG
+                        print("TV_PHOTOS_BUTTON_ACTION choose entered")
+                        #endif
+                        Task {
+                            defer { requestingPhotos = false }
+                            do {
+                                try await library.requestAccessAndRefresh(); panel = .photos
+                                #if DEBUG
+                                print("TV_PHOTOS_SHEET requested assets=\(library.assets.count)")
+                                #endif
+                            }
+                            catch { editor.error = error.localizedDescription }
+                        }
+                    }.disabled(requestingPhotos).accessibilityIdentifier("tv.choose-photos")
+                    if requestingPhotos { ProgressView("Waiting for Photos access…").accessibilityIdentifier("tv.photos-request-pending") }
                     Button("Reopen Kept Recipe") { Task { do { try await library.requestAccessAndRefresh(); await editor.reopen(library: library) } catch { editor.error = error.localizedDescription } } }.disabled(!editor.hasSavedRecipe)
                     Group {
                         Button(editor.recipe.filter.localizedTitle) { panel = .filters }.accessibilityIdentifier("tv.filters")
@@ -54,6 +72,11 @@ struct TVEditorView: View {
                         Button("Done") { panel = nil }
                         switch value {
                         case .photos: TVPhotoPicker(library: library) { ids in panel = nil; Task { await editor.importPhotos(ids, library: library) } }
+                            .onAppear {
+                                #if DEBUG
+                                print("TV_PHOTOS_SHEET appeared")
+                                #endif
+                            }
                         case .filters:
                             ForEach(FilterPreset.allCases, id: \.rawValue) { filter in
                                 Button(filter.localizedTitle) { editor.change { $0.filter = filter }; panel = nil }.accessibilityIdentifier("tv.filter." + filter.rawValue)
@@ -79,7 +102,7 @@ struct TVEditorView: View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 40), count: 5), spacing: 40) {
             if stickers {
                 ForEach(StickerAsset.all, id: \.rawValue) { asset in
-                    TVAssetButton(asset: asset.rawValue, title: "Sticker \((Int(asset.rawValue) ?? 32) - 31)") { editor.add(Overlay(sticker: asset)); panel = .layers }
+                    TVAssetButton(asset: asset.rawValue, title: String(format: NSLocalizedString("Sticker %d", comment: "Sticker name"), (Int(asset.rawValue) ?? 32) - 31)) { editor.add(Overlay(sticker: asset)); panel = .layers }
                 }
             } else {
                 ForEach(BubbleAsset.allCases, id: \.rawValue) { asset in
@@ -136,7 +159,7 @@ private struct TVPhotoCell: View {
             VStack {
                 if let image { Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fit).frame(height: 160) }
                 else { Image(systemName: "photo").frame(height: 160) }
-                Text(order.map { "Selected \($0)" } ?? "\(asset.pixelWidth) × \(asset.pixelHeight)").font(.caption)
+                Text(order.map { String(format: NSLocalizedString("Selected %d", comment: "TV selection order"), $0) } ?? "\(asset.pixelWidth) × \(asset.pixelHeight)").font(.caption)
             }.frame(width: 260)
         }.accessibilityIdentifier("tv.photo." + asset.localIdentifier)
             .task(id: asset.localIdentifier) { image = await library.thumbnail(asset) }

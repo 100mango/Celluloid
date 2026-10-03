@@ -3,26 +3,9 @@
 import json,os,signal,subprocess,sys,time,re,base64,hashlib
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];temp=Path(os.environ['RUNNER_TEMP'])
-def run(args,timeout=180,check=True,log_name=None):
-    print('+ '+' '.join(map(str,args)),flush=True)
-    process=subprocess.Popen(list(map(str,args)),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,start_new_session=True)
-    timed_out=False
-    try:
-        stdout,stderr=process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        timed_out=True
-        os.killpg(process.pid,signal.SIGTERM)
-        try: stdout,stderr=process.communicate(timeout=10)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid,signal.SIGKILL);stdout,stderr=process.communicate()
-    print(stdout,flush=True);print(stderr,file=sys.stderr,flush=True)
-    if log_name:(temp/log_name).write_text(stdout+'\n'+stderr)
-    if timed_out:raise TimeoutError(f'{args[0]} exceeded {timeout}s; process group stopped and partial output retained')
-    result=subprocess.CompletedProcess(args,process.returncode,stdout,stderr)
-    if check and result.returncode:raise RuntimeError(f'{args[0]} exited {result.returncode}')
-    return result
-runtimes=json.loads(run(['xcrun','simctl','list','runtimes','--json']).stdout)['runtimes']
-types=json.loads(run(['xcrun','simctl','list','devicetypes','--json']).stdout)['devicetypes']
+from native_process import run
+runtimes=json.loads(run(['xcrun','simctl','list','runtimes','--json'],echo=False).stdout)['runtimes']
+types=json.loads(run(['xcrun','simctl','list','devicetypes','--json'],echo=False).stdout)['devicetypes']
 possible=[r for r in runtimes if r.get('isAvailable') and ('ios' == r.get('name','').lower().split(' ')[0])]
 if not possible:raise RuntimeError('No available native iOS companion runtime was found; SDK build does not establish runtime coverage')
 runtime=sorted(possible,key=lambda r:tuple(int(x) for x in r['version'].split('.')),reverse=True)[0]
@@ -36,15 +19,12 @@ try:
     run(['xcrun','simctl','boot',udid]);run(['xcrun','simctl','bootstatus',udid,'-b'],timeout=240)
     run(['xcrun','simctl','install',udid,app],timeout=120)
     # Forward only newly generated synthetic Mac filter archives, with verified hashes.
-    matches=re.findall(r'MAC_FILTER_ONLY_FIXTURE filter=(\w+) sha256=([0-9a-f]{64}) base64=([A-Za-z0-9+/=]+)',(temp/'mac.log').read_text())
-    if len(matches)!=10:raise RuntimeError('Expected all ten newly authored Mac filter archives before UIKit compatibility gate')
-    fixtures=[]
-    for preset,digest,encoded in matches:
-        assert hashlib.sha256(base64.b64decode(encoded)).hexdigest()==digest
-        fixtures.append({'filter':preset,'sha256':digest,'base64':encoded})
+    from native_fixture_handoff import load_exact
+    fixtures=load_exact(temp/'mac-fixture-evidence',os.environ['GITHUB_SHA'])
     container=Path(run(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data']).stdout.strip())
     documents=container/'Documents';documents.mkdir(exist_ok=True)
-    (documents/'mac-filter-fixtures.json').write_text(json.dumps(fixtures))
+    (documents/'mac-filter-fixtures.json').write_text(json.dumps(fixtures["fixtures"]))
+    (documents/'mac-baked-filter-fixture.json').write_text(json.dumps(fixtures["fallback"]))
     launch=run(['xcrun','simctl','launch',udid,'Mango.Celluloid'],timeout=60)
     evidence['launch_output']=launch.stdout
     pid=launch.stdout.strip().rsplit(':',1)[-1].strip(); assert pid.isdigit()

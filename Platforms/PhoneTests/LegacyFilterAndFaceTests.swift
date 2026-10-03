@@ -27,6 +27,18 @@ final class LegacyFilterAndFaceTests: XCTestCase {
         }
         print("MAC_NEW_FILTER_UIKIT_ROUNDTRIP all newly authored filter-only archives decoded/rendered/reencoded by original UIKit source")
     }
+    func testMacBakedFallbackIsDeclinedByOriginalUIKitReader() throws {
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("mac-baked-filter-fixture.json")
+        let row = try JSONDecoder().decode(BakedFixture.self, from: Data(contentsOf: url))
+        let data = try XCTUnwrap(Data(base64Encoded: row.base64))
+        XCTAssertEqual(SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(), row.sha256)
+        XCTAssertEqual(row.identifier, AdjustmentData.formatIdentifier)
+        XCTAssertEqual(row.version, "2.0-baked-base")
+        XCTAssertFalse(AdjustmentData.supportIdentifier(row.identifier, version: row.version),
+                       "Original UIKit must request Photos' baked appearance, never replay a partial edit on the original")
+        print("MAC_BAKED_BASE_DECLINED_BY_UIKIT exact newly authored Mac discriminator keeps old reader on Photos-rendered fallback")
+    }
+    private struct BakedFixture: Decodable { let identifier: String; let version: String; let sha256: String; let base64: String }
     func testRealFaceDetectorNativeRenderMatchesOriginalUIKitPath() throws {
         let url = try XCTUnwrap(Bundle.main.url(forResource: "OriginalFilter", withExtension: "png"))
         let data = try Data(contentsOf: url)
@@ -45,7 +57,7 @@ final class LegacyFilterAndFaceTests: XCTestCase {
         XCTAssertLessThanOrEqual(zip(expected,actual).map { abs(Int($0)-Int($1)) }.max() ?? 0, 2)
         for face in faces {
             let inside = CGRect(x: floor(face.midX)-4,y: floor(face.midY)-4,width: 8,height: 8)
-            XCTAssertNotEqual(pixels(input,inside,context),pixels(CIImage(cgImage:native),inside,context))
+            XCTAssertTrue(pixels(input,inside,context) != pixels(CIImage(cgImage:native),inside,context))
         }
         var outsideChecks = 0
         for x in stride(from: 0, to: Int(input.extent.width)-8, by: 20) {
@@ -53,7 +65,7 @@ final class LegacyFilterAndFaceTests: XCTestCase {
                 let center = CGPoint(x:x+4,y:y+4)
                 if faces.allSatisfy({ hypot(center.x-$0.midX,center.y-$0.midY)>min($0.width,$0.height/1.5)+10 }) {
                     let rect=CGRect(x:x,y:y,width:8,height:8)
-                    XCTAssertEqual(pixels(input,rect,context),pixels(CIImage(cgImage:native),rect,context));outsideChecks += 1
+                    XCTAssertTrue(pixels(input,rect,context) == pixels(CIImage(cgImage:native),rect,context));outsideChecks += 1
                 }
             }
         }
@@ -69,8 +81,8 @@ final class LegacyFilterAndFaceTests: XCTestCase {
         var recipe = EditRecipe();recipe.sources=[source];recipe.canvasWidth=128;recipe.canvasHeight=96;recipe.filter = .pixellateFace
         let native = try RecipeRenderer().render(recipe,sources:[source.id:data])
         let legacy = try XCTUnwrap(UIImage(cgImage:sourceImage).filteredImage(Filters.filter(.PixellateFace)).cgImage)
-        XCTAssertEqual(pixels(CIImage(cgImage:sourceImage),input.extent,context),pixels(CIImage(cgImage:native),input.extent,context))
-        XCTAssertEqual(pixels(CIImage(cgImage:legacy),input.extent,context),pixels(CIImage(cgImage:native),input.extent,context))
+        XCTAssertTrue(pixels(CIImage(cgImage:sourceImage),input.extent,context) == pixels(CIImage(cgImage:native),input.extent,context))
+        XCTAssertTrue(pixels(CIImage(cgImage:legacy),input.extent,context) == pixels(CIImage(cgImage:native),input.extent,context))
     }
     private struct Fixture: Decodable { let filter: String; let sha256: String; let base64: String }
     private func pixels(_ image: CIImage, _ bounds: CGRect, _ context: CIContext) -> [UInt8] {

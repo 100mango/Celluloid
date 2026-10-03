@@ -128,23 +128,16 @@ final class NativeEditorUITests: XCTestCase {
         app.typeKey("n", modifierFlags: .command)
         let control = app.descendants(matching: .any)["editor.import-files"].firstMatch
         XCTAssertTrue(control.waitForExistence(timeout: 10)); XCTAssertTrue(control.isHittable)
-        if #available(macOS 27.0, *) { try app.performAccessibilityAudit(for: .all) }
+        if #available(macOS 27.0, *) { try app.performAccessibilityAudit(for: .all) { issue in
+            print("NATIVE_ACCESSIBILITY_ISSUE description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
+            return false // Report every real issue; this callback suppresses nothing.
+        } }
     }
     @MainActor private func launch(_ app: XCUIApplication) throws {
-        guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" else { app.launch(); return }
-        let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.arguments = app.launchArguments + ["--celluloid-sandbox-diagnostics"]
-        configuration.environment = app.launchEnvironment
-        configuration.createsNewApplicationInstance = true
-        let opened = expectation(description: "Ordinary sandbox app launch without XCTest library injection")
-        var launchError: Error?
-        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: configuration) { _, error in
-            launchError = error; opened.fulfill()
-        }
-        wait(for: [opened], timeout: 15)
-        if let launchError { throw launchError }
-        // XCUIApplication is only an external accessibility client for this running process.
+        // The sandbox Debug app is independently signed with exact source permissions
+        // plus get-task-allow only. XCTest supplies arguments through its supported
+        // launch service; NSWorkspace drops them when its test-runner caller is sandboxed.
+        app.launch()
     }
     @MainActor private func assertSandboxIfRequested(_ app: XCUIApplication) throws {
         guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" else { return }

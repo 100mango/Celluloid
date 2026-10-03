@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export only bounded synthetic evidence: <=5 MB/file, <=20 MB/run, no xcresults."""
+"""Export only bounded synthetic evidence: <=3.5 MB/job, <=17.5 MB/5-platform run, no xcresults."""
 from pathlib import Path
 import hashlib,json,os,re,shutil,subprocess,tempfile
 from collections import deque
@@ -7,13 +7,15 @@ ROOT=Path(__file__).resolve().parents[1]
 TEMP=Path(os.environ['RUNNER_TEMP']).resolve()
 OUT=TEMP/'celluloid-bounded-evidence'
 MAX_FILE=5_000_000
-MAX_TOTAL=20_000_000
+MAX_TOTAL=3_500_000
+PLATFORM=os.environ.get("CELLULOID_EVIDENCE_PLATFORM", "local")
+if PLATFORM not in {"local", "mac", "tv", "watch", "phone", "vision"}:raise ValueError("Unknown evidence platform")
 RESERVE=100_000
 OUT.mkdir(exist_ok=True)
 if any(OUT.iterdir()): raise RuntimeError('Evidence destination must be empty')
 manifest={'source_sha':os.environ.get('GITHUB_SHA'),'run_id':os.environ.get('GITHUB_RUN_ID'),
           'limits':{'per_file_bytes':MAX_FILE,'total_bytes':MAX_TOTAL,'retention_days':1},
-          'files':[],'omissions':[],'scope':'Synthetic native test summaries, log tails and selected screenshots only; no xcresult bundles'}
+          'platform':PLATFORM,'whole_run_limit_bytes':20_000_000,'files':[],'omissions':[],'scope':'Synthetic native test summaries, log tails and selected screenshots only; no xcresult bundles'}
 size=0
 
 def retain_bytes(name,data,source):
@@ -32,8 +34,16 @@ def retain_file(name,path,source):
         manifest['omissions'].append({'name':name,'reason':'evidence byte cap','bytes':count});return False
     return retain_bytes(name,path.read_bytes(),source)
 
+# Retain the small compatibility handoff before optional logs/screenshots consume space.
+if PLATFORM=='mac' and (TEMP/'mac.log').is_file():
+    from native_fixture_handoff import from_log
+    try:
+        retain_bytes('mac-filter-fixtures.json',from_log(TEMP/'mac.log',os.environ['GITHUB_SHA']),'newly authored synthetic archives from exact-head Mac tests')
+    except (ValueError,KeyError) as error:
+        manifest['omissions'].append({'name':'mac-filter-fixtures.json','reason':str(error)})
+
 logs=['domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox-app-build.log','sandbox.log','mac-photos-build.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log','tv-build.log','tv-runtime.log','tv-runtime-tests.log','watch-build.log','watch-runtime.log','watch-runtime-tests.log','phone-build.log','phone-runtime.log','phone-runtime-tests.log']
-markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|TV_NATIVE_|TV_PHOTOS_|TV_FOCUS_|WATCH_NATIVE_|PHONE_COMPANION_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|FACE_DETECTOR_ACTUAL|MAC_NEW_FILTER_UIKIT_ROUNDTRIP|MAC_FILTER_ONLY_FIXTURE|MAC_LEGACY_CANDIDATE)')
+markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|TV_NATIVE_|TV_PHOTOS_|TV_FOCUS_|WATCH_NATIVE_|PHONE_COMPANION_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|FACE_DETECTOR_ACTUAL|MAC_NEW_FILTER_UIKIT_ROUNDTRIP|MAC_FILTER_ONLY_FIXTURE|MAC_BAKED_BASE_|MAC_LEGACY_CANDIDATE)')
 for name in logs:
     path=TEMP/name
     if not path.is_file():continue
@@ -46,7 +56,7 @@ for name in logs:
             line=part.decode('utf8','replace')
             if markers.search(line):selected.append(line[:2000].rstrip())
     retain_bytes(name+'.summary.txt',('\n'.join(selected)+'\n').encode(),name+' (test/error markers)')
-for name in ['vision-runtime-evidence.json','tv-runtime-evidence.json','watch-runtime-evidence.json','phone-runtime-evidence.json','sandbox-entitlements.plist','sandbox-entitlements-after.plist']:
+for name in ['vision-runtime-evidence.json','tv-runtime-evidence.json','watch-runtime-evidence.json','phone-runtime-evidence.json','sandbox-entitlements.plist','sandbox-debug-entitlements.plist','sandbox-debug-actual.plist','sandbox-entitlements-after.plist']:
     path=TEMP/name
     if path.is_file():retain_file(name,path,name)
 

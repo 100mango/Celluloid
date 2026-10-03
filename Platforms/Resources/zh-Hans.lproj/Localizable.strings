@@ -138,3 +138,7 @@
 "Previous edits are included in the starting image. Their layers cannot be edited here." = "起始图片包含之前的编辑效果。无法在此编辑这些已有图层。";
 "This native Photos extension currently edits filters. Use the Celluloid document app for stickers, bubbles and collages." = "此原生照片扩展目前支持滤镜编辑。贴纸、气泡和拼图请使用 Celluloid 文稿应用。";
 "Face detection can miss faces. Check the result before sharing." = "人脸检测可能遗漏。分享前请检查处理结果。";
+"Photo %d" = "照片 %d";
+"Selected %d" = "已选 %d";
+"The starting image is preserved as provided by Photos. Previous layers cannot be restored here." = "保留“照片”提供的起始图像。无法在此恢复之前的图层。";
+"Waiting for Photos access…" = "正在等待“照片”访问权限…";

@@ -8,11 +8,12 @@ concurrency:
   group: celluloid-platforms-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  native-mac-core:
+  native-mac:
     runs-on: xcode-27
-    timeout-minutes: 90
+    timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      CELLULOID_EVIDENCE_PLATFORM: mac
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -29,6 +30,8 @@ jobs:
           xcodebuild -showsdks
           python3 Scripts/validate_native_sources.py
           python3 Scripts/test_native_evidence.py
+          python3 Scripts/test_native_fixture_handoff.py
+          python3 Scripts/test_native_process.py
           python3 Scripts/validate_native_localization.py
       - name: Portable domain tests
         shell: bash
@@ -67,26 +70,93 @@ jobs:
           codesign --verify --strict --deep "$APP"
           codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/sandbox-entitlements.plist"
           python3 -c 'import plistlib,sys; p=plistlib.load(open(sys.argv[1],"rb")); assert p == {"com.apple.security.app-sandbox":True,"com.apple.security.files.user-selected.read-write":True}' "$RUNNER_TEMP/sandbox-entitlements.plist"
+          # XCUI's injected debugging support needs this ephemeral Debug permission.
+          # The Release/source contract above stays exactly the two app permissions.
+          python3 -c 'import plistlib,sys; p=plistlib.load(open(sys.argv[1],"rb")); p["com.apple.security.get-task-allow"]=True; plistlib.dump(p,open(sys.argv[2],"wb"))' "$RUNNER_TEMP/sandbox-entitlements.plist" "$RUNNER_TEMP/sandbox-debug-entitlements.plist"
+          codesign --force --sign - --entitlements "$RUNNER_TEMP/sandbox-debug-entitlements.plist" --timestamp=none "$APP"
+          codesign --verify --strict --deep "$APP"
+          codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/sandbox-debug-actual.plist"
+          python3 -c 'import plistlib,sys; assert plistlib.load(open(sys.argv[1],"rb")) == plistlib.load(open(sys.argv[2],"rb"))' "$RUNNER_TEMP/sandbox-debug-entitlements.plist" "$RUNNER_TEMP/sandbox-debug-actual.plist"
       - name: External sandbox document UI and container runtime
         if: (success() || failure()) && steps.sandbox_build.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
           # Only the UI bundle runs externally. No hosted unit bundle is injected.
-          xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacUI -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-sandbox" -resultBundlePath "$RUNNER_TEMP/CelluloidSandbox.xcresult" CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual CELLULOID_EXPECT_SANDBOX=YES test-without-building 2>&1 | tee "$RUNNER_TEMP/sandbox.log"
+          status=0
+          xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacUI -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-sandbox" -resultBundlePath "$RUNNER_TEMP/CelluloidSandbox.xcresult" CODE_SIGNING_ALLOWED=NO CELLULOID_EXPECT_SANDBOX=YES test-without-building 2>&1 | tee "$RUNNER_TEMP/sandbox.log" || status=$?
           APP="$RUNNER_TEMP/celluloid-sandbox/Build/Products/Debug/CelluloidMac.app"
           codesign --verify --strict --deep "$APP"
           codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/sandbox-entitlements-after.plist"
-          cmp "$RUNNER_TEMP/sandbox-entitlements.plist" "$RUNNER_TEMP/sandbox-entitlements-after.plist"
+          cmp "$RUNNER_TEMP/sandbox-debug-actual.plist" "$RUNNER_TEMP/sandbox-entitlements-after.plist"
+          exit "$status"
       - name: Isolated native Mac Photos extension build
         if: success() || failure()
         shell: bash
         run: |
           set -euo pipefail
           xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacPhotosExtension -configuration Release -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-mac-photos" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$RUNNER_TEMP/mac-photos-build.log"
+      - name: Export bounded synthetic evidence
+        id: bounded_evidence
+        if: always()
+        shell: bash
+        run: python3 Scripts/collect_native_evidence.py
+      - name: Upload bounded synthetic evidence
+        if: always() && steps.bounded_evidence.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: celluloid-mac-${{ github.sha }}
+          path: ${{ runner.temp }}/celluloid-bounded-evidence/
+          retention-days: 1
+          if-no-files-found: error
+      - name: Verify unchanged source
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+  native-simulator:
+    needs: native-mac
+    if: always()
+    runs-on: xcode-27
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        platform: [tv, watch, phone, vision]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      CELLULOID_EVIDENCE_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify source and stable SDKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          sw_vers
+          xcodebuild -version
+          xcodebuild -version | grep -Fx 'Xcode 27.0'
+          xcodebuild -showsdks
+          python3 Scripts/validate_native_sources.py
+          python3 Scripts/test_native_evidence.py
+          python3 Scripts/test_native_fixture_handoff.py
+          python3 Scripts/test_native_process.py
+          python3 Scripts/validate_native_localization.py
+      - name: Retrieve exact-head Mac-authored synthetic archive fixtures
+        if: matrix.platform == 'phone'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: celluloid-mac-${{ github.sha }}
+          path: ${{ runner.temp }}/mac-fixture-evidence/
       - name: Native TV build
         id: tv_build
-        if: success() || failure()
+        if: matrix.platform == 'tv' && (success() || failure())
         shell: bash
         run: |
           set -euo pipefail
@@ -95,46 +165,46 @@ jobs:
           plutil -p "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/PrivacyInfo.xcprivacy"
           test -f "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/zh-Hans.lproj/InfoPlist.strings"
       - name: Native TV focus and Photos runtime
-        if: (success() || failure()) && steps.tv_build.outcome == 'success'
+        if: matrix.platform == 'tv' && ((success() || failure()) && steps.tv_build.outcome == 'success')
         shell: bash
         run: |
           set -euo pipefail
           python3 Scripts/run_native_tv.py 2>&1 | tee "$RUNNER_TEMP/tv-runtime.log"
       - name: Native Watch build
         id: watch_build
-        if: success() || failure()
+        if: matrix.platform == 'watch' && (success() || failure())
         shell: bash
         run: |
           set -euo pipefail
           xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidWatch -destination 'generic/platform=watchOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-watch" CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee "$RUNNER_TEMP/watch-build.log"
       - name: Native Watch runtime
-        if: (success() || failure()) && steps.watch_build.outcome == 'success'
+        if: matrix.platform == 'watch' && ((success() || failure()) && steps.watch_build.outcome == 'success')
         shell: bash
         run: |
           set -euo pipefail
           python3 Scripts/run_native_watch.py 2>&1 | tee "$RUNNER_TEMP/watch-runtime.log"
       - name: Native Phone companion build
         id: phone_build
-        if: success() || failure()
+        if: matrix.platform == 'phone' && (success() || failure())
         shell: bash
         run: |
           set -euo pipefail
           xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidPhoneCompanion -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-phone" CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee "$RUNNER_TEMP/phone-build.log"
       - name: Native Phone companion runtime
-        if: (success() || failure()) && steps.phone_build.outcome == 'success'
+        if: matrix.platform == 'phone' && ((success() || failure()) && steps.phone_build.outcome == 'success')
         shell: bash
         run: |
           set -euo pipefail
           python3 Scripts/run_native_phone.py 2>&1 | tee "$RUNNER_TEMP/phone-runtime.log"
       - name: Native Vision build
         id: vision_build
-        if: success() || failure()
+        if: matrix.platform == 'vision' && (success() || failure())
         shell: bash
         run: |
           set -euo pipefail
           xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidVision -destination 'generic/platform=visionOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-vision" CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee "$RUNNER_TEMP/vision-build.log"
       - name: Native Vision install launch and tests
-        if: (success() || failure()) && steps.vision_build.outcome == 'success'
+        if: matrix.platform == 'vision' && ((success() || failure()) && steps.vision_build.outcome == 'success')
         shell: bash
         run: |
           set -euo pipefail
@@ -148,7 +218,7 @@ jobs:
         if: always() && steps.bounded_evidence.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: celluloid-bounded-${{ github.sha }}
+          name: celluloid-${{ matrix.platform }}-${{ github.sha }}
           path: ${{ runner.temp }}/celluloid-bounded-evidence/
           retention-days: 1
           if-no-files-found: error

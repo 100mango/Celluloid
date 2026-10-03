@@ -6,6 +6,7 @@ final class NativeTVUITests: XCTestCase {
         let app = XCUIApplication(); app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch(); defer { app.terminate() }
         try select(app.buttons["tv.choose-photos"], in: app)
+        print("TV_PHOTOS_AFTER_SELECT_AX " + app.debugDescription)
         let alert = app.alerts.firstMatch
         if alert.waitForExistence(timeout: 4) {
             print("TV_PHOTOS_PERMISSION_AX " + alert.debugDescription)
@@ -30,7 +31,10 @@ final class NativeTVUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Saved to Photos and verified by reading the image back."].waitForExistence(timeout: 30))
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-tv-photos-export-verified"; shot.lifetime = .keepAlways; add(shot)
         print("TV_NATIVE_PHOTOS_E2E real focus/import/filter/Photos-write-refetch proof completed")
-        if #available(tvOS 27.0, *) { try app.performAccessibilityAudit(for: .all) }
+        if #available(tvOS 27.0, *) { try app.performAccessibilityAudit(for: .all) { issue in
+            print("NATIVE_ACCESSIBILITY_ISSUE description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
+            return false // Report every real issue; this callback suppresses nothing.
+        } }
     }
     @MainActor private func select(_ target: XCUIElement, in app: XCUIApplication) throws {
         XCTAssertTrue(target.waitForExistence(timeout: 10))
