@@ -94,10 +94,17 @@ final class NativeEditorUITests: XCTestCase {
         app.typeKey("o", modifierFlags: .command); try goTo(documentURL, in: app)
         let reopen = app.windows.buttons["OKButton"].firstMatch
         XCTAssertTrue(reopen.waitForExistence(timeout: 5)); reopen.click()
-        XCTAssertTrue(app.staticTexts["Saved 世界"].waitForExistence(timeout: 10))
+        let layerID = try XCTUnwrap(saved.overlays.first?.id.uuidString)
+        let restoredLayer = app.buttons["layer." + layerID]
+        XCTAssertTrue(restoredLayer.waitForExistence(timeout: 10)); restoredLayer.click()
+        let restoredText = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
+        XCTAssertTrue(restoredText.waitForExistence(timeout: 5))
+        XCTAssertEqual(restoredText.value as? String, "Saved 世界")
         for menuTitle in ["PNG…", "JPEG…"] {
             let menu = app.descendants(matching: .any)["editor.export"].firstMatch
-            XCTAssertTrue(menu.waitForExistence(timeout: 5)); menu.click()
+            XCTAssertTrue(menu.waitForExistence(timeout: 5))
+            expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: menu)
+            waitForExpectations(timeout: 10); menu.click()
             app.menuItems[menuTitle].click(); try save(in: folder, app: app)
             let allowed = menuTitle == "PNG…" ? ["png"] : ["jpg", "jpeg"]
             let exported = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).first { $0.lastPathComponent != fixture.lastPathComponent && allowed.contains($0.pathExtension.lowercased()) })

@@ -42,7 +42,8 @@ struct EditorInspector: View {
                             if selection == overlay.id { Image(systemName: "checkmark.circle.fill") }
                         }.contentShape(Rectangle())
                     }.buttonStyle(.plain).padding(6)
-                        .accessibilityLabel("Select \(overlay.kind.rawValue) \(overlay.asset)")
+                        .accessibilityLabel(String(format: NSLocalizedString("Select layer: %@", comment: "Layer selection"), overlay.kind == .bubble && !overlay.text.isEmpty ? String(overlay.text.prefix(80)) : overlay.asset))
+                        .accessibilityIdentifier("layer." + overlay.id.uuidString)
                 }
                 if let selected = recipe.overlays.first(where: { $0.id == selection }) {
                     OverlayInspector(overlay: selected, update: update, remove: remove)

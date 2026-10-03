@@ -38,7 +38,7 @@ struct EditorView: View {
             ToolbarItemGroup {
                 Button { filePicker = true } label: { Label("Import Files", systemImage: "photo.on.rectangle") }
                     .help("Choose one photo, or two to four photos for a collage").accessibilityIdentifier("editor.import-files")
-                PhotosPicker(selection: $photos, maxSelectionCount: 4, selectionBehavior: .ordered, matching: .images) {
+                PhotosPicker(selection: $photos, maxSelectionCount: 4, selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
                     Label("Photos", systemImage: "photo")
                 }
                 #if os(macOS)
@@ -140,17 +140,12 @@ struct EditorView: View {
                     try Task.checkCancellation()
                     guard let data = try await item.loadTransferable(type: Data.self) else { throw RenderError.invalidImage }
                     try Task.checkCancellation()
+                    guard data.count <= RasterCodec.maxSourceBytes, imported.reduce(0, { $0 + $1.1.count }) + data.count <= 64 * 1024 * 1024 else { throw RecipeError.resourceLimit }
                     imported.append(("Photo \(index + 1)", data))
                 }
                 finishImport(imported, generation: generation)
             } catch { if generation == importGeneration { importing = false; self.error = error.localizedDescription } }
         }
-    }
-    nonisolated fileprivate static func readImage(_ url: URL, limit: Int = RasterCodec.maxSourceBytes) throws -> Data {
-        let accessed = url.startAccessingSecurityScopedResource(); defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard size > 0, size <= limit else { throw RecipeError.resourceLimit }
-        return try Data(contentsOf: url, options: .mappedIfSafe)
     }
     private func drop(_ providers: [NSItemProvider]) -> Bool {
         guard (1...4).contains(providers.count) else { error = NSLocalizedString("Drop between one and four images.", comment: "Editor message"); return false }
@@ -170,6 +165,7 @@ struct EditorView: View {
                         data = try await loadData(provider, type: UTType.image.identifier)
                     }
                     try Task.checkCancellation()
+                    guard data.count <= RasterCodec.maxSourceBytes, items.reduce(0, { $0 + $1.1.count }) + data.count <= 64 * 1024 * 1024 else { throw RecipeError.resourceLimit }
                     items.append((provider.suggestedName ?? "Dropped Photo \(index + 1)", data))
                 }
                 finishImport(items, generation: generation)
@@ -191,7 +187,7 @@ struct EditorView: View {
         if let urls = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
             importFiles(.success(urls)); return
         }
-        guard let image = NSImage(pasteboard: board), let bytes = image.tiffRepresentation else {
+        guard let bytes = board.data(forType: .png) ?? board.data(forType: .tiff) else {
             error = NSLocalizedString("The clipboard does not contain an image.", comment: "Editor message"); return
         }
         importTask?.cancel()
@@ -227,7 +223,7 @@ struct EditorView: View {
         switch result {
         case .success(let url):
             do {
-                let bytes = try Self.readImage(url, limit: 256 * 1024 * 1024)
+                let bytes = try NativeFileAccess.readImage(url, limit: 256 * 1024 * 1024)
                 guard bytes == exported?.data else { throw RenderError.exportFailed }
                 _ = try RasterCodec.metadata(bytes, maximumBytes: 256 * 1024 * 1024)
                 status = String(format: NSLocalizedString("Exported and verified %@", comment: "Export status"), url.lastPathComponent)
@@ -263,9 +259,14 @@ private struct NativeEditorSplit<Content: View>: View {
 private actor NativeImportQueue {
     static let shared = NativeImportQueue()
     func read(_ urls: [URL]) throws -> [(String, Data)] {
-        try urls.map { url in
+        var results: [(String, Data)] = []
+        var remaining = 64 * 1024 * 1024
+        for url in urls {
             try Task.checkCancellation()
-            return (url.lastPathComponent, try EditorView.readImage(url))
+            guard remaining > 0 else { throw RecipeError.resourceLimit }
+            let data = try NativeFileAccess.readImage(url, limit: remaining)
+            results.append((url.lastPathComponent, data)); remaining -= data.count
         }
+        return results
     }
 }
