@@ -2,6 +2,7 @@ import XCTest
 import UIKit
 import Photos
 import CryptoKit
+import ImageIO
 
 final class CelluloidUITests: XCTestCase {
     private var app: XCUIApplication!
@@ -460,9 +461,14 @@ final class CelluloidCaptureTests: XCTestCase {
             capturedFailure = true
             if let jpeg = XCUIScreen.main.screenshot().image.jpegData(compressionQuality: 0.55), jpeg.count <= 500_000 {
                 let attachment = XCTAttachment(data: jpeg, uniformTypeIdentifier: "public.jpeg")
-                attachment.name = "celluloid-capture-failure"
-                attachment.lifetime = .keepAlways
-                add(attachment)
+                let directory = hostEvidenceDirectory()
+                let retained = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+                if retained.filter({ $0.pathExtension == "jpg" }).count < 2 {
+                    try? persistHostEvidence(jpeg, name: "celluloid-capture-failure")
+                    attachment.name = "celluloid-capture-failure"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
             }
         }
         super.record(issue)
@@ -622,10 +628,15 @@ final class CelluloidCaptureTests: XCTestCase {
         }
         let attachment = XCTAttachment(data: jpeg, uniformTypeIdentifier: "public.jpeg")
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+        do { try persistHostEvidence(jpeg, name: name) }
+        catch { XCTFail("Could not retain bounded synthetic host evidence: \(error)") }
     }
 
     func testPhotosHostAssessment() throws {
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
+        let evidenceDirectory = hostEvidenceDirectory()
+        // This exact test-owned ephemeral directory contains only synthetic JPEGs.
+        if FileManager.default.fileExists(atPath: evidenceDirectory.path) { try FileManager.default.removeItem(at: evidenceDirectory) }
         let authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         print("PHOTOS_HOST_AUTHORIZATION_PREREQUISITE raw=\(authorization.rawValue) expected=authorized scope=ephemeral_UI_test_runner")
         XCTAssertEqual(authorization, .authorized)
@@ -872,7 +883,10 @@ final class CelluloidCaptureTests: XCTestCase {
         }
         hierarchy("saved")
         let persistedSepia = try captureHostIntegrity(hostBaseline, phase: "after-host-save")
-        var sepiaDisplayVerified = try visiblePhotoMatches(persistedSepia, label: fixtureLabel, phase: "immediately-after-save")
+        let sepiaImmediate = try visiblePhotoMatches(persistedSepia, label: fixtureLabel, phase: "immediately-after-save")
+        try captureCurrentPhotoRepresentations(hostBaseline, expected: persistedSepia, phase: "after-extension-save")
+        let sepiaAfterRepresentationProbe = try visiblePhotoMatches(persistedSepia, label: fixtureLabel, phase: "after-PhotoKit-representation-probe")
+        var sepiaDisplayVerified = sepiaAfterRepresentationProbe
         if !sepiaDisplayVerified {
             hierarchy("saved-preview-not-refreshed")
             // One normal close/reopen distinguishes an in-place Photos preview
@@ -885,6 +899,8 @@ final class CelluloidCaptureTests: XCTestCase {
             sepiaDisplayVerified = try visiblePhotoMatches(persistedSepia, label: fixtureLabel, phase: "after-library-reopen")
             try captureHostIntegrity(hostBaseline, phase: "after-preview-reopen")
         }
+        try captureJSON("PHOTOS_HOST_SEPIA_DISPLAY_RESULT", ["immediate_matches": sepiaImmediate,
+            "after_representation_probe_matches": sepiaAfterRepresentationProbe, "final_reopened_matches": sepiaDisplayVerified])
         print("PHOTOS_HOST_SEPIA_DISPLAY_VERIFIED \(sepiaDisplayVerified)")
         attachHostScreenshot("celluloid-host-saved-sepia")
         guard tapLabel(["编辑", "Edit"]) else {
@@ -971,17 +987,161 @@ final class CelluloidCaptureTests: XCTestCase {
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 15), .completed)
         try captureHostSystemRevertedOriginal(hostBaseline)
-        XCTAssertTrue(photos.buttons["编辑"].firstMatch.waitForExistence(timeout: 15))
+        hierarchy("after-system-revert")
+        if !photos.buttons["编辑"].firstMatch.exists {
+            // Revert may leave Photos' native editor open. Resolve only the
+            // observed native Cancel action after confirming persisted Revert.
+            let nativeCancel = photos.navigationBars["PUPhotoEditView"].buttons["取消"].firstMatch
+            guard tapReady(nativeCancel) else {
+                hierarchy("after-revert-exit-unavailable")
+                XCTFail("No observed normal exit from the reverted Photos editor"); return
+            }
+        }
+        guard waitReady(photos.buttons["编辑"].firstMatch) else {
+            hierarchy("after-revert-one-up-unavailable")
+            XCTFail("Could not return to the reverted asset's one-up view"); return
+        }
         let revertedDisplayVerified = try visiblePhotoMatches(hostBaseline.originalImage, label: fixtureLabel, phase: "after-system-revert")
-        attachHostScreenshot("celluloid-host-system-reverted")
+
+        // Controlled system-Photos edit on the same verified synthetic asset.
+        // Do not infer a cause for the extension-preview mismatch without this.
+        guard tapReady(photos.buttons["编辑"].firstMatch), tapReady(photos.buttons["edit.tool.filters"].firstMatch) else {
+            hierarchy("native-filter-control-unavailable")
+            XCTFail("Observed Photos filter tool was unavailable"); return
+        }
+        hierarchy("native-filter-options")
+        let monochromeLabels = ["单色", "黑白", "银色", "Mono", "Silvertone", "Noir"]
+        let controls = photos.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", monochromeLabels))
+        var nativeFilter: XCUIElement?
+        for attempt in 0..<4 {
+            nativeFilter = controls.allElementsBoundByIndex.first { $0.exists && $0.isEnabled && $0.isHittable }
+            if nativeFilter != nil { break }
+            // Only an observed compact horizontal filter collection may scroll.
+            let strips = photos.collectionViews.allElementsBoundByIndex.filter {
+                $0.exists && $0.isHittable && $0.frame.width > $0.frame.height * 2 && $0.frame.height < 220
+            }
+            guard strips.count == 1 && attempt < 3 else { break }
+            print("NATIVE_PHOTOS_FILTER_STRIP frame=\(strips[0].frame) attempt=\(attempt)")
+            strips[0].swipeLeft()
+        }
+        guard let nativeFilter = nativeFilter else {
+            hierarchy("native-monochrome-control-not-observed")
+            XCTFail("No observed labeled monochrome Photos filter; no guessed index tap"); return
+        }
+        print("NATIVE_PHOTOS_FILTER_SELECTED label=\(nativeFilter.label) frame=\(nativeFilter.frame)")
+        nativeFilter.tap()
+        hierarchy("native-filter-applied")
+        guard tapReady(photos.buttons["完成"].firstMatch), waitReady(photos.buttons["编辑"].firstMatch) else {
+            hierarchy("native-filter-save-unavailable")
+            XCTFail("Native Photos filter could not be saved normally"); return
+        }
+        let nativeCurrent = try XCTUnwrap(captureFixtureIdentities("after-native-filter-save").first { $0.assetIdentifier == hostBaseline.assetIdentifier })
+        XCTAssertEqual(nativeCurrent.originalFileSHA, hostBaseline.originalFileSHA)
+        XCTAssertEqual(nativeCurrent.originalPixelSHA, hostBaseline.originalPixelSHA)
+        XCTAssertNotEqual(nativeCurrent.currentPixelSHA, hostBaseline.originalPixelSHA)
+        let nativeCG = try XCTUnwrap(nativeCurrent.currentImage.cgImage)
+        let nativeSample = try capturePixel(nativeCurrent.currentImage, x: nativeCG.width / 4, y: nativeCG.height * 3 / 4)
+        XCTAssertLessThanOrEqual((nativeSample.max() ?? 255) - (nativeSample.min() ?? 0), 4, "The native control must genuinely render monochrome")
+        let nativeImmediate = try visiblePhotoMatches(nativeCurrent.currentImage, label: fixtureLabel, phase: "native-immediately-after-save")
+        try captureCurrentPhotoRepresentations(hostBaseline, expected: nativeCurrent.currentImage, phase: "after-native-filter-save")
+        guard tapReady(photos.buttons["BackButton"].firstMatch), tapReady(lastGridImage) else {
+            hierarchy("native-filter-reopen-unavailable")
+            XCTFail("Native filtered asset could not be reopened normally"); return
+        }
+        let nativeReopened = try visiblePhotoMatches(nativeCurrent.currentImage, label: fixtureLabel, phase: "native-after-library-reopen")
+        attachHostScreenshot("celluloid-host-native-filter")
+        try captureJSON("NATIVE_PHOTOS_DISPLAY_CONTROL_RESULT", ["same_asset_identifier": hostBaseline.assetIdentifier,
+            "rendered_monochrome_sample": nativeSample, "current_pixel_sha256": nativeCurrent.currentPixelSHA,
+            "immediate_display_matches": nativeImmediate, "reopened_display_matches": nativeReopened,
+            "extension_sepia_display_matches": sepiaDisplayVerified])
         XCTAssertTrue(sepiaDisplayVerified, "Actual Photos one-up view must display the saved Sepia resource")
         XCTAssertTrue(revertedDisplayVerified, "Actual Photos one-up view must display the system-reverted original")
-        guard sepiaDisplayVerified && revertedDisplayVerified else {
+        XCTAssertTrue(nativeImmediate && nativeReopened, "Native Photos filter control must display its own persisted output")
+        guard sepiaDisplayVerified && revertedDisplayVerified && nativeImmediate && nativeReopened else {
             print("PHOTOS_HOST_RESULT:DATA_ROUNDTRIP_PASSED_DISPLAY_UNVERIFIED"); return
         }
         print("PHOTOS_HOST_RESULT:VERIFIED_EDITOR_AND_SYSTEM_REVERT editable Original restoration then actual Photos Revert clears adjustments and restores exact original pixels")
         photos.terminate()
     }
+}
+
+private func captureCurrentPhotoRepresentations(_ baseline: CaptureFixtureIdentity, expected: UIImage, phase: String) throws {
+    let asset = try XCTUnwrap(PHAsset.fetchAssets(withLocalIdentifiers: [baseline.assetIdentifier], options: nil).firstObject)
+    let options = PHImageRequestOptions()
+    options.version = .current; options.deliveryMode = .highQualityFormat
+    options.resizeMode = .exact; options.isSynchronous = true; options.isNetworkAccessAllowed = false
+    var derivative: UIImage?
+    var readError: Error?
+    PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 640, height: 480), contentMode: .aspectFit, options: options) { image, info in
+        derivative = image; readError = info?[PHImageErrorKey] as? Error
+    }
+    if let error = readError { throw error }
+    let preview = try XCTUnwrap(derivative)
+    let expectedCG = try XCTUnwrap(expected.cgImage), previewCG = try XCTUnwrap(preview.cgImage)
+    var samples: [[String: Any]] = []
+    for y in [CGFloat(0.25), 0.5, 0.75] {
+        for x in [CGFloat(0.25), 0.5, 0.75] {
+            let desired = try capturePixel(expected, x: Int(CGFloat(expectedCG.width) * x), y: Int(CGFloat(expectedCG.height) * y))
+            let current = try capturePixel(preview, x: Int(CGFloat(previewCG.width) * x), y: Int(CGFloat(previewCG.height) * y))
+            samples.append(["x": x, "y": y, "current_full_rgb": desired, "current_derivative_rgb": current,
+                "maximum_delta": zip(desired, current).map { abs($0 - $1) }.max() ?? 255])
+        }
+    }
+    try captureJSON("PHOTOS_CURRENT_DERIVATIVE", ["phase": phase, "asset_identifier": baseline.assetIdentifier,
+        "width": previewCG.width, "height": previewCG.height, "pixel_sha256": captureDigest(try captureRGB(preview)), "samples": samples])
+    let inputOptions = PHContentEditingInputRequestOptions()
+    inputOptions.isNetworkAccessAllowed = false; inputOptions.canHandleAdjustmentData = { _ in false }
+    let loaded = XCTestExpectation(description: "Read actual current rendered resource URL")
+    var input: PHContentEditingInput?
+    let request = asset.requestContentEditingInput(with: inputOptions) { value, _ in input = value; loaded.fulfill() }
+    guard XCTWaiter.wait(for: [loaded], timeout: 15) == .completed else {
+        asset.cancelContentEditingInputRequest(request); throw captureProbeError("Current rendered resource input timed out")
+    }
+    let currentInput = try XCTUnwrap(input), url = try XCTUnwrap(currentInput.fullSizeImageURL)
+    let bytes = try Data(contentsOf: url), image = try XCTUnwrap(UIImage(data: bytes))
+    try captureJSON("PHOTOS_CURRENT_RESOURCE_CONTRACT", ["phase": phase, "asset_identifier": baseline.assetIdentifier,
+        "url_last_component": url.lastPathComponent, "url_extension": url.pathExtension,
+        "resource_sha256": captureDigest(bytes), "pixel_sha256": captureDigest(try captureRGB(image)),
+        "input_orientation": currentInput.fullSizeImageOrientation, "image_metadata": try captureImageMetadata(bytes, image: image)])
+}
+
+private func hostEvidenceDirectory() -> URL {
+    FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("CelluloidSyntheticHostEvidence", isDirectory: true)
+}
+private func persistHostEvidence(_ jpeg: Data, name: String) throws {
+    let allowed = ["celluloid-capture-failure", "celluloid-host-saved-sepia", "celluloid-host-native-filter"]
+    guard allowed.contains(name), jpeg.count <= 500_000 else { throw captureProbeError("Unexpected host image or byte count") }
+    let directory = hostEvidenceDirectory()
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let existing = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).filter { $0.pathExtension == "jpg" }
+    let slot: Int
+    if name == "celluloid-capture-failure" {
+        guard existing.count < 2 else { return }
+        slot = FileManager.default.fileExists(atPath: directory.appendingPathComponent("host-evidence-1.jpg").path) ? 2 : 1
+    } else { slot = name == "celluloid-host-saved-sepia" ? 1 : 2 }
+    let destination = directory.appendingPathComponent("host-evidence-\(slot).jpg")
+    let pixels = try XCTUnwrap(UIImage(data: jpeg)?.cgImage)
+    let metadata: [String: Any] = ["slot": slot, "name": name, "bytes": jpeg.count,
+        "width": pixels.width, "height": pixels.height, "sha256": captureDigest(jpeg),
+        "scope": "ephemeral_test_runner_cache_only", "source": "native_XCUIScreen_JPEG_no_resize"]
+    try jpeg.write(to: destination, options: .atomic)
+    try JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]).write(
+        to: directory.appendingPathComponent("host-evidence-\(slot).json"), options: .atomic)
+    try captureJSON("PHOTOS_HOST_LOCAL_EVIDENCE", metadata)
+}
+private func captureImageMetadata(_ data: Data, image: UIImage) throws -> [String: Any] {
+    let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, nil))
+    let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+    let cg = try XCTUnwrap(image.cgImage)
+    return ["imageio_type": CGImageSourceGetType(source).map { $0 as String } ?? "unknown",
+        "width": cg.width, "height": cg.height, "bits_per_component": cg.bitsPerComponent,
+        "bits_per_pixel": cg.bitsPerPixel, "row_bytes": cg.bytesPerRow,
+        "color_space": cg.colorSpace?.name.map { $0 as String } ?? "unknown",
+        "alpha_info": cg.alphaInfo.rawValue, "image_orientation": image.imageOrientation.rawValue,
+        "metadata_orientation": properties[kCGImagePropertyOrientation] ?? "absent",
+        "metadata_depth": properties[kCGImagePropertyDepth] ?? "absent",
+        "metadata_profile": properties[kCGImagePropertyProfileName] ?? "absent"]
 }
 
 private struct CaptureFixtureIdentity {
@@ -1079,7 +1239,10 @@ private func captureFixtureIdentities(_ phase: String) throws -> [CaptureFixture
             "current_resource_sha256": row.currentFileSHA, "current_pixel_sha256": row.currentPixelSHA,
             "original_width": originalImage.cgImage!.width, "original_height": originalImage.cgImage!.height,
             "current_width": currentImage.cgImage!.width, "current_height": currentImage.cgImage!.height,
-            "pixel_method": "CGContext sRGB RGBA8 big-endian then alpha stripped"])
+            "pixel_method": "CGContext sRGB RGBA8 big-endian then alpha stripped",
+            "original_metadata": try captureImageMetadata(original, image: originalImage),
+            "current_metadata": try captureImageMetadata(currentBytes, image: currentImage),
+            "asset_resources": resources.map { ["type": $0.type.rawValue, "filename": $0.originalFilename, "uniform_type_identifier": $0.uniformTypeIdentifier] as [String: Any] }])
     }
     guard records.count == 2, Set(records.map { $0.assetIdentifier }).count == 2,
           Set(records.map { $0.originalPixelSHA }).count == 2,
