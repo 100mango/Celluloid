@@ -161,3 +161,9 @@
 "Diagnostic value" = "Diagnostic value";
 
 "AppKit audit diagnostic controls" = "AppKit audit diagnostic controls";
+
+"SwiftUI audit diagnostic controls" = "SwiftUI audit diagnostic controls";
+
+"On" = "On";
+
+"Off" = "Off";

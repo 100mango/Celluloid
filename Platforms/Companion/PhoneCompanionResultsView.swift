@@ -61,6 +61,18 @@ import CelluloidDomain
         }
         // The PNG resource is immutable; exact original-byte comparison also proves all pixels.
         guard actual == bytes else { throw RenderError.exportFailed }
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["CELLULOID_PHONE_OUTPUT_PROOF"] == "YES" {
+            guard actual.count <= 5_000_000 else { throw RecipeError.resourceLimit }
+            let folder = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("PhoneOutputProof", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try actual.write(to: folder.appendingPathComponent("photos-output.png"), options: .atomic)
+            let metadata: [String: Any] = ["requestID": record.id.uuidString, "sourceSHA256": record.request.sourceSHA256,
+                                           "filter": record.request.filter.rawValue, "photosAssetIdentifier": identifier,
+                                           "sha256": PhoneCompanionProcessor.digest(actual), "bytes": actual.count]
+            try JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys]).write(to: folder.appendingPathComponent("photos-output.json"), options: .atomic)
+        }
+        #endif
     }
 }
 
@@ -77,13 +89,13 @@ struct PhoneCompanionResultsView: View {
                 ForEach(model.pending, id: \.id) { request in
                     VStack(alignment: .leading) {
                         Text(request.filter.localizedTitle)
-                        Button("Resume on iPhone") { Task { await model.resume(request) } }.disabled(model.resuming)
-                        Button("Discard Pending Request", role: .destructive) { discard = request }.disabled(model.resuming)
+                        Button("Resume on iPhone") { Task { await model.resume(request) } }.disabled(model.resuming).accessibilityIdentifier("companion.resume." + request.id.uuidString)
+                        Button("Discard Pending Request", role: .destructive) { discard = request }.disabled(model.resuming).accessibilityIdentifier("companion.discard." + request.id.uuidString)
                     }
                 }
             }
             if let error = model.error { Text(error).foregroundStyle(.red) }
-            if model.records.isEmpty { Text("No Watch processing results yet. Choose a photo on your Watch and request phone processing.") }
+            if model.records.isEmpty { Text("No Watch processing results yet. Choose a photo on your Watch and request phone processing.").accessibilityIdentifier("companion.empty") }
             ForEach(model.records) { record in
                 Button { selection = record } label: {
                     VStack(alignment: .leading) {
@@ -97,7 +109,7 @@ struct PhoneCompanionResultsView: View {
                             Text("Watch preview transfer finished. Check your Watch for the received result.").font(.caption)
                         }
                     }
-                }
+                }.accessibilityIdentifier("companion.result." + record.id.uuidString)
             }
         }.navigationTitle("Watch Photos").task { await model.reload() }
             .sheet(item: $selection) { record in PhoneCompanionResultView(model: model, record: record) }
@@ -120,7 +132,7 @@ private struct PhoneCompanionResultView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    if let image { Image(image, scale: 1, label: Text("Processed photo")).resizable().scaledToFit() }
+                    if let image { Image(image, scale: 1, label: Text("Processed photo")).resizable().scaledToFit().accessibilityIdentifier("companion.preview") }
                     Text("The result uses the image resolution received from your Watch. Saving creates a new Photos image and keeps existing Photos assets unchanged.")
                     Button("Save Picture to Photos") {
                         busy = true
@@ -129,13 +141,13 @@ private struct PhoneCompanionResultView: View {
                             do { try await model.saveToPhotos(record); message = NSLocalizedString("Saved to Photos and verified by reading the image back.", comment: "Companion") }
                             catch { message = error.localizedDescription }
                         }
-                    }.disabled(busy)
+                    }.disabled(busy).accessibilityIdentifier("companion.save")
                     if busy { ProgressView() }
-                    if let message { Text(message) }
-                    Button("Delete Phone Result", role: .destructive) { confirmDelete = true }.disabled(busy)
+                    if let message { Text(message).accessibilityIdentifier("companion.save-status") }
+                    Button("Delete Phone Result", role: .destructive) { confirmDelete = true }.disabled(busy).accessibilityIdentifier("companion.delete")
                 }.padding()
             }.navigationTitle("Watch Photo")
-                .toolbar { Button("Done") { dismiss() } }
+                .toolbar { Button("Done") { dismiss() }.accessibilityIdentifier("companion.done") }
         }.task {
             do {
                 if let bytes = try await model.processor?.fullResult(record.id), let source = CGImageSourceCreateWithData(bytes as CFData, nil) {

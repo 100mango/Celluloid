@@ -4,7 +4,8 @@ import SwiftUI
     var body: some Scene {
         DocumentGroup(newDocument: NativeDocument()) { configuration in
             #if DEBUG
-            if NativeAuditControl.enabled { NativeAuditControl().frame(minWidth: 640, minHeight: 480) }
+            if NativeAuditControl.swiftUIEnabled { NativeSwiftUIAuditControl().frame(minWidth: 640, minHeight: 480) }
+            else if NativeAuditControl.enabled { NativeAuditControl().frame(minWidth: 640, minHeight: 480) }
             else { EditorView(document: configuration.$document) }
             #else
             EditorView(document: configuration.$document)

@@ -23,6 +23,9 @@ try:
     fixtures=load_exact(temp/'mac-fixture-evidence',os.environ['GITHUB_SHA'])
     container=Path(run(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data']).stdout.strip())
     documents=container/'Documents';documents.mkdir(exist_ok=True)
+    assert app.parent.name=='Debug-iphonesimulator' and app.name=='CelluloidPhoneCompanion.app'
+    from native_phone_fixture import seed
+    evidence['synthetic_inbox']=seed(container,temp)
     (documents/'mac-filter-fixtures.json').write_text(json.dumps(fixtures["fixtures"]))
     (documents/'mac-baked-filter-fixture.json').write_text(json.dumps(fixtures["fallback"]))
     face=root/'CelluloidKit/CelluloidKit.xcassets/filter/OriginalFilter.imageset/OriginalFilter.png'
@@ -43,9 +46,24 @@ try:
     # the prior completed-test/session-teardown timeout.
     stopped=run(['xcrun','simctl','terminate',udid,'Mango.Celluloid'],timeout=30,check=False)
     evidence['pretest_terminate_exit_code']=stopped.returncode
-    result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidPhoneCompanion','-destination',f'platform=iOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-phone','-resultBundlePath',temp/'CelluloidPhoneCompanion.xcresult','CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO','-maximum-concurrent-test-simulator-destinations','1','test-without-building'],timeout=600,check=False,log_name='phone-runtime-tests.log')
-    evidence['test_exit_code']=result.returncode
-    if result.returncode:raise RuntimeError('Native Phone Companion test invocation failed; inspect actual error/attachments, do not equate build or boot with E2E coverage')
+    test_error=None;result=None
+    try:
+        result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidPhoneCompanion','-destination',f'platform=iOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-phone','-resultBundlePath',temp/'CelluloidPhoneCompanion.xcresult','CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO','-maximum-concurrent-test-simulator-destinations','1','test-without-building'],timeout=900,check=False,log_name='phone-runtime-tests.log')
+    except Exception as error:test_error=error;evidence['test_invocation_error']=str(error)
+    if result is not None:evidence['test_exit_code']=result.returncode
+    proof=container/'Library/Caches/PhoneOutputProof/photos-output.json'
+    if proof.is_file():
+        try:
+            run(['swift','-swift-version','5',root/'Scripts/verify_phone_output.swift',temp/'PhoneCompanionSynthetic.png',container],timeout=120,log_name='phone-output-oracle.log')
+            evidence['independent_output_oracle']='passed'
+        except Exception as error:
+            evidence['independent_output_oracle_error']=str(error)
+            if test_error is None:test_error=error
+    else:evidence['independent_output_oracle']='no completed Photos output proof'
+    if test_error is not None:raise test_error
+    if result is None or result.returncode:raise RuntimeError('Native Phone Companion tests failed; completed UI proof is separate from the actual failed cases')
+    if not proof.is_file():raise RuntimeError('The real companion Photos UI did not produce readback proof')
+
 except Exception as error:
     evidence['error']=str(error)
     raise

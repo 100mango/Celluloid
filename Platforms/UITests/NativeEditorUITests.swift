@@ -1,7 +1,9 @@
 import XCTest
 import AppKit
 import CoreGraphics
+import CoreImage
 import ApplicationServices
+import CryptoKit
 import CelluloidDomain
 import CelluloidRendering
 
@@ -89,11 +91,29 @@ final class NativeEditorUITests: XCTestCase {
         let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 5)); text.click()
         app.typeKey("a", modifierFlags: .command); text.typeText("Saved 世界")
+        app.typeKey(.tab, modifierFlags: [])
+        app.typeKey(.rightArrow, modifierFlags: [.command, .option])
+        let horizontal = app.staticTexts["editor.layer.value.Horizontal position"]
+        expectation(for: NSPredicate(format: "value == '0.51'"), evaluatedWith: horizontal)
+        waitForExpectations(timeout: 5)
+        app.typeKey("]", modifierFlags: [.command, .option])
+        let rotation = app.staticTexts["editor.layer.value.Rotation"]
+        expectation(for: NSPredicate(format: "value == '15.00'"), evaluatedWith: rotation)
+        waitForExpectations(timeout: 5)
+        app.typeKey("z", modifierFlags: .command)
+        expectation(for: NSPredicate(format: "value == '0.00'"), evaluatedWith: rotation)
+        waitForExpectations(timeout: 5)
+        app.typeKey("z", modifierFlags: [.command, .shift])
+        expectation(for: NSPredicate(format: "value == '15.00'"), evaluatedWith: rotation)
+        waitForExpectations(timeout: 5)
+        print("NATIVE_MAC_KEYBOARD_TRANSFORMS actual nudge/rotate/Undo/Redo readouts verified")
         app.typeKey("s", modifierFlags: .command)
         try save(in: folder, app: app)
         let documentURL = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).first { $0.pathExtension == "celluloid" })
         let saved = try EditRecipe.decode(Data(contentsOf: documentURL.appendingPathComponent("recipe.json")))
         XCTAssertEqual(saved.overlays.first?.text, "Saved 世界")
+        XCTAssertEqual(try XCTUnwrap(saved.overlays.first?.centerX), 0.51, accuracy: 0.000_001)
+        XCTAssertEqual(try XCTUnwrap(saved.overlays.first?.rotation), 15, accuracy: 0.000_001)
         XCTAssertEqual(saved.sources.count, 1)
         XCTAssertEqual(try Data(contentsOf: documentURL.appendingPathComponent(saved.sources[0].filename)), try Data(contentsOf: fixture))
         app.typeKey("w", modifierFlags: .command)
@@ -248,23 +268,43 @@ final class NativeEditorUITests: XCTestCase {
         let capture = XCUIScreen.main.screenshot()
         let bitmap = try XCTUnwrap(NSBitmapImageRep(data: capture.pngRepresentation))
         XCTAssertLessThanOrEqual(bitmap.pixelsWide * bitmap.pixelsHigh, 4_000_000)
-        let sx = CGFloat(bitmap.pixelsWide) / screen.frame.width, sy = CGFloat(bitmap.pixelsHigh) / screen.frame.height
-        XCTAssertEqual(sx, sy, accuracy: 0.001)
+        let source = try XCTUnwrap(CIImage(data: capture.pngRepresentation))
+        let read = CIContext(), space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        XCTAssertEqual(source.extent, CGRect(x: 0, y: 0, width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
+        let red = CIImage(color: CIColor(red: 1, green: 0, blue: 0)).cropped(to: CGRect(x: 0, y: 0, width: 2, height: 1))
+        let blue = CIImage(color: CIColor(red: 0, green: 0, blue: 1)).cropped(to: CGRect(x: 0, y: 1, width: 2, height: 1))
+        var calibration = [UInt8](repeating: 0, count: 16)
+        calibration.withUnsafeMutableBytes { read.render(blue.composited(over: red), toBitmap: $0.baseAddress!, rowBytes: 8, bounds: CGRect(x: 0, y: 0, width: 2, height: 2), format: .RGBA8, colorSpace: space) }
+        let topDown = Array(calibration[0..<4]) == [0, 0, 255, 255]
+        XCTAssertTrue(topDown ? Array(calibration[8..<12]) == [255, 0, 0, 255] : Array(calibration[0..<4]) == [255, 0, 0, 255] && Array(calibration[8..<12]) == [0, 0, 255, 255])
+        var samples = [UInt8](repeating: 0, count: bitmap.pixelsWide * bitmap.pixelsHigh * 4)
+        samples.withUnsafeMutableBytes { read.render(source, toBitmap: $0.baseAddress!, rowBytes: bitmap.pixelsWide * 4, bounds: source.extent, format: .RGBA8, colorSpace: space) }
+        // Match screenshot scale to the same XCTest coordinate space as the
+        // observed sheet. NSImage/NSScreen point sizes can describe a different
+        // backing scale; retain them as diagnostics, not as the click transform.
+        let menuFrame = app.menuBars.firstMatch.frame
+        XCTAssertEqual(menuFrame.minX, 0, accuracy: 0.1); XCTAssertGreaterThan(menuFrame.width, 0)
+        let sx = CGFloat(bitmap.pixelsWide) / menuFrame.width, sy = sx
         let region = CGRect(x: frame.minX + frame.width * 0.24, y: frame.minY + frame.height * 0.20,
                             width: frame.width * 0.72, height: frame.height * 0.67)
         let strideSize = 3, columns = (bitmap.pixelsWide + 2) / 3
         var points = Set<Int>()
+        var closest = Double.infinity, closestColor = "none"
         let deadline = Date().addingTimeInterval(8)
         for y in stride(from: max(0, Int(region.minY * sy)), to: min(bitmap.pixelsHigh, Int(region.maxY * sy)), by: strideSize) {
             guard Date() < deadline else { throw NSError(domain: "SyntheticPhotosVisualMatch", code: 1) }
             for x in stride(from: max(0, Int(region.minX * sx)), to: min(bitmap.pixelsWide, Int(region.maxX * sx)), by: strideSize) {
-                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
-                if abs(color.redComponent - 0.1) < 0.055 && abs(color.greenComponent - 0.6) < 0.055 && abs(color.blueComponent - 0.9) < 0.055 {
+                let row = topDown ? y : bitmap.pixelsHigh - 1 - y, offset = (row * bitmap.pixelsWide + x) * 4
+                let r = Double(samples[offset]) / 255, g = Double(samples[offset + 1]) / 255, b = Double(samples[offset + 2]) / 255
+                let distance = abs(r - 0.1) + abs(g - 0.6) + abs(b - 0.9)
+                if distance < closest { closest = distance; closestColor = "x=\(x) y=\(y) RGB=\(r),\(g),\(b)" }
+                if abs(r - 0.1) < 0.055 && abs(g - 0.6) < 0.055 && abs(b - 0.9) < 0.055 {
                     points.insert((y / strideSize) * columns + x / strideSize)
                 }
             }
         }
-        var matches: [CGRect] = []
+        let matchedPixels = points.count
+        var matches: [CGRect] = [], components: [String] = []
         while let first = points.first {
             var queue = [first], index = 0; points.remove(first)
             var minX = first % columns, maxX = minX, minY = first / columns, maxY = minY
@@ -275,8 +315,10 @@ final class NativeEditorUITests: XCTestCase {
                 for next in [current - 1, current + 1, current - columns, current + columns] where points.remove(next) != nil { queue.append(next) }
             }
             let box = CGRect(x: CGFloat(minX * 3) / sx, y: CGFloat(minY * 3) / sy, width: CGFloat((maxX - minX + 1) * 3) / sx, height: CGFloat((maxY - minY + 1) * 3) / sy)
+            if queue.count >= 20 && components.count < 8 { components.append("pixels=\(queue.count),box=\(box)") }
             if queue.count >= 200 && (45...180).contains(box.width) && (45...180).contains(box.height) { matches.append(box) }
         }
+        print("NATIVE_MAC_PHOTOS_VISUAL_SCAN sheet=\(frame) screen=\(screen.frame) screenshotPoints=\(capture.image.size) menu=\(menuFrame) scale=\(sx) region=\(region) topDown=\(topDown) matchedPixels=\(matchedPixels) components=\(components) closest=\(closestColor)")
         XCTAssertEqual(matches.count, 1, "Exactly one bounded synthetic thumbnail must be observed: \(matches)")
         let match = try XCTUnwrap(matches.first), center = CGPoint(x: match.midX, y: match.midY)
         print("NATIVE_MAC_PHOTOS_VISUAL_MATCH sheet=\(frame) thumbnail=\(match) screenPixels=\(bitmap.pixelsWide)x\(bitmap.pixelsHigh)")
@@ -355,12 +397,14 @@ final class NativeEditorUITests: XCTestCase {
         } else { print("NATIVE_APPKIT_AX report unavailable; issue.element hierarchy remains required") }
         try auditOrdinary(app, state: "empty-editor")
     }
-    @MainActor func testZDiagnosticNativeAppKitAuditControls() throws {
+    @MainActor func testZDiagnosticNativeAppKitAuditControls() throws { try auditControl(mode: "YES", state: "diagnostic-appkit-control") }
+    @MainActor func testZDiagnosticNativeSwiftUIAuditControls() throws { try auditControl(mode: "SWIFTUI", state: "diagnostic-swiftui-control") }
+    @MainActor private func auditControl(mode: String, state: String) throws {
         guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] != "YES" else { throw XCTSkip("The isolated diagnostic runs only in the ordinary lane") }
         continueAfterFailure = false
         let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
         let app = XCUIApplication(url: URL(fileURLWithPath: path))
-        app.launchEnvironment["CELLULOID_NATIVE_AUDIT_CONTROL"] = "YES"
+        app.launchEnvironment["CELLULOID_NATIVE_AUDIT_CONTROL"] = mode
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
         app.launch(); defer { app.terminate() }
         let cancel = app.windows["open-panel"].buttons["CancelButton"]; if cancel.waitForExistence(timeout: 3) { cancel.click() }
@@ -368,14 +412,23 @@ final class NativeEditorUITests: XCTestCase {
         let action = app.buttons["probe.action"]
         XCTAssertTrue(action.waitForExistence(timeout: 10)); XCTAssertTrue(app.sliders["probe.slider"].exists)
         print("NATIVE_AUDIT_CONTROL_AX " + String(app.debugDescription.prefix(24000)))
-        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-mac-audit-control"; shot.lifetime = .keepAlways; add(shot)
-        try auditOrdinary(app, state: "diagnostic-appkit-control")
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-mac-audit-control-" + mode; shot.lifetime = .keepAlways; add(shot)
+        try auditOrdinary(app, state: state)
         action.click(); XCTAssertEqual(app.staticTexts["probe.status"].value as? String, "Action completed")
     }
     @MainActor private func auditOrdinary(_ app: XCUIApplication, state: String) throws {
         // The external sandbox lane retains its own real document operations;
         // do not audit the deliberately visible Debug entitlement probe overlay.
         guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] != "YES" else { return }
+        if NSWorkspace.shared.frontmostApplication?.bundleIdentifier != "Mango.Celluloid" { app.activate() }
+        let front = NSWorkspace.shared.frontmostApplication
+        print("NATIVE_AUDIT_FRONTMOST state=\(state) bundle=\(front?.bundleIdentifier ?? "nil") pid=\(front?.processIdentifier ?? 0) appState=\(app.state.rawValue)")
+        XCTAssertEqual(front?.bundleIdentifier, "Mango.Celluloid")
+        let screen = XCUIScreen.main.screenshot(), bytes = screen.pngRepresentation
+        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        print("NATIVE_AUDIT_SCREEN state=\(state) sha256=\(digest)")
+        let linked = XCTAttachment(data: bytes, uniformTypeIdentifier: "public.png")
+        linked.name = "native-mac-audit-state-" + state; linked.lifetime = .keepAlways; add(linked)
         if state == "unreadable-image-error" {
             print("NATIVE_MODAL_WINDOWS_AX " + String(app.windows.debugDescription.prefix(24_000)))
             print("NATIVE_MODAL_DIALOGS_AX " + String(app.dialogs.debugDescription.prefix(12_000)))

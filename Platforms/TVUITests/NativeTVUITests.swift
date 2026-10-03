@@ -106,6 +106,7 @@ final class NativeTVUITests: XCTestCase {
         try select(app.buttons["tv.asset.32"],in:app)
         for _ in 0..<12 { try select(app.buttons["tv.layer.x.decrease"],in:app) }
         try select(app.buttons["tv.layer.mirror"],in:app)
+        XCTAssertEqual(app.buttons["tv.layer.mirror"].value as? String, "On")
         try select(app.buttons["tv.panel.done"],in:app)
         try select(app.buttons["tv.bubbles"],in:app)
         try select(app.buttons["tv.asset.say1"],in:app)

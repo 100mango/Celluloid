@@ -3,12 +3,42 @@ import UIKit
 import CoreImage
 import CryptoKit
 import ImageIO
+import UniformTypeIdentifiers
 import CelluloidDomain
 import CelluloidRendering
 @testable import CelluloidPhoneCompanion
 
 /// Uses the original, unmodified UIKit Filters and AdjustmentData source in this validation host.
 final class LegacyFilterAndFaceTests: XCTestCase {
+    func testAllExifOrientationsMatchActualUIKitPhotosFilterEntry() throws {
+        let bitmap = try RasterCodec.bitmap(width: 120, height: 80)
+        for y in 0..<80 { for x in 0..<120 {
+            bitmap.setFillColor(CGColor(srgbRed: CGFloat(x) / 119, green: CGFloat(y) / 79, blue: 0.4,
+                                        alpha: x == 0 || y == 0 ? 243.0 / 255 : 1))
+            bitmap.fill(CGRect(x: x, y: y, width: 1, height: 1))
+        } }
+        let cg = try XCTUnwrap(bitmap.makeImage()), read = CIContext()
+        for orientation in 1...8 {
+            let encoded = NSMutableData()
+            let destination = try XCTUnwrap(CGImageDestinationCreateWithData(encoded, UTType.tiff.identifier as CFString, 1, nil))
+            CGImageDestinationAddImage(destination, cg, [kCGImagePropertyOrientation: orientation] as CFDictionary)
+            XCTAssertTrue(CGImageDestinationFinalize(destination))
+            let data = encoded as Data, source = try RasterCodec.metadata(data)
+            let image = try XCTUnwrap(UIImage(data: data))
+            var recipe = EditRecipe(); recipe.sources = [source]
+            recipe.canvasWidth = source.pixelWidth; recipe.canvasHeight = source.pixelHeight
+            for preset in [FilterPreset.original, .sketch, .comic] {
+                recipe.filter = preset
+                let expected = try XCTUnwrap(image.filteredImage(Int32(orientation), filter: Filters.filter(decodedFilter(preset.rawValue))).cgImage)
+                let actual = try RecipeRenderer().render(recipe, sources: [source.id: data])
+                XCTAssertEqual(actual.width, expected.width); XCTAssertEqual(actual.height, expected.height)
+                let bounds = CGRect(x: 0, y: 0, width: expected.width, height: expected.height)
+                let difference = maximumDelta(pixels(CIImage(cgImage: expected), bounds, read), pixels(CIImage(cgImage: actual), bounds, read))
+                print("MAC_NEW_FILTER_UIKIT_ORIENTATION orientation=\(orientation) filter=\(preset.rawValue) maximum=\(difference)")
+                XCTAssertLessThanOrEqual(difference, 2)
+            }
+        }
+    }
     func testActuallyMacAuthoredFilterArchivesDecodeAndRenderThroughUIKit() throws {
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("mac-filter-fixtures.json")
         let rows = try JSONDecoder().decode([Fixture].self, from: Data(contentsOf: url))
@@ -87,7 +117,7 @@ final class LegacyFilterAndFaceTests: XCTestCase {
         let actualDelta = maximumDelta(expected,actual)
         print("FACE_DETECTOR_ACTUAL_OUTPUT maximumChannelDifference=\(actualDelta)")
         try diagnoseInputPaths(data:data,preset:.pixellateFace,uiCG:cg,legacy:legacy,tag:"portrait")
-        diagnoseMaterialization(graph:try RecipeRenderer().apply(.pixellateFace,to:nativeInput),legacy:legacy,native:native,tag:"portrait")
+        if actualDelta > 2 { diagnoseMaterialization(graph:try RecipeRenderer().apply(.pixellateFace,to:nativeInput),legacy:legacy,native:native,tag:"portrait") }
         XCTAssertLessThanOrEqual(actualDelta, 2)
         for face in faces {
             let inside = CGRect(x: floor(face.midX)-4,y: floor(face.midY)-4,width: 8,height: 8)
@@ -131,7 +161,8 @@ final class LegacyFilterAndFaceTests: XCTestCase {
         let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData,nil))
         let decoded = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source,0,[kCGImageSourceShouldCache:false] as CFDictionary))
         let ui = CIImage(cgImage:uiCG), read = CIContext(), bounds = ui.extent
-        let variants:[(String,CIImage)] = [("UIImageCG",ui),("ImageIOCG",CIImage(cgImage:decoded)),("CIData",try RasterCodec.image(data))]
+        let directData = try XCTUnwrap(CIImage(data:data,options:[.applyOrientationProperty:true]))
+        let variants:[(String,CIImage)] = [("UIImageCG",ui),("ImageIOCG",CIImage(cgImage:decoded)),("CIData",directData),("Production",try RasterCodec.image(data))]
         func floats(_ image:CIImage)->[Float] {
             var result=[Float](repeating:0,count:Int(bounds.width*bounds.height)*4)
             result.withUnsafeMutableBytes { read.render(image,toBitmap:$0.baseAddress!,rowBytes:Int(bounds.width)*16,bounds:bounds,format:.RGBAf,colorSpace:RasterCodec.colorSpace) }

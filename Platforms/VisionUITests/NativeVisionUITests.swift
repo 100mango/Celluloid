@@ -52,14 +52,46 @@ extension NativeVisionUITests {
         let bubble = app.buttons["asset.say1"]; XCTAssertTrue(bubble.waitForExistence(timeout: 10)); bubble.tap()
         let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 10)); text.tap()
-        print("VISION_TEXT_FOCUS_AX " + text.debugDescription)
-        text.typeText("Vision 世界")
+        print("VISION_TEXT_FOCUS value=\(text.value ?? "none") hittable=\(text.isHittable)")
+        // Two separate ordinary key events must survive without retapping the
+        // field. Do not hide a first-keystroke focus/reset defect behind paste.
+        text.typeText("A")
+        let first = String(describing: text.value ?? "")
+        text.typeText("B")
+        let second = String(describing: text.value ?? "")
+        print("VISION_SEQUENTIAL_TEXT first=\(first) second=\(second) element=\(text.debugDescription)")
+        continueAfterFailure = true
+        XCTAssertTrue(first.contains("A") && second.contains("AB"), "Sequential key events must retain text and focus")
+        continueAfterFailure = false
+        text.press(forDuration: 1.1)
+        let selectMenu = app.menuItems["Select All"].firstMatch
+        let selectButton = app.buttons["Select All"].firstMatch
+        let hasMenu = selectMenu.waitForExistence(timeout: 3)
+        let hasButton = !hasMenu && selectButton.waitForExistence(timeout: 3)
+        if hasMenu { selectMenu.tap() } else if hasButton { selectButton.tap() }
+        else { print("VISION_SELECT_ALL_AX " + String(app.debugDescription.prefix(20000))) }
+        continueAfterFailure = true
+        XCTAssertTrue(hasMenu || hasButton, "Use the real Select All action before replacing text")
+        continueAfterFailure = false
+        if hasMenu || hasButton { text.typeText("Vision 世界") }
+        let completeText = NSPredicate(format: "value == %@", "Vision 世界")
+        let entered = XCTWaiter.wait(for: [expectation(for: completeText, evaluatedWith: text)], timeout: 10) == .completed
+        print("VISION_TEXT_AFTER_ENTRY value=\(text.value ?? "none") complete=\(entered)")
+        // Retain a real text failure while allowing the independent export route
+        // to establish whether its own observed Save control works.
+        continueAfterFailure = true
+        XCTAssertTrue(entered, "The real editor must retain the entire multilingual replacement")
+        continueAfterFailure = false
         capture(app, name: "vision-imported-editable-bubble")
         app.buttons["editor.export"].tap()
         let png = app.buttons["PNG…"]; XCTAssertTrue(png.waitForExistence(timeout: 10)); png.tap()
-        print("VISION_EXPORT_PICKER_AX " + app.navigationBars.debugDescription)
-        let save = app.buttons.matching(NSPredicate(format: "label == 'Export' OR label == 'Save' OR label == 'Move'")).firstMatch
-        XCTAssertTrue(save.waitForExistence(timeout: 15)); save.tap()
+        // Actual 9b hierarchy exposed this Save control in the system exporter.
+        // A broad Export/Save query chose the obscured editor.export toolbar.
+        let save = app.navigationBars["FullDocumentManagerViewControllerNavigationBar"].buttons["DOCPicker.actionButton"]
+        let canSave = save.waitForExistence(timeout: 20)
+        if !canSave { print("VISION_EXPORT_PICKER_AX " + String(app.debugDescription.prefix(24000))) }
+        XCTAssertTrue(canSave); XCTAssertEqual(save.label, "Save"); XCTAssertTrue(save.isHittable)
+        save.tap()
         let verified = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Exported and verified '")).firstMatch
         let completed = verified.waitForExistence(timeout: 20)
         if !completed { capture(app, name: "vision-export-readback-failure"); print("VISION_EXPORT_RESULT_AX " + app.debugDescription) }

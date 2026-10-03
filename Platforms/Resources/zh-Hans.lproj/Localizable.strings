@@ -161,3 +161,9 @@
 "Diagnostic value" = "诊断数值";
 
 "AppKit audit diagnostic controls" = "AppKit 辅助功能审计诊断控件";
+
+"SwiftUI audit diagnostic controls" = "SwiftUI 辅助功能审计诊断控件";
+
+"On" = "已开启";
+
+"Off" = "已关闭";

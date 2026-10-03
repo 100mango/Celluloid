@@ -6,6 +6,40 @@ import CelluloidDomain
 @testable import CelluloidRendering
 
 final class LegacyFilterEquivalenceTests: XCTestCase {
+    /// Regression for the actual iOS9b decoder finding. The original UIKit
+    /// path consumes an ImageIO CGImage; CIImage(data:) had different nonlocal
+    /// filter behavior even when an 8-bit input comparison happened to match.
+    func testImageIODecodingMatchesLegacyNonlocalFiltersAndAlphaBorder() throws {
+        for translucentBorder in [false, true] {
+            let bitmap = try RasterCodec.bitmap(width: 120, height: 80)
+            for y in 0..<80 { for x in 0..<120 {
+                let border = x == 0 || x == 119 || y == 0 || y == 79
+                let alpha: CGFloat = translucentBorder && border ? 243.0 / 255 : 1
+                bitmap.setFillColor(CGColor(srgbRed: CGFloat(x) / 119, green: 0.4, blue: 0.8, alpha: alpha))
+                bitmap.fill(CGRect(x: x, y: y, width: 1, height: 1))
+            } }
+            let data = try RasterCodec.encode(XCTUnwrap(bitmap.makeImage()), as: .png)
+            let file = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, nil))
+            let cg = try XCTUnwrap(CGImageSourceCreateImageAtIndex(file, 0, [kCGImageSourceShouldCache: false] as CFDictionary))
+            let legacyInput = CIImage(cgImage: cg), read = CIContext()
+            let metadata = try RasterCodec.metadata(data)
+            var recipe = EditRecipe(); recipe.sources = [metadata]; recipe.canvasWidth = 120; recipe.canvasHeight = 80
+            func normalized(_ image: CIImage) -> [UInt8] {
+                var result = [UInt8](repeating: 0, count: 120 * 80 * 4)
+                result.withUnsafeMutableBytes { read.render(image, toBitmap: $0.baseAddress!, rowBytes: 120 * 4,
+                    bounds: legacyInput.extent, format: .RGBA8, colorSpace: RasterCodec.colorSpace) }
+                return result
+            }
+            for (preset, name) in [(FilterPreset.sketch, "CILineOverlay"), (.comic, "CIComicEffect")] {
+                recipe.filter = preset
+                let expected = try XCTUnwrap(read.createCGImage(legacyInput.applyingFilter(name), from: legacyInput.extent))
+                let actual = try RecipeRenderer().render(recipe, sources: [metadata.id: data])
+                let maximum = zip(normalized(CIImage(cgImage: expected)), normalized(CIImage(cgImage: actual))).map { abs(Int($0) - Int($1)) }.max() ?? 255
+                print("LEGACY_FILTER_DECODER_REGRESSION filter=\(preset.rawValue) alphaBorder=\(translucentBorder) maximum=\(maximum)")
+                XCTAssertLessThanOrEqual(maximum, 2)
+            }
+        }
+    }
     /// The frozen UIKit implementation calls CIContext() and creates its CGImage using
     /// the default overload. This oracle exercises that actual context path, not just names.
     func testActualNativeOutputsMatchLegacyDefaultContextForGradientAlphaAndP3() throws {

@@ -39,12 +39,12 @@ struct EditorInspector: View {
                     } label: {
                         HStack {
                             Image(systemName: overlay.kind == .bubble ? "text.bubble" : "face.smiling")
-                            Text(overlay.kind == .bubble && !overlay.text.isEmpty ? overlay.text : overlay.asset).lineLimit(1)
+                            Text(layerTitle(overlay)).lineLimit(1)
                             Spacer()
                             if selection == overlay.id { Image(systemName: "checkmark.circle.fill") }
                         }.contentShape(Rectangle())
                     }.buttonStyle(.plain).padding(6)
-                        .accessibilityLabel(String(format: NSLocalizedString("Select layer: %@", comment: "Layer selection"), overlay.kind == .bubble && !overlay.text.isEmpty ? String(overlay.text.prefix(80)) : overlay.asset))
+                        .accessibilityLabel(String(format: NSLocalizedString("Select layer: %@", comment: "Layer selection"), String(layerTitle(overlay).prefix(80))))
                         .accessibilityIdentifier("layer." + overlay.id.uuidString)
                 }
                 if let selected = recipe.overlays.first(where: { $0.id == selection }) {
@@ -58,6 +58,12 @@ struct EditorInspector: View {
                 Button("Privacy Policy") { showingPrivacy = true }.accessibilityIdentifier("editor.privacy")
             }.padding(18)
         }.sheet(isPresented: $showingPrivacy) { PrivacyView() }
+    }
+    private func layerTitle(_ overlay: Overlay) -> String {
+        if overlay.kind == .bubble {
+            return overlay.text.isEmpty ? (BubbleAsset(rawValue: overlay.asset)?.localizedTitle ?? overlay.asset) : overlay.text
+        }
+        return String(format: NSLocalizedString("Sticker %d", comment: "Sticker name"), (Int(overlay.asset) ?? 32) - 31)
     }
     private func add(_ overlay: Overlay) {
         var next = recipe; next.overlays.append(overlay)
@@ -103,10 +109,9 @@ private struct OverlayInspector: View {
             Text("Selected Layer").font(.headline)
             if overlay.kind == .bubble {
                 #if os(visionOS)
-                TextEditor(text: Binding(get: { overlay.text }, set: { text in
+                VisionBubbleTextEditor(value: overlay.text) { text in
                     var next = overlay; next.text = text; update(next, "Edit Bubble Text")
-                })).frame(minHeight: 110, maxHeight: 180)
-                    .accessibilityLabel("Bubble text").accessibilityIdentifier("editor.bubble-text")
+                }.id(overlay.id)
                 #else
                 TextField("Bubble text", text: Binding(get: { overlay.text }, set: { text in
                     var next = overlay; next.text = text; update(next, "Edit Bubble Text")
@@ -138,7 +143,7 @@ private struct OverlayInspector: View {
     }
     private func number(_ label: String, _ path: WritableKeyPath<Overlay, Double>, range: ClosedRange<Double>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack { Text(LocalizedStringKey(label)); Spacer(); Text(overlay[keyPath: path], format: .number.precision(.fractionLength(2))).monospacedDigit() }
+            HStack { Text(LocalizedStringKey(label)); Spacer(); Text(overlay[keyPath: path], format: .number.precision(.fractionLength(2))).monospacedDigit().accessibilityIdentifier("editor.layer.value." + label) }
             Slider(value: Binding(get: { overlay[keyPath: path] }, set: { value in
                 var next = overlay; next[keyPath: path] = value; update(next, label)
             }), in: range).accessibilityLabel(label)
@@ -154,3 +159,23 @@ private struct OverlayInspector: View {
         update(next, "Rotate Layer")
     }
 }
+
+#if os(visionOS)
+/// Keep the text-input value in local state while document revisions and preview
+/// tasks are published. The previous getter read an immutable recipe snapshot on
+/// every input event; exact full-string UI assertions guard against lost input.
+private struct VisionBubbleTextEditor: View {
+    let value: String
+    let commit: (String) -> Void
+    @State private var draft: String
+    init(value: String, commit: @escaping (String) -> Void) {
+        self.value = value; self.commit = commit; _draft = State(initialValue: value)
+    }
+    var body: some View {
+        TextEditor(text: $draft).frame(minHeight: 110, maxHeight: 180)
+            .accessibilityLabel("Bubble text").accessibilityIdentifier("editor.bubble-text")
+            .onChange(of: draft) { text in if text != value { commit(text) } }
+            .onChange(of: value) { text in if text != draft { draft = text } }
+    }
+}
+#endif

@@ -45,10 +45,27 @@ public enum RasterCodec {
     }
 
     public static func image(_ data: Data) throws -> CIImage {
-        _ = try metadata(data)
-        guard let image = CIImage(data: data, options: [.applyOrientationProperty: true]),
-              image.extent.width > 0, image.extent.height > 0 else { throw RenderError.invalidImage }
-        return image.transformed(by: CGAffineTransform(translationX: -image.extent.minX, y: -image.extent.minY))
+        let info = try metadata(data)
+        try Task.checkCancellation()
+        // UIKit's shipped filter path starts from UIImage.cgImage. The actual
+        // 9b phone oracle proved ImageIO CGImage inputs exact for both native and
+        // legacy graphs, while CIImage(data:) changed Sketch/Comic/face pixels.
+        // Keep ImageIO lazy/non-caching, apply file orientation exactly once, and
+        // retain the original bytes rather than normalizing the stored document.
+        let options = [kCGImageSourceShouldCache: false, kCGImageSourceShouldCacheImmediately: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, options),
+              let values = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let cg = CGImageSourceCreateImageAtIndex(source, 0, options) else { throw RenderError.invalidImage }
+        let orientation = values[kCGImagePropertyOrientation] as? Int ?? 1
+        guard (1...8).contains(orientation) else { throw RenderError.invalidImage }
+        try Task.checkCancellation()
+        var image = CIImage(cgImage: cg)
+        if orientation != 1 { image = image.oriented(forExifOrientation: Int32(orientation)) }
+        guard image.extent.width == CGFloat(info.pixelWidth), image.extent.height == CGFloat(info.pixelHeight) else { throw RenderError.invalidImage }
+        if image.extent.minX != 0 || image.extent.minY != 0 {
+            image = image.transformed(by: CGAffineTransform(translationX: -image.extent.minX, y: -image.extent.minY))
+        }
+        return image
     }
 
     public static func bitmap(width: Int, height: Int) throws -> CGContext {

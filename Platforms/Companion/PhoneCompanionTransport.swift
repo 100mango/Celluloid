@@ -9,27 +9,31 @@ final class PhoneCompanionTransport: NSObject, WCSessionDelegate {
     var changed: (() -> Void)?
     private let lock = NSLock()
     private var processing = false
-    private var epoch = CompanionSessionEpoch()
+    private let delivery = CompanionDeliveryGate()
     init(processor: PhoneCompanionProcessor) { self.processor = processor; super.init() }
     func activate() {
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self; WCSession.default.activate()
     }
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
-        lock.lock(); if activationState == .activated && error == nil { epoch.activate() } else { epoch.invalidate() }; lock.unlock()
+        if activationState == .activated && error == nil { delivery.activate() }
+        else { delivery.invalidate { } }
     }
     func sessionDidBecomeInactive(_ session: WCSession) { invalidate(session) }
     func sessionDidDeactivate(_ session: WCSession) { invalidate(session); session.activate() }
     private func invalidate(_ session: WCSession) {
-        lock.lock(); epoch.invalidate(); lock.unlock()
-        for transfer in session.outstandingFileTransfers where transfer.file.metadata?["celluloid.result.v1"] != nil { transfer.cancel() }
-        for transfer in session.outstandingUserInfoTransfers where transfer.userInfo.keys.contains(where: { $0.hasPrefix("celluloid.") }) { transfer.cancel() }
+        let transfers = delivery.invalidate {
+            (session.outstandingFileTransfers.filter { $0.file.metadata?["celluloid.result.v1"] != nil },
+             session.outstandingUserInfoTransfers.filter { $0.userInfo.keys.contains(where: { $0.hasPrefix("celluloid.") }) })
+        }
+        for transfer in transfers.0 { transfer.cancel() }
+        for transfer in transfers.1 { transfer.cancel() }
     }
     private func deliveryTicket(_ session: WCSession) -> UUID? {
-        lock.lock(); defer { lock.unlock() }; return session.activationState == .activated ? epoch.ticket : nil
+        delivery.ticket { session.activationState == .activated }
     }
     private func canDeliver(_ ticket: UUID?) -> Bool {
-        lock.lock(); defer { lock.unlock() }; return WCSession.default.activationState == .activated && epoch.canDeliver(ticket)
+        delivery.enqueue(ticket, isSessionActive: { WCSession.default.activationState == .activated }) { }
     }
     func session(_ session: WCSession, didReceive file: WCSessionFile) {
         guard let metadata = file.metadata?["celluloid.request.v1"] as? Data,
@@ -41,7 +45,9 @@ final class PhoneCompanionTransport: NSObject, WCSessionDelegate {
             try processor.inbox.stage(request, from: file.fileURL)
             lock.lock(); let shouldRender = !processing; if shouldRender { processing = true }; lock.unlock()
             guard shouldRender else { Task { @MainActor in self.changed?() }; return }
-            if canDeliver(ticket) { session.transferUserInfo(["celluloid.processing.v1": metadata]) }
+            delivery.enqueue(ticket, isSessionActive: { session.activationState == .activated }) {
+                session.transferUserInfo(["celluloid.processing.v1": metadata])
+            }
             Task {
                 defer { finishProcessing() }
                 do {
@@ -51,11 +57,11 @@ final class PhoneCompanionTransport: NSObject, WCSessionDelegate {
                         await MainActor.run { self.changed?() }; return
                     }
                     let attempt = try await processor.beginDelivery(record.id)
-                    guard canDeliver(ticket) else {
-                        try await processor.holdDelivery(record.id, attempt: attempt)
-                        await MainActor.run { self.changed?() }; return
+                    let response = try record.response.encoded()
+                    let queued = delivery.enqueue(ticket, isSessionActive: { session.activationState == .activated }) {
+                        session.transferFile(url, metadata: ["celluloid.result.v1": response, "celluloid.session-epoch": ticket.uuidString, "celluloid.delivery-attempt": attempt.uuidString])
                     }
-                    session.transferFile(url, metadata: ["celluloid.result.v1": try record.response.encoded(), "celluloid.session-epoch": ticket.uuidString, "celluloid.delivery-attempt": attempt.uuidString])
+                    if !queued { try await processor.holdDelivery(record.id, attempt: attempt) }
                     await MainActor.run { self.changed?() }
                 } catch {
                     sendFailure(request, ticket: ticket, message: error.localizedDescription)
@@ -79,12 +85,13 @@ final class PhoneCompanionTransport: NSObject, WCSessionDelegate {
     }
     private func finishProcessing() { lock.lock(); processing = false; lock.unlock() }
     private func sendFailure(_ request: CompanionRequest, ticket: UUID?, message: String) {
-        guard canDeliver(ticket) else { return }
         let response = CompanionResult(requestID: request.id, sourceSHA256: request.sourceSHA256, previewSHA256: nil, pixelWidth: nil, pixelHeight: nil, failure: String(message.prefix(200)))
         if let data = try? response.encoded() {
             let message: [String: Any] = ["celluloid.result.v1": data]
-            WCSession.default.transferUserInfo(message)
-            if WCSession.default.isReachable { WCSession.default.sendMessage(message, replyHandler: nil, errorHandler: nil) }
+            delivery.enqueue(ticket, isSessionActive: { WCSession.default.activationState == .activated }) {
+                WCSession.default.transferUserInfo(message)
+                if WCSession.default.isReachable { WCSession.default.sendMessage(message, replyHandler: nil, errorHandler: nil) }
+            }
         }
     }
 }

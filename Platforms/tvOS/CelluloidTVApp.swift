@@ -67,9 +67,15 @@ struct TVEditorView: View {
         }.padding(60)
         .sheet(item: $panel) { value in
             NavigationStack {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 28) {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text(LocalizedStringKey(panelTitle(value))).font(.title2)
+                        Spacer()
                         Button("Done") { panel = nil }.accessibilityIdentifier("tv.panel.done")
+                    }.padding(.horizontal, 48).padding(.top, 30).padding(.bottom, 24).focusSection()
+                    Divider()
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 28) {
                         switch value {
                         case .photos: TVPhotoPicker(library: library) { ids in panel = nil; Task { await editor.importPhotos(ids, library: library) } }
                             .onAppear {
@@ -90,13 +96,25 @@ struct TVEditorView: View {
                                 .font(.body)
                             Text("https://100mango.github.io/app-privacy/").font(.callout)
                         }
-                    }.padding(70)
-                }
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(48)
+                    }.focusSection()
+                }.frame(width: 1280, height: 860)
             }
         }
         .alert("Celluloid", isPresented: Binding(get: { editor.error != nil }, set: { if !$0 { editor.error = nil } })) {
             Button("OK", role: .cancel) { editor.error = nil }
         } message: { Text(editor.error ?? "") }
+    }
+    private func panelTitle(_ value: Panel) -> String {
+        switch value {
+        case .photos: return "Choose Photos"
+        case .filters: return "Filter"
+        case .stickers: return "Choose a Sticker"
+        case .bubbles: return "Choose a Bubble"
+        case .sources: return "Source Photos"
+        case .layers: return "Layers"
+        case .privacy: return "Privacy Policy"
+        }
     }
     private func artwork(stickers: Bool) -> some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 40), count: 5), spacing: 40) {
@@ -137,7 +155,7 @@ private struct TVPhotoPicker: View {
             Text("Up to 200 recent photos. Select one to four in the order you want.").font(.callout)
             Button("Edit Selected Photos (\(selected.count))") { choose(selected) }.disabled(selected.isEmpty).accessibilityIdentifier("tv.edit-selected")
             if library.assets.isEmpty { Text("No pictures are available. Add photos to Photos, then choose Photos again.") }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 36), count: 5), spacing: 36) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 36)], spacing: 36) {
                 ForEach(library.assets, id: \.localIdentifier) { asset in
                     TVPhotoCell(asset: asset, library: library, order: selected.firstIndex(of: asset.localIdentifier).map { $0 + 1 }) {
                         if let index = selected.firstIndex(of: asset.localIdentifier) { selected.remove(at: index) }
@@ -187,8 +205,13 @@ private struct TVLayerControls: View {
                 TVAdjustButtons(title: "Width", identifier: "tv.layer.width", value: layer.width, step: 0.02, range: 0.02...1.5) { value in editor.editLayer { $0.width = value } }
                 TVAdjustButtons(title: "Height", identifier: "tv.layer.height", value: layer.height, step: 0.02, range: 0.02...1.5) { value in editor.editLayer { $0.height = value } }
                 TVAdjustButtons(title: "Rotation", identifier: "tv.layer.rotation", value: layer.rotation, step: 15, range: -180...180) { value in editor.editLayer { $0.rotation = value } }
-                Button("Mirror layer") { editor.editLayer { $0.mirrored.toggle() } }.accessibilityIdentifier("tv.layer.mirror")
-                Button("Delete Layer", role: .destructive) { editor.change { $0.overlays.removeAll { $0.id == layer.id } }; editor.selectedLayer = nil }
+                Button { editor.editLayer { $0.mirrored.toggle() } } label: {
+                    Text("Mirror layer").frame(maxWidth: .infinity, alignment: .leading)
+                }.accessibilityIdentifier("tv.layer.mirror")
+                    .accessibilityValue(layer.mirrored ? NSLocalizedString("On", comment: "Mirror state") : NSLocalizedString("Off", comment: "Mirror state"))
+                Button(role: .destructive) { editor.change { $0.overlays.removeAll { $0.id == layer.id } }; editor.selectedLayer = nil } label: {
+                    Text("Delete Layer").frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }
@@ -228,9 +251,10 @@ private struct TVAdjustButtons: View {
     let change: (Double) -> Void
     var body: some View {
         HStack(spacing: 30) {
-            Text(LocalizedStringKey(title)); Text(value, format: .number.precision(.fractionLength(2)))
-            Button("−") { change(max(range.lowerBound, value - step)) }.accessibilityLabel(String(format: NSLocalizedString("Decrease %@", comment: "TV focus"), NSLocalizedString(title, comment: "Property"))).accessibilityIdentifier(identifier + ".decrease")
-            Button("+") { change(min(range.upperBound, value + step)) }.accessibilityLabel(String(format: NSLocalizedString("Increase %@", comment: "TV focus"), NSLocalizedString(title, comment: "Property"))).accessibilityIdentifier(identifier + ".increase")
-        }
+            Text(LocalizedStringKey(title)).frame(maxWidth: .infinity, alignment: .leading)
+            Text(value, format: .number.precision(.fractionLength(2))).monospacedDigit().frame(width: 110, alignment: .trailing)
+            Button("−") { change(max(range.lowerBound, value - step)) }.frame(width: 90).accessibilityLabel(String(format: NSLocalizedString("Decrease %@", comment: "TV focus"), NSLocalizedString(title, comment: "Property"))).accessibilityIdentifier(identifier + ".decrease")
+            Button("+") { change(min(range.upperBound, value + step)) }.frame(width: 90).accessibilityLabel(String(format: NSLocalizedString("Increase %@", comment: "TV focus"), NSLocalizedString(title, comment: "Property"))).accessibilityIdentifier(identifier + ".increase")
+        }.frame(maxWidth: .infinity).focusSection()
     }
 }

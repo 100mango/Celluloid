@@ -31,6 +31,7 @@ settings_by_name={
     'CelluloidWatchUITests':dict(SDKROOT='watchos',SUPPORTED_PLATFORMS='watchos watchsimulator',WATCHOS_DEPLOYMENT_TARGET='9.0',TARGETED_DEVICE_FAMILY='4',TEST_TARGET_NAME='CelluloidWatch',GENERATE_INFOPLIST_FILE='YES'),
     'CelluloidPhoneCompanion':dict(SDKROOT='iphoneos',SUPPORTED_PLATFORMS='iphoneos iphonesimulator',IPHONEOS_DEPLOYMENT_TARGET='15.0',TARGETED_DEVICE_FAMILY='1,2',SKIP_INSTALL='YES'),
     'CelluloidPhoneCompanionTests':dict(SDKROOT='iphoneos',SUPPORTED_PLATFORMS='iphoneos iphonesimulator',IPHONEOS_DEPLOYMENT_TARGET='15.0',TARGETED_DEVICE_FAMILY='1,2',TEST_HOST='$(BUILT_PRODUCTS_DIR)/CelluloidPhoneCompanion.app/CelluloidPhoneCompanion',BUNDLE_LOADER='$(TEST_HOST)',GENERATE_INFOPLIST_FILE='YES'),
+    'CelluloidPhoneCompanionUITests':dict(SDKROOT='iphoneos',SUPPORTED_PLATFORMS='iphoneos iphonesimulator',IPHONEOS_DEPLOYMENT_TARGET='15.0',TARGETED_DEVICE_FAMILY='1,2',TEST_TARGET_NAME='CelluloidPhoneCompanion',GENERATE_INFOPLIST_FILE='YES'),
     'CelluloidTV':dict(SDKROOT='appletvos',SUPPORTED_PLATFORMS='appletvos appletvsimulator',TVOS_DEPLOYMENT_TARGET='17.0',TARGETED_DEVICE_FAMILY='3'),
     'CelluloidTVTests':dict(SDKROOT='appletvos',SUPPORTED_PLATFORMS='appletvos appletvsimulator',TVOS_DEPLOYMENT_TARGET='17.0',TARGETED_DEVICE_FAMILY='3',TEST_HOST='$(BUILT_PRODUCTS_DIR)/CelluloidTV.app/CelluloidTV',BUNDLE_LOADER='$(TEST_HOST)',GENERATE_INFOPLIST_FILE='YES'),
     'CelluloidTVUITests':dict(SDKROOT='appletvos',SUPPORTED_PLATFORMS='appletvos appletvsimulator',TVOS_DEPLOYMENT_TARGET='17.0',TARGETED_DEVICE_FAMILY='3',TEST_TARGET_NAME='CelluloidTV',GENERATE_INFOPLIST_FILE='YES'),
@@ -54,7 +55,7 @@ for name,platform in settings_by_name.items():
              'CelluloidVisionTests':['VisionTests'],'CelluloidVisionUITests':['VisionUITests'],
              'CelluloidTVTests':['TVTests'],'CelluloidTVUITests':['TVUITests'],
              'CelluloidWatchTests':['WatchTests'],'CelluloidWatchUITests':['WatchUITests'],
-             'CelluloidPhoneCompanionTests':['PhoneTests']}
+             'CelluloidPhoneCompanionTests':['PhoneTests'],'CelluloidPhoneCompanionUITests':['PhoneUITests']}
     paths=[path for folder in folders[name] for path in (ROOT/'Platforms'/folder).glob('*.swift')]
     if name=='CelluloidMacPhotosExtension':paths += [ROOT/'Platforms/macOS/LegacyFilterAdjustment.swift',ROOT/'Platforms/Shared/NativeFileAccess.swift']
     if name=='CelluloidPhoneCompanion':
@@ -118,7 +119,7 @@ for name in ['CelluloidMac','CelluloidVision','CelluloidMacUI','CelluloidTV','Ce
     if name=='CelluloidVision': tests=''.join('<TestableReference skipped="NO">'+ref(n)+'</TestableReference>' for n in ['CelluloidVisionTests','CelluloidVisionUITests'])
     if name=='CelluloidTV': tests=''.join('<TestableReference skipped="NO">'+ref(n)+'</TestableReference>' for n in ['CelluloidTVTests','CelluloidTVUITests'])
     if name=='CelluloidWatch': tests=''.join('<TestableReference skipped="NO">'+ref(n)+'</TestableReference>' for n in ['CelluloidWatchTests','CelluloidWatchUITests'])
-    if name=='CelluloidPhoneCompanion': tests='<TestableReference skipped="NO">'+ref('CelluloidPhoneCompanionTests')+'</TestableReference>'
+    if name=='CelluloidPhoneCompanion': tests=''.join('<TestableReference skipped="NO">'+ref(n)+'</TestableReference>' for n in ['CelluloidPhoneCompanionTests','CelluloidPhoneCompanionUITests'])
     environment='<EnvironmentVariables><EnvironmentVariable key="CELLULOID_EXPECTED_APP_PATH" value="$(BUILT_PRODUCTS_DIR)/CelluloidMac.app" isEnabled="YES"/><EnvironmentVariable key="CELLULOID_EXPECT_SANDBOX" value="$(CELLULOID_EXPECT_SANDBOX)" isEnabled="YES"/></EnvironmentVariables>' if name in ['CelluloidMac','CelluloidMacUI'] else ''
     (folder/(name+'.xcscheme')).write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="2700" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{ref(app_name)}</BuildActionEntry></BuildActionEntries></BuildAction><TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="NO"><MacroExpansion>{ref(app_name)}</MacroExpansion><Testables>{tests}</Testables>{environment}</TestAction><LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB"><BuildableProductRunnable runnableDebuggingMode="0">{ref(app_name)}</BuildableProductRunnable></LaunchAction><ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES"><BuildableProductRunnable runnableDebuggingMode="0">{ref(app_name)}</BuildableProductRunnable></ProfileAction><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>\n''')
