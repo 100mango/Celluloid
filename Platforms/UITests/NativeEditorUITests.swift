@@ -119,15 +119,100 @@ final class NativeEditorUITests: XCTestCase {
         }
         let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "native-mac-saved-reopened-exported"; screenshot.lifetime = .keepAlways; add(screenshot)
     }
+    @MainActor func testRealClipboardPasteUndoRedoAndRejectedReplacement() throws {
+        continueAfterFailure = false
+        let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
+        let app = XCUIApplication(url: URL(fileURLWithPath: path))
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
+        if ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" { app.launchEnvironment["CELLULOID_SANDBOX_DIAGNOSTICS"] = "YES" }
+        try launch(app); defer { app.terminate() }
+        let cancel = app.windows["open-panel"].buttons["CancelButton"]
+        if cancel.waitForExistence(timeout: 3) { cancel.click() }
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(app.descendants(matching: .any)["editor.import-files"].firstMatch.waitForExistence(timeout: 10))
+        try assertSandboxIfRequested(app)
+        let fixture = try makeFixture(); defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
+        let board = NSPasteboard.general
+        board.clearContents(); XCTAssertTrue(board.setData(try Data(contentsOf: fixture), forType: .png))
+        defer { board.clearContents() }
+        app.typeKey("v", modifierFlags: .command)
+        let dimensions = app.staticTexts["1200 × 800 px"]
+        XCTAssertTrue(dimensions.waitForExistence(timeout: 10))
+        app.typeKey("z", modifierFlags: .command)
+        XCTAssertTrue(app.staticTexts["No photos imported"].waitForExistence(timeout: 10))
+        app.typeKey("z", modifierFlags: [.command, .shift])
+        XCTAssertTrue(dimensions.waitForExistence(timeout: 10))
+        board.clearContents(); XCTAssertTrue(board.setData(Data("unreadable synthetic image".utf8), forType: .png))
+        app.typeKey("v", modifierFlags: .command)
+        let ok = app.buttons["OK"].firstMatch
+        XCTAssertTrue(ok.waitForExistence(timeout: 10)); ok.click()
+        XCTAssertTrue(dimensions.exists, "Rejected clipboard replacement must preserve the current original")
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-mac-paste-undo-redo-rejected-replacement"; shot.lifetime = .keepAlways; add(shot)
+        print("NATIVE_MAC_CLIPBOARD_E2E actual Paste/Undo/Redo/unreadable rejection preserves original dimensions")
+    }
+    @MainActor func testRealPhotosLibraryImportAndSystemPicker() throws {
+        guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" else { throw XCTSkip("Real local Photos library flow runs once in the sandbox lane") }
+        continueAfterFailure = false
+        let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
+        let app = XCUIApplication(url: URL(fileURLWithPath: path))
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
+        app.launchEnvironment["CELLULOID_SANDBOX_DIAGNOSTICS"] = "YES"
+        try launch(app); defer { app.terminate() }
+        let cancel = app.windows["open-panel"].buttons["CancelButton"]
+        if cancel.waitForExistence(timeout: 3) { cancel.click() }
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(app.descendants(matching: .any)["editor.import-files"].firstMatch.waitForExistence(timeout: 10))
+        try assertSandboxIfRequested(app)
+        let fixture = try makeFixture(); defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
+        let photos = XCUIApplication(bundleIdentifier: "com.apple.Photos")
+        photos.launch(); defer { photos.terminate() }
+        // Normal disposable local-library setup only. No account, iCloud, TCC
+        // database modification or blanket system permission acceptance.
+        if photos.buttons["Get Started"].waitForExistence(timeout: 5) { photos.buttons["Get Started"].click() }
+        print("NATIVE_MAC_PHOTOS_INITIAL_AX " + photos.debugDescription)
+        let fileMenu = photos.menuBarItems["File"]
+        XCTAssertTrue(fileMenu.waitForExistence(timeout: 15)); fileMenu.click()
+        let importMenu = photos.menuItems["_NS:1096"] // Exact Import… identifier observed in Photos27.
+        XCTAssertTrue(importMenu.exists); XCTAssertTrue(importMenu.isEnabled); importMenu.click()
+        photos.typeKey("g", modifierFlags: [.command, .shift])
+        photos.typeKey("a", modifierFlags: .command); photos.typeText(fixture.path); photos.typeKey(.return, modifierFlags: [])
+        print("NATIVE_MAC_PHOTOS_IMPORT_PANEL_AX " + photos.debugDescription)
+        let open = photos.sheets["open-panel"].buttons["OKButton"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10)); open.click()
+        let review = photos.buttons["Review for Import"]
+        if review.waitForExistence(timeout: 3) { review.click() }
+        let importAll = photos.buttons["Import All New Photos"]
+        XCTAssertTrue(importAll.waitForExistence(timeout: 15), photos.debugDescription); importAll.click()
+        let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: importAll)
+        XCTAssertEqual(XCTWaiter.wait(for: [finished], timeout: 20), .completed)
+        print("NATIVE_MAC_PHOTOS_IMPORTED_AX " + photos.debugDescription)
+        app.activate()
+        app.descendants(matching: .any)["editor.import-photos"].firstMatch.click()
+        print("NATIVE_MAC_PHOTOS_PICKER_AX " + app.debugDescription)
+        let image = app.images["PXGGridLayout-Info"].firstMatch
+        XCTAssertTrue(image.waitForExistence(timeout: 20), app.debugDescription); image.click()
+        let addButton = app.buttons["Add"].firstMatch
+        XCTAssertTrue(addButton.waitForExistence(timeout: 10), app.debugDescription); addButton.click()
+        XCTAssertTrue(app.staticTexts["1200 × 800 px"].waitForExistence(timeout: 20), app.debugDescription)
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-mac-real-system-photos-import"; shot.lifetime = .keepAlways; add(shot)
+        print("NATIVE_MAC_PHOTOS_E2E normal local-library seed and real system picker import completed")
+    }
     @MainActor func testAccessibilityOfNativeEmptyEditor() throws {
         guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] != "YES" else { throw XCTSkip("The audit runs on the ordinary UI lane without the debug sandbox diagnostic overlay") }
         continueAfterFailure = false
         let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
-        let app = XCUIApplication(url: URL(fileURLWithPath: path)); app.launch(); defer { app.terminate() }
+        let report = FileManager.default.temporaryDirectory.appendingPathComponent("Celluloid-AX-" + UUID().uuidString + ".jsonl")
+        defer { try? FileManager.default.removeItem(at: report) }
+        let app = XCUIApplication(url: URL(fileURLWithPath: path)); app.launchEnvironment["CELLULOID_AX_REPORT"] = report.path
+        app.launch(); defer { app.terminate() }
         let cancel = app.windows["open-panel"].buttons["CancelButton"]; if cancel.waitForExistence(timeout: 3) { cancel.click() }
         app.typeKey("n", modifierFlags: .command)
         let control = app.descendants(matching: .any)["editor.import-files"].firstMatch
         XCTAssertTrue(control.waitForExistence(timeout: 10)); XCTAssertTrue(control.isHittable)
+        if let size = try? report.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 64_000,
+           let data = try? String(contentsOf: report, encoding: .utf8) {
+            for line in data.split(separator: "\n") { print("NATIVE_APPKIT_AX " + line) }
+        } else { print("NATIVE_APPKIT_AX report unavailable; issue.element hierarchy remains required") }
         if #available(macOS 27.0, *) { try app.performAccessibilityAudit(for: .all) { issue in
             print("NATIVE_ACCESSIBILITY_ISSUE description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
             return false // Report every real issue; this callback suppresses nothing.

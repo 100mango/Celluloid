@@ -142,3 +142,15 @@
 "Selected %d" = "Selected %d";
 "The starting image is preserved as provided by Photos. Previous layers cannot be restored here." = "The starting image is preserved as provided by Photos. Previous layers cannot be restored here.";
 "Waiting for Photos access…" = "Waiting for Photos access…";
+"Dropped Photo %d" = "Dropped Photo %d";
+"Pasted Photo" = "Pasted Photo";
+"Interrupted or queued requests are kept on this iPhone. Resume locally; to receive a new preview, request processing again from your current Watch." = "Interrupted or queued requests are kept on this iPhone. Resume locally; to receive a new preview, request processing again from your current Watch.";
+"Resume on iPhone" = "Resume on iPhone";
+"Discard Pending Request" = "Discard Pending Request";
+"Discard this pending phone request?" = "Discard this pending phone request?";
+"Only the pending phone copy is removed. The Watch photo and Photos library stay unchanged." = "Only the pending phone copy is removed. The Watch photo and Photos library stay unchanged.";
+"The result uses the image resolution received from your Watch. Saving creates a new Photos image and keeps existing Photos assets unchanged." = "The result uses the image resolution received from your Watch. Saving creates a new Photos image and keeps existing Photos assets unchanged.";
+"Watch preview queued. Receipt is not confirmed." = "Watch preview queued. Receipt is not confirmed.";
+"Watch preview transfer finished. Check your Watch for the received result." = "Watch preview transfer finished. Check your Watch for the received result.";
+"%d interrupted requests are retained and waiting for pending capacity. Resume or discard a pending request to make room." = "%d interrupted requests are retained and waiting for pending capacity. Resume or discard a pending request to make room.";
+"An incomplete request was interrupted before acceptance. Its temporary copy was cleared; request it again from your Watch." = "An incomplete request was interrupted before acceptance. Its temporary copy was cleared; request it again from your Watch.";

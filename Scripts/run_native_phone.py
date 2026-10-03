@@ -11,13 +11,13 @@ if not possible:raise RuntimeError('No available native iOS companion runtime wa
 runtime=sorted(possible,key=lambda r:tuple(int(x) for x in r['version'].split('.')),reverse=True)[0]
 supported={t['identifier'] for t in runtime.get('supportedDeviceTypes',[])}
 compatible=[t for t in types if not supported or t['identifier'] in supported]
-device_type=next(t for t in compatible if t['name'].startswith('iPhone'))
+device_type=next(t for t in compatible if t['name']=='iPhone SE (3rd generation)')
 udid=run(['xcrun','simctl','create','Celluloid Native Phone Companion Validation',device_type['identifier'],runtime['identifier']]).stdout.strip()
 app=temp/'celluloid-phone/Build/Products/Debug-iphonesimulator/CelluloidPhoneCompanion.app'
 evidence={'runtime':runtime,'device_type':device_type,'udid':udid,'head':os.environ['GITHUB_SHA']}
 try:
     run(['xcrun','simctl','boot',udid]);run(['xcrun','simctl','bootstatus',udid,'-b'],timeout=240)
-    run(['xcrun','simctl','install',udid,app],timeout=120)
+    run(['xcrun','simctl','install',udid,app],timeout=300)
     # Forward only newly generated synthetic Mac filter archives, with verified hashes.
     from native_fixture_handoff import load_exact
     fixtures=load_exact(temp/'mac-fixture-evidence',os.environ['GITHUB_SHA'])
@@ -32,7 +32,7 @@ try:
     proc=run(['ps','-p',pid,'-o','pid=,comm='],timeout=20)
     evidence['process']=proc.stdout;assert 'CelluloidPhoneCompanion' in proc.stdout
     run(['xcrun','simctl','io',udid,'screenshot','--type=jpeg',temp/'native-phone-launch.jpg'],timeout=45,check=False)
-    result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidPhoneCompanion','-destination',f'platform=iOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-phone','-resultBundlePath',temp/'CelluloidPhoneCompanion.xcresult','CODE_SIGNING_ALLOWED=NO','test-without-building'],timeout=600,check=False,log_name='phone-runtime-tests.log')
+    result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidPhoneCompanion','-destination',f'platform=iOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-phone','-resultBundlePath',temp/'CelluloidPhoneCompanion.xcresult','CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO','-maximum-concurrent-test-simulator-destinations','1','test-without-building'],timeout=600,check=False,log_name='phone-runtime-tests.log')
     evidence['test_exit_code']=result.returncode
     if result.returncode:raise RuntimeError('Native Phone Companion test invocation failed; inspect actual error/attachments, do not equate build or boot with E2E coverage')
 except Exception as error:

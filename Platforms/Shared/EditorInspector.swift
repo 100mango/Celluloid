@@ -102,9 +102,16 @@ private struct OverlayInspector: View {
             Divider()
             Text("Selected Layer").font(.headline)
             if overlay.kind == .bubble {
+                #if os(visionOS)
+                TextEditor(text: Binding(get: { overlay.text }, set: { text in
+                    var next = overlay; next.text = text; update(next, "Edit Bubble Text")
+                })).frame(minHeight: 110, maxHeight: 180)
+                    .accessibilityLabel("Bubble text").accessibilityIdentifier("editor.bubble-text")
+                #else
                 TextField("Bubble text", text: Binding(get: { overlay.text }, set: { text in
                     var next = overlay; next.text = text; update(next, "Edit Bubble Text")
                 }), axis: .vertical).lineLimit(3...8).accessibilityIdentifier("editor.bubble-text")
+                #endif
                 number("Text size", \.fontSize, range: 0.005...0.2)
             }
             number("Horizontal position", \.centerX, range: -0.5...1.5)

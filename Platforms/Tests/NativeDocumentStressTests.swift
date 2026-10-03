@@ -38,4 +38,16 @@ final class NativeDocumentStressTests: XCTestCase {
         manager.undo(); XCTAssertEqual(value, before)
         manager.redo(); XCTAssertEqual(value, after)
     }
+    @MainActor func testUndoActionsDoNotRetainTheirManagerAfterWindowOwnershipEnds() {
+        weak var releasedManager: UndoManager?
+        autoreleasepool {
+            let manager = UndoManager(); manager.groupsByEvent = false; releasedManager = manager
+            let undo = DocumentUndo(); undo.apply = { _ in }
+            let previous = NativeDocument(); var next = previous; next.recipe.filter = .fade
+            manager.beginUndoGrouping(); undo.change(from: previous, to: next, manager: manager, name: "Filter"); manager.endUndoGrouping()
+            XCTAssertTrue(manager.canUndo)
+        }
+        XCTAssertNil(releasedManager, "An action must not strongly capture the same manager that retains it")
+    }
+
 }

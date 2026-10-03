@@ -71,6 +71,7 @@ for name,platform in settings_by_name.items():
             variant=add('variant:shared-localizations','PBXVariantGroup',children=language_refs,name='Localizable.strings',sourceTree='<group>');children.append(variant)
         localized.append(add('build:localization:'+name,'PBXBuildFile',fileRef=uid('variant:shared-localizations')))
         localized.append(add('build:privacy:'+name,'PBXBuildFile',fileRef=reference('Platforms/Resources/PrivacyPolicy.txt')))
+        localized.append(add('build:license:'+name,'PBXBuildFile',fileRef=reference('LICENSE.txt')))
     if name=='CelluloidPhoneCompanion':
         localized.append(add('build:legacy-public-face-fixture','PBXBuildFile',fileRef=reference('CelluloidKit/CelluloidKit.xcassets/filter/OriginalFilter.imageset/OriginalFilter.png')))
     if name=='CelluloidTV':
@@ -82,6 +83,9 @@ for name,platform in settings_by_name.items():
             refs.append(item)
         variant=add('variant:tv-info-localizations','PBXVariantGroup',children=refs,name='InfoPlist.strings',sourceTree='<group>');children.append(variant)
         localized.append(add('build:tv-info-localizations','PBXBuildFile',fileRef=variant))
+    if name in ['CelluloidWatch','CelluloidVision','CelluloidTV']:
+        icon_platform={'CelluloidWatch':'watchOS','CelluloidVision':'visionOS','CelluloidTV':'tvOS'}[name]
+        localized.append(add('build:native-icon:'+name,'PBXBuildFile',fileRef=reference('Platforms/'+icon_platform+'/Assets.xcassets')))
     if name=='CelluloidMac':
         localized.append(add('build:mac-icon','PBXBuildFile',fileRef=reference('Platforms/macOS/Assets.xcassets')))
     source=[add('build:'+name+p.relative_to(ROOT).as_posix(),'PBXBuildFile',fileRef=reference(p.relative_to(ROOT).as_posix())) for p in sorted(paths)]
@@ -97,6 +101,7 @@ for name,platform in settings_by_name.items():
     settings=dict(PRODUCT_NAME='$(TARGET_NAME)',PRODUCT_BUNDLE_IDENTIFIER='Mango.Celluloid.'+name if tests else 'Mango.Celluloid',SWIFT_VERSION='5.0',SWIFT_STRICT_CONCURRENCY='minimal',CODE_SIGNING_ALLOWED='NO',CODE_SIGNING_REQUIRED='NO',CODE_SIGN_IDENTITY='',CURRENT_PROJECT_VERSION='2',MARKETING_VERSION='2.0',ENABLE_USER_SCRIPT_SANDBOXING='YES',LD_RUNPATH_SEARCH_PATHS=['$(inherited)','@executable_path/Frameworks','@executable_path/../Frameworks'],**platform)
     if name=='CelluloidMacPhotosExtension':settings.update(PRODUCT_BUNDLE_IDENTIFIER='Mango.Celluloid.CelluloidPhotoExtension',ENABLE_APP_SANDBOX='YES',CODE_SIGN_ENTITLEMENTS='Platforms/macOSExtension/CelluloidMacPhotosExtension.entitlements',CODE_SIGN_INJECT_BASE_ENTITLEMENTS='NO')
     if name=='CelluloidWatch':settings['PRODUCT_BUNDLE_IDENTIFIER']='Mango.Celluloid.watchkitapp'
+    if name in ['CelluloidWatch','CelluloidVision','CelluloidTV']:settings['ASSETCATALOG_COMPILER_APPICON_NAME']='AppIcon'
     if name=='CelluloidMac': settings.update(ASSETCATALOG_COMPILER_APPICON_NAME='AppIcon',ENABLE_APP_SANDBOX='YES',CODE_SIGN_ENTITLEMENTS='Platforms/macOS/CelluloidMac.entitlements',CODE_SIGN_INJECT_BASE_ENTITLEMENTS='NO',ENABLE_HARDENED_RUNTIME='NO')
     if not tests: settings['INFOPLIST_FILE']='Platforms/'+('macOSExtension' if name=='CelluloidMacPhotosExtension' else 'watchOS' if name=='CelluloidWatch' else 'PhoneHarness' if name=='CelluloidPhoneCompanion' else 'tvOS' if name=='CelluloidTV' else 'macOS' if name=='CelluloidMac' else 'visionOS')+'/Info.plist'
     phases=[add('phase:'+name+kind,'PBX'+kind+'BuildPhase',buildActionMask='2147483647',files=files,runOnlyForDeploymentPostprocessing='0') for kind,files in [('Sources',source),('Frameworks',links),('Resources',localized)]]

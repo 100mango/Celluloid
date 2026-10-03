@@ -93,7 +93,7 @@ import CelluloidRendering
                 try Task.checkCancellation(); guard token == generation else { return }
                 preview = image; busy = false
             } catch is CancellationError { }
-            catch { if token == generation { error = error.localizedDescription; busy = false } }
+            catch { if token == generation { self.error = error.localizedDescription; busy = false } }
         }
     }
 }

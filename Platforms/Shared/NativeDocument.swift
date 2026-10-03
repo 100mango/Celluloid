@@ -93,7 +93,7 @@ struct NativeDocument: FileDocument, Equatable {
             }
             retainedSources = budget
         }
-        manager?.registerUndo(withTarget: self) { target in
+        manager?.registerUndo(withTarget: self) { [weak manager] target in
             target.change(from: next, to: previous, manager: manager, name: name)
         }
         manager?.setActionName(NSLocalizedString(name, comment: "Undo action"))

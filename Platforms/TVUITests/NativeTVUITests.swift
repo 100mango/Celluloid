@@ -1,18 +1,26 @@
 import XCTest
 
 final class NativeTVUITests: XCTestCase {
+    override func tearDownWithError() throws {
+        // XCTest assertion aborts may bypass a Swift defer. Close the waiting
+        // app explicitly so Photos prompts do not hold test-session teardown.
+        let app = XCUIApplication()
+        if app.state != .notRunning { app.terminate() }
+        try super.tearDownWithError()
+    }
     @MainActor func testFocusPhotoImportFilterAndVerifiedPhotosSave() throws {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch(); defer { app.terminate() }
         try select(app.buttons["tv.choose-photos"], in: app)
         print("TV_PHOTOS_AFTER_SELECT_AX " + app.debugDescription)
-        let alert = app.alerts.firstMatch
-        if alert.waitForExistence(timeout: 4) {
-            print("TV_PHOTOS_PERMISSION_AX " + alert.debugDescription)
-            let allow = alert.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Allow' AND NOT label CONTAINS[c] 'Don’t' AND NOT label CONTAINS[c] 'Do Not'")).firstMatch
-            XCTAssertTrue(allow.exists, "Inspect actual authorization options before adapting")
-            try select(allow, in: app)
+        let system = XCUIApplication(bundleIdentifier: "com.apple.PineBoard")
+        let allow = system.buttons["Allow All Photos"].firstMatch
+        if allow.waitForExistence(timeout: 8) {
+            let namesThisApp = system.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Celluloid'")).firstMatch
+            XCTAssertTrue(namesThisApp.exists, "Only approve this disposable app's synthetic Photos test prompt")
+            print("TV_PHOTOS_PERMISSION_AX " + system.debugDescription)
+            try select(allow, in: system)
         }
         let photo = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.photo.'")).firstMatch
         let found = photo.waitForExistence(timeout: 15)
@@ -39,14 +47,28 @@ final class NativeTVUITests: XCTestCase {
     @MainActor private func select(_ target: XCUIElement, in app: XCUIApplication) throws {
         XCTAssertTrue(target.waitForExistence(timeout: 10))
         let remote = XCUIRemote.shared
-        for _ in 0..<30 {
+        var attempted: [String: Set<String>] = [:]
+        for _ in 0..<60 {
             if target.hasFocus { remote.press(.select); return }
-            let focused = app.descendants(matching: .any).matching(NSPredicate(format: "hasFocus == true")).firstMatch
+            let button = app.buttons.matching(NSPredicate(format: "hasFocus == true")).firstMatch
+            let focused = button.exists ? button : app.descendants(matching: .any).matching(NSPredicate(format: "hasFocus == true")).firstMatch
             if focused.exists {
-                let deltaX = target.frame.midX - focused.frame.midX
-                let deltaY = target.frame.midY - focused.frame.midY
-                if abs(deltaY) > 25 { remote.press(deltaY > 0 ? .down : .up) }
-                else { remote.press(deltaX > 0 ? .right : .left) }
+                let destination = target.frame, current = focused.frame
+                // PineBoard exposes the focused inner button and outer query with
+                // identical title and geometry. Match that exact visible choice.
+                if focused.label == target.label && abs(destination.midX-current.midX) < 1 && abs(destination.midY-current.midY) < 1 && abs(destination.width-current.width) < 1 && abs(destination.height-current.height) < 1 {
+                    remote.press(.select); return
+                }
+                let state = focused.identifier.isEmpty ? focused.label : focused.identifier
+                let vertical = destination.midY >= current.midY ? "down" : "up"
+                let horizontal = destination.midX >= current.midX ? "right" : "left"
+                let preferred = destination.minY >= current.maxY || destination.maxY <= current.minY ? [vertical,horizontal] : [horizontal,vertical]
+                let directions = preferred + [horizontal == "right" ? "left" : "right", vertical == "down" ? "up" : "down"]
+                let tried = attempted[state, default: []]
+                let next = directions.first(where: { !tried.contains($0) }) ?? directions[0]
+                if tried.count == 4 { attempted[state] = [] }
+                attempted[state, default: []].insert(next)
+                switch next { case "up": remote.press(.up); case "down": remote.press(.down); case "left": remote.press(.left); default: remote.press(.right) }
             } else { remote.press(.down) }
         }
         print("TV_FOCUS_FAILURE_AX " + app.debugDescription)

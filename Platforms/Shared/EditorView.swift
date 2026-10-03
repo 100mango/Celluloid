@@ -36,6 +36,9 @@ struct EditorView: View {
         .frame(minWidth: 640, minHeight: 480)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Native photo editor")
+        #if os(macOS)
+        .background(NativeWindowAccessibility().frame(width: 0, height: 0))
+        #endif
         #if os(macOS) && DEBUG
         .overlay(alignment: .bottomLeading) {
             if SandboxDiagnostics.enabled {
@@ -172,7 +175,7 @@ struct EditorView: View {
                     let remaining = 64 * 1024 * 1024 - items.reduce(0, { $0 + $1.1.count })
                     let data = try await NativeProviderImport.read(provider, limit: remaining)
                     try Task.checkCancellation()
-                    items.append((provider.suggestedName ?? "Dropped Photo \(index + 1)", data))
+                    items.append((provider.suggestedName ?? String(format: NSLocalizedString("Dropped Photo %d", comment: "Dropped photo name"), index + 1), data))
                 }
                 finishImport(items, generation: generation)
             } catch { if generation == importGeneration { importing = false; self.error = error.localizedDescription } }
@@ -190,11 +193,11 @@ struct EditorView: View {
         }
         importTask?.cancel()
         let generation = UUID(); importGeneration = generation
-        finishImport([("Pasted Photo", bytes)], generation: generation)
+        finishImport([(NSLocalizedString("Pasted Photo", comment: "Pasted photo name"), bytes)], generation: generation)
     }
     #endif
     private func renderPreview() async {
-        guard !document.recipe.sources.isEmpty else { preview = nil; return }
+        guard !document.recipe.sources.isEmpty else { preview = nil; rendering = false; return }
         rendering = true
         let snapshot = document
         do {

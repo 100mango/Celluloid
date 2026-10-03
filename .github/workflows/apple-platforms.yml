@@ -32,6 +32,9 @@ jobs:
           python3 Scripts/test_native_evidence.py
           python3 Scripts/test_native_fixture_handoff.py
           python3 Scripts/test_native_process.py
+          python3 Scripts/test_native_release.py
+          swift -swift-version 5 Scripts/materialize_native_icons.swift
+          python3 Scripts/verify_native_icon_inputs.py
           python3 Scripts/validate_native_localization.py
       - name: Portable domain tests
         shell: bash
@@ -96,6 +99,13 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacPhotosExtension -configuration Release -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-mac-photos" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$RUNNER_TEMP/mac-photos-build.log"
+      - name: Unsigned native Mac Release packaging
+        if: success() || failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMac -configuration Release -destination 'generic/platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-release" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$RUNNER_TEMP/mac-release.log"
+          python3 Scripts/verify_native_release.py mac "$RUNNER_TEMP/celluloid-release/Build/Products/Release/CelluloidMac.app"
       - name: Export bounded synthetic evidence
         id: bounded_evidence
         if: always()
@@ -116,6 +126,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain --untracked-files=all)"
+          python3 Scripts/verify_native_icon_inputs.py
   native-simulator:
     needs: native-mac
     if: always()
@@ -147,6 +158,9 @@ jobs:
           python3 Scripts/test_native_evidence.py
           python3 Scripts/test_native_fixture_handoff.py
           python3 Scripts/test_native_process.py
+          python3 Scripts/test_native_release.py
+          swift -swift-version 5 Scripts/materialize_native_icons.swift
+          python3 Scripts/verify_native_icon_inputs.py
           python3 Scripts/validate_native_localization.py
       - name: Retrieve exact-head Mac-authored synthetic archive fixtures
         if: matrix.platform == 'phone'
@@ -209,6 +223,21 @@ jobs:
         run: |
           set -euo pipefail
           python3 Scripts/run_native_vision.py 2>&1 | tee "$RUNNER_TEMP/vision-runtime.log"
+      - name: Unsigned native generic-device Release packaging
+        if: (success() || failure()) && matrix.platform != 'phone'
+        shell: bash
+        env:
+          NATIVE_PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          case "$NATIVE_PLATFORM" in
+            tv) SCHEME=CelluloidTV; DESTINATION=tvOS; PRODUCT=Release-appletvos ;;
+            watch) SCHEME=CelluloidWatch; DESTINATION=watchOS; PRODUCT=Release-watchos ;;
+            vision) SCHEME=CelluloidVision; DESTINATION=visionOS; PRODUCT=Release-xros ;;
+            *) exit 2 ;;
+          esac
+          xcodebuild -project CelluloidNative.xcodeproj -scheme "$SCHEME" -configuration Release -destination "generic/platform=$DESTINATION" -derivedDataPath "$RUNNER_TEMP/celluloid-release" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$RUNNER_TEMP/$NATIVE_PLATFORM-release.log"
+          python3 Scripts/verify_native_release.py "$NATIVE_PLATFORM" "$RUNNER_TEMP/celluloid-release/Build/Products/$PRODUCT/$SCHEME.app"
       - name: Export bounded synthetic evidence
         id: bounded_evidence
         if: always()
@@ -229,3 +258,4 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain --untracked-files=all)"
+          python3 Scripts/verify_native_icon_inputs.py

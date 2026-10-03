@@ -2,10 +2,13 @@ import SwiftUI
 import Photos
 import ImageIO
 import CelluloidRendering
+import CelluloidDomain
 
 @MainActor final class PhoneCompanionController: ObservableObject {
     static let shared = PhoneCompanionController()
     @Published var records: [PhoneCompanionRecord] = []
+    @Published var pending: [CompanionRequest] = []
+    @Published var resuming = false
     @Published var error: String?
     let processor: PhoneCompanionProcessor?
     private let transport: PhoneCompanionTransport?
@@ -17,7 +20,22 @@ import CelluloidRendering
         } catch { self.processor = nil; self.transport = nil; self.error = error.localizedDescription }
     }
     func activate() { transport?.activate(); Task { await reload() } }
-    func reload() async { do { records = try await processor?.records() ?? [] } catch { self.error = error.localizedDescription } }
+    func reload() async {
+        do {
+            pending = try await processor?.pendingRequests() ?? []; records = try await processor?.records() ?? []
+            if let notice = processor?.inbox.recoveryNotice { error = notice }
+        }
+        catch { self.error = error.localizedDescription }
+    }
+    func resume(_ request: CompanionRequest) async {
+        guard !resuming else { return }; error = nil; resuming = true; defer { resuming = false }
+        do { _ = try await processor?.resumePending(request.id); await reload() }
+        catch { self.error = error.localizedDescription; await reload() }
+    }
+    func discard(_ request: CompanionRequest) async {
+        do { try await processor?.discardPending(request.id); error = nil; await reload() }
+        catch { self.error = error.localizedDescription }
+    }
     func delete(_ record: PhoneCompanionRecord) async {
         do { try await processor?.remove(record.id); await reload() } catch { self.error = error.localizedDescription }
     }
@@ -50,8 +68,21 @@ import CelluloidRendering
 struct PhoneCompanionResultsView: View {
     @ObservedObject var model: PhoneCompanionController
     @State private var selection: PhoneCompanionRecord?
+    @State private var discard: CompanionRequest?
+    @Environment(\.scenePhase) private var scenePhase
     var body: some View {
         List {
+            if !model.pending.isEmpty {
+                Text("Interrupted or queued requests are kept on this iPhone. Resume locally; to receive a new preview, request processing again from your current Watch.")
+                ForEach(model.pending, id: \.id) { request in
+                    VStack(alignment: .leading) {
+                        Text(request.filter.localizedTitle)
+                        Button("Resume on iPhone") { Task { await model.resume(request) } }.disabled(model.resuming)
+                        Button("Discard Pending Request", role: .destructive) { discard = request }.disabled(model.resuming)
+                    }
+                }
+            }
+            if let error = model.error { Text(error).foregroundStyle(.red) }
             if model.records.isEmpty { Text("No Watch processing results yet. Choose a photo on your Watch and request phone processing.") }
             ForEach(model.records) { record in
                 Button { selection = record } label: {
@@ -60,12 +91,21 @@ struct PhoneCompanionResultsView: View {
                         Text(record.created, style: .date).font(.caption)
                         if record.delivery == .pending || record.delivery == .failed {
                             Text("Ready on iPhone; Watch delivery is pending or failed.").font(.caption)
+                        } else if record.delivery == .queued {
+                            Text("Watch preview queued. Receipt is not confirmed.").font(.caption)
+                        } else {
+                            Text("Watch preview transfer finished. Check your Watch for the received result.").font(.caption)
                         }
                     }
                 }
             }
         }.navigationTitle("Watch Photos").task { await model.reload() }
             .sheet(item: $selection) { record in PhoneCompanionResultView(model: model, record: record) }
+            .onChange(of: scenePhase) { phase in if phase == .active { Task { await model.reload() } } }
+            .confirmationDialog("Discard this pending phone request?", isPresented: Binding(get: { discard != nil }, set: { if !$0 { discard = nil } })) {
+                Button("Discard Pending Request", role: .destructive) { if let request = discard { Task { await model.discard(request) } }; discard = nil }
+                Button("Cancel", role: .cancel) { discard = nil }
+            } message: { Text("Only the pending phone copy is removed. The Watch photo and Photos library stay unchanged.") }
     }
 }
 private struct PhoneCompanionResultView: View {
@@ -81,7 +121,7 @@ private struct PhoneCompanionResultView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     if let image { Image(image, scale: 1, label: Text("Processed photo")).resizable().scaledToFit() }
-                    Text("Full-size result kept on this iPhone. Saving creates a new Photos image and keeps the original unchanged.")
+                    Text("The result uses the image resolution received from your Watch. Saving creates a new Photos image and keeps existing Photos assets unchanged.")
                     Button("Save Picture to Photos") {
                         busy = true
                         Task {

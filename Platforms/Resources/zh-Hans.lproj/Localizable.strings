@@ -142,3 +142,15 @@
 "Selected %d" = "已选 %d";
 "The starting image is preserved as provided by Photos. Previous layers cannot be restored here." = "保留“照片”提供的起始图像。无法在此恢复之前的图层。";
 "Waiting for Photos access…" = "正在等待“照片”访问权限…";
+"Dropped Photo %d" = "拖入的照片 %d";
+"Pasted Photo" = "粘贴的照片";
+"Interrupted or queued requests are kept on this iPhone. Resume locally; to receive a new preview, request processing again from your current Watch." = "中断或排队的请求会保留在此 iPhone 上。可在本机继续处理；如需接收新的预览，请从当前 Apple Watch 再次请求处理。";
+"Resume on iPhone" = "在 iPhone 上继续";
+"Discard Pending Request" = "删除待处理请求";
+"Discard this pending phone request?" = "删除此手机上的待处理请求？";
+"Only the pending phone copy is removed. The Watch photo and Photos library stay unchanged." = "仅删除手机上的待处理副本。手表照片和“照片”图库保持不变。";
+"The result uses the image resolution received from your Watch. Saving creates a new Photos image and keeps existing Photos assets unchanged." = "处理结果采用从手表接收的图像分辨率。保存时会新建一张照片，现有图库照片保持不变。";
+"Watch preview queued. Receipt is not confirmed." = "手表预览已排队，尚未确认接收。";
+"Watch preview transfer finished. Check your Watch for the received result." = "手表预览传输已结束，请在手表上查看是否收到结果。";
+"%d interrupted requests are retained and waiting for pending capacity. Resume or discard a pending request to make room." = "已保留 %d 个中断的请求，正在等待待处理空间。请继续处理或删除一个待处理请求以腾出空间。";
+"An incomplete request was interrupted before acceptance. Its temporary copy was cleared; request it again from your Watch." = "一个未完成的请求在接收前中断，临时副本已清理。请从手表重新请求。";

@@ -1,6 +1,10 @@
 import XCTest
 
 final class NativeVisionUITests: XCTestCase {
+    override func tearDownWithError() throws {
+        let app = XCUIApplication(); if app.state != .notRunning { app.terminate() }
+        try super.tearDownWithError()
+    }
     func testNativeDocumentBrowserLaunchAndNewDocument() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -55,7 +59,9 @@ extension NativeVisionUITests {
         app.buttons["editor.add-bubble"].tap()
         let bubble = app.buttons["asset.say1"]; XCTAssertTrue(bubble.waitForExistence(timeout: 10)); bubble.tap()
         let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
-        XCTAssertTrue(text.waitForExistence(timeout: 10)); text.tap(); text.typeText("Vision 世界")
+        XCTAssertTrue(text.waitForExistence(timeout: 10)); text.tap()
+        print("VISION_TEXT_FOCUS_AX " + app.debugDescription)
+        text.typeText("Vision 世界")
         capture(app, name: "vision-imported-editable-bubble")
         app.buttons["editor.export"].tap()
         let png = app.buttons["PNG…"]; XCTAssertTrue(png.waitForExistence(timeout: 10)); png.tap()

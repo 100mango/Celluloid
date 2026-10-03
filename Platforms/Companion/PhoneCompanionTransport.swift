@@ -35,38 +35,43 @@ final class PhoneCompanionTransport: NSObject, WCSessionDelegate {
         guard let metadata = file.metadata?["celluloid.request.v1"] as? Data,
               let request = try? CompanionRequest.decode(metadata) else { return }
         let ticket = deliveryTicket(session)
-        lock.lock()
-        guard !processing else { lock.unlock(); sendFailure(request, ticket: ticket, message: NSLocalizedString("Another image is being processed. Request this image again when it finishes.", comment: "Companion")); return }
-        processing = true; lock.unlock()
         do {
-            let info = try file.fileURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
-            guard info.isRegularFile == true, info.isSymbolicLink != true, info.fileSize == request.sourceBytes else { throw RecipeError.invalidDocument }
-            // Own bounded bytes before WatchConnectivity removes its delivery URL.
-            let bytes = try Data(contentsOf: file.fileURL)
-            guard bytes.count == request.sourceBytes else { throw RecipeError.invalidDocument }
+            // Commit both metadata and owned bytes before the WC callback returns.
+            // A busy renderer leaves an explicit durable pending request for the phone UI.
+            try processor.inbox.stage(request, from: file.fileURL)
+            lock.lock(); let shouldRender = !processing; if shouldRender { processing = true }; lock.unlock()
+            guard shouldRender else { Task { @MainActor in self.changed?() }; return }
             if canDeliver(ticket) { session.transferUserInfo(["celluloid.processing.v1": metadata]) }
             Task {
                 defer { finishProcessing() }
                 do {
-                    let (record, url) = try await processor.process(request, source: bytes)
+                    let (record, url) = try await processor.resumePending(request.id)
                     guard canDeliver(ticket), let ticket else {
-                        try await processor.markDelivery(record.id, .pending)
+                        try await processor.holdDelivery(record.id)
                         await MainActor.run { self.changed?() }; return
                     }
-                    session.transferFile(url, metadata: ["celluloid.result.v1": try record.response.encoded(), "celluloid.session-epoch": ticket.uuidString])
-                    try await processor.markDelivery(record.id, .queued)
+                    let attempt = try await processor.beginDelivery(record.id)
+                    guard canDeliver(ticket) else {
+                        try await processor.holdDelivery(record.id, attempt: attempt)
+                        await MainActor.run { self.changed?() }; return
+                    }
+                    session.transferFile(url, metadata: ["celluloid.result.v1": try record.response.encoded(), "celluloid.session-epoch": ticket.uuidString, "celluloid.delivery-attempt": attempt.uuidString])
                     await MainActor.run { self.changed?() }
-                } catch { sendFailure(request, ticket: ticket, message: error.localizedDescription) }
+                } catch {
+                    sendFailure(request, ticket: ticket, message: error.localizedDescription)
+                    await MainActor.run { self.changed?() }
+                }
             }
-        } catch { finishProcessing(); sendFailure(request, ticket: ticket, message: error.localizedDescription) }
+        } catch { sendFailure(request, ticket: ticket, message: error.localizedDescription) }
     }
     func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {
         guard let metadata = fileTransfer.file.metadata?["celluloid.result.v1"] as? Data,
-              let result = try? CompanionResult.decode(metadata) else { return }
+              let result = try? CompanionResult.decode(metadata),
+              let attempt = (fileTransfer.file.metadata?["celluloid.delivery-attempt"] as? String).flatMap(UUID.init(uuidString:)) else { return }
         let ticket = (fileTransfer.file.metadata?["celluloid.session-epoch"] as? String).flatMap(UUID.init(uuidString:))
         Task {
-            try? await processor.markDelivery(result.requestID, error == nil ? .transferFinished : .failed)
-            if error != nil, canDeliver(ticket), let record = try? await processor.records().first(where: { $0.id == result.requestID }) {
+            try? await processor.finishDelivery(result.requestID, attempt: attempt, failed: error != nil)
+            if error != nil, canDeliver(ticket), let record = try? await processor.records().first(where: { $0.id == result.requestID }), record.deliveryAttempt == attempt, record.delivery == .failed {
                 sendFailure(record.request, ticket: ticket, message: NSLocalizedString("The image is ready on your iPhone, but its Watch preview could not be delivered. Open the phone app to view or save it.", comment: "Companion delivery"))
             }
             await MainActor.run { self.changed?() }
