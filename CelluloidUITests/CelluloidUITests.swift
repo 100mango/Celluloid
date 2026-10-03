@@ -3,6 +3,19 @@ import UIKit
 
 final class CelluloidUITests: XCTestCase {
     private var app: XCUIApplication!
+    private var recordedFailure = false
+    override func record(_ issue: XCTIssue) {
+        // Capture the failing orientation before tearDown rotates the simulator.
+        // Do not query hittability again here: that can itself record a new issue.
+        if !recordedFailure, app != nil {
+            recordedFailure = true
+            attachScreenshot("celluloid-failure-" + name)
+            print("UI_FAILURE_STATE name=\(name) orientation=\(XCUIDevice.shared.orientation.rawValue) state=\(app.state.rawValue)")
+            print("UI_FAILURE_APP_BEGIN " + String(app.debugDescription.prefix(24000)))
+            print("UI_FAILURE_APP_END")
+        }
+        super.record(issue)
+    }
     override func setUp() { super.setUp(); continueAfterFailure = false; app = XCUIApplication() }
     override func tearDown() { XCUIDevice.shared.orientation = .portrait; app.terminate(); super.tearDown() }
     private func launch(_ arguments: [String] = [], language: String = "en") {
@@ -169,15 +182,22 @@ final class CelluloidUITests: XCTestCase {
               UIScreen.main.traitCollection.userInterfaceStyle == .dark,
               let image = UIImage(data: app.screenshot().pngRepresentation),
               let jpeg = image.jpegData(compressionQuality: 0.55), jpeg.count <= 500_000 else { return }
-        let base64 = jpeg.base64EncodedString()
-        print("SCREENSHOT_BEGIN:\(name)")
-        var index = base64.startIndex
-        while index < base64.endIndex {
-            let end = base64.index(index, offsetBy: 4000, limitedBy: base64.endIndex) ?? base64.endIndex
-            print(String(base64[index..<end]))
-            index = end
+        addJPEG(jpeg, name: "celluloid-evidence-" + name)
+    }
+
+    private func attachScreenshot(_ name: String) {
+        guard let jpeg = XCUIScreen.main.screenshot().image.jpegData(compressionQuality: 0.55),
+              jpeg.count <= 500_000 else {
+            print("UI_FAILURE_SCREENSHOT_EXCEEDS_BOUND")
+            return
         }
-        print("SCREENSHOT_END:\(name)")
+        addJPEG(jpeg, name: name)
+    }
+    private func addJPEG(_ jpeg: Data, name: String) {
+        let attachment = XCTAttachment(data: jpeg, uniformTypeIdentifier: "public.jpeg")
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
 }

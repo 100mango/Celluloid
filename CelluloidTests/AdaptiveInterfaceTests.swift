@@ -72,6 +72,21 @@ final class AdaptiveInterfaceTests: XCTestCase {
         XCTAssertEqual(backdrop.scrollView.frame, CGRect(x: 0, y: 32, width: 667, height: 279))
     }
 
+    func testBubbleFontFittingPreservesSystemFontFamily() {
+        var model = BubbleModel.bubbles[0]
+        model.content = "Hello 世界"
+        let label = BubbleLabel(model: model)
+        let family = label.font.familyName
+        let holder = UIImageView(image: model.bubbleImage)
+        holder.frame = CGRect(x: 0, y: 0, width: 160, height: 120)
+        holder.contentMode = .scaleAspectFit
+        holder.addSubview(label)
+        label.adjustFrame()
+        XCTAssertEqual(label.font.familyName, family)
+        XCTAssertGreaterThan(label.font.pointSize, 0)
+        XCTAssertLessThanOrEqual(label.font.pointSize, 16)
+    }
+
     private func contrast(_ foreground: UIColor, _ background: UIColor, style: UIUserInterfaceStyle) -> CGFloat {
         func luminance(_ color: UIColor) -> CGFloat {
             var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0

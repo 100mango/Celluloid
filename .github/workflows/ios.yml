@@ -55,7 +55,7 @@ jobs:
           xcrun simctl list devicetypes
           python3 Scripts/select_test_devices.py > /tmp/test-devices.txt
           cat /tmp/test-devices.txt
-          first_id=$(head -1 /tmp/test-devices.txt | cut -d' ' -f1)
+          small_id=$(grep 'iPhone SE (3rd generation)$' /tmp/test-devices.txt | cut -d' ' -f1)
           while read -r id name; do
             echo "Testing $name ($id)"
             echo "$id" > /tmp/current-celluloid-simulator
@@ -66,7 +66,7 @@ jobs:
             xcrun simctl install "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app
             xcrun simctl privacy "$id" grant photos Mango.Celluloid
             xcrun simctl ui "$id" appearance light
-            if [[ "$id" = "$first_id" ]]; then
+            if [[ "$id" = "$small_id" ]]; then
               for state in granted revoked limited; do
                 case "$state" in
                   granted) xcrun simctl privacy "$id" grant photos Mango.Celluloid; method=testRealGrantedAccessCanSelectFixture ;;
@@ -81,7 +81,7 @@ jobs:
             fi
             xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never -skip-testing:CelluloidUITests/CelluloidSystemPermissionTests test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-$id.log"
             xcrun xcresulttool get test-results summary --path "TestResults-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY"
-            if [[ "$id" = "$first_id" || "$name" = 'iPad Pro 13-inch (M5)' ]]; then
+            if [[ "$id" = "$small_id" || "$name" = 'iPad Pro 13-inch (M5)' ]]; then
               xcrun simctl ui "$id" appearance dark
               echo "DARK_APPEARANCE_REGRESSION $name"
               xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-dark-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests/testSeededPhotoEditingSaveAndReopen -only-testing:CelluloidUITests/CelluloidUITests/testTwoPhotoCollageZoomRotateAndSave test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-dark-$id.log"
@@ -89,11 +89,14 @@ jobs:
             fi
             xcrun simctl shutdown "$id"
           done < /tmp/test-devices.txt
+      - name: Export bounded synthetic UI evidence
+        if: always()
+        timeout-minutes: 3
+        run: python3 -u Scripts/export_permission_screenshot.py
       - name: Collect targeted failure diagnostics
         if: failure()
         timeout-minutes: 3
         run: |
-          python3 Scripts/export_permission_screenshot.py || echo 'NAMED_PERMISSION_SCREENSHOT_EXPORT_FAILED'
           python3 Scripts/collect_simulator_diagnostics.py
       - name: Build unsigned distribution archive including Photos extension
         run: |
