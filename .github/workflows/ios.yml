@@ -64,14 +64,14 @@ jobs:
         python3 Scripts/generate_project.py
         python3 Scripts/validate_release.py
         git diff --exit-code -- Celluloid.xcodeproj Celluloid.xcworkspace
+    - name: Verify every device selection branch on runner Bash
+      run: /bin/bash Scripts/test_matrix_device_selection.sh
     - name: Select build and boot isolated test simulator
       id: prepare
       run: |
         set -euo pipefail
         python3 Scripts/create_fixture.py
-        selection=()
-        if [[ "$DEVICE_NAME" != 'iPhone SE (3rd generation)' ]]; then selection+=(--pre-provisioned); fi
-        python3 Scripts/select_test_devices.py "$DEVICE_NAME" "${selection[@]}" > /tmp/test-devices.txt
+        /bin/bash Scripts/select_matrix_device.sh "$DEVICE_NAME" > /tmp/test-devices.txt
         cat /tmp/test-devices.txt
         test "$(wc -l < /tmp/test-devices.txt | tr -d ' ')" = 1
         id=$(cut -d' ' -f1 /tmp/test-devices.txt)

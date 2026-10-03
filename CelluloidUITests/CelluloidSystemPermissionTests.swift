@@ -17,6 +17,7 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         app.buttons["edit-photo"].tap()
     }
     func testRealGrantedAccessCanSelectFixture() {
+        app.resetAuthorizationStatus(for: .photos)
         let monitor = installExpectedFullPhotosAccessMonitor()
         defer { removeUIInterruptionMonitor(monitor) }
         openPicker()

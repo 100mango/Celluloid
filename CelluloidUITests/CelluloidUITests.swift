@@ -22,9 +22,12 @@ final class CelluloidUITests: XCTestCase {
         if let monitor = photosAccessMonitor { removeUIInterruptionMonitor(monitor); photosAccessMonitor = nil }
         XCUIDevice.shared.orientation = .portrait; app.terminate(); super.tearDown()
     }
-    private func launch(_ arguments: [String] = [], language: String = "en", diagnostics: Bool = true) {
-        if arguments.isEmpty, photosAccessMonitor == nil {
-            photosAccessMonitor = installExpectedFullPhotosAccessMonitor()
+    private func launch(_ arguments: [String] = [], language: String = "en", diagnostics: Bool = true, photosAccess: Bool = false) {
+        if photosAccess {
+            // A preceding injected denial/limited case must not determine this
+            // real granted flow's system state. No unrelated permission is reset.
+            app.resetAuthorizationStatus(for: .photos)
+            if photosAccessMonitor == nil { photosAccessMonitor = installExpectedFullPhotosAccessMonitor() }
         }
         app.launchArguments = arguments + (diagnostics ? ["--ui-diagnostics"] : []) + ["-AppleLanguages", "(\(language))", "-AppleLocale", language == "zh-Hans" ? "zh_CN" : "en_US"]
         app.launch()
@@ -116,7 +119,7 @@ final class CelluloidUITests: XCTestCase {
     }
 
     func testAccessibilityGrantedPickerEditorAndSaved() {
-        launch(diagnostics: false)
+        launch(diagnostics: false, photosAccess: true)
         app.buttons["edit-photo"].tap()
         let photo = app.descendants(matching: .any)["photo-0"]
         XCTAssertTrue(photo.waitForExistence(timeout: 15))
@@ -275,7 +278,7 @@ final class CelluloidUITests: XCTestCase {
         XCTAssertTrue(app.buttons["make-collage"].waitForExistence(timeout: 5))
     }
     func testSeededPhotoEditingSaveAndReopen() {
-        launch()
+        launch(photosAccess: true)
         app.buttons["edit-photo"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["photo-0"].waitForExistence(timeout: 15), "CI must seed Photos and grant simulator Photos permission")
         assertFullPhotoAccessPicker(app)
@@ -343,7 +346,7 @@ final class CelluloidUITests: XCTestCase {
         XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 5))
     }
     func testTwoPhotoCollageZoomRotateAndSave() {
-        launch()
+        launch(photosAccess: true)
         app.buttons["make-collage"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["photo-1"].waitForExistence(timeout: 15))
         assertFullPhotoAccessPicker(app)
