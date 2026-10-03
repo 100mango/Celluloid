@@ -633,9 +633,62 @@ final class CelluloidCaptureTests: XCTestCase {
         }
         func tapReady(_ control: XCUIElement) -> Bool {
             let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true AND hittable == true"), object: control)
-            guard XCTWaiter.wait(for: [ready], timeout: 10) == .completed else { return false }
+            guard XCTWaiter.wait(for: [ready], timeout: 10) == .completed else {
+                if control.exists {
+                    print("PHOTOS_HOST_CONTROL_NOT_READY label=\(control.label) exists=true enabled=\(control.isEnabled) hittable=\(control.isHittable) frame=\(control.frame)")
+                } else { print("PHOTOS_HOST_CONTROL_NOT_READY exists=false") }
+                return false
+            }
             control.tap()
             return true
+        }
+        func visiblePhotoMatches(_ expected: UIImage, label: String, phase: String) throws -> Bool {
+            let source = try XCTUnwrap(expected.cgImage)
+            // Inspect the observed one-up image, never a toolbar thumbnail. The
+            // 3x3 interior samples avoid borders and system controls. The small
+            // display tolerance accommodates scaling/color conversion, not a
+            // different filter. Full-resource pixel oracles remain unchanged.
+            let deadline = Date().addingTimeInterval(10)
+            var attempt = 0
+            repeat {
+                attempt += 1
+                let images = photos.images.matching(NSPredicate(format: "label == %@", label)).allElementsBoundByIndex
+                let candidates = images.filter {
+                    let frame = $0.frame
+                    return $0.exists && frame.width > photos.frame.width * 0.7 &&
+                        frame.height > 100 && photos.frame.contains(frame)
+                }
+                if candidates.count == 1 {
+                    let frame = candidates[0].frame
+                    let screen = XCUIScreen.main.screenshot().image
+                    let raster = try XCTUnwrap(screen.cgImage)
+                    let scaleX = CGFloat(raster.width) / photos.frame.width
+                    let scaleY = CGFloat(raster.height) / photos.frame.height
+                    let sourceAspect = CGFloat(source.width) / CGFloat(source.height)
+                    guard abs(frame.width / frame.height - sourceAspect) < 0.01 else {
+                        throw captureProbeError("Observed one-up image is not the unzoomed synthetic raster")
+                    }
+                    var samples: [[String: Any]] = []
+                    var maximum = 0
+                    for y in [CGFloat(0.25), 0.5, 0.75] {
+                        for x in [CGFloat(0.25), 0.5, 0.75] {
+                            let target = try capturePixel(expected, x: Int(CGFloat(source.width) * x), y: Int(CGFloat(source.height) * y))
+                            let actual = try capturePixel(screen, x: Int((frame.minX + frame.width * x) * scaleX), y: Int((frame.minY + frame.height * y) * scaleY))
+                            let delta = zip(target, actual).map { abs($0 - $1) }.max() ?? 255
+                            maximum = max(maximum, delta)
+                            samples.append(["x": x, "y": y, "expected_rgb": target, "screen_rgb": actual, "maximum_delta": delta])
+                        }
+                    }
+                    try captureJSON("PHOTOS_HOST_VISIBLE_PIXEL_PROBE", ["phase": phase, "attempt": attempt,
+                        "frame": [frame.minX, frame.minY, frame.width, frame.height], "samples": samples,
+                        "maximum_delta": maximum, "display_tolerance": 12])
+                    if maximum <= 12 { return true }
+                } else {
+                    print("PHOTOS_HOST_VISIBLE_IMAGE_NOT_READY phase=\(phase) attempt=\(attempt) candidateCount=\(candidates.count)")
+                }
+                Thread.sleep(forTimeInterval: 1)
+            } while Date() < deadline
+            return false
         }
         func openExtensionsPicker(_ stage: String) -> Bool {
             guard tapReady(photos.buttons["edit.moreButton"].firstMatch) else {
@@ -728,7 +781,8 @@ final class CelluloidCaptureTests: XCTestCase {
             return
         }
         print("PHOTOS_HOST_READY welcomeTitleExists=false continueExists=false syntheticFixtureHittable=true")
-        print("PHOTOS_HOST_SELECTED_SEEDED_FIXTURE: " + fixture.label)
+        let fixtureLabel = fixture.label
+        print("PHOTOS_HOST_SELECTED_SEEDED_FIXTURE: " + fixtureLabel)
         fixture.tap()
         Thread.sleep(forTimeInterval: 2)
         hierarchy("selected-photo")
@@ -783,7 +837,21 @@ final class CelluloidCaptureTests: XCTestCase {
             XCTFail("Photos did not finish saving the Sepia result"); return
         }
         hierarchy("saved")
-        try captureHostIntegrity(hostBaseline, phase: "after-host-save")
+        let persistedSepia = try captureHostIntegrity(hostBaseline, phase: "after-host-save")
+        var sepiaDisplayVerified = try visiblePhotoMatches(persistedSepia, label: fixtureLabel, phase: "immediately-after-save")
+        if !sepiaDisplayVerified {
+            hierarchy("saved-preview-not-refreshed")
+            // One normal close/reopen distinguishes an in-place Photos preview
+            // refresh delay from a persisted rendering failure. Do not resave,
+            // reimport or change the current resource to manufacture a pass.
+            guard tapReady(photos.buttons["BackButton"].firstMatch), tapReady(lastGridImage) else {
+                hierarchy("saved-preview-reopen-unavailable")
+                XCTFail("Could not reopen the same newest synthetic photo for preview diagnosis"); return
+            }
+            sepiaDisplayVerified = try visiblePhotoMatches(persistedSepia, label: fixtureLabel, phase: "after-library-reopen")
+            try captureHostIntegrity(hostBaseline, phase: "after-preview-reopen")
+        }
+        print("PHOTOS_HOST_SEPIA_DISPLAY_VERIFIED \(sepiaDisplayVerified)")
         attachHostScreenshot("celluloid-host-saved-sepia")
         guard tapLabel(["编辑", "Edit"]) else {
             print("PHOTOS_HOST_RESULT:PARTIAL extension rendering attempted; save/reopen not established")
@@ -839,7 +907,8 @@ final class CelluloidCaptureTests: XCTestCase {
         }
         try captureHostRestoredOriginal(hostBaseline)
         print("PHOTOS_HOST_EDITOR_RESTORATION_VERIFIED hosted Sepia reopen then Original/save matches original pixels within explicit JPEG tolerance")
-        guard tapReady(photos.buttons["编辑"].firstMatch), tapLabel(["复原", "Revert"]) else {
+        guard tapReady(photos.buttons["编辑"].firstMatch),
+              tapReady(photos.navigationBars["PUPhotoEditView"].buttons["复原"].firstMatch) else {
             hierarchy("system-revert-unavailable")
             XCTFail("Photos system Revert command is a separate required host gate"); return
         }
@@ -869,7 +938,13 @@ final class CelluloidCaptureTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 15), .completed)
         try captureHostSystemRevertedOriginal(hostBaseline)
         XCTAssertTrue(photos.buttons["编辑"].firstMatch.waitForExistence(timeout: 15))
+        let revertedDisplayVerified = try visiblePhotoMatches(hostBaseline.originalImage, label: fixtureLabel, phase: "after-system-revert")
         attachHostScreenshot("celluloid-host-system-reverted")
+        XCTAssertTrue(sepiaDisplayVerified, "Actual Photos one-up view must display the saved Sepia resource")
+        XCTAssertTrue(revertedDisplayVerified, "Actual Photos one-up view must display the system-reverted original")
+        guard sepiaDisplayVerified && revertedDisplayVerified else {
+            print("PHOTOS_HOST_RESULT:DATA_ROUNDTRIP_PASSED_DISPLAY_UNVERIFIED"); return
+        }
         print("PHOTOS_HOST_RESULT:VERIFIED_EDITOR_AND_SYSTEM_REVERT editable Original restoration then actual Photos Revert clears adjustments and restores exact original pixels")
         photos.terminate()
     }
@@ -979,7 +1054,8 @@ private func captureFixtureIdentities(_ phase: String) throws -> [CaptureFixture
     }
     return records
 }
-private func captureHostIntegrity(_ baseline: CaptureFixtureIdentity, phase: String) throws {
+@discardableResult
+private func captureHostIntegrity(_ baseline: CaptureFixtureIdentity, phase: String) throws -> UIImage {
     let asset = try XCTUnwrap(PHAsset.fetchAssets(withLocalIdentifiers: [baseline.assetIdentifier], options: nil).firstObject)
     let options = PHContentEditingInputRequestOptions()
     options.isNetworkAccessAllowed = false
@@ -1020,6 +1096,7 @@ private func captureHostIntegrity(_ baseline: CaptureFixtureIdentity, phase: Str
         "adjustment_sha256": captureDigest(adjustment.data), "original_resource_sha256": after.originalFileSHA,
         "before_current_pixel_sha256": baseline.currentPixelSHA, "after_current_pixel_sha256": after.currentPixelSHA,
         "sepia_sample_rgb": sample])
+    return after.currentImage
 }
 
 
