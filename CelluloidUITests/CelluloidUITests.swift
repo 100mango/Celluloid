@@ -31,8 +31,9 @@ final class CelluloidUITests: XCTestCase {
         waitForStableLayout(identifiers, landscape: orientation.isLandscape)
     }
 
-    private func waitForStableLayout(_ identifiers: [String], landscape: Bool? = nil,
+    private func waitForStableLayout(_ identifiers: [String], landscape: Bool? = nil, root: XCUIElement? = nil,
                                      file: StaticString = #filePath, line: UInt = #line) {
+        let snapshotRoot: XCUIElement = root ?? app
         var prior: [CGRect] = []
         var stableSince = ProcessInfo.processInfo.systemUptime
         var lastSnapshotDetails = "No snapshot captured"
@@ -40,7 +41,7 @@ final class CelluloidUITests: XCTestCase {
             // One public snapshot is a coherent, local tree. Querying exists/frame
             // separately for every element made two polls consume the whole bound
             // on SE3, even though the actual interface had already settled.
-            guard let snapshot = try? self.app.snapshot() else { return false }
+            guard let snapshot = try? snapshotRoot.snapshot() else { return false }
             func descendants(_ node: XCUIElementSnapshot) -> [XCUIElementSnapshot] {
                 [node] + node.children.flatMap { descendants($0) }
             }
@@ -140,7 +141,14 @@ final class CelluloidUITests: XCTestCase {
         XCTAssertTrue(text.waitForExistence(timeout: 5))
         XCTAssertEqual(text.value as? String, "Accessible caption")
         XCTAssertEqual(text.label, "Bubble Text")
-        waitForStableLayout(["bubble-text", "bubble-text-done"])
+        // The app-level snapshot omits this modal on iOS27 even though direct
+        // queries resolve it. Snapshot the observed container holding both controls.
+        let modal = app.otherElements.containing(.textView, identifier: "bubble-text")
+            .containing(.button, identifier: "bubble-text-done").firstMatch
+        XCTAssertTrue(modal.waitForExistence(timeout: 5))
+        waitForStableLayout(["bubble-text", "bubble-text-done"], root: modal)
+        XCTAssertTrue(text.isHittable && app.buttons["bubble-text-done"].isHittable)
+        XCTAssertTrue(app.frame.contains(text.frame))
         audit("bubble-text-editor")
         app.buttons["bubble-text-done"].tap()
         waitForStableLayout(["editor-done", "tool-filter"])

@@ -177,7 +177,7 @@ private final class ExportLoadProbe: @unchecked Sendable {
             "baseline_footprint_bytes": baseline, "sampled_peak_footprint_bytes": max(peak, final),
             "final_footprint_bytes": final, "samples": samples, "main_heartbeats": heartbeats,
             "max_main_queue_latency_seconds": maxMainLatency, "sampling_interval_ms": 25,
-            "scope": "simulator_app_export_not_physical_extension_budget"]
+            "scope": "simulator_fallback_sourceImage_not_URL_backed_Photos_extension"]
         return String(data: try! JSONSerialization.data(withJSONObject: metrics, options: [.sortedKeys]), encoding: .utf8)!
     }
 }
