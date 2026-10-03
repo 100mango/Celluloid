@@ -110,8 +110,9 @@ final class NativeEditorUITests: XCTestCase {
     }
     @MainActor private func goTo(_ url: URL, in app: XCUIApplication) throws {
         app.typeKey("g", modifierFlags: [.command, .shift])
-        let field = app.windows.textFields.firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 5)); field.typeText(url.path)
+        // The Go To Folder control can be a combo box; the Save As text field
+        // remains in the hierarchy behind it. Send text to the app’s focused control.
+        app.typeKey("a", modifierFlags: .command); app.typeText(url.path)
         app.typeKey(.return, modifierFlags: [])
     }
     @MainActor private func save(in folder: URL, app: XCUIApplication) throws {
