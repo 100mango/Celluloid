@@ -109,8 +109,7 @@ public enum NativeResources {
 
 /// No global mutable CIFilter. A render owns its own context and filter graph.
 public final class RecipeRenderer {
-    private let context = CIContext(options: [.workingColorSpace: RasterCodec.colorSpace,
-                                              .outputColorSpace: RasterCodec.colorSpace, .cacheIntermediates: false])
+    private let context = CIContext(options: [.outputColorSpace: RasterCodec.colorSpace, .cacheIntermediates: false])
     private let testFaceRegions: ((CIImage) throws -> [CGRect])?
     public init() { testFaceRegions = nil }
     /// Controlled geometry seam for mask-composition tests; production uses CIDetector.

@@ -30,7 +30,7 @@ final class NativeEditorUITests: XCTestCase {
         pathField.typeText(fixture.path); app.typeKey(.return, modifierFlags: [])
         let open = app.windows.buttons["Open"].firstMatch
         XCTAssertTrue(open.waitForExistence(timeout: 5)); open.click()
-        XCTAssertTrue(app.staticTexts["120 × 80 px"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["1200 × 800 px"].waitForExistence(timeout: 10))
         let bubble = app.descendants(matching: .any)["editor.add-bubble"].firstMatch
         XCTAssertTrue(bubble.isHittable); bubble.click()
         app.menuItems["say1"].click()
@@ -55,9 +55,9 @@ final class NativeEditorUITests: XCTestCase {
     private func makeFixture() throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("CelluloidUI-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let context = try RasterCodec.bitmap(width: 120, height: 80)
+        let context = try RasterCodec.bitmap(width: 1200, height: 800)
         context.setFillColor(try XCTUnwrap(CGColor(colorSpace: RasterCodec.colorSpace, components: [0.1, 0.6, 0.9, 1])))
-        context.fill(CGRect(x: 0, y: 0, width: 120, height: 80))
+        context.fill(CGRect(x: 0, y: 0, width: 1200, height: 800))
         let url = folder.appendingPathComponent("Synthetic.png")
         try RasterCodec.encode(XCTUnwrap(context.makeImage()), as: .png).write(to: url, options: .atomic)
         return url
