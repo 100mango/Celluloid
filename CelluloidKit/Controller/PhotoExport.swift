@@ -16,9 +16,41 @@ public final class PhotoExportTask {
     private var cancelled = false
     public func cancel() { lock.lock(); cancelled = true; lock.unlock() }
     var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+    #if DEBUG
+    private var storage = PhotoExportStorageStatistics()
+    var storageStatistics: PhotoExportStorageStatistics { lock.lock(); defer { lock.unlock() }; return storage }
+    func recordCompositionStorage(_ bytes: Int) { lock.lock(); storage.compositionBytes = bytes; lock.unlock() }
+    func beginRasterStorage(_ bytes: Int, width: Int, height: Int) {
+        lock.lock(); defer { lock.unlock() }
+        storage.currentRasterCount += 1; storage.currentRasterBytes += bytes; storage.rasterizedCount += 1
+        storage.maximumRasterCount = max(storage.maximumRasterCount, storage.currentRasterCount)
+        storage.maximumRasterBytes = max(storage.maximumRasterBytes, storage.currentRasterBytes)
+        storage.maximumRasterWidth = max(storage.maximumRasterWidth, width)
+        storage.maximumRasterHeight = max(storage.maximumRasterHeight, height)
+    }
+    func recordConsumedRaster() { lock.lock(); storage.consumedRasterCount += 1; lock.unlock() }
+    func recordCompletedOverlay() { lock.lock(); storage.completedOverlayCount += 1; lock.unlock() }
+    func endRasterStorage(_ bytes: Int) {
+        lock.lock(); defer { lock.unlock() }
+        storage.currentRasterCount -= 1; storage.currentRasterBytes -= bytes
+    }
+    #endif
 }
 
 #if DEBUG
+struct PhotoExportStorageStatistics {
+    var compositionBytes = 0
+    var currentRasterCount = 0
+    var currentRasterBytes = 0
+    var maximumRasterCount = 0
+    var maximumRasterBytes = 0
+    var rasterizedCount = 0
+    var consumedRasterCount = 0
+    var completedOverlayCount = 0
+    var maximumRasterWidth = 0
+    var maximumRasterHeight = 0
+}
+
 import Darwin
 
 /// Opt-in synthetic CI diagnostics. No pixels, paths or account data are logged.

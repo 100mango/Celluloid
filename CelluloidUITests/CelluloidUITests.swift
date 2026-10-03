@@ -149,18 +149,35 @@ final class CelluloidUITests: XCTestCase {
         waitForStableLayout(["bubble-text", "bubble-text-done"], root: modal)
         XCTAssertTrue(text.isHittable && app.buttons["bubble-text-done"].isHittable)
         XCTAssertTrue(app.frame.contains(text.frame))
-        if UIDevice.current.userInterfaceIdiom == .phone {
-            XCTAssertGreaterThan(text.frame.height, app.frame.height * 0.6,
-                                 "Phone caption editing must use a full-screen usable canvas")
-        }
+        XCTAssertGreaterThan(text.frame.height, app.frame.height * 0.6,
+                             "Caption editing must use the full-screen task area")
+        XCTAssertLessThanOrEqual(text.frame.width, 720)
+        XCTAssertTrue(app.buttons["bubble-text-cancel"].isHittable,
+                      "Full-screen editing must retain a reachable discard action")
         audit("bubble-text-editor")
         text.tap()
         text.typeText(" updated")
+        // A native tap places the caret where UIKit chooses; it need not append.
+        // Require the typed insertion and exact text-to-artwork round trip.
+        let editedCaption = text.value as? String ?? ""
+        XCTAssertNotEqual(editedCaption, "Accessible caption")
+        XCTAssertEqual(editedCaption.replacingOccurrences(of: " updated", with: ""), "Accessible caption")
         app.buttons["bubble-text-done"].tap()
         let updatedBubble = app.images.matching(identifier: "attachment-image")
-            .matching(NSPredicate(format: "value == %@", "Accessible caption updated")).firstMatch
+            .matching(NSPredicate(format: "value == %@", editedCaption)).firstMatch
         XCTAssertTrue(updatedBubble.waitForExistence(timeout: 5),
                       "Editing a reopened caption must update the actual accessible artwork")
+        var reopen = app.buttons.matching(identifier: "bubble-edit-text").allElementsBoundByIndex.first { $0.isHittable }
+        if reopen == nil {
+            updatedBubble.tap()
+            reopen = app.buttons.matching(identifier: "bubble-edit-text").allElementsBoundByIndex.first { $0.isHittable }
+        }
+        XCTAssertNotNil(reopen)
+        reopen?.tap()
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        text.tap(); text.typeText(" discarded")
+        app.buttons["bubble-text-cancel"].tap()
+        XCTAssertTrue(updatedBubble.waitForExistence(timeout: 5), "Cancel must preserve the exact last saved caption")
         waitForStableLayout(["editor-done", "tool-filter"])
         audit("editor-with-decorations")
         done.tap()

@@ -1,0 +1,97 @@
+name: Bounded streaming export and caption accessibility
+on:
+  push:
+    branches: [codex/ios-streaming-export]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-streaming-export
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: xcode-27
+    timeout-minutes: 40
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Verify exact source and Apple environment
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 100mango/Celluloid
+          test "$GITHUB_REF" = refs/heads/codex/ios-streaming-export
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "Focused commit: $(git rev-parse HEAD)"
+          echo "Focused tree: $(git rev-parse 'HEAD^{tree}')"
+          shasum -a256 .github/workflows/ios-streaming-export.yml
+          git fetch --no-tags origin 0fa5069e20d0f0d59dc9d58e85133667970f85c2
+          python3 - <<'PY'
+          import subprocess
+          allowed = {'CelluloidKit/Controller/PhotoExport.swift','CelluloidKit/Controller/BaseEditPhotoController.swift','CelluloidKit/Bubble/Controller/EditBubbleViewController.swift','CelluloidKit/Bubble/View/BubbleView.swift','CelluloidTests/AdaptiveInterfaceTests.swift','CelluloidTests/ExportAndInteractionTests.swift','CelluloidTests/LargeDecoratedExportTests.swift','CelluloidUITests/CelluloidUITests.swift','.github/workflows/ios-streaming-export.yml'}
+          changed = set(subprocess.check_output(['git','diff','--name-only','0fa5069e20d0f0d59dc9d58e85133667970f85c2','HEAD'], text=True).splitlines())
+          assert changed <= allowed, changed - allowed
+          print('FOCUSED_REPAIR_DELTA', sorted(changed))
+          PY
+          sw_vers
+          xcodebuild -version
+          xcodebuild -showsdks
+          xcrun simctl list runtimes
+          xcrun simctl list devices available
+          xcodebuild -version | grep '^Xcode 27.0$'
+          python3 Scripts/generate_project.py
+          python3 Scripts/validate_release.py
+          git diff --exit-code HEAD --
+      - name: Prepare single fresh large iPad simulator
+        id: preparation
+        run: |
+          set -euo pipefail
+          python3 Scripts/create_fixture.py
+          python3 - <<'PY' > /tmp/current-celluloid-simulator
+          import json, subprocess
+          def sim(*args): return subprocess.check_output(['xcrun','simctl',*args], text=True)
+          runtime = next(r for r in json.loads(sim('list','runtimes','-j'))['runtimes'] if r.get('version') == '27.0' and r.get('isAvailable') and r['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-'))
+          device_type = next(t for t in json.loads(sim('list','devicetypes','-j'))['devicetypes'] if t['name'] == 'iPad Pro 13-inch (M5)')
+          print(sim('create','Celluloid streaming Pro13',device_type['identifier'],runtime['identifier']).strip())
+          PY
+          id=$(cat /tmp/current-celluloid-simulator)
+          python3 Scripts/run_bounded.py --seconds 900 --label build xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -jobs 2 build-for-testing CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO
+          python3 -u Scripts/prepare_simulator.py "$id" 'Streaming Pro13'
+          python3 Scripts/run_bounded.py --seconds 120 --label install xcrun simctl install "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app
+          python3 Scripts/run_bounded.py --seconds 60 --label grant xcrun simctl privacy "$id" grant photos Mango.Celluloid
+      - name: Validate units including full-resolution decorated measurement
+        run: |
+          set -euo pipefail
+          id=$(cat /tmp/current-celluloid-simulator)
+          python3 Scripts/run_bounded.py --seconds 600 --label units-and48MP xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-units.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests test-without-building CODE_SIGNING_ALLOWED=NO
+          xcrun xcresulttool get test-results summary --path TestResults-units.xcresult | tee /tmp/unit-summary.json | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/unit-summary.json'))
+          assert d['totalTestCount'] ==64 and d['passedTests'] ==64 and d['failedTests'] ==0, d
+          PY
+      - name: Validate artwork semantics and official accessibility audits
+        if: ${{ !cancelled() && steps.preparation.conclusion == 'success' }}
+        run: |
+          set -euo pipefail
+          id=$(cat /tmp/current-celluloid-simulator)
+          python3 Scripts/run_bounded.py --seconds 900 --label accessibility xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-accessibility.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests/testAccessibilityHomeAndDeniedPicker -only-testing:CelluloidUITests/CelluloidUITests/testAccessibilityGrantedPickerEditorAndSaved test-without-building CODE_SIGNING_ALLOWED=NO
+          xcrun xcresulttool get test-results summary --path TestResults-accessibility.xcresult | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Export bounded diagnostic evidence
+        if: always()
+        timeout-minutes: 4
+        run: python3 -u Scripts/export_permission_screenshot.py
+      - name: Collect bounded runtime failures
+        if: failure()
+        timeout-minutes: 3
+        run: python3 Scripts/collect_simulator_diagnostics.py
+      - name: Shutdown owned simulator and verify source
+        if: always()
+        run: |
+          id=$(cat /tmp/current-celluloid-simulator)
+          python3 Scripts/run_bounded.py --seconds 60 --label shutdown xcrun simctl shutdown "$id" || true
+          git diff --exit-code HEAD --

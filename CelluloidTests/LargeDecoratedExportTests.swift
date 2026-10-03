@@ -100,6 +100,109 @@ final class LargeDecoratedExportTests: XCTestCase {
         editor.sourceImage = nil
     }
 
+    func testTwelveMegapixelManyOverlaysKeepOnlyOneBoundedTileAndCancel() throws {
+        setenv("CELLULOID_EXPORT_METRICS", "1", 1)
+        defer { unsetenv("CELLULOID_EXPORT_METRICS") }
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let source = UIGraphicsImageRenderer(size: CGSize(width: 4000, height: 3000), format: format).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 2000, height: 3000))
+            UIColor.blue.setFill(); context.fill(CGRect(x: 2000, y: 0, width: 2000, height: 3000))
+        }
+        let editor = BaseEditPhotoController(); editor.loadViewIfNeeded()
+        editor.view.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+        editor.sourceImage = source; editor.view.layoutIfNeeded()
+        var state = editor.adjustmentData
+        let canvas = try XCTUnwrap(state.referenceCanvasSize)
+        for index in 0..<6 {
+            var bubble = BubbleModel.bubbles[index % BubbleModel.bubbles.count]
+            bubble.content = "Full-resolution overlay \(index)"
+            bubble.bounds = CGRect(x: 0, y: 0, width: 600, height: 600)
+            bubble.center = CGPoint(x: canvas.width / 2 + CGFloat(index), y: canvas.height / 2)
+            bubble.transform = CGAffineTransform(rotationAngle: CGFloat(index) * 0.02)
+            state.bubbles.append(bubble)
+            var sticker = StickerModel.stickers[0]
+            sticker.bounds = CGRect(x: 0, y: 0, width: 600, height: 600)
+            sticker.center = CGPoint(x: canvas.width / 2, y: canvas.height / 2 + CGFloat(index))
+            state.stickers.append(sticker)
+        }
+        editor.restoreFromData(state)
+        for cancelling in [false, true] {
+            let finished = expectation(description: "Many-overlays cancel=\(cancelling)")
+            let probe = ExportLoadProbe(); probe.start()
+            var callbacks = 0
+            var measurement = ""
+            var task: PhotoExportTask?
+            task = editor.exportPhoto { result in
+                callbacks += 1
+                measurement = probe.stop()
+                XCTAssertTrue(probe.hasValidSamples)
+                print("STREAMING_12MP_METRICS cancel=\(cancelling) " + measurement)
+                let storage = task!.storageStatistics
+                print("STREAMING_STORAGE overlays=\(storage.completedOverlayCount) tiles=\(storage.rasterizedCount) max_tiles=\(storage.maximumRasterCount) max_tile_bytes=\(storage.maximumRasterBytes) max_width=\(storage.maximumRasterWidth) max_height=\(storage.maximumRasterHeight) canvas_bytes=\(storage.compositionBytes)")
+                XCTAssertLessThanOrEqual(storage.maximumRasterCount, 1)
+                XCTAssertLessThanOrEqual(storage.maximumRasterWidth, 1024)
+                XCTAssertLessThanOrEqual(storage.maximumRasterHeight, 1024)
+                XCTAssertLessThanOrEqual(storage.maximumRasterBytes, 1024 * 1024 * 16)
+                XCTAssertEqual(storage.currentRasterCount, 0)
+                XCTAssertEqual(storage.currentRasterBytes, 0)
+                if cancelling {
+                    XCTAssertGreaterThan(storage.consumedRasterCount, 0, "Cancellation must follow actual tile consumption, not just decoding")
+                    XCTAssertLessThan(storage.completedOverlayCount, 12, "Cancel must interrupt partial rendering")
+                    if case .failure(.cancelled) = result {} else { XCTFail("Cancelled multi-overlay render returned stale success") }
+                } else {
+                    switch result {
+                    case .failure(let error): XCTFail("Many-overlay export failed: \(error)")
+                    case .success(let output):
+                        XCTAssertEqual(output.image.cgImage?.width, 4000)
+                        XCTAssertEqual(output.image.cgImage?.height, 3000)
+                        XCTAssertEqual(storage.completedOverlayCount, 12, "No decoration may be discarded to reduce memory")
+                        XCTAssertGreaterThan(storage.rasterizedCount, 12, "Large overlapping art must exercise real tile boundaries")
+                        XCTAssertEqual(try? AdjustmentData.decode(output.adjustmentData).bubbles.count, 6)
+                        XCTAssertEqual(try? AdjustmentData.decode(output.adjustmentData).stickers.count, 6)
+                        var decorated = 0
+                        for y in stride(from: 500, through: 2500, by: 500) {
+                            for x in stride(from: 500, through: 3500, by: 500) {
+                                if self.pixel(output.image, x: x, y: y)[1] > 10 { decorated += 1 }
+                            }
+                        }
+                        XCTAssertGreaterThan(decorated, 5)
+                    }
+                }
+                finished.fulfill()
+            }
+            if cancelling {
+                let pending = task!
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let deadline = ProcessInfo.processInfo.systemUptime + 30
+                    while pending.storageStatistics.consumedRasterCount == 0 && ProcessInfo.processInfo.systemUptime < deadline {
+                        Thread.sleep(forTimeInterval: 0.001)
+                    }
+                    let observed = pending.storageStatistics
+                    print("STREAMING_CANCEL_PROGRESS consumed_tiles=\(observed.consumedRasterCount) completed_overlays=\(observed.completedOverlayCount)")
+                    pending.cancel()
+                }
+            }
+            wait(for: [finished], timeout: 120)
+            XCTAssertEqual(callbacks, 1)
+            let recovered = expectation(description: "Sample memory after render references and autoreleases drain")
+            let recovery = ExportLoadProbe(); recovery.start()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { recovered.fulfill() }
+            wait(for: [recovered], timeout: 3)
+            let recoveryText = recovery.stop()
+            XCTAssertTrue(recovery.hasValidSamples)
+            let prior = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(measurement.utf8)) as? [String: Any])
+            let after = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(recoveryText.utf8)) as? [String: Any])
+            let baseline = try XCTUnwrap(prior["baseline_footprint_bytes"] as? NSNumber).uint64Value
+            let final = try XCTUnwrap(after["final_footprint_bytes"] as? NSNumber).uint64Value
+            let peak = try XCTUnwrap(prior["sampled_peak_footprint_bytes"] as? NSNumber).uint64Value
+            print("STREAMING_12MP_RECOVERY cancel=\(cancelling) baseline=\(baseline) render_peak=\(peak) recovered=\(final) " + recoveryText)
+            // A simulator regression bound, not a physical extension allowance:
+            // tolerate one canvas plus32MiB of shared decode/font caches, but not
+            // retaining a raster per large decoration after completion/cancel.
+            XCTAssertLessThanOrEqual(final, baseline + UInt64(task!.storageStatistics.compositionBytes) + 32 * 1024 * 1024)
+        }
+    }
+
     private func pixel(_ image: UIImage, x: Int, y: Int) -> [UInt8] {
         let part = image.cgImage!.cropping(to: CGRect(x: x, y: y, width: 1, height: 1))!
         var bytes = [UInt8](repeating: 0, count: 4)

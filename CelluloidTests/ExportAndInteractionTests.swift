@@ -253,6 +253,102 @@ final class ExportAndInteractionTests: XCTestCase {
         }
     }
 
+    func testStreamingTileBoundariesAndManyOverlaysMatchLegacyPixels() throws {
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let source = UIGraphicsImageRenderer(size: CGSize(width: 1600, height: 1200), format: format).image { context in
+            UIColor(red: 0.8, green: 0.2, blue: 0.1, alpha: 0.4).setFill(); context.fill(CGRect(x: 0, y: 0, width: 800, height: 1200))
+            UIColor(displayP3Red: 0.1, green: 0.8, blue: 0.3, alpha: 0.7).setFill(); context.fill(CGRect(x: 800, y: 0, width: 800, height: 1200))
+        }
+        let editor = BaseEditPhotoController()
+        editor.loadViewIfNeeded(); editor.view.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+        editor.sourceImage = source; editor.view.layoutIfNeeded()
+        var data = editor.adjustmentData
+        let canvas = try XCTUnwrap(data.referenceCanvasSize)
+        for index in 0..<6 {
+            var bubble = BubbleModel.bubbles[index % BubbleModel.bubbles.count]
+            bubble.content = "Tile boundary 文字 \(index)"
+            bubble.bounds = CGRect(x: 0, y: 0, width: 340, height: 310)
+            bubble.center = CGPoint(x: canvas.width / 2 + CGFloat(index * 4), y: canvas.height / 2 - CGFloat(index * 3))
+            bubble.transform = CGAffineTransform(a: 1.12, b: 0.13, c: -0.07, d: 0.94, tx: 0.3, ty: -0.7)
+            data.bubbles.append(bubble)
+            var sticker = StickerModel.stickers[index]
+            sticker.bounds = CGRect(x: 0, y: 0, width: 340, height: 320)
+            sticker.center = CGPoint(x: canvas.width / 2 - CGFloat(index * 5), y: canvas.height / 2 + CGFloat(index * 3))
+            sticker.transform = CGAffineTransform(rotationAngle: CGFloat(index) * 0.035).scaledBy(x: 1.1, y: 1.05)
+            data.stickers.append(sticker)
+        }
+        editor.restoreFromData(data)
+        let reference = try XCTUnwrap(editor.outputImage)
+        let expected = rgba(reference)
+        let finished = expectation(description: "Streaming tile seams and twelve overlays")
+        editor.exportPhoto { result in
+            switch result {
+            case .failure(let error): XCTFail("Streaming comparison failed: \(error)")
+            case .success(let output):
+                XCTAssertEqual(output.image.cgImage?.bitsPerComponent, reference.cgImage?.bitsPerComponent)
+                XCTAssertEqual(output.image.cgImage?.bitsPerPixel, reference.cgImage?.bitsPerPixel)
+                XCTAssertEqual(output.image.cgImage?.alphaInfo, reference.cgImage?.alphaInfo)
+                XCTAssertEqual(String(describing: output.image.cgImage?.colorSpace?.name), String(describing: reference.cgImage?.colorSpace?.name))
+                let actual = self.rgba(output.image)
+                XCTAssertEqual(actual.count, expected.count)
+                var maximum = 0, changed = 0
+                for (a, b) in zip(actual, expected) { let delta = abs(Int(a) - Int(b)); maximum = max(maximum, delta); if delta != 0 { changed += 1 } }
+                print("STREAMING_MANY_OVERLAY_EQUIVALENCE maximum_channel_delta=\(maximum) changed_channels=\(changed) channels=\(actual.count)")
+                XCTAssertEqual(maximum, 0, "Do not accept tile seams or altered overlapping alpha/text pixels")
+            }
+            finished.fulfill()
+        }
+        wait(for: [finished], timeout: 60)
+    }
+
+    func testExtendedRangeSourceMatchesLegacyRendererBitmapAndPixels() throws {
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3))
+        let bitmap = CGBitmapInfo.floatComponents.rawValue | CGBitmapInfo.byteOrder16Little.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+        let context = try XCTUnwrap(CGContext(data: nil, width: 320, height: 240, bitsPerComponent: 16,
+            bytesPerRow: 320 * 8, space: space, bitmapInfo: bitmap))
+        context.setFillColor(try XCTUnwrap(CGColor(colorSpace: space, components: [1.5, 0.2, 0.1, 0.7])))
+        context.fill(CGRect(x: 0, y: 0, width: 320, height: 240))
+        let editor = BaseEditPhotoController(); editor.loadViewIfNeeded()
+        editor.view.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+        editor.sourceImage = UIImage(cgImage: try XCTUnwrap(context.makeImage()))
+        editor.view.layoutIfNeeded()
+        var data = editor.adjustmentData
+        var bubble = BubbleModel.bubbles[4]; bubble.content = "Extended color"
+        bubble.center = CGPoint(x: editor.preview.imageRect.width / 2, y: editor.preview.imageRect.height / 2)
+        data.bubbles = [bubble]; editor.restoreFromData(data)
+        let reference = try XCTUnwrap(editor.outputImage)
+        let expected = extendedRGBA(reference)
+        let finished = expectation(description: "Extended source legacy output contract")
+        editor.exportPhoto { result in
+            switch result {
+            case .failure(let error): XCTFail("Extended source export failed: \(error)")
+            case .success(let output):
+                XCTAssertEqual(output.image.cgImage?.bitsPerComponent, reference.cgImage?.bitsPerComponent)
+                XCTAssertEqual(output.image.cgImage?.bitsPerPixel, reference.cgImage?.bitsPerPixel)
+                XCTAssertEqual(output.image.cgImage?.alphaInfo, reference.cgImage?.alphaInfo)
+                XCTAssertEqual(String(describing: output.image.cgImage?.colorSpace?.name), String(describing: reference.cgImage?.colorSpace?.name))
+                let actual = self.extendedRGBA(output.image)
+                XCTAssertEqual(actual.count, expected.count)
+                XCTAssertTrue(actual == expected, "Exact extended-linear float pixels must retain legacy range/alpha/color semantics")
+                print("EXTENDED_SOURCE_EQUIVALENCE output_bpc=\(output.image.cgImage?.bitsPerComponent ?? 0) output_bpp=\(output.image.cgImage?.bitsPerPixel ?? 0) profile=\(String(describing: output.image.cgImage?.colorSpace?.name))")
+            }
+            finished.fulfill()
+        }
+        wait(for: [finished], timeout: 30)
+    }
+
+    private func extendedRGBA(_ image: UIImage) -> Data {
+        let cg = image.cgImage!
+        var bytes = Data(count: cg.width * cg.height * 16)
+        bytes.withUnsafeMutableBytes { buffer in
+            let info = CGBitmapInfo.floatComponents.rawValue | CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+            let context = CGContext(data: buffer.baseAddress, width: cg.width, height: cg.height, bitsPerComponent: 32,
+                bytesPerRow: cg.width * 16, space: CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3)!, bitmapInfo: info)!
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        }
+        return bytes
+    }
+
     private func rgba(_ image: UIImage) -> [UInt8] {
         let cg = image.cgImage!
         var result = [UInt8](repeating: 0, count: cg.width * cg.height * 4)
