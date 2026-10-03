@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Log unsigned archive code-bundle metadata before any separate signing workflow."""
 from pathlib import Path
-import json, plistlib, subprocess, sys
+import json, plistlib, subprocess, sys, hashlib
 archive = Path(sys.argv[1])
 assert archive.is_dir(), f'Archive missing: {archive}'
 records = []
@@ -24,6 +24,10 @@ for plist in sorted(archive.rglob('Info.plist')):
 assert any(item['bundle_id'] == 'Mango.Celluloid' for item in records)
 assert any(item['bundle_id'] == 'Mango.Celluloid.CelluloidPhotoExtension' for item in records)
 assert any(item['bundle_id'] == 'Mango.CelluloidKit' for item in records)
+notice = archive / 'Products/Applications/Celluloid.app/Frameworks/CelluloidKit.framework/SnapKit-LICENSE.txt'
+notice_hash = hashlib.sha256(notice.read_bytes()).hexdigest()
+assert notice_hash == '7c0d21cf5314759fd35a22e42a52099d9cad2570db55a78e4eda26c82493b96b', 'Missing or altered pinned SnapKit MIT notice in archive'
+print('BUNDLED_NOTICE_VERIFIED SnapKit 5.7.1 revision 2842e6e84e82eb9a8dac0100ca90d9444b0307f4 SHA256 ' + notice_hash)
 print('ARCHIVE_INVENTORY_BEGIN')
 print(json.dumps(records, indent=2))
 print('ARCHIVE_INVENTORY_END')
