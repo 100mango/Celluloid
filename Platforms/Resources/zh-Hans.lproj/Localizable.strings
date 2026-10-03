@@ -70,3 +70,8 @@
 "Hello" = "你好";
 "Static photos · sRGB SDR export" = "静态照片 · sRGB SDR 导出";
 "Select layer: %@" = "选择图层：%@";
+"RAW/ProRAW and animation are not supported. Live Photos import as still images." = "暂不支持 RAW/ProRAW 和动画。实况照片将导入为静态图片。";
+"Your edit changed. Export again to include the latest changes." = "编辑内容已发生变化。请重新导出，以包含最新更改。";
+"Privacy Policy" = "隐私政策";
+"Open Privacy Policy" = "打开隐私政策网页";
+"The offline privacy policy is unavailable." = "无法读取离线隐私政策。";

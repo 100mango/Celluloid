@@ -1,0 +1,57 @@
+{
+  "source": "Celluloid/Assets.xcassets/AppIcon.appiconset/Icon-Marketing.png",
+  "source_sha256": "f4f7ca4326be0a7f017339545367ecfbe1fdae58da36cd3368305b056ce7c614",
+  "operation": "Original existing artwork; deterministic Lanczos size renditions only, no redraw or masking",
+  "renditions": [
+    {
+      "file": "icon-16@1x.png",
+      "pixels": 16,
+      "sha256": "a22b75ccabd1097c855bbb5f31b95842ab0663a2356f36578758a29930e711ab"
+    },
+    {
+      "file": "icon-16@2x.png",
+      "pixels": 32,
+      "sha256": "7b31a6fdbe179c61a56aeccd63a17f699fb85526741f9f9ad04ae91549f2ee8d"
+    },
+    {
+      "file": "icon-32@1x.png",
+      "pixels": 32,
+      "sha256": "7b31a6fdbe179c61a56aeccd63a17f699fb85526741f9f9ad04ae91549f2ee8d"
+    },
+    {
+      "file": "icon-32@2x.png",
+      "pixels": 64,
+      "sha256": "51a7e25ea9044fa261ac50d085f671a1b5eed53ff601aec0b1d80856609a241e"
+    },
+    {
+      "file": "icon-128@1x.png",
+      "pixels": 128,
+      "sha256": "3cdbe912c95715998b227e35167373f0f7599cfc486d5935daff9d26b2eec02f"
+    },
+    {
+      "file": "icon-128@2x.png",
+      "pixels": 256,
+      "sha256": "c570f38cf64352100f615b5bc6066e76a9f15b2934e40c3fee1a0bcc245906eb"
+    },
+    {
+      "file": "icon-256@1x.png",
+      "pixels": 256,
+      "sha256": "c570f38cf64352100f615b5bc6066e76a9f15b2934e40c3fee1a0bcc245906eb"
+    },
+    {
+      "file": "icon-256@2x.png",
+      "pixels": 512,
+      "sha256": "3b3e796d7d303b76500f265eac6dd0ff0e0e6a2c98803931757e0903ca3df7d0"
+    },
+    {
+      "file": "icon-512@1x.png",
+      "pixels": 512,
+      "sha256": "3b3e796d7d303b76500f265eac6dd0ff0e0e6a2c98803931757e0903ca3df7d0"
+    },
+    {
+      "file": "icon-512@2x.png",
+      "pixels": 1024,
+      "sha256": "f4f7ca4326be0a7f017339545367ecfbe1fdae58da36cd3368305b056ce7c614"
+    }
+  ]
+}

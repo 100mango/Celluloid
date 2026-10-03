@@ -123,8 +123,14 @@ final class NativeEditorUITests: XCTestCase {
         app.typeKey(.return, modifierFlags: [])
     }
     @MainActor private func save(in folder: URL, app: XCUIApplication) throws {
-        let saveButton = app.windows.buttons["Save"].firstMatch
-        XCTAssertTrue(saveButton.waitForExistence(timeout: 10))
+        let saveButton = app.windows.buttons["OKButton"].firstMatch
+        let presented = saveButton.waitForExistence(timeout: 10)
+        if !presented {
+            print("EXPORT_PANEL_AX " + app.debugDescription)
+            let state = XCTAttachment(screenshot: app.screenshot()); state.name = "missing-export-panel"; state.lifetime = .keepAlways; add(state)
+        }
+        XCTAssertTrue(presented)
+        print("NATIVE_SAVE_PANEL prompt=\(saveButton.label)")
         try goTo(folder, in: app)
         XCTAssertTrue(saveButton.isEnabled); saveButton.click()
         let closed = NSPredicate(format: "exists == false")

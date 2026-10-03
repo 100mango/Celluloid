@@ -21,7 +21,7 @@ def configs(key,settings):
 def reference(path):
     i=uid(path)
     if i not in objects:
-        add(path,'PBXFileReference',lastKnownFileType='sourcecode.swift' if path.endswith('.swift') else 'text.plist.strings' if path.endswith('.strings') else 'text.plist.xml',path=path,sourceTree='<group>');children.append(i)
+        add(path,'PBXFileReference',lastKnownFileType='sourcecode.swift' if path.endswith('.swift') else 'text.plist.strings' if path.endswith('.strings') else 'folder.assetcatalog' if path.endswith('.xcassets') else 'text',path=path,sourceTree='<group>');children.append(i)
     return i
 packages={name:add('package:'+name,'XCLocalSwiftPackageReference',relativePath='Packages/'+name) for name in ['CelluloidCore','CelluloidRendering']}
 targets={};products={}
@@ -50,6 +50,9 @@ for name,platform in settings_by_name.items():
                 language_refs.append(language_ref)
             variant=add('variant:shared-localizations','PBXVariantGroup',children=language_refs,name='Localizable.strings',sourceTree='<group>');children.append(variant)
         localized.append(add('build:localization:'+name,'PBXBuildFile',fileRef=uid('variant:shared-localizations')))
+        localized.append(add('build:privacy:'+name,'PBXBuildFile',fileRef=reference('Platforms/Resources/PrivacyPolicy.txt')))
+    if name=='CelluloidMac':
+        localized.append(add('build:mac-icon','PBXBuildFile',fileRef=reference('Platforms/macOS/Assets.xcassets')))
     source=[add('build:'+name+p.relative_to(ROOT).as_posix(),'PBXBuildFile',fileRef=reference(p.relative_to(ROOT).as_posix())) for p in sorted(paths)]
     links=[];deps=[];package_deps=[]
     for package,product in [('CelluloidCore','CelluloidDomain'),('CelluloidRendering','CelluloidRendering')]:
@@ -59,6 +62,7 @@ for name,platform in settings_by_name.items():
         proxy=add('proxy:'+name,'PBXContainerItemProxy',containerPortal=uid('project'),proxyType='1',remoteGlobalIDString=targets['CelluloidMac'],remoteInfo='CelluloidMac')
         deps.append(add('dependency:'+name,'PBXTargetDependency',target=targets['CelluloidMac'],targetProxy=proxy))
     settings=dict(PRODUCT_NAME='$(TARGET_NAME)',PRODUCT_BUNDLE_IDENTIFIER='Mango.Celluloid.'+name if tests else 'Mango.Celluloid',SWIFT_VERSION='5.0',SWIFT_STRICT_CONCURRENCY='minimal',CODE_SIGNING_ALLOWED='NO',CODE_SIGNING_REQUIRED='NO',CODE_SIGN_IDENTITY='',CURRENT_PROJECT_VERSION='2',MARKETING_VERSION='2.0',ENABLE_USER_SCRIPT_SANDBOXING='YES',LD_RUNPATH_SEARCH_PATHS=['$(inherited)','@executable_path/Frameworks','@executable_path/../Frameworks'],**platform)
+    if name=='CelluloidMac': settings['ASSETCATALOG_COMPILER_APPICON_NAME']='AppIcon'
     if not tests: settings['INFOPLIST_FILE']='Platforms/'+('macOS' if name=='CelluloidMac' else 'visionOS')+'/Info.plist'
     phases=[add('phase:'+name+kind,'PBX'+kind+'BuildPhase',buildActionMask='2147483647',files=files,runOnlyForDeploymentPostprocessing='0') for kind,files in [('Sources',source),('Frameworks',links),('Resources',localized)]]
     add('target:'+name,'PBXNativeTarget',name=name,productName=name,productReference=products[name],productType='com.apple.product-type.'+('bundle.ui-testing' if name.endswith('UITests') else 'bundle.unit-test' if tests else 'application'),buildConfigurationList=configs(name,settings),buildPhases=phases,buildRules=[],dependencies=deps,packageProductDependencies=package_deps)

@@ -70,3 +70,8 @@
 "Hello" = "Hello";
 "Static photos · sRGB SDR export" = "Static photos · sRGB SDR export";
 "Select layer: %@" = "Select layer: %@";
+"RAW/ProRAW and animation are not supported. Live Photos import as still images." = "RAW/ProRAW and animation are not supported. Live Photos import as still images.";
+"Your edit changed. Export again to include the latest changes." = "Your edit changed. Export again to include the latest changes.";
+"Privacy Policy" = "Privacy Policy";
+"Open Privacy Policy" = "Open Privacy Policy";
+"The offline privacy policy is unavailable." = "The offline privacy policy is unavailable.";

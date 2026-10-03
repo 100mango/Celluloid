@@ -213,6 +213,11 @@ struct EditorView: View {
             do {
                 let bytes = try await NativeRenderQueue.shared.export(snapshot.recipe, sources: snapshot.originals, type: type)
                 try Task.checkCancellation()
+                guard snapshot.recipe == document.recipe else {
+                    exporting = false
+                    status = NSLocalizedString("Your edit changed. Export again to include the latest changes.", comment: "Export canceled after an edit")
+                    return
+                }
                 exported = RasterExport(data: bytes); exportType = type; exportPicker = true
                 exporting = false
             } catch is CancellationError { exporting = false }

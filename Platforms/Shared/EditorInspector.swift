@@ -7,6 +7,7 @@ struct EditorInspector: View {
     @Binding var selection: UUID?
     let change: (EditRecipe, String) -> Void
     @State private var assetPanel: AssetPanel?
+    @State private var showingPrivacy = false
 
     var body: some View {
         ScrollView {
@@ -50,10 +51,12 @@ struct EditorInspector: View {
                 }
                 Divider()
                 Text("Static photos · sRGB SDR export").font(.caption).foregroundStyle(.secondary)
+                Text("RAW/ProRAW and animation are not supported. Live Photos import as still images.").font(.caption).foregroundStyle(.secondary)
                 Text("Save this .celluloid document to reopen all originals, layers and text. Export PNG or JPEG for a finished image.")
                     .font(.caption).foregroundStyle(.secondary)
+                Button("Privacy Policy") { showingPrivacy = true }.accessibilityIdentifier("editor.privacy")
             }.padding(18)
-        }
+        }.sheet(isPresented: $showingPrivacy) { PrivacyView() }
     }
     private func add(_ overlay: Overlay) {
         var next = recipe; next.overlays.append(overlay)

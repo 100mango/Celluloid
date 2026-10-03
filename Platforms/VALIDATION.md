@@ -1,6 +1,6 @@
 # Native Celluloid implementation checkpoint
 
-This is an **uncompiled implementation candidate**, not a release or a compatibility claim. Source publication is authorized; the first Mac/core compiler and runtime validation is pending. No platform registration, entitlement, signing, Store mutation, or physical-device result exists.
+This is an **unsigned native implementation candidate**, not a release. Native macOS27 builds and core/rendering/document tests have run successfully; the complete UI/export gate is still being closed. Vision remains an unbuilt isolated scene at this checkpoint. No platform registration, entitlement, signing, Store mutation, or physical-device result exists.
 
 ## Isolation and data contract
 
@@ -35,7 +35,7 @@ Still required: compile/fix against exact SDK; all tests actually run; native UI
 
 ## Bounded work
 
-A process-wide serial actor renders previews/exports with cancellation checks. The original-pixel filter graph is transformed and clipped to the visible tile before CGImage materialization, even at5×source zoom. CIContext intermediate caching is disabled and caches clear after each render. Core Text fitting uses at most17 shaping passes per bubble and errors instead of silently truncating text that cannot fit. These bounds are source-level; practical peak-memory and cancellation measurements remain to be executed.
+A process-wide serial actor renders previews/exports with cancellation checks. The original-pixel filter graph is transformed and clipped to the visible tile before CGImage materialization, even at5×source zoom. CIContext intermediate caching is disabled and caches clear after each render. Core Text fitting uses at most17 shaping passes per bubble and errors instead of silently truncating text that cannot fit. Run37119355791 tested four8064×6048 sources at5×zoom with three repeated600px previews. Peak RSS stayed572,817,408 bytes for all three iterations, within the unchanged1.5 GB peak /256 MB growth gates. Twelve simultaneous requests were serialized without mixing their document outputs.
 
 ## Static-photo contract
 
@@ -44,3 +44,15 @@ Native documents retain imported original file bytes. Rendering is a static-imag
 Image-format tests use Apple ImageIO to encode synthetic PNG/JPEG/HEIC/HEIF when the runner advertises that encoder, then compare oriented output with an independent ImageIO thumbnail transform oracle. Missing HEIC/HEIF encoders are explicit unverified coverage, not product passes.
 
 The 50,000,000-pixel native limit deliberately accepts the common8064×6048 (48,771,072) geometry. Encoded originals remain bounded to64 MB combined. RAW/ProRAW and multi-frame images are rejected with an explicit explanation; no RAW decoder or embedded-preview behavior is being claimed. The practical memory gate retains its original1.5 GB peak and256 MB repeated-growth limits.
+
+## Legacy collage distinction
+
+The original iOS `CollageContentView` draws a3-point black CAShapeLayer stroke and begins with the model’s zero/top-left scroll offset. New native recipes deliberately use a normalized centered focal point by default and do not add that legacy stroke. Template/source-color/order tests validate the new renderer’s requested composition; they do **not** establish legacy collage pixel equivalence. UIKit collage remains untouched and is not routed through this renderer. Native bubble typography also remains a separate equivalence gate before any Photos editing extension or original-iOS wiring.
+
+## Observed validation milestones
+
+- `42270fac`, run37117674534:11 domain cases,20 renderer passes plus one explicit HEIF-encoder skip,7 hosted Mac tests passed. Actual UIKit-produced synthetic1.0 archives securely decoded with exact values on Mac; reverse UIKit re-decode is coordinated separately.
+- `ea066501`, run37117969381: first real Mac Files import, multilingual edit, resize and canceled unsaved-close UI passed. Legacy-context oracle exposed a real working-color-space mismatch, subsequently corrected without loosening the oracle.
+- `6cb1165`, run37118858668: all nine non-face filter outputs matched legacy default-context gradients/alpha/P3 exactly; bounded maximum-source rendering stabilized. English visual picker/edit/resize passed; Chinese resource packaging then needed repair.
+- `b51baa7`, run37119355791:13 domain cases,25 renderer passes plus one HEIF skip,8 hosted Mac tests and Chinese visual-picker UI passed.8064×6048 input/memory passed. Save/export UI was still red and must not be described as fully verified.
+- Latest runtime commits and evidence are available in the branch’s Apple platform validation workflow. No fixture screenshot is Store marketing evidence. The earlier120×80 fixture was replaced by1200×800 for readable native UI captures.

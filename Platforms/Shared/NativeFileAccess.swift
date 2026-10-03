@@ -1,10 +1,12 @@
 import Foundation
+import UniformTypeIdentifiers
 import CelluloidDomain
 import CelluloidRendering
 
 /// Imported bytes must be an owned snapshot, not a mapping of an externally editable file.
 enum NativeFileAccess {
     static func readImage(_ url: URL, limit: Int = RasterCodec.maxSourceBytes) throws -> Data {
+        if UTType(filenameExtension: url.pathExtension)?.conforms(to: .rawImage) == true { throw RenderError.unsupportedSourceFormat }
         guard limit > 0, limit <= 256 * 1024 * 1024 else { throw RecipeError.resourceLimit }
         let accessed = url.startAccessingSecurityScopedResource()
         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
