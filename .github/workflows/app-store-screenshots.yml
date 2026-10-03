@@ -13,6 +13,7 @@ jobs:
     timeout-minutes: 60
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      CAPTURE_MODE: ${{ contains(github.event.head_commit.message, '[photos-host-only]') && 'photos-host-only' || 'screenshots-and-host' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -79,6 +80,7 @@ jobs:
           xcodebuild -project Celluloid.xcodeproj -scheme CelluloidCapture -configuration Release -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-capture -resultBundlePath PhotosHost.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidCaptureTests/testPhotosHostAssessment test-without-building CODE_SIGNING_ALLOWED=NO | tee photos-host.log
           xcrun simctl shutdown "$id"
       - name: Capture Chinese Release UI on iPhone and iPad
+        if: env.CAPTURE_MODE != 'photos-host-only'
         run: |
           set -euo pipefail
           python3 Scripts/create_fixture.py
@@ -104,12 +106,19 @@ jobs:
           git diff --exit-code HEAD --
           python3 - <<'PY'
           from pathlib import Path
-          import re
+          import re,os
           markers=[]
           for p in Path('.').glob('capture-*.log'):
               markers += re.findall(r'^CELLULOID_STORE_END:(.+)$',p.read_text(),re.M)
           print('CAPTURE_FILES',markers)
-          assert len(markers)==6 and len(set(markers))==6, markers
+          if os.environ['CAPTURE_MODE']=='photos-host-only':
+              assert not markers, markers
+              host=Path('photos-host.log').read_text()
+              results=re.findall(r'^PHOTOS_HOST_RESULT:(.+)$',host,re.M)
+              print('PHOTOS_HOST_ASSESSMENT',results)
+              assert len(results)==1, results
+          else:
+              assert len(markers)==6 and len(set(markers))==6, markers
           PY
           echo "FINAL_CAPTURE_COMMIT $(git rev-parse HEAD)"
           shasum -a 256 .github/workflows/app-store-screenshots.yml

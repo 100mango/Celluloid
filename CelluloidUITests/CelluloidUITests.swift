@@ -304,9 +304,46 @@ final class CelluloidCaptureTests: XCTestCase {
             return false
         }
         hierarchy("launch")
-        _ = tapLabel(["继续", "Continue"])
         _ = tapLabel(["图库", "Library", "所有照片", "All Photos"])
-        Thread.sleep(forTimeInterval: 2)
+        // In the observed iOS 27 host, Library presents What's New after launch.
+        // Wait for that actual sheet instead of probing too early and leaving it over the grid.
+        let welcomeContinue = photos.buttons["继续"].firstMatch
+        let welcomeTitle = photos.staticTexts["“照片”新功能"].firstMatch
+        if welcomeContinue.waitForExistence(timeout: 10) {
+            guard welcomeTitle.exists else {
+                hierarchy("unexpected-continue-screen")
+                print("PHOTOS_HOST_RESULT:BLOCKED Continue exists outside the observed What's New sheet; no account or permission dialog accepted")
+                return
+            }
+            let tappable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: welcomeContinue)
+            guard XCTWaiter.wait(for: [tappable], timeout: 10) == .completed else {
+                hierarchy("welcome-not-hittable")
+                print("PHOTOS_HOST_RESULT:BLOCKED observed Photos welcome Continue never became hittable")
+                return
+            }
+            welcomeContinue.tap()
+            let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: welcomeContinue)
+            guard XCTWaiter.wait(for: [dismissed], timeout: 10) == .completed else {
+                hierarchy("welcome-not-dismissed")
+                print("PHOTOS_HOST_RESULT:BLOCKED observed Photos welcome remained after Continue")
+                return
+            }
+        }
+        let welcomeGone = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !welcomeTitle.exists && !welcomeContinue.exists
+        }, object: nil)
+        guard XCTWaiter.wait(for: [welcomeGone], timeout: 10) == .completed else {
+            hierarchy("welcome-still-present")
+            print("PHOTOS_HOST_RESULT:BLOCKED actual What's New title or Continue still exists; fixture selection withheld")
+            return
+        }
+        let lastGridImage = photos.images.matching(identifier: "PXGGridLayout-Info").element(boundBy: max(0, photos.images.matching(identifier: "PXGGridLayout-Info").count - 1))
+        let gridReady = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: lastGridImage)
+        guard XCTWaiter.wait(for: [gridReady], timeout: 10) == .completed else {
+            hierarchy("grid-not-ready")
+            print("PHOTOS_HOST_RESULT:BLOCKED observed Photos grid not ready after welcome handling")
+            return
+        }
         hierarchy("library")
         // Observed iOS 27 Photos hierarchy exposes Images, not CollectionView Cells.
         // Six simulator stock images predate the two fixtures added during this job.
@@ -321,6 +358,12 @@ final class CelluloidCaptureTests: XCTestCase {
             print("PHOTOS_HOST_RESULT:BLOCKED latest two accessible Photos grid images cannot be verified as today's seeded fixtures")
             return
         }
+        guard !welcomeTitle.exists && !welcomeContinue.exists && fixture.isHittable else {
+            hierarchy("fixture-not-ready")
+            print("PHOTOS_HOST_RESULT:BLOCKED identified synthetic fixture is not hittable after confirmed welcome dismissal")
+            return
+        }
+        print("PHOTOS_HOST_READY welcomeTitleExists=false continueExists=false syntheticFixtureHittable=true")
         print("PHOTOS_HOST_SELECTED_SEEDED_FIXTURE: " + fixture.label)
         fixture.tap()
         Thread.sleep(forTimeInterval: 2)
