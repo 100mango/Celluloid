@@ -102,6 +102,7 @@ class EntranceViewController: UIViewController {
 
     @objc private func showPrivacyPolicy() {
         let policy = SFSafariViewController(url: AppLinks.privacyPolicyURL)
+        policy.dismissButtonStyle = .close
         present(policy, animated: true)
     }
 

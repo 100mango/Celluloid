@@ -19,9 +19,15 @@ final class CelluloidUITests: XCTestCase {
         XCTAssertTrue(policy.isHittable)
         policy.tap()
         // The browser's Close action is available even when external networking is offline.
-        let done = app.buttons["Done"]
-        XCTAssertTrue(done.waitForExistence(timeout: 15))
-        done.tap()
+        let close = app.buttons["Close"]
+        let visible = close.waitForExistence(timeout: 15)
+        if !visible {
+            print("PRIVACY_ACCESSIBILITY_BEGIN")
+            print(String(app.debugDescription.prefix(18000)))
+            print("PRIVACY_ACCESSIBILITY_END")
+        }
+        XCTAssertTrue(visible, "The policy browser must provide its explicit Close control")
+        close.tap()
         XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 5))
         XCTAssertTrue(policy.isHittable)
     }
