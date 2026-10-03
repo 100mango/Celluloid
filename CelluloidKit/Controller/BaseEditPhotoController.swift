@@ -144,7 +144,7 @@ open class BaseEditPhotoController: UIViewController {
                     let result = Self.compositeOffMain(source, size: image.size, models: models, task: task) { decoded, rect in
                         DispatchQueue.main.sync {
                             guard self != nil, !task.isCancelled else { return .failure(.cancelled) }
-                            return Self.rasterizeScene(decoded, size: image.size, models: models, rect: rect, format: format)
+                            return Self.rasterizeScene(decoded, size: image.size, models: models, rect: rect, format: format, directSource: true)
                         }
                     }
                     switch result {
@@ -282,73 +282,77 @@ open class BaseEditPhotoController: UIViewController {
         // Hold the warmed provider bytes through all recording/copy operations.
         defer { withExtendedLifetime(decoded.pixels) {} }
         var destination: CGContext?
-        let gutter = 2
-        let edge = 1024 - 2 * gutter
-        var y = 0
-        while y < source.height {
-            var x = 0
-            while x < source.width {
-                guard !task.isCancelled else { return .failure(.cancelled) }
-                let width = min(edge, source.width - x), height = min(edge, source.height - y)
-                let rect = CGRect(x: x, y: y, width: width, height: height)
-                // Record a small surrounding region, then copy only the interior.
-                // This keeps antialiasing/image sampling away from tile clip edges.
-                let expanded = rect.insetBy(dx: -CGFloat(gutter), dy: -CGFloat(gutter))
-                    .intersection(CGRect(origin: .zero, size: size))
-                let result: Result<Void, PhotoExportError> = autoreleasepool {
-                    switch rasterize(decoded.image, expanded) {
-                    case .failure(let error): return .failure(error)
-                    case .success(let raster):
-                        let tile = raster.image
-                        let offsetX = x - Int(raster.rect.minX), offsetY = y - Int(raster.rect.minY)
-                        guard offsetX >= 0, offsetY >= 0,
-                              offsetX + width <= tile.width, offsetY + height <= tile.height,
-                              let space = tile.colorSpace, let pixels = tile.dataProvider?.data,
-                              let bytes = CFDataGetBytePtr(pixels), tile.bitsPerPixel > 0, tile.bitsPerPixel % 8 == 0,
-                              tile.bytesPerRow >= tile.width * (tile.bitsPerPixel / 8),
-                              CFDataGetLength(pixels) >= tile.bytesPerRow * tile.height else { return .failure(.encodingFailed) }
-                        // The actual first finished UIKit tile determines bitmap
-                        // policy, including extended range. Later tiles must match.
-                        if destination == nil {
-                            destination = CGContext(data: nil, width: source.width, height: source.height,
-                                bitsPerComponent: tile.bitsPerComponent, bytesPerRow: 0,
-                                space: space, bitmapInfo: tile.bitmapInfo.rawValue)
-                            destination?.clear(CGRect(origin: .zero, size: size))
-                            #if DEBUG
-                            if let context = destination {
-                                task.recordCompositionStorage(context.bytesPerRow * context.height)
-                                PhotoExportDiagnostics.trace("spatial-bitmap-created", source: tile, context: context)
-                            }
-                            #endif
-                        }
-                        guard let context = destination, let target = context.data,
-                              context.bitsPerComponent == tile.bitsPerComponent, context.bitsPerPixel == tile.bitsPerPixel,
-                              context.bitmapInfo == tile.bitmapInfo, let destinationSpace = context.colorSpace,
-                              CFEqual(destinationSpace, space) else { return .failure(.encodingFailed) }
+        // Keep the original vertical drawing coordinates: UIKit text coverage
+        // can differ when its canvas is split horizontally, even away from seams.
+        // A fixed pixel budget bounds each full-height strip independently of
+        // decoration count. Exceptionally tall images need at least one column;
+        // they retain full resolution rather than being rejected/downsampled.
+        let pixelBudget = max(1024 * 1024, source.height)
+        let maximumWidth = max(1, pixelBudget / source.height)
+        let gutter = maximumWidth >= 5 ? 2 : 0
+        let edge = max(1, maximumWidth - 2 * gutter)
+        let y = 0
+        var x = 0
+        while x < source.width {
+            guard !task.isCancelled else { return .failure(.cancelled) }
+            let width = min(edge, source.width - x), height = source.height
+            let rect = CGRect(x: x, y: y, width: width, height: height)
+            // Record a small surrounding region, then copy only the interior.
+            // This keeps antialiasing/image sampling away from tile clip edges.
+            let expanded = rect.insetBy(dx: -CGFloat(gutter), dy: 0)
+                .intersection(CGRect(origin: .zero, size: size))
+            let result: Result<Void, PhotoExportError> = autoreleasepool {
+                switch rasterize(decoded.image, expanded) {
+                case .failure(let error): return .failure(error)
+                case .success(let raster):
+                    let tile = raster.image
+                    let offsetX = x - Int(raster.rect.minX), offsetY = y - Int(raster.rect.minY)
+                    guard offsetX >= 0, offsetY >= 0,
+                          offsetX + width <= tile.width, offsetY + height <= tile.height,
+                          let space = tile.colorSpace, let pixels = tile.dataProvider?.data,
+                          let bytes = CFDataGetBytePtr(pixels), tile.bitsPerPixel > 0, tile.bitsPerPixel % 8 == 0,
+                          tile.bytesPerRow >= tile.width * (tile.bitsPerPixel / 8),
+                          CFDataGetLength(pixels) >= tile.bytesPerRow * tile.height else { return .failure(.encodingFailed) }
+                    // The actual first finished UIKit tile determines bitmap
+                    // policy, including extended range. Later tiles must match.
+                    if destination == nil {
+                        destination = CGContext(data: nil, width: source.width, height: source.height,
+                            bitsPerComponent: tile.bitsPerComponent, bytesPerRow: 0,
+                            space: space, bitmapInfo: tile.bitmapInfo.rawValue)
+                        destination?.clear(CGRect(origin: .zero, size: size))
                         #if DEBUG
-                        // Conservatively count both native tile and provider copy.
-                        let storage = tile.bytesPerRow * tile.height + CFDataGetLength(pixels)
-                        task.beginRasterStorage(storage, width: tile.width, height: tile.height)
-                        defer { task.endRasterStorage(storage) }
-                        #endif
-                        guard !task.isCancelled else { return .failure(.cancelled) }
-                        let bytesPerPixel = tile.bitsPerPixel / 8
-                        for row in 0..<height {
-                            // Native CGImage rows are copied without another blend,
-                            // color conversion or premultiplication/quantization.
-                            target.advanced(by: (y + row) * context.bytesPerRow + x * bytesPerPixel)
-                                .copyMemory(from: bytes.advanced(by: (offsetY + row) * tile.bytesPerRow + offsetX * bytesPerPixel), byteCount: width * bytesPerPixel)
+                        if let context = destination {
+                            task.recordCompositionStorage(context.bytesPerRow * context.height)
+                            PhotoExportDiagnostics.trace("spatial-bitmap-created", source: tile, context: context)
                         }
-                        #if DEBUG
-                        task.recordConsumedRaster()
                         #endif
-                        return .success(())
                     }
+                    guard let context = destination, let target = context.data,
+                          context.bitsPerComponent == tile.bitsPerComponent, context.bitsPerPixel == tile.bitsPerPixel,
+                          context.bitmapInfo == tile.bitmapInfo, let destinationSpace = context.colorSpace,
+                          CFEqual(destinationSpace, space) else { return .failure(.encodingFailed) }
+                    #if DEBUG
+                    // Conservatively count both native tile and provider copy.
+                    let storage = tile.bytesPerRow * tile.height + CFDataGetLength(pixels)
+                    task.beginRasterStorage(storage, width: tile.width, height: tile.height)
+                    defer { task.endRasterStorage(storage) }
+                    #endif
+                    guard !task.isCancelled else { return .failure(.cancelled) }
+                    let bytesPerPixel = tile.bitsPerPixel / 8
+                    for row in 0..<height {
+                        // Native CGImage rows are copied without another blend,
+                        // color conversion or premultiplication/quantization.
+                        target.advanced(by: (y + row) * context.bytesPerRow + x * bytesPerPixel)
+                            .copyMemory(from: bytes.advanced(by: (offsetY + row) * tile.bytesPerRow + offsetX * bytesPerPixel), byteCount: width * bytesPerPixel)
+                    }
+                    #if DEBUG
+                    task.recordConsumedRaster()
+                    #endif
+                    return .success(())
                 }
-                if case .failure(let error) = result { return .failure(error) }
-                x += width
             }
-            y += min(edge, source.height - y)
+            if case .failure(let error) = result { return .failure(error) }
+            x += width
         }
         guard !task.isCancelled else { return .failure(.cancelled) }
         guard let image = destination?.makeImage() else { return .failure(.encodingFailed) }

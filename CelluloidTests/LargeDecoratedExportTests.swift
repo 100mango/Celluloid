@@ -149,8 +149,9 @@ final class LargeDecoratedExportTests: XCTestCase {
                 let storage = task!.storageStatistics
                 print("STREAMING_STORAGE overlays=\(storage.completedOverlayCount) tiles=\(storage.rasterizedCount) max_tiles=\(storage.maximumRasterCount) max_tile_bytes=\(storage.maximumRasterBytes) max_width=\(storage.maximumRasterWidth) max_height=\(storage.maximumRasterHeight) canvas_bytes=\(storage.compositionBytes)")
                 XCTAssertLessThanOrEqual(storage.maximumRasterCount, 1)
-                XCTAssertLessThanOrEqual(storage.maximumRasterWidth, 1024)
-                XCTAssertLessThanOrEqual(storage.maximumRasterHeight, 1024)
+                XCTAssertEqual(storage.maximumRasterHeight, 3000, "Preserve full vertical glyph coordinates")
+                XCTAssertLessThanOrEqual(storage.maximumRasterWidth * storage.maximumRasterHeight, 1024 * 1024,
+                                        "One fixed-pixel-budget strip, independent of decoration count")
                 XCTAssertLessThanOrEqual(storage.maximumRasterBytes, 1024 * 1024 * 16)
                 XCTAssertEqual(storage.currentRasterCount, 0)
                 XCTAssertEqual(storage.currentRasterBytes, 0)
@@ -165,7 +166,7 @@ final class LargeDecoratedExportTests: XCTestCase {
                         XCTAssertEqual(output.image.cgImage?.width, 4000)
                         XCTAssertEqual(output.image.cgImage?.height, 3000)
                         XCTAssertEqual(storage.completedOverlayCount, 12, "No decoration may be discarded to reduce memory")
-                        XCTAssertEqual(storage.rasterizedCount, 12, "4000x3000 must exercise twelve final-output tiles with the complete layer stack")
+                        XCTAssertEqual(storage.rasterizedCount, 12, "4000x3000 must exercise twelve bounded vertical strips with the complete layer stack")
                         XCTAssertEqual(storage.consumedRasterCount, 12)
                         XCTAssertEqual(try? AdjustmentData.decode(output.adjustmentData).bubbles.count, 6)
                         XCTAssertEqual(try? AdjustmentData.decode(output.adjustmentData).stickers.count, 6)

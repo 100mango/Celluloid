@@ -86,7 +86,7 @@ jobs:
         python3 - <<'PY'
         import json
         d=json.load(open('/tmp/unit-summary.json'))
-        assert d['totalTestCount'] ==63 and d['passedTests'] ==63 and d['failedTests'] ==0, d
+        assert d['totalTestCount'] ==64 and d['passedTests'] ==64 and d['failedTests'] ==0, d
         PY
     - name: Read PhotoKit readiness and reconcile fixtures
       id: photos

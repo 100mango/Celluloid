@@ -14,6 +14,7 @@ final class ExportAndInteractionTests: XCTestCase {
             try testAsyncDecoratedExportExcludesVisibleEditorHandles()
             try testOffMainCompositeMatchesLegacyAffineAlphaAndColorRendering()
             try testStreamingTileBoundariesAndManyOverlaysMatchLegacyPixels()
+            try testUnevenRotatedAndScaledStripCanvasesMatchLegacyPixels()
             try testExtendedRangeSourceMatchesLegacyRendererBitmapAndPixels()
             testSourceScaleAndExifDoNotChangeFullResolutionWhenDecorated()
         }
@@ -281,11 +282,21 @@ final class ExportAndInteractionTests: XCTestCase {
     }
 
     func testStreamingTileBoundariesAndManyOverlaysMatchLegacyPixels() throws {
+        try assertManyOverlaysMatchLegacyPixels(width: 1600, height: 1200, scale: 1, orientation: .up)
+    }
+
+    func testUnevenRotatedAndScaledStripCanvasesMatchLegacyPixels() throws {
+        try assertManyOverlaysMatchLegacyPixels(width: 1603, height: 1207, scale: 2, orientation: .up)
+        try assertManyOverlaysMatchLegacyPixels(width: 1603, height: 1207, scale: 3, orientation: .right)
+    }
+
+    private func assertManyOverlaysMatchLegacyPixels(width: Int, height: Int, scale: CGFloat, orientation: UIImage.Orientation) throws {
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
-        let source = UIGraphicsImageRenderer(size: CGSize(width: 1600, height: 1200), format: format).image { context in
-            UIColor(red: 0.8, green: 0.2, blue: 0.1, alpha: 0.4).setFill(); context.fill(CGRect(x: 0, y: 0, width: 800, height: 1200))
-            UIColor(displayP3Red: 0.1, green: 0.8, blue: 0.3, alpha: 0.7).setFill(); context.fill(CGRect(x: 800, y: 0, width: 800, height: 1200))
+        let raster = UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).image { context in
+            UIColor(red: 0.8, green: 0.2, blue: 0.1, alpha: 0.4).setFill(); context.fill(CGRect(x: 0, y: 0, width: width / 2, height: height))
+            UIColor(displayP3Red: 0.1, green: 0.8, blue: 0.3, alpha: 0.7).setFill(); context.fill(CGRect(x: width / 2, y: 0, width: width - width / 2, height: height))
         }
+        let source = UIImage(cgImage: try XCTUnwrap(raster.cgImage), scale: scale, orientation: orientation)
         let editor = BaseEditPhotoController()
         editor.loadViewIfNeeded(); editor.view.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
         editor.sourceImage = source; editor.view.layoutIfNeeded()
@@ -307,6 +318,8 @@ final class ExportAndInteractionTests: XCTestCase {
         editor.restoreFromData(data)
         let reference = try XCTUnwrap(editor.outputImage)
         let expected = rgba(reference)
+        let pixelWidth = try XCTUnwrap(reference.cgImage).width
+        let pixelHeight = try XCTUnwrap(reference.cgImage).height
         let finished = expectation(description: "Streaming tile seams and twelve overlays")
         editor.exportPhoto { result in
             switch result {
@@ -318,24 +331,29 @@ final class ExportAndInteractionTests: XCTestCase {
                 XCTAssertEqual(String(describing: output.image.cgImage?.colorSpace?.name), String(describing: reference.cgImage?.colorSpace?.name))
                 let actual = self.rgba(output.image)
                 XCTAssertEqual(actual.count, expected.count)
+                XCTAssertEqual(output.image.cgImage?.width, pixelWidth)
+                XCTAssertEqual(output.image.cgImage?.height, pixelHeight)
+                XCTAssertEqual(try? AdjustmentData.decode(output.adjustmentData).bubbles.count, 6)
+                XCTAssertEqual(try? AdjustmentData.decode(output.adjustmentData).stickers.count, 6)
                 var maximum = 0, changed = 0
                 var samples: [[String: Int]] = []
                 for (index, pair) in zip(actual, expected).enumerated() {
                     let delta = abs(Int(pair.0) - Int(pair.1)); maximum = max(maximum, delta)
                     if delta != 0 {
                         changed += 1
-                        if samples.count < 16 { samples.append(["x": (index / 4) % 1600, "y": (index / 4) / 1600,
+                        if samples.count < 16 { samples.append(["x": (index / 4) % pixelWidth, "y": (index / 4) / pixelWidth,
                             "channel": index % 4, "actual": Int(pair.0), "reference": Int(pair.1)]) }
                     }
                 }
                 if !samples.isEmpty { print("SPATIAL_PIXEL_DIFFERENCE_LOCATIONS " + String(decoding: try! JSONSerialization.data(withJSONObject: samples, options: [.sortedKeys]), as: UTF8.self)) }
-                print("STREAMING_MANY_OVERLAY_EQUIVALENCE maximum_channel_delta=\(maximum) changed_channels=\(changed) channels=\(actual.count)")
+                print("STREAMING_MANY_OVERLAY_EQUIVALENCE width=\(pixelWidth) height=\(pixelHeight) source_scale=\(scale) source_orientation=\(orientation.rawValue) maximum_channel_delta=\(maximum) changed_channels=\(changed) channels=\(actual.count)")
                 if maximum != 0 {
                     // Diagnose coordinate/clip behavior without changing the strict oracle.
-                    let regions = [("full-canvas", CGRect(x: 0, y: 0, width: 1600, height: 1200)),
-                                   ("lower-left", CGRect(x: 0, y: 1018, width: 1022, height: 182)),
-                                   ("full-height-left", CGRect(x: 0, y: 0, width: 800, height: 1200)),
-                                   ("full-width-bottom", CGRect(x: 0, y: 1018, width: 1600, height: 182))]
+                    let regions = [("full-canvas", CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight)),
+                                   ("lower-left", CGRect(x: 0, y: pixelHeight - 182, width: min(1022, pixelWidth), height: 182)),
+                                   ("full-height-left", CGRect(x: 0, y: 0, width: pixelWidth / 2, height: pixelHeight)),
+                                   ("full-height-right", CGRect(x: pixelWidth / 2, y: 0, width: pixelWidth - pixelWidth / 2, height: pixelHeight)),
+                                   ("full-width-bottom", CGRect(x: 0, y: pixelHeight - 182, width: pixelWidth, height: 182))]
                     for (name, region) in regions {
                         guard let cropped = reference.cgImage?.cropping(to: region) else { XCTFail("Diagnostic crop missing"); continue }
                         let expectedRegion = self.rgba(UIImage(cgImage: cropped, scale: 1, orientation: .up))
