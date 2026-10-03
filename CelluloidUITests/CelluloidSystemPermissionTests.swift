@@ -17,9 +17,12 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         app.buttons["edit-photo"].tap()
     }
     func testRealGrantedAccessCanSelectFixture() {
+        let monitor = installExpectedFullPhotosAccessMonitor()
+        defer { removeUIInterruptionMonitor(monitor) }
         openPicker()
         let fixture = app.descendants(matching: .any)["photo-0"]
         XCTAssertTrue(fixture.waitForExistence(timeout: 15))
+        assertFullPhotoAccessPicker(app)
         fixture.tap()
         XCTAssertTrue(app.buttons["picker-done"].isEnabled)
         app.buttons["Cancel"].tap()

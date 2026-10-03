@@ -87,15 +87,9 @@ extension BubbleView {
         let editBubbleVC = EditBubbleViewController(bubbleModel: self.bubbleModel)
         editBubbleVC.delegate = self
         let navigationVC = UINavigationController(rootViewController: editBubbleVC)
-        // A compact half-sheet leaves too little room for caption editing and
-        // exposes old canvas text outside the modal accessibility boundary.
-        // Phones use the whole screen; iPad keeps its spacious form presentation.
-        let isPad = traitCollection.userInterfaceIdiom == .pad
-        navigationVC.modalPresentationStyle = isPad ? .formSheet : .fullScreen
-        if isPad {
-            navigationVC.sheetPresentationController?.detents = [.large()]
-            navigationVC.sheetPresentationController?.prefersGrabberVisible = true
-        }
+        // Keep the editing task visually and accessibly modal on every size.
+        // A form sheet left old caption text visible outside its focus boundary.
+        navigationVC.modalPresentationStyle = .fullScreen
         self.parentViewController?.present(navigationVC, animated: true)
     }
 }

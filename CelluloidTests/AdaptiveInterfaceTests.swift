@@ -258,6 +258,47 @@ final class AdaptiveInterfaceTests: XCTestCase {
         XCTAssertEqual(text.text, updated.content)
     }
 
+    func testCaptionEditorReadableColumnAcrossCompactAndResizedPadGeometry() throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let host = UIViewController()
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        var model = BubbleModel.bubbles[0]
+        model.content = "Readable caption 可读文字"
+        let editor = EditBubbleViewController(bubbleModel: model)
+        let navigation = UINavigationController(rootViewController: editor)
+        host.addChild(navigation); host.view.addSubview(navigation.view); navigation.didMove(toParent: host)
+        editor.loadViewIfNeeded()
+        let text = try XCTUnwrap(editor.view.subviews.compactMap { $0 as? UITextView }.first)
+        for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+            editor.traitOverrides.preferredContentSizeCategory = category
+            editor.updateTraitsIfNeeded()
+            for size in [CGSize(width: 320, height: 568), CGSize(width: 568, height: 320),
+                         CGSize(width: 375, height: 1024), CGSize(width: 540, height: 744),
+                         CGSize(width: 744, height: 1133), CGSize(width: 1133, height: 744),
+                         CGSize(width: 1032, height: 1376), CGSize(width: 1376, height: 1032)] {
+                window.frame = CGRect(origin: .zero, size: size)
+                host.view.frame = window.bounds
+                navigation.view.frame = host.view.bounds
+                for _ in 0..<3 {
+                    navigation.view.setNeedsLayout(); navigation.view.layoutIfNeeded()
+                    editor.view.setNeedsLayout(); editor.view.layoutIfNeeded()
+                }
+                XCTAssertEqual(editor.traitCollection.preferredContentSizeCategory, category)
+                XCTAssertEqual(text.traitCollection.preferredContentSizeCategory, category)
+                XCTAssertGreaterThan(text.bounds.width, 0)
+                XCTAssertGreaterThan(text.bounds.height, 120)
+                XCTAssertLessThanOrEqual(text.bounds.width, 720)
+                XCTAssertEqual(text.center.x, editor.view.safeAreaLayoutGuide.layoutFrame.midX, accuracy: 1)
+                XCTAssertTrue(editor.view.safeAreaLayoutGuide.layoutFrame.insetBy(dx: -1, dy: -1).contains(text.frame))
+                XCTAssertTrue(text.isEditable && text.isScrollEnabled && text.adjustsFontForContentSizeCategory)
+                XCTAssertEqual(text.text, model.content)
+            }
+        }
+    }
+
     private func assertFullTitle(_ label: UILabel, within container: UIView,
                                  file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertFalse(label.text?.isEmpty ?? true, file: file, line: line)
