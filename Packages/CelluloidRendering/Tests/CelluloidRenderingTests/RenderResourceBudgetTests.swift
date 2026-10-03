@@ -36,7 +36,7 @@ final class RenderResourceBudgetTests: XCTestCase {
     }
     func testFourMaximumPixelSourcesHaveBoundedPreviewMemory() async throws {
         #if os(macOS)
-        let data = try fixture(width: 8000, height: 6000, value: 0.7)
+        let data = try fixture(width: 8064, height: 6048, value: 0.7)
         var recipe = EditRecipe(); var originals: [UUID: Data] = [:]
         for index in 0..<4 {
             var source = try RasterCodec.metadata(data, name: "Synthetic \(index)")
@@ -52,7 +52,7 @@ final class RenderResourceBudgetTests: XCTestCase {
             var usage = rusage(); XCTAssertEqual(getrusage(RUSAGE_SELF, &usage), 0)
             let peak = Int64(usage.ru_maxrss)
             if iteration == 0 { firstPeak = peak }
-            print("NATIVE_RENDER_MEMORY iteration=\(iteration) sources=4 source_pixels=48000000 zoom=5 preview=600 peak_resident_bytes=\(peak)")
+            print("NATIVE_RENDER_MEMORY iteration=\(iteration) sources=4 source_pixels=48771072 zoom=5 preview=600 peak_resident_bytes=\(peak)")
             XCTAssertLessThan(peak, 1_500_000_000, "Maximum-size preview exceeded the practical process memory gate")
             XCTAssertLessThanOrEqual(peak - firstPeak, 256 * 1024 * 1024, "Repeated preview retained excessive additional memory")
         }

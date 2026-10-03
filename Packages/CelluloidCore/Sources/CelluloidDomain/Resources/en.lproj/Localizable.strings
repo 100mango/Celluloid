@@ -1,6 +1,6 @@
 "An original image is missing from this document." = "An original image is missing from this document.";
 "An overlay contains invalid position or size information." = "An overlay contains invalid position or size information.";
-"The image or document is too large. Use images up to 48 megapixels and keep the combined originals under 64 MB." = "The image or document is too large. Use images up to 48 megapixels and keep the combined originals under 64 MB.";
+"The image or document is too large. Use images up to 50 megapixels and keep the combined originals under 64 MB." = "The image or document is too large. Use images up to 50 megapixels and keep the combined originals under 64 MB.";
 "This Celluloid document is damaged or has invalid contents." = "This Celluloid document is damaged or has invalid contents.";
 "This document uses an unsupported Celluloid recipe version." = "This document uses an unsupported Celluloid recipe version.";
 "filter.Original" = "Original";

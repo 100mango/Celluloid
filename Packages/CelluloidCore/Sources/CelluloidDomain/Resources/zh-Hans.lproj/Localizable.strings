@@ -1,6 +1,6 @@
 "An original image is missing from this document." = "此文稿缺少一张原片。";
 "An overlay contains invalid position or size information." = "图层的位置或尺寸信息无效。";
-"The image or document is too large. Use images up to 48 megapixels and keep the combined originals under 64 MB." = "图片或文稿过大。每张图片应不超过 4800 万像素，原片总大小应小于 64 MB。";
+"The image or document is too large. Use images up to 50 megapixels and keep the combined originals under 64 MB." = "图片或文稿过大。每张图片应不超过 5000 万像素，原片总大小应小于 64 MB。";
 "This Celluloid document is damaged or has invalid contents." = "此 Celluloid 文稿已损坏或包含无效内容。";
 "This document uses an unsupported Celluloid recipe version." = "此文稿使用了不受支持的 Celluloid 编辑版本。";
 "filter.Original" = "原片";

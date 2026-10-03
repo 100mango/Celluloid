@@ -21,7 +21,7 @@ def configs(key,settings):
 def reference(path):
     i=uid(path)
     if i not in objects:
-        add(path,'PBXFileReference',lastKnownFileType='sourcecode.swift' if path.endswith('.swift') else 'text.plist.xml',path=path,sourceTree='<group>');children.append(i)
+        add(path,'PBXFileReference',lastKnownFileType='sourcecode.swift' if path.endswith('.swift') else 'text.plist.strings' if path.endswith('.strings') else 'text.plist.xml',path=path,sourceTree='<group>');children.append(i)
     return i
 packages={name:add('package:'+name,'XCLocalSwiftPackageReference',relativePath='Packages/'+name) for name in ['CelluloidCore','CelluloidRendering']}
 targets={};products={}
@@ -41,14 +41,15 @@ for name,platform in settings_by_name.items():
     if not tests: paths+=list((ROOT/'Platforms'/('macOS' if name=='CelluloidMac' else 'visionOS')).glob('*.swift'))
     localized=[]
     if not tests:
-        language_refs=[]
-        for language in ['en','zh-Hans']:
-            path='Platforms/Resources/'+language+'.lproj/Localizable.strings'
-            language_ref=reference(path);objects[language_ref]['name']=language
-            if language_ref in children:children.remove(language_ref)
-            language_refs.append(language_ref)
-        variant=add('variant:'+name,'PBXVariantGroup',children=language_refs,name='Localizable.strings',sourceTree='<group>');children.append(variant)
-        localized.append(add('build:localization:'+name,'PBXBuildFile',fileRef=variant))
+        if uid('variant:shared-localizations') not in objects:
+            language_refs=[]
+            for language in ['en','zh-Hans']:
+                path='Platforms/Resources/'+language+'.lproj/Localizable.strings'
+                language_ref=reference(path);objects[language_ref]['name']=language
+                if language_ref in children:children.remove(language_ref)
+                language_refs.append(language_ref)
+            variant=add('variant:shared-localizations','PBXVariantGroup',children=language_refs,name='Localizable.strings',sourceTree='<group>');children.append(variant)
+        localized.append(add('build:localization:'+name,'PBXBuildFile',fileRef=uid('variant:shared-localizations')))
     source=[add('build:'+name+p.relative_to(ROOT).as_posix(),'PBXBuildFile',fileRef=reference(p.relative_to(ROOT).as_posix())) for p in sorted(paths)]
     links=[];deps=[];package_deps=[]
     for package,product in [('CelluloidCore','CelluloidDomain'),('CelluloidRendering','CelluloidRendering')]:
@@ -76,7 +77,7 @@ for name in ['CelluloidMac','CelluloidVision','CelluloidMacUI']:
     (folder/(name+'.xcscheme')).write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="2700" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{ref(app_name)}</BuildActionEntry></BuildActionEntries></BuildAction><TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="NO"><MacroExpansion>{ref(app_name)}</MacroExpansion><Testables>{tests}</Testables>{environment}</TestAction><LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB"><BuildableProductRunnable runnableDebuggingMode="0">{ref(app_name)}</BuildableProductRunnable></LaunchAction><ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES"><BuildableProductRunnable runnableDebuggingMode="0">{ref(app_name)}</BuildableProductRunnable></ProfileAction><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>\n''')
 for platform in ['macOS','visionOS']:
-    info={'CFBundleIdentifier':'$(PRODUCT_BUNDLE_IDENTIFIER)','CFBundleName':'Celluloid','CFBundleExecutable':'$(EXECUTABLE_NAME)','CFBundlePackageType':'APPL','CFBundleVersion':'$(CURRENT_PROJECT_VERSION)','CFBundleShortVersionString':'$(MARKETING_VERSION)','NSHumanReadableCopyright':'Copyright © Mango. See bundled LICENSE.txt.','CFBundleDocumentTypes':[{'CFBundleTypeName':'Celluloid Document','CFBundleTypeRole':'Editor','LSHandlerRank':'Owner','LSItemContentTypes':['Mango.Celluloid.document']}],'UTExportedTypeDeclarations':[{'UTTypeIdentifier':'Mango.Celluloid.document','UTTypeDescription':'Celluloid Editable Document','UTTypeConformsTo':['com.apple.package'],'UTTypeTagSpecification':{'public.filename-extension':['celluloid']}}]}
+    info={'CFBundleIdentifier':'$(PRODUCT_BUNDLE_IDENTIFIER)','CFBundleName':'Celluloid','CFBundleDevelopmentRegion':'en','CFBundleLocalizations':['en','zh-Hans'],'CFBundleExecutable':'$(EXECUTABLE_NAME)','CFBundlePackageType':'APPL','CFBundleVersion':'$(CURRENT_PROJECT_VERSION)','CFBundleShortVersionString':'$(MARKETING_VERSION)','NSHumanReadableCopyright':'Copyright © Mango. See bundled LICENSE.txt.','CFBundleDocumentTypes':[{'CFBundleTypeName':'Celluloid Document','CFBundleTypeRole':'Editor','LSHandlerRank':'Owner','LSItemContentTypes':['Mango.Celluloid.document']}],'UTExportedTypeDeclarations':[{'UTTypeIdentifier':'Mango.Celluloid.document','UTTypeDescription':'Celluloid Editable Document','UTTypeConformsTo':['com.apple.package'],'UTTypeTagSpecification':{'public.filename-extension':['celluloid']}}]}
     if platform=='macOS': info.update(LSMinimumSystemVersion='$(MACOSX_DEPLOYMENT_TARGET)',NSPrincipalClass='NSApplication')
     else: info.update(UIApplicationSceneManifest={'UIApplicationSupportsMultipleScenes':True},UILaunchScreen={})
     with open(ROOT/'Platforms'/platform/'Info.plist','wb') as f: plistlib.dump(info,f,sort_keys=True)

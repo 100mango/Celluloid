@@ -43,19 +43,19 @@
 		};
 		"350528213B2B3A278F55EA5B" = {
 			"isa" = "PBXFileReference";
-			"lastKnownFileType" = "text.plist.xml";
+			"lastKnownFileType" = "text.plist.strings";
 			"path" = "Platforms/Resources/en.lproj/Localizable.strings";
 			"sourceTree" = "<group>";
 			"name" = "en";
 		};
 		"EF368E24752B361BBCADA132" = {
 			"isa" = "PBXFileReference";
-			"lastKnownFileType" = "text.plist.xml";
+			"lastKnownFileType" = "text.plist.strings";
 			"path" = "Platforms/Resources/zh-Hans.lproj/Localizable.strings";
 			"sourceTree" = "<group>";
 			"name" = "zh-Hans";
 		};
-		"758CB950C338BD32AB90F06C" = {
+		"CF9728FDF59D3B41358595B6" = {
 			"isa" = "PBXVariantGroup";
 			"children" = ("350528213B2B3A278F55EA5B", "EF368E24752B361BBCADA132");
 			"name" = "Localizable.strings";
@@ -63,7 +63,7 @@
 		};
 		"492E5EE31E7A61E8627BA7F4" = {
 			"isa" = "PBXBuildFile";
-			"fileRef" = "758CB950C338BD32AB90F06C";
+			"fileRef" = "CF9728FDF59D3B41358595B6";
 		};
 		"FD487CF6F9095694E5C931A3" = {
 			"isa" = "PBXFileReference";
@@ -226,15 +226,9 @@
 			"dependencies" = ();
 			"packageProductDependencies" = ("4A0A7B794080F5F4DC92EB00", "BF7FC0A44D99C9E7965706D5");
 		};
-		"A50F2B4239342C7A30514195" = {
-			"isa" = "PBXVariantGroup";
-			"children" = ("350528213B2B3A278F55EA5B", "EF368E24752B361BBCADA132");
-			"name" = "Localizable.strings";
-			"sourceTree" = "<group>";
-		};
 		"B3885BC80A5950C46F3538AB" = {
 			"isa" = "PBXBuildFile";
-			"fileRef" = "A50F2B4239342C7A30514195";
+			"fileRef" = "CF9728FDF59D3B41358595B6";
 		};
 		"1329F6AD86C5C31E2B0E8D02" = {
 			"isa" = "PBXBuildFile";
@@ -649,7 +643,7 @@
 		};
 		"C3C8853CC2AF9E3CF862AA78" = {
 			"isa" = "PBXGroup";
-			"children" = ("758CB950C338BD32AB90F06C", "FD487CF6F9095694E5C931A3", "15E4AE0E4F10C1CCED2C1AE4", "BA1EE020EAA817969B9AF6D0", "15CB0613891975E941DDB140", "EDEEACE576FA2E263E7A5785", "15ECB0C351A51871CB00A8D3", "A50F2B4239342C7A30514195", "34CD17BD0B21355F501346C8", "BA91D03DE64529F8FED4C192", "99DD9D813FB8A17E64801B21", "276DDD039BAAABAC8C9A74FF", "399C234FAAD22663EAA8B41A", "C275A667CEA49A4BEB9C5D81");
+			"children" = ("CF9728FDF59D3B41358595B6", "FD487CF6F9095694E5C931A3", "15E4AE0E4F10C1CCED2C1AE4", "BA1EE020EAA817969B9AF6D0", "15CB0613891975E941DDB140", "EDEEACE576FA2E263E7A5785", "15ECB0C351A51871CB00A8D3", "34CD17BD0B21355F501346C8", "BA91D03DE64529F8FED4C192", "99DD9D813FB8A17E64801B21", "276DDD039BAAABAC8C9A74FF", "399C234FAAD22663EAA8B41A", "C275A667CEA49A4BEB9C5D81");
 			"sourceTree" = "<group>";
 		};
 		"DED267C77AB07A6FF4168D2F" = {

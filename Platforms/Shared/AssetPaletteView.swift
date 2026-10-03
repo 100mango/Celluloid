@@ -46,7 +46,7 @@ private struct AssetCell: View {
         Button(action: action) {
             VStack(spacing: 5) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8).fill(Color.white)
+                    RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.15))
                     if let image {
                         Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fit).padding(5)
                     } else if failed { Image(systemName: "exclamationmark.triangle").foregroundStyle(.red) }

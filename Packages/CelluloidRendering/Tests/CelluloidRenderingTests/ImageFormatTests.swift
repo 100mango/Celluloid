@@ -59,6 +59,20 @@ final class ImageFormatTests: XCTestCase {
             Array(UnsafeBufferPointer(start: bytes + y * context.bytesPerRow + x * 4, count: 4))
         }
     }
+    func testAnimatedInputIsRejectedInsteadOfSilentlyDroppingFrames() throws {
+        let context = try RasterCodec.bitmap(width: 16, height: 16)
+        context.setFillColor(CGColor(gray: 1, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: 16, height: 16))
+        let image = try XCTUnwrap(context.makeImage())
+        let data = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(data, UTType.gif.identifier as CFString, 2, nil))
+        CGImageDestinationAddImage(destination, image, nil); CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        XCTAssertThrowsError(try RasterCodec.metadata(data as Data)) { error in
+            guard let error = error as? RenderError else { return XCTFail("Unexpected error") }
+            if case .unsupportedSourceFormat = error { } else { XCTFail("Expected explicit unsupported-format error") }
+        }
+        XCTAssertTrue(try XCTUnwrap(UTType(filenameExtension: "dng")).conforms(to: .rawImage))
+    }
     func testUnreadableAndOversizedInputsFailBeforeRender() throws {
         XCTAssertThrowsError(try RasterCodec.metadata(Data([0, 1, 2, 3])))
         let data = Data(repeating: 0, count: RasterCodec.maxSourceBytes + 1)

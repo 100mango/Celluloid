@@ -18,7 +18,7 @@ public struct EditRecipe: Codable, Equatable, Sendable {
         guard format == Self.format, version == 1 else { throw RecipeError.unsupportedVersion }
         guard sources.count <= 4, Set(sources.map(\.id)).count == sources.count,
               (1...16_384).contains(canvasWidth), (1...16_384).contains(canvasHeight),
-              canvasWidth * canvasHeight <= 48_000_000,
+              canvasWidth * canvasHeight <= 50_000_000,
               overlays.count <= 100, Set(overlays.map(\.id)).count == overlays.count else {
             throw RecipeError.invalidDocument
         }
@@ -51,7 +51,7 @@ public enum RecipeError: Error, Equatable, LocalizedError {
         switch self {
         case .unsupportedVersion: return NSLocalizedString("This document uses an unsupported Celluloid recipe version.", bundle: .module, comment: "Document error")
         case .invalidDocument: return NSLocalizedString("This Celluloid document is damaged or has invalid contents.", bundle: .module, comment: "Document error")
-        case .resourceLimit: return NSLocalizedString("The image or document is too large. Use images up to 48 megapixels and keep the combined originals under 64 MB.", bundle: .module, comment: "Document error")
+        case .resourceLimit: return NSLocalizedString("The image or document is too large. Use images up to 50 megapixels and keep the combined originals under 64 MB.", bundle: .module, comment: "Document error")
         case .missingSource: return NSLocalizedString("An original image is missing from this document.", bundle: .module, comment: "Document error")
         case .invalidGeometry: return NSLocalizedString("An overlay contains invalid position or size information.", bundle: .module, comment: "Document error")
         }
@@ -71,7 +71,7 @@ public struct SourceImage: Codable, Equatable, Identifiable, Sendable {
     }
     public func validate() throws {
         guard (1...16_384).contains(pixelWidth), (1...16_384).contains(pixelHeight),
-              pixelWidth * pixelHeight <= 48_000_000, displayName.utf8.count <= 1024 else {
+              pixelWidth * pixelHeight <= 50_000_000, displayName.utf8.count <= 1024 else {
             throw RecipeError.resourceLimit
         }
         try crop.validate()

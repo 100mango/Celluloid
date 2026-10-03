@@ -47,7 +47,7 @@ struct EditorView: View {
                 Menu("Export") {
                     Button("PNG…") { prepareExport(.png) }
                     Button("JPEG…") { prepareExport(.jpeg) }
-                }.disabled(document.recipe.sources.isEmpty || rendering || importing || exporting)
+                }.accessibilityIdentifier("editor.export").disabled(document.recipe.sources.isEmpty || rendering || importing || exporting)
             }
         }
         .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image], allowsMultipleSelection: true, onCompletion: importFiles)

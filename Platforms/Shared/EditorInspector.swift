@@ -48,6 +48,7 @@ struct EditorInspector: View {
                     OverlayInspector(overlay: selected, update: update, remove: remove)
                 }
                 Divider()
+                Text("Static photos · sRGB SDR export").font(.caption).foregroundStyle(.secondary)
                 Text("Save this .celluloid document to reopen all originals, layers and text. Export PNG or JPEG for a finished image.")
                     .font(.caption).foregroundStyle(.secondary)
             }.padding(18)

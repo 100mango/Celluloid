@@ -60,6 +60,69 @@ final class NativeEditorUITests: XCTestCase {
         closeCancel.click()
         XCTAssertTrue(text.waitForExistence(timeout: 5))
     }
+    @MainActor func testSaveReopenAndVerifiedPNGJPEGExport() throws {
+        continueAfterFailure = false
+        let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
+        let app = XCUIApplication(url: URL(fileURLWithPath: path))
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
+        app.launch(); defer { app.terminate() }
+        let cancel = app.windows["open-panel"].buttons["CancelButton"]
+        if cancel.waitForExistence(timeout: 3) { cancel.click() }
+        app.typeKey("n", modifierFlags: .command)
+        let importButton = app.descendants(matching: .any)["editor.import-files"].firstMatch
+        XCTAssertTrue(importButton.waitForExistence(timeout: 10))
+        let fixture = try makeFixture(), folder = fixture.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        importButton.click(); try goTo(fixture, in: app)
+        let open = app.windows.buttons["OKButton"].firstMatch
+        XCTAssertTrue(open.waitForExistence(timeout: 5)); open.click()
+        XCTAssertTrue(app.staticTexts["1200 × 800 px"].waitForExistence(timeout: 10))
+        app.descendants(matching: .any)["editor.add-bubble"].firstMatch.click()
+        let bubble = app.buttons["asset.say1"]
+        XCTAssertTrue(bubble.waitForExistence(timeout: 5)); bubble.click()
+        let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
+        XCTAssertTrue(text.waitForExistence(timeout: 5)); text.click()
+        app.typeKey("a", modifierFlags: .command); text.typeText("Saved 世界")
+        app.typeKey("s", modifierFlags: .command)
+        try save(in: folder, app: app)
+        let documentURL = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).first { $0.pathExtension == "celluloid" })
+        let saved = try EditRecipe.decode(Data(contentsOf: documentURL.appendingPathComponent("recipe.json")))
+        XCTAssertEqual(saved.overlays.first?.text, "Saved 世界")
+        XCTAssertEqual(saved.sources.count, 1)
+        XCTAssertEqual(try Data(contentsOf: documentURL.appendingPathComponent(saved.sources[0].filename)), try Data(contentsOf: fixture))
+        app.typeKey("w", modifierFlags: .command)
+        app.typeKey("o", modifierFlags: .command); try goTo(documentURL, in: app)
+        let reopen = app.windows.buttons["OKButton"].firstMatch
+        XCTAssertTrue(reopen.waitForExistence(timeout: 5)); reopen.click()
+        XCTAssertTrue(app.staticTexts["Saved 世界"].waitForExistence(timeout: 10))
+        for menuTitle in ["PNG…", "JPEG…"] {
+            let menu = app.descendants(matching: .any)["editor.export"].firstMatch
+            XCTAssertTrue(menu.waitForExistence(timeout: 5)); menu.click()
+            app.menuItems[menuTitle].click(); try save(in: folder, app: app)
+            let allowed = menuTitle == "PNG…" ? ["png"] : ["jpg", "jpeg"]
+            let exported = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).first { $0.lastPathComponent != fixture.lastPathComponent && allowed.contains($0.pathExtension.lowercased()) })
+            let metadata = try RasterCodec.metadata(Data(contentsOf: exported))
+            XCTAssertEqual(metadata.pixelWidth, 1200); XCTAssertEqual(metadata.pixelHeight, 800)
+            XCTAssertTrue(app.staticTexts["Exported and verified " + exported.lastPathComponent].waitForExistence(timeout: 5))
+            print("NATIVE_UI_EXPORT_VERIFIED type=\(menuTitle) path=\(exported.path) dimensions=1200x800")
+        }
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "native-mac-saved-reopened-exported"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+    @MainActor private func goTo(_ url: URL, in app: XCUIApplication) throws {
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        let field = app.windows.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5)); field.typeText(url.path)
+        app.typeKey(.return, modifierFlags: [])
+    }
+    @MainActor private func save(in folder: URL, app: XCUIApplication) throws {
+        let saveButton = app.windows.buttons["Save"].firstMatch
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 10))
+        try goTo(folder, in: app)
+        XCTAssertTrue(saveButton.isEnabled); saveButton.click()
+        let closed = NSPredicate(format: "exists == false")
+        expectation(for: closed, evaluatedWith: saveButton)
+        waitForExpectations(timeout: 10)
+    }
     @MainActor func testSimplifiedChineseEditorAndVisualPicker() throws {
         continueAfterFailure = false
         let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])

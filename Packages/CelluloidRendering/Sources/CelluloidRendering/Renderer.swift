@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 import CelluloidDomain
 
 public enum RenderError: Error, LocalizedError {
-    case invalidImage, unavailableFilter(String), missingAsset(String), renderFailed, exportFailed, textDoesNotFit
+    case invalidImage, unavailableFilter(String), missingAsset(String), renderFailed, exportFailed, textDoesNotFit, unsupportedSourceFormat
     public var errorDescription: String? {
         switch self {
         case .invalidImage: return NSLocalizedString("This file could not be decoded as an image.", bundle: .module, comment: "Rendering error")
@@ -15,6 +15,7 @@ public enum RenderError: Error, LocalizedError {
         case .missingAsset(let name): return String(format: NSLocalizedString("Required artwork is missing: %@.", bundle: .module, comment: "Rendering error"), name)
         case .renderFailed: return NSLocalizedString("The image could not be rendered. Your original is unchanged.", bundle: .module, comment: "Rendering error")
         case .exportFailed: return NSLocalizedString("The exported image could not be verified.", bundle: .module, comment: "Rendering error")
+        case .unsupportedSourceFormat: return NSLocalizedString("RAW, ProRAW and animated images are not supported. Import a still JPEG, PNG or HEIC copy.", bundle: .module, comment: "Rendering error")
         case .textDoesNotFit: return NSLocalizedString("This bubble text does not fit. Shorten the text or make the bubble larger.", bundle: .module, comment: "Rendering error")
         }
     }
@@ -30,6 +31,10 @@ public enum RasterCodec {
               let values = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = values[kCGImagePropertyPixelWidth] as? Int,
               let height = values[kCGImagePropertyPixelHeight] as? Int else { throw RenderError.invalidImage }
+        guard let identifier = CGImageSourceGetType(source) as String?,
+              let type = UTType(identifier), !type.conforms(to: .rawImage), CGImageSourceGetCount(source) == 1 else {
+            throw RenderError.unsupportedSourceFormat
+        }
         let orientation = values[kCGImagePropertyOrientation] as? Int ?? 1
         guard (1...8).contains(orientation) else { throw RenderError.invalidImage }
         let swapped = (5...8).contains(orientation)
@@ -48,7 +53,7 @@ public enum RasterCodec {
 
     public static func bitmap(width: Int, height: Int) throws -> CGContext {
         guard width > 0, height > 0, width <= 16_384, height <= 16_384,
-              width * height <= 48_000_000,
+              width * height <= 50_000_000,
               let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
                                       bytesPerRow: width * 4, space: colorSpace,
                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
