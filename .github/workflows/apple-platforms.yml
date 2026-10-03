@@ -1,0 +1,43 @@
+name: Apple platform validation
+on:
+  push:
+    branches: [codex/apple-platforms]
+  pull_request:
+    branches: [codex/ios-modernization]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-platforms-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  portable-core:
+    runs-on: xcode-27
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify exact source and stable SDKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          sw_vers
+          xcodebuild -version
+          xcodebuild -version | grep -Fx 'Xcode 27.0'
+          xcodebuild -showsdks
+          xcrun simctl list runtimes
+      - name: Run portable domain tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift test --package-path Packages/CelluloidCore --scratch-path "$RUNNER_TEMP/celluloid-core"
+      - name: Verify unchanged source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
