@@ -11,6 +11,16 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
     private var selected: [PHAsset] = []
     private let message = UILabel()
     private var observing = false
+    private lazy var settingsButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle(NSLocalizedString("Open Settings", comment: "Photos permission recovery"), for: .normal)
+        button.titleLabel?.font = .preferredFont(forTextStyle: .body)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.accessibilityIdentifier = "photos-settings"
+        button.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
+        button.isHidden = true
+        return button
+    }()
 
     init(maximumSelection: Int, completion: @escaping ([PHAsset]) -> Void) {
         self.maximumSelection = maximumSelection
@@ -38,7 +48,27 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         message.numberOfLines = 0
         message.textAlignment = .center
         message.accessibilityIdentifier = "photos-state"
-        collectionView.backgroundView = message
+        message.font = .preferredFont(forTextStyle: .body)
+        message.adjustsFontForContentSizeCategory = true
+        message.textColor = .label
+        let state = UIScrollView()
+        let stateStack = UIStackView(arrangedSubviews: [message, settingsButton])
+        stateStack.axis = .vertical
+        stateStack.spacing = 16
+        state.addSubview(stateStack)
+        stateStack.translatesAutoresizingMaskIntoConstraints = false
+        let minimumSettingsHeight = settingsButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
+        minimumSettingsHeight.priority = .defaultHigh
+        minimumSettingsHeight.isActive = true
+        NSLayoutConstraint.activate([
+            stateStack.topAnchor.constraint(equalTo: state.contentLayoutGuide.topAnchor, constant: 24),
+            stateStack.bottomAnchor.constraint(equalTo: state.contentLayoutGuide.bottomAnchor, constant: -24),
+            stateStack.leadingAnchor.constraint(equalTo: state.frameLayoutGuide.leadingAnchor, constant: 24),
+            stateStack.trailingAnchor.constraint(equalTo: state.frameLayoutGuide.trailingAnchor, constant: -24),
+            stateStack.leadingAnchor.constraint(equalTo: state.contentLayoutGuide.leadingAnchor, constant: 24),
+            stateStack.trailingAnchor.constraint(equalTo: state.contentLayoutGuide.trailingAnchor, constant: -24)
+        ])
+        collectionView.backgroundView = state
         NotificationCenter.default.addObserver(self, selector: #selector(refreshAuthorization),
             name: UIScene.didActivateNotification, object: nil)
         refreshAuthorization()
@@ -65,6 +95,9 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         guard status == .authorized || status == .limited else {
             assets = PHFetchResult<PHAsset>()
             selected.removeAll()
+            settingsButton.isHidden = false
+            toolbarItems = []
+            navigationController?.setToolbarHidden(true, animated: false)
             navigationItem.rightBarButtonItem?.isEnabled = false
             navigationItem.leftBarButtonItems = [UIBarButtonItem(title: tr(.cancel), style: .plain, target: self, action: #selector(cancel))]
             collectionView.reloadData()
@@ -72,10 +105,17 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
             return
         }
         navigationItem.leftBarButtonItems = [UIBarButtonItem(title: tr(.cancel), style: .plain, target: self, action: #selector(cancel))]
+        settingsButton.isHidden = true
+        toolbarItems = []
+        navigationController?.setToolbarHidden(true, animated: false)
         if status == .limited {
             let manage = UIBarButtonItem(title: NSLocalizedString("Manage Photos", comment: "Limited photo selection"), style: .plain, target: self, action: #selector(managePhotos))
             manage.accessibilityIdentifier = "manage-photos"
-            navigationItem.leftBarButtonItems = [navigationItem.leftBarButtonItem!, manage]
+            // Keep Cancel alone in the compact navigation bar. Two leading text
+            // actions can overlap the title or lose activation points on SE landscape.
+            toolbarItems = [UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil), manage,
+                            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)]
+            navigationController?.setToolbarHidden(false, animated: false)
         }
         if !forceEmpty {
             let options = PHFetchOptions()
@@ -96,9 +136,16 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
     func photoLibraryDidChange(_ changeInstance: PHChange) {
         DispatchQueue.main.async { [weak self] in self?.refreshAuthorization() }
     }
+    @objc private func openSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
     @objc private func managePhotos() { PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: self) }
     @objc private func cancel() { dismiss(animated: true) }
     @objc private func finish() {
+        // Recheck access and prune selection immediately before returning PHAssets;
+        // an external permission/library change can race a queued change callback.
+        refreshAuthorization()
         guard !selected.isEmpty else { return }
         let result = selected
         dismiss(animated: true) { self.completion(result) }

@@ -51,6 +51,9 @@ public struct BubbleModel {
         transform = try decoder.transform("transform")
         bounds = try decoder.rect("bounds")
         center = try decoder.point("center")
+        guard hasRenderableGeometry(center: center, bounds: bounds, transform: transform) else {
+            throw AdjustmentDataError.invalidValue("transformed geometry")
+        }
     }
 }
 

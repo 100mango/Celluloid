@@ -46,36 +46,51 @@ final class EditPhotoViewController: BaseEditPhotoController {
     }
     @objc private func cancel() { guard !saving else { return }; dismiss(animated: true) }
     @objc private func done() {
-        guard !saving, let input = input, let image = outputImage else { return }
-        do {
-            let data = try adjustmentData.encode()
-            guard let jpeg = image.jpegData(compressionQuality: 1) else { throw PhotoEditingError.renderFailed }
-            let output = PHContentEditingOutput(contentEditingInput: input)
-            output.adjustmentData = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: AdjustmentData.formatVersion, data: data)
-            try jpeg.write(to: output.renderedContentURL, options: .atomic)
-            saving = true
-            doneButton.isEnabled = false
-            navigationItem.leftBarButtonItem?.isEnabled = false
-            view.isUserInteractionEnabled = false
-            activity.startAnimating()
-            PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest(for: self.model.asset).contentEditingOutput = output
-            }) { [weak self] success, error in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    self.saving = false
-                    self.doneButton.isEnabled = true
-                    self.navigationItem.leftBarButtonItem?.isEnabled = true
-                    self.view.isUserInteractionEnabled = true
-                    self.activity.stopAnimating()
-                    if success {
-                        self.navigationController?.pushViewController(SharePhotoViewController(image: image), animated: true)
-                    } else {
-                        self.showError(error?.localizedDescription ?? NSLocalizedString("The photo could not be saved. Your original photo is unchanged.", comment: "Save failed"))
+        guard !saving, let input = input else { return }
+        saving = true
+        doneButton.isEnabled = false
+        navigationItem.leftBarButtonItem?.isEnabled = false
+        view.isUserInteractionEnabled = false
+        activity.startAnimating()
+        exportPhoto { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .failure:
+                self.finishSaving()
+                self.showError(NSLocalizedString("The edited image could not be rendered.", comment: "Render failed"))
+            case .success(let exported):
+                let output = PHContentEditingOutput(contentEditingInput: input)
+                output.adjustmentData = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier,
+                    formatVersion: AdjustmentData.formatVersion, data: exported.adjustmentData)
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        try exported.jpegData.write(to: output.renderedContentURL, options: .atomic)
+                        PHPhotoLibrary.shared().performChanges({
+                            PHAssetChangeRequest(for: self.model.asset).contentEditingOutput = output
+                        }) { [weak self] success, error in
+                            DispatchQueue.main.async {
+                                guard let self = self else { return }
+                                self.finishSaving()
+                                if success {
+                                    self.navigationController?.pushViewController(SharePhotoViewController(image: exported.image), animated: true)
+                                } else {
+                                    self.showError(error?.localizedDescription ?? NSLocalizedString("The photo could not be saved. Your original photo is unchanged.", comment: "Save failed"))
+                                }
+                            }
+                        }
+                    } catch {
+                        DispatchQueue.main.async { self.finishSaving(); self.showError(error.localizedDescription) }
                     }
                 }
             }
-        } catch { showError(error.localizedDescription) }
+        }
+    }
+    private func finishSaving() {
+        saving = false
+        doneButton.isEnabled = true
+        navigationItem.leftBarButtonItem?.isEnabled = true
+        view.isUserInteractionEnabled = true
+        activity.stopAnimating()
     }
     private func showError(_ message: String) {
         let alert = UIAlertController(title: NSLocalizedString("Unable to Edit Photo", comment: "Editing error"), message: message, preferredStyle: .alert)

@@ -60,6 +60,10 @@ private extension FilterPickerViewController {
         
         let cell: UICollectionViewCell = collectionView.dequeueReusableCellForIndexPath(indexPath)
         cell.backgroundColor = .cellLightPurple
+        cell.isAccessibilityElement = true
+        cell.accessibilityTraits = .button
+        let names = ["Original", "Sepia", "Posterize", "Crystal", "Pixelate Faces"]
+        cell.accessibilityLabel = NSLocalizedString(names[indexPath.row], bundle: extensionBundle, comment: "Filter name")
         cell.contentView.subviews.forEach {
             $0.removeFromSuperview()
         }

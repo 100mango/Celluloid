@@ -11,7 +11,7 @@ concurrency:
 jobs:
   build-and-test:
     runs-on: xcode-27
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
     steps:
@@ -52,27 +52,47 @@ jobs:
         run: |
           set -euo pipefail
           python3 Scripts/create_fixture.py
-          xcrun simctl list devices available -j > /tmp/devices.json
-          python3 - <<'PY' > /tmp/test-devices.txt
-          import json
-          runtimes=json.load(open('/tmp/devices.json'))['devices']
-          devices=next(v for k,v in runtimes.items() if k.endswith('iOS-27-0'))
-          for prefix in ['iPhone', 'iPad']:
-              d=next(d for d in devices if d['name'].startswith(prefix))
-              print(d['udid'],d['name'])
-          PY
+          xcrun simctl list devicetypes
+          python3 Scripts/select_test_devices.py > /tmp/test-devices.txt
+          cat /tmp/test-devices.txt
+          first_id=$(head -1 /tmp/test-devices.txt | cut -d' ' -f1)
           while read -r id name; do
             echo "Testing $name ($id)"
+            echo "$id" > /tmp/current-celluloid-simulator
             xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build build-for-testing CODE_SIGNING_ALLOWED=NO | tee "build-$id.log"
             xcrun simctl boot "$id" || true
             xcrun simctl bootstatus "$id" -b
             xcrun simctl addmedia "$id" /tmp/celluloid-fixture.png /tmp/celluloid-fixture-2.png
             xcrun simctl install "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app
             xcrun simctl privacy "$id" grant photos Mango.Celluloid
-            xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-$id.log"
+            xcrun simctl ui "$id" appearance light
+            xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never -skip-testing:CelluloidUITests/CelluloidSystemPermissionTests test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-$id.log"
             xcrun xcresulttool get test-results summary --path "TestResults-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY"
+            if [[ "$id" = "$first_id" ]]; then
+              for state in granted revoked limited; do
+                case "$state" in
+                  granted) xcrun simctl privacy "$id" grant photos Mango.Celluloid; method=testRealGrantedAccessCanSelectFixture ;;
+                  revoked) xcrun simctl privacy "$id" revoke photos Mango.Celluloid; method=testRealRevokedAccessClearsSelectionAndHasRecovery ;;
+                  limited) xcrun simctl privacy "$id" reset photos Mango.Celluloid; method=testRealLimitedSelectionAndManagement ;;
+                esac
+                echo "SYSTEM_PHOTOS_STATE $state"
+                xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-permission-$state.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never "-only-testing:CelluloidUITests/CelluloidSystemPermissionTests/$method" test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-permission-$state.log"
+                xcrun xcresulttool get test-results summary --path "TestResults-permission-$state.xcresult" | tee -a "$GITHUB_STEP_SUMMARY"
+              done
+              xcrun simctl privacy "$id" grant photos Mango.Celluloid
+            fi
+            if [[ "$id" = "$first_id" || "$name" = 'iPad Pro 13-inch (M5)' ]]; then
+              xcrun simctl ui "$id" appearance dark
+              echo "DARK_APPEARANCE_REGRESSION $name"
+              xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-dark-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests/testSeededPhotoEditingSaveAndReopen -only-testing:CelluloidUITests/CelluloidUITests/testTwoPhotoCollageZoomRotateAndSave test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-dark-$id.log"
+              xcrun xcresulttool get test-results summary --path "TestResults-dark-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
             xcrun simctl shutdown "$id"
           done < /tmp/test-devices.txt
+      - name: Collect targeted failure diagnostics
+        if: failure()
+        timeout-minutes: 3
+        run: python3 Scripts/collect_simulator_diagnostics.py
       - name: Build unsigned distribution archive including Photos extension
         run: |
           set -euo pipefail

@@ -101,12 +101,31 @@ final class CelluloidUITests: XCTestCase {
         XCTAssertTrue(app.collectionViews.cells.firstMatch.waitForExistence(timeout: 5))
         app.collectionViews.cells.firstMatch.tap()
         XCTAssertTrue(done.waitForExistence(timeout: 5))
+        app.buttons["tool-bubble"].tap()
+        XCTAssertTrue(app.collectionViews.cells.firstMatch.waitForExistence(timeout: 5))
+        app.collectionViews.cells.firstMatch.tap()
+        let text = app.textViews["bubble-text"]
+        XCTAssertTrue(text.waitForExistence(timeout: 5))
+        text.tap()
+        text.typeText("Hello")
+        app.buttons["bubble-text-done"].tap()
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        let bubble = app.images.matching(identifier: "attachment-image").allElementsBoundByIndex.last
+        if let bubble = bubble, bubble.isHittable {
+            let start = bubble.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.2, thenDragTo: start.withOffset(CGVector(dx: 100, dy: 30)))
+        }
         emitScreenshot("edited-fixture")
         XCUIDevice.shared.press(.home)
         app.activate()
         done.tap()
         XCTAssertTrue(app.staticTexts["photo-saved"].waitForExistence(timeout: 20))
-        app.buttons["Done"].tap()
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let shareDone = app.buttons["share-done"]
+        XCTAssertTrue(shareDone.isHittable, "Saved-photo dismissal must remain visible in compact landscape")
+        XCTAssertTrue(app.frame.contains(shareDone.frame))
+        shareDone.tap()
+        XCUIDevice.shared.orientation = .portrait
         app.buttons["edit-photo"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["photo-0"].waitForExistence(timeout: 10))
         app.descendants(matching: .any)["photo-0"].tap()
@@ -137,11 +156,17 @@ final class CelluloidUITests: XCTestCase {
         emitScreenshot("collage-preview")
         done.tap()
         XCTAssertTrue(app.staticTexts["photo-saved"].waitForExistence(timeout: 20))
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(app.buttons["share-done"].isHittable)
+        app.buttons["share-done"].tap()
+        XCTAssertTrue(app.buttons["make-collage"].waitForExistence(timeout: 5))
     }
 
     private func emitScreenshot(_ name: String) {
         // Two bounded screenshots per CI job, from the iPhone run and synthetic data only.
         guard UIDevice.current.userInterfaceIdiom == .phone,
+              UIScreen.main.bounds.width < 400,
+              UIScreen.main.traitCollection.userInterfaceStyle == .dark,
               let image = UIImage(data: app.screenshot().pngRepresentation),
               let jpeg = image.jpegData(compressionQuality: 0.55), jpeg.count <= 500_000 else { return }
         let base64 = jpeg.base64EncodedString()

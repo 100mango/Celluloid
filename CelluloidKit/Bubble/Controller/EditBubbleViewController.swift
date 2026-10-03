@@ -26,12 +26,18 @@ open class EditBubbleViewController: UIViewController {
         textView.textAlignment = .center
         textView.text = self.bubbleModel.content
         textView.backgroundColor = .bubbleBackgroundColor
+        textView.textColor = .black
+        textView.tintColor = .black
+        textView.font = .preferredFont(forTextStyle: .body)
+        textView.adjustsFontForContentSizeCategory = true
+        textView.accessibilityIdentifier = "bubble-text"
         return textView
     }()
     
     fileprivate lazy var rightBarButtonItem: UIBarButtonItem = {
         let rightBarButtonItem = UIBarButtonItem(title: tr(.done), style: .plain, target: self, action: #selector(done))
 
+        rightBarButtonItem.accessibilityIdentifier = "bubble-text-done"
         return rightBarButtonItem
     }()
     

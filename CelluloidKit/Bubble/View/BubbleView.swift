@@ -11,10 +11,12 @@ import UIKit
 open class BubbleView: AttachView {
     //MARK: Property
     lazy var editTextBubbton: UIButton = {
-        let button = UIButton(type: .custom)
+        let button = DecorationControlButton(type: .custom)
         button.isHidden = true
         button.frame = CGRect(x: 0, y: 0, width: self.buttonWidth, height: self.buttonWidth)
         button.setImage(UIImage(asset: .Btn_icon_sticker_text_normal), for: .normal)
+        button.accessibilityLabel = NSLocalizedString("Edit Bubble Text", bundle: extensionBundle, comment: "Bubble control")
+        button.accessibilityIdentifier = "bubble-edit-text"
         button.addTarget(self, action: #selector(editText), for: .touchUpInside)
         return button
     }()
@@ -58,6 +60,9 @@ open class BubbleView: AttachView {
         self.addSubview(editTextBubbton)
         self.imageView.image = bubbleModel.bubbleImage
         self.imageView.addSubview(bubbleLabel)
+        imageView.accessibilityLabel = NSLocalizedString("Bubble", bundle: extensionBundle, comment: "")
+        imageView.accessibilityCustomActions?.append(UIAccessibilityCustomAction(
+            name: NSLocalizedString("Edit Bubble Text", bundle: extensionBundle, comment: ""), target: self, selector: #selector(accessibleEditText)))
     }
 
     public required init?(coder aDecoder: NSCoder) {
@@ -75,6 +80,7 @@ open class BubbleView: AttachView {
 
 //MARK: Action
 extension BubbleView {
+    @objc func accessibleEditText() -> Bool { editText(); return true }
     @objc func editText() {
         let editBubbleVC = EditBubbleViewController(bubbleModel: self.bubbleModel)
         editBubbleVC.delegate = self

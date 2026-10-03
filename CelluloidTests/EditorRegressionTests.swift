@@ -60,7 +60,8 @@ final class EditorRegressionTests: XCTestCase {
         let editor = BaseEditPhotoController()
         editor.loadViewIfNeeded()
         editor.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
-        editor.sourceImage = UIGraphicsImageRenderer(size: CGSize(width: 96, height: 64)).image { context in
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        editor.sourceImage = UIGraphicsImageRenderer(size: CGSize(width: 96, height: 64), format: format).image { context in
             UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 96, height: 64))
         }
         editor.view.layoutIfNeeded()
@@ -117,7 +118,7 @@ final class EditorRegressionTests: XCTestCase {
     func testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation() throws {
         XCTAssertEqual(PHPhotoLibrary.authorizationStatus(for: .readWrite), .authorized,
                        "The integration suite requires simulator Photos access to its synthetic fixtures")
-        let asset = try XCTUnwrap(PHAsset.fetchAssets(with: .image, options: nil).firstObject)
+        let asset = try XCTUnwrap(CelluloidTestFixtures.syntheticAsset())
         let loaded = expectation(description: "Photos editing input")
         var editingInput: PHContentEditingInput?
         let options = PHContentEditingInputRequestOptions()
@@ -160,7 +161,20 @@ final class EditorRegressionTests: XCTestCase {
             cancelled.fulfill()
         }
         wait(for: [cancelled], timeout: 1)
-        // No PHPhotoLibrary.performChanges: the synthetic library asset is never mutated here.
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        let superseded = expectation(description: "Superseded Photos session cannot return stale output")
+        var staleCallbacks = 0
+        editor.finishContentEditing { output in
+            staleCallbacks += 1
+            XCTAssertNil(output)
+            superseded.fulfill()
+        }
+        // Same PHContentEditingInput object, new host session: object identity alone
+        // must not authorize an older asynchronous completion.
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        wait(for: [superseded], timeout: 10)
+        XCTAssertEqual(staleCallbacks, 1)
+                // No PHPhotoLibrary.performChanges: the synthetic library asset is never mutated here.
     }
 
     func testExtensionWithoutInputCompletesWithFailureExactlyOnce() {

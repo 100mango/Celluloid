@@ -21,6 +21,9 @@ open class BubbleLabel: UILabel {
         self.numberOfLines = 0
         self.lineBreakMode = .byCharWrapping
         self.text = model.content
+        // Bubble artwork is intentionally light in both appearances. Persisted edits
+        // must not acquire white text merely because the host uses Dark Mode.
+        self.textColor = .black
     }
 
     required public init?(coder aDecoder: NSCoder) {

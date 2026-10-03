@@ -1,0 +1,73 @@
+import XCTest
+import UIKit
+@testable import Celluloid
+@testable import CelluloidKit
+
+@MainActor
+final class AdaptiveInterfaceTests: XCTestCase {
+    func testShareDismissalFitsCompactLandscapeAndBothAppearances() {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 10, height: 10)).image { _ in }
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+                let traits = UITraitCollection(preferredContentSizeCategory: category)
+                let share = SharePhotoViewController(image: image)
+                share.overrideUserInterfaceStyle = style
+                share.loadViewIfNeeded()
+                share.savedLabel.font = .preferredFont(forTextStyle: .title3, compatibleWith: traits)
+                share.shareButton.titleLabel?.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+                share.doneButton.titleLabel?.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+                for size in [CGSize(width: 320, height: 568), CGSize(width: 568, height: 320),
+                             CGSize(width: 375, height: 667), CGSize(width: 667, height: 375),
+                             CGSize(width: 744, height: 1133), CGSize(width: 1133, height: 744),
+                             CGSize(width: 1032, height: 1376)] {
+                    share.view.frame = CGRect(origin: .zero, size: size)
+                    share.view.setNeedsLayout()
+                    share.view.layoutIfNeeded()
+                    share.viewDidLayoutSubviews()
+                    share.view.layoutIfNeeded()
+                    let done = share.doneButton.convert(share.doneButton.bounds, to: share.view)
+                    let action = share.shareButton.convert(share.shareButton.bounds, to: share.view)
+                    XCTAssertTrue(share.view.bounds.insetBy(dx: -1, dy: -1).contains(done), "Done is offscreen at \(size), \(category), \(style)")
+                    XCTAssertTrue(share.view.bounds.insetBy(dx: -1, dy: -1).contains(action))
+                    XCTAssertGreaterThanOrEqual(done.height, 44)
+                    XCTAssertGreaterThanOrEqual(action.height, 44)
+                    XCTAssertFalse(done.intersects(action))
+                    XCTAssertGreaterThan(contrast(.white, .blackBackgroundColor, style: style), 4.5)
+                }
+            }
+        }
+    }
+
+    func testBubbleArtworkTextHasIdenticalReadablePixelsInLightAndDark() {
+        var model = BubbleModel.bubbles[0]
+        model.content = "Test"
+        var renders: [Data] = []
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let label = BubbleLabel(model: model)
+            label.overrideUserInterfaceStyle = style
+            label.frame = CGRect(x: 0, y: 0, width: 120, height: 44)
+            label.backgroundColor = .white
+            label.font = .systemFont(ofSize: 24)
+            label.layoutIfNeeded()
+            XCTAssertGreaterThan(contrast(label.textColor, .white, style: style), 7)
+            renders.append(label.render().pngData()!)
+            let editor = EditBubbleViewController(bubbleModel: model)
+            editor.overrideUserInterfaceStyle = style
+            editor.loadViewIfNeeded()
+            let text = editor.view.subviews.compactMap { $0 as? UITextView }.first!
+            XCTAssertGreaterThan(contrast(text.textColor!, text.backgroundColor!, style: style), 7)
+        }
+        XCTAssertEqual(renders[0], renders[1], "Host appearance must not recolor text in exported bubble artwork")
+    }
+
+    private func contrast(_ foreground: UIColor, _ background: UIColor, style: UIUserInterfaceStyle) -> CGFloat {
+        func luminance(_ color: UIColor) -> CGFloat {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            color.resolvedColor(with: UITraitCollection(userInterfaceStyle: style)).getRed(&r, green: &g, blue: &b, alpha: &a)
+            func linear(_ component: CGFloat) -> CGFloat { component <= 0.04045 ? component / 12.92 : pow((component + 0.055) / 1.055, 2.4) }
+            return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+        }
+        let a = luminance(foreground), b = luminance(background)
+        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+    }
+}
