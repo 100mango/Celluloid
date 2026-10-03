@@ -24,6 +24,7 @@ open class BubbleView: AttachView {
     open var bubbleModel: BubbleModel {
         didSet {
             bubbleLabel.text = bubbleModel.content
+            imageView.accessibilityValue = bubbleModel.content
             bubbleLabel.adjustFrame()
         }
     }
@@ -61,6 +62,7 @@ open class BubbleView: AttachView {
         self.imageView.image = bubbleModel.bubbleImage
         self.imageView.addSubview(bubbleLabel)
         imageView.accessibilityLabel = NSLocalizedString("Bubble", bundle: extensionBundle, comment: "")
+        imageView.accessibilityValue = bubbleModel.content
         imageView.accessibilityCustomActions?.append(UIAccessibilityCustomAction(
             name: NSLocalizedString("Edit Bubble Text", bundle: extensionBundle, comment: ""), target: self, selector: #selector(accessibleEditText)))
     }

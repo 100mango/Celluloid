@@ -21,6 +21,10 @@ open class BubbleLabel: UILabel {
         self.numberOfLines = 0
         self.lineBreakMode = .byCharWrapping
         self.text = model.content
+        // This is the visual text inside image artwork. BubbleView exposes one
+        // editable image element with this caption as its accessibility value.
+        self.isAccessibilityElement = false
+        self.accessibilityIdentifier = "bubble-artwork-text"
         // Bubble artwork is intentionally light in both appearances. Persisted edits
         // must not acquire white text merely because the host uses Dark Mode.
         self.textColor = .black

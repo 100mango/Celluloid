@@ -178,12 +178,24 @@ final class AdaptiveInterfaceTests: XCTestCase {
                 var normalHeight: CGFloat = 0
                 var normalFontSize: CGFloat = 0
                 for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+                    let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+                    let window = UIWindow(windowScene: scene)
                     let parent = UIViewController()
                     let editor = BaseEditPhotoController()
+                    window.rootViewController = parent
+                    window.frame = CGRect(origin: .zero, size: size)
                     parent.addChild(editor)
-                    parent.setOverrideTraitCollection(UITraitCollection(preferredContentSizeCategory: category), forChild: editor)
                     parent.view.addSubview(editor.view)
                     editor.didMove(toParent: parent)
+                    window.makeKeyAndVisible()
+                    defer { window.isHidden = true }
+                    // A detached child with a deferred trait override kept default
+                    // fonts in the first probe. Exercise an attached view hierarchy
+                    // and synchronously deliver the actual public trait update.
+                    editor.traitOverrides.preferredContentSizeCategory = category
+                    editor.updateTraitsIfNeeded()
+                    XCTAssertEqual(editor.traitCollection.preferredContentSizeCategory, category)
+                    XCTAssertEqual(editor.toolBar.traitCollection.preferredContentSizeCategory, category)
                     parent.view.frame = CGRect(origin: .zero, size: size)
                     editor.view.frame = parent.view.bounds
                     for (label, key) in zip(editor.toolBar.titleLabels, ["filter", "bubble", "sticker"]) {
@@ -213,6 +225,37 @@ final class AdaptiveInterfaceTests: XCTestCase {
                 }
             }
         }
+    }
+
+    func testBubbleDecorationExposesEditableTextWithoutChangingArtworkTypography() throws {
+        var model = BubbleModel.bubbles[0]
+        model.content = "Legacy caption 世界"
+        let bubble = BubbleView(bubbleModel: model)
+        bubble.layoutIfNeeded()
+        XCTAssertTrue(bubble.imageView.isAccessibilityElement)
+        XCTAssertFalse(bubble.bubbleLabel.isAccessibilityElement)
+        XCTAssertEqual(bubble.bubbleLabel.accessibilityIdentifier, "bubble-artwork-text")
+        XCTAssertEqual(bubble.imageView.accessibilityValue, model.content)
+        XCTAssertTrue(bubble.imageView.accessibilityCustomActions?.contains {
+            $0.name == NSLocalizedString("Edit Bubble Text", bundle: extensionBundle, comment: "")
+        } ?? false)
+        let originalFontSize = bubble.bubbleLabel.font.pointSize
+        let originalPixels = bubble.render().pngData()
+        bubble.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
+        bubble.updateTraitsIfNeeded()
+        XCTAssertEqual(bubble.traitCollection.preferredContentSizeCategory, .accessibilityExtraExtraExtraLarge)
+        bubble.layoutIfNeeded()
+        XCTAssertEqual(bubble.bubbleLabel.font.pointSize, originalFontSize)
+        XCTAssertEqual(bubble.render().pngData(), originalPixels, "System text preferences cannot change persisted photo artwork")
+        var updated = model
+        updated.content = "Updated caption"
+        bubble.bubbleModel = updated
+        XCTAssertEqual(bubble.imageView.accessibilityValue, updated.content)
+        let editor = EditBubbleViewController(bubbleModel: updated)
+        editor.loadViewIfNeeded()
+        let text = try XCTUnwrap(editor.view.subviews.compactMap { $0 as? UITextView }.first)
+        XCTAssertTrue(text.adjustsFontForContentSizeCategory)
+        XCTAssertEqual(text.text, updated.content)
     }
 
     private func assertFullTitle(_ label: UILabel, within container: UIView,
