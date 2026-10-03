@@ -24,7 +24,7 @@ jobs:
           xcodebuild -showsdks
           xcrun simctl list runtimes
           xcrun simctl list devices available
-          xcodebuild -version | grep -q '^Xcode 27.0$'
+          xcodebuild -version | grep '^Xcode 27.0$'
           xcrun simctl list runtimes | grep 'iOS 27.0'
       - name: Verify reproducible project
         run: |

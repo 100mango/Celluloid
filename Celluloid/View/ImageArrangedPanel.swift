@@ -134,7 +134,7 @@ extension ImageArrangedPanel: UICollectionViewDataSource {
     
     func collectionView(_ collectionView: UICollectionView, moveItemAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
     
-        swap(&photoModels[sourceIndexPath.row], &photoModels[destinationIndexPath.row])
+        photoModels.swapAt(sourceIndexPath.row, destinationIndexPath.row)
         self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
     }
     

@@ -48,7 +48,7 @@ class CollageStylePanel: UIView {
         }
     }
     
-    var scrollDirection: UICollectionViewScrollDirection = .horizontal {
+    var scrollDirection: UICollectionView.ScrollDirection = .horizontal {
         didSet {
             let layout = collectionView.collectionViewLayout as! UICollectionViewFlowLayout
             layout.scrollDirection = scrollDirection

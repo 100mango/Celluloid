@@ -58,7 +58,7 @@ private extension FilterPickerViewController {
     
     func makeFilterCell(_ indexPath: IndexPath) ->  UICollectionViewCell {
         
-        let cell = collectionView.dequeueReusableCellForIndexPath(indexPath)
+        let cell: UICollectionViewCell = collectionView.dequeueReusableCellForIndexPath(indexPath)
         cell.backgroundColor = .cellLightPurple
         cell.contentView.subviews.forEach {
             $0.removeFromSuperview()
@@ -101,7 +101,7 @@ private extension FilterPickerViewController {
 //MARK: CollectionView delegate
 
 extension FilterPickerViewController {
-    public func collectionView(_ collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: IndexPath) {
+    public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         if let type = FilterCellType(rawValue: indexPath.row) {
             handleSelectFilter(type)
         }
