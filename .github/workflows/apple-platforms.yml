@@ -2,8 +2,6 @@ name: Apple platform validation
 on:
   push:
     branches: [codex/apple-platforms]
-  pull_request:
-    branches: [codex/ios-modernization]
 permissions:
   contents: read
 concurrency:
@@ -53,38 +51,19 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacUI -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-native" -resultBundlePath "$RUNNER_TEMP/CelluloidMacUI.xcresult" CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/mac-ui.log"
-      - name: Export compact native UI attachments
+      - name: Export bounded synthetic evidence
+        id: bounded_evidence
         if: always()
         shell: bash
-        run: |
-          if test -d "$RUNNER_TEMP/CelluloidMacUI.xcresult"; then
-            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/CelluloidMacUI.xcresult" --output-path "$RUNNER_TEMP/native-ui-attachments"
-          fi
-      - name: Preserve compact native UI evidence
-        if: always()
+        run: python3 Scripts/collect_native_evidence.py
+      - name: Upload bounded synthetic evidence
+        if: always() && steps.bounded_evidence.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: celluloid-native-ui-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/native-ui-attachments/**/*.png
-            ${{ runner.temp }}/native-ui-attachments/**/*.jpg
-            ${{ runner.temp }}/native-ui-attachments/**/*.jpeg
-            ${{ runner.temp }}/native-ui-attachments/**/*.json
-            ${{ runner.temp }}/mac-ui.log
-          retention-days: 14
-      - name: Preserve native validation evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: celluloid-native-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/domain.log
-            ${{ runner.temp }}/rendering.log
-            ${{ runner.temp }}/mac.log
-            ${{ runner.temp }}/mac-ui.log
-            ${{ runner.temp }}/CelluloidMac.xcresult
-            ${{ runner.temp }}/CelluloidMacUI.xcresult
-          retention-days: 14
+          name: celluloid-bounded-${{ github.sha }}
+          path: ${{ runner.temp }}/celluloid-bounded-evidence/
+          retention-days: 1
+          if-no-files-found: error
       - name: Verify unchanged source
         if: always()
         shell: bash
