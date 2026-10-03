@@ -77,7 +77,7 @@ for n in names:
  if n in ['Celluloid','CelluloidKit','CelluloidPhotoExtension']:settings['INFOPLIST_FILE']=n+'/Info.plist'
  else:settings['GENERATE_INFOPLIST_FILE']='YES'
  if n=='Celluloid':settings['ASSETCATALOG_COMPILER_APPICON_NAME']='AppIcon'
- if n=='CelluloidKit':settings.update({'DEFINES_MODULE':'YES','SKIP_INSTALL':'YES','APPLICATION_EXTENSION_API_ONLY':'YES','INSTALL_PATH':'$(LOCAL_LIBRARY_DIR)/Frameworks'})
+ if n=='CelluloidKit':settings.update({'DEFINES_MODULE':'YES','SKIP_INSTALL':'YES','APPLICATION_EXTENSION_API_ONLY':'YES','INSTALL_PATH':'$(LOCAL_LIBRARY_DIR)/Frameworks','DYLIB_INSTALL_NAME_BASE':'@rpath'})
  if n=='CelluloidPhotoExtension':settings.update({'SKIP_INSTALL':'YES','APPLICATION_EXTENSION_API_ONLY':'YES','LD_RUNPATH_SEARCH_PATHS':['$(inherited)','@executable_path/Frameworks','@executable_path/../../Frameworks']})
  if n=='CelluloidTests':settings.update({'TEST_HOST':'$(BUILT_PRODUCTS_DIR)/Celluloid.app/Celluloid','BUNDLE_LOADER':'$(TEST_HOST)'})
  if n=='CelluloidUITests':settings['TEST_TARGET_NAME']='Celluloid'

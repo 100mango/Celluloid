@@ -37,8 +37,8 @@ final class CelluloidUITests: XCTestCase {
     func testSeededPhotoEditingSaveAndReopen() {
         launch()
         app.buttons["edit-photo"].tap()
-        XCTAssertTrue(app.cells["photo-0"].waitForExistence(timeout: 15), "CI must seed Photos and grant simulator Photos permission")
-        app.cells["photo-0"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["photo-0"].waitForExistence(timeout: 15), "CI must seed Photos and grant simulator Photos permission")
+        app.descendants(matching: .any)["photo-0"].tap()
         app.buttons["picker-done"].tap()
         let done = app.buttons["editor-done"]
         XCTAssertTrue(done.waitForExistence(timeout: 15))
@@ -60,8 +60,8 @@ final class CelluloidUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["photo-saved"].waitForExistence(timeout: 20))
         app.buttons["Done"].tap()
         app.buttons["edit-photo"].tap()
-        XCTAssertTrue(app.cells["photo-0"].waitForExistence(timeout: 10))
-        app.cells["photo-0"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["photo-0"].waitForExistence(timeout: 10))
+        app.descendants(matching: .any)["photo-0"].tap()
         app.buttons["picker-done"].tap()
         XCTAssertTrue(app.buttons["editor-done"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["tool-bubble"].isHittable)
@@ -71,9 +71,9 @@ final class CelluloidUITests: XCTestCase {
     func testTwoPhotoCollageZoomRotateAndSave() {
         launch()
         app.buttons["make-collage"].tap()
-        XCTAssertTrue(app.cells["photo-1"].waitForExistence(timeout: 15))
-        app.cells["photo-0"].tap()
-        app.cells["photo-1"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["photo-1"].waitForExistence(timeout: 15))
+        app.descendants(matching: .any)["photo-0"].tap()
+        app.descendants(matching: .any)["photo-1"].tap()
         app.buttons["picker-done"].tap()
         let done = app.buttons["collage-done"]
         XCTAssertTrue(done.waitForExistence(timeout: 10))

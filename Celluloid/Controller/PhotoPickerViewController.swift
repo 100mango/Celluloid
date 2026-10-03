@@ -1,5 +1,6 @@
 import UIKit
 import Photos
+import PhotosUI
 import CelluloidKit
 
 /// Keeps selection tied to PHAsset so non-destructive edits remain reversible in Photos.
