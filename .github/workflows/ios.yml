@@ -2,8 +2,6 @@ name: iOS 27 regression
 on:
   push:
     branches: [codex/ios-modernization]
-  pull_request:
-    branches: [master]
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,9 +10,6 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build-and-test:
-    # The fixed release branch is fully tested by its source-bound push run.
-    # Avoid a second macOS job for its automatically emitted PR event.
-    if: github.event_name != 'pull_request' || github.head_ref != 'codex/ios-modernization'
     runs-on: xcode-27
     timeout-minutes: 60
     env:
