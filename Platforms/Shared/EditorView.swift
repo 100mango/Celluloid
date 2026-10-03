@@ -42,6 +42,9 @@ struct EditorView: View {
         .frame(minWidth: 640, minHeight: 480)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Native photo editor")
+        // A presented error is a modal task. Keep the foreground alert exposed,
+        // while removing dimmed, noninteractive document controls from VoiceOver.
+        .accessibilityHidden(error != nil)
         #if os(macOS)
         .background(NativeWindowAccessibility().frame(width: 0, height: 0))
         #endif
@@ -57,17 +60,17 @@ struct EditorView: View {
         .toolbar {
             ToolbarItemGroup {
                 Button { filePicker = true } label: { Label("Import Files", systemImage: "photo.on.rectangle") }
-                    .help("Choose one photo, or two to four photos for a collage").accessibilityIdentifier("editor.import-files")
+                    .help("Choose one photo, or two to four photos for a collage").accessibilityIdentifier("editor.import-files").accessibilityHidden(error != nil)
                 PhotosPicker(selection: $photos, maxSelectionCount: 4, selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
                     Label("Photos", systemImage: "photo")
-                }.accessibilityIdentifier("editor.import-photos")
+                }.accessibilityIdentifier("editor.import-photos").accessibilityHidden(error != nil)
                 #if os(macOS)
-                Button(action: paste) { Label("Paste", systemImage: "doc.on.clipboard") }.keyboardShortcut("v", modifiers: .command)
+                Button(action: paste) { Label("Paste", systemImage: "doc.on.clipboard") }.keyboardShortcut("v", modifiers: .command).accessibilityHidden(error != nil)
                 #endif
                 Menu("Export") {
                     Button("PNG…") { prepareExport(.png) }
                     Button("JPEG…") { prepareExport(.jpeg) }
-                }.accessibilityIdentifier("editor.export").disabled(document.recipe.sources.isEmpty || rendering || importing || exporting)
+                }.accessibilityIdentifier("editor.export").accessibilityHidden(error != nil).disabled(document.recipe.sources.isEmpty || rendering || importing || exporting)
             }
         }
         .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image], allowsMultipleSelection: true, onCompletion: importFiles)

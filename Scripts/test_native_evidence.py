@@ -4,6 +4,32 @@ from pathlib import Path
 import hashlib,json,os,subprocess,tempfile,unittest
 ROOT=Path(__file__).resolve().parents[1]
 class EvidenceBudgetTests(unittest.TestCase):
+    def test_duplicate_audit_screens_do_not_displace_named_checkpoints(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory);(folder/'CelluloidMacUI.xcresult').mkdir()
+            binary=folder/'bin';binary.mkdir();mock=binary/'xcrun'
+            mock.write_text('''#!/usr/bin/env python3
+import json,sys
+from pathlib import Path
+if 'attachments' not in sys.argv:
+ print('{}');raise SystemExit(0)
+out=Path(sys.argv[sys.argv.index('--output-path')+1]);items=[]
+for index in range(54):
+ name=f'audit-{index}.png';(out/name).write_bytes(b'\\x89PNG\\r\\n\\x1a\\nidentical-audit-screen')
+ items.append({'exportedFileName':name,'suggestedHumanReadableName':f'App-Screenshot-{index}','isAssociatedWithFailure':True})
+name='checkpoint.png';(out/name).write_bytes(b'\\x89PNG\\r\\n\\x1a\\nunique-checkpoint')
+items.append({'exportedFileName':name,'suggestedHumanReadableName':'native-mac-photos-thumbnail-selected','isAssociatedWithFailure':False})
+(out/'manifest.json').write_text(json.dumps([{'attachments':items}]))
+''')
+            mock.chmod(0o755)
+            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,GITHUB_SHA='synthetic',PATH=str(binary)+os.pathsep+os.environ['PATH']),capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            output=folder/'celluloid-bounded-evidence'
+            images=list(output.glob('*.png'))
+            self.assertEqual(len(images),2)
+            self.assertTrue(any('photos-thumbnail-selected' in p.name for p in images))
+            self.assertEqual(len({hashlib.sha256(p.read_bytes()).hexdigest() for p in images}),2)
+            self.assertLessEqual(sum(p.stat().st_size for p in output.iterdir()),3_500_000)
     def test_log_tails_markers_and_oversize_image_are_bounded(self):
         with tempfile.TemporaryDirectory() as directory:
             folder=Path(directory)

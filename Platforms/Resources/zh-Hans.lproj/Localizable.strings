@@ -157,3 +157,7 @@
 
 "Photo preview" = "照片预览";
 "Editing controls" = "编辑控件";
+
+"Diagnostic value" = "诊断数值";
+
+"AppKit audit diagnostic controls" = "AppKit 辅助功能审计诊断控件";

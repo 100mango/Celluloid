@@ -1,6 +1,7 @@
 import XCTest
 import AppKit
 import CoreGraphics
+import ApplicationServices
 import CelluloidDomain
 import CelluloidRendering
 
@@ -147,7 +148,11 @@ final class NativeEditorUITests: XCTestCase {
         app.typeKey("v", modifierFlags: .command)
         // Restrict to real windows: app-wide buttons also includes Touch Bar OK.
         let ok = app.windows.buttons["OK"].firstMatch
-        XCTAssertTrue(ok.waitForExistence(timeout: 10)); try auditOrdinary(app, state: "unreadable-image-error"); ok.click()
+        XCTAssertTrue(ok.waitForExistence(timeout: 10))
+        print("NATIVE_MODAL_CONTAINMENT dimensionsExposed=\(app.staticTexts["editor.dimensions"].exists) importExposed=\(app.descendants(matching: .any)["editor.import-files"].firstMatch.exists) foregroundOK=\(ok.exists)")
+        XCTAssertFalse(app.staticTexts["editor.dimensions"].exists, "Dimmed document content must not remain in the modal accessibility task")
+        XCTAssertFalse(app.descendants(matching: .any)["editor.import-files"].firstMatch.exists)
+        try auditOrdinary(app, state: "unreadable-image-error"); ok.click()
         XCTAssertTrue(dimensions.exists, "Rejected clipboard replacement must preserve the current original")
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-mac-paste-undo-redo-rejected-replacement"; shot.lifetime = .keepAlways; add(shot)
         print("NATIVE_MAC_CLIPBOARD_E2E actual Paste/Undo/Redo/unreadable rejection preserves original dimensions")
@@ -201,24 +206,136 @@ final class NativeEditorUITests: XCTestCase {
             // Empty app AX is not evidence of empty pixels or an empty library.
             let screen = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); screen.name = "native-mac-photos-picker-failure-full-screen"; screen.lifetime = .keepAlways; add(screen)
             print("NATIVE_MAC_PHOTOS_PICKER_FAILURE_AX " + app.debugDescription)
-            let helpers = NSWorkspace.shared.runningApplications.filter {
-                ($0.bundleIdentifier?.hasPrefix("com.apple.") == true) &&
-                (($0.bundleIdentifier?.localizedCaseInsensitiveContains("photos") == true) || ($0.localizedName?.localizedCaseInsensitiveContains("photos") == true))
-            }.prefix(8)
-            for helper in helpers {
-                print("NATIVE_MAC_PHOTOS_HELPER bundle=\(helper.bundleIdentifier ?? "nil") name=\(helper.localizedName ?? "nil") pid=\(helper.processIdentifier) active=\(helper.isActive) hidden=\(helper.isHidden)")
-                if let identifier = helper.bundleIdentifier, identifier != "com.apple.Photos" {
-                    let surface = XCUIApplication(bundleIdentifier: identifier)
-                    if surface.state != .notRunning { print("NATIVE_MAC_PHOTOS_HELPER_AX " + String(surface.debugDescription.prefix(24_000))) }
+            inspectPhotosHelpers()
+        }
+        if found {
+            image.click()
+            let addButton = app.buttons["Add"].firstMatch
+            XCTAssertTrue(addButton.waitForExistence(timeout: 10), app.debugDescription); addButton.click()
+        } else {
+            try selectObservedSyntheticPhoto(in: app)
+        }
+        XCTAssertTrue(app.staticTexts["1200 × 800 px"].waitForExistence(timeout: 20), app.debugDescription)
+        // Persist the actual imported document through the real save panel, then
+        // verify its original pixels against the independently seeded PNG.
+        app.typeKey("s", modifierFlags: .command)
+        try save(in: fixture.deletingLastPathComponent(), app: app)
+        let savedURL = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: fixture.deletingLastPathComponent(), includingPropertiesForKeys: nil).first { $0.pathExtension == "celluloid" })
+        let recipe = try EditRecipe.decode(Data(contentsOf: savedURL.appendingPathComponent("recipe.json")))
+        XCTAssertEqual(recipe.sources.count, 1)
+        let owned = try Data(contentsOf: savedURL.appendingPathComponent(recipe.sources[0].filename))
+        let decoded = try XCTUnwrap(NSBitmapImageRep(data: owned))
+        let original = try XCTUnwrap(NSBitmapImageRep(data: Data(contentsOf: fixture)))
+        XCTAssertEqual(decoded.pixelsWide, original.pixelsWide); XCTAssertEqual(decoded.pixelsHigh, original.pixelsHigh)
+        for y in stride(from: 0, to: original.pixelsHigh, by: 79) { for x in stride(from: 0, to: original.pixelsWide, by: 119) {
+            let expected = try XCTUnwrap(original.colorAt(x: x, y: y)?.usingColorSpace(.sRGB))
+            let actual = try XCTUnwrap(decoded.colorAt(x: x, y: y)?.usingColorSpace(.sRGB))
+            XCTAssertEqual(actual.redComponent, expected.redComponent, accuracy: 2.0 / 255)
+            XCTAssertEqual(actual.greenComponent, expected.greenComponent, accuracy: 2.0 / 255)
+            XCTAssertEqual(actual.blueComponent, expected.blueComponent, accuracy: 2.0 / 255)
+        } }
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-mac-real-system-photos-import"; shot.lifetime = .keepAlways; add(shot)
+        print("NATIVE_MAC_PHOTOS_E2E normal local-library seed and real system picker import completed")
+    }
+    @MainActor private func selectObservedSyntheticPhoto(in app: XCUIApplication) throws {
+        // Photos27's hosted sheet has real pixels but omits its children from the
+        // app-scoped AX snapshot. Match only our unique, known synthetic thumbnail
+        // in the currently observed sheet. No hard-coded click or private API.
+        let sheet = app.sheets.firstMatch
+        XCTAssertTrue(sheet.exists)
+        let frame = sheet.frame, screen = try XCTUnwrap(NSScreen.main)
+        XCTAssertEqual(NSScreen.screens.count, 1, "Visual test requires one observed display")
+        let capture = XCUIScreen.main.screenshot()
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: capture.pngRepresentation))
+        XCTAssertLessThanOrEqual(bitmap.pixelsWide * bitmap.pixelsHigh, 4_000_000)
+        let sx = CGFloat(bitmap.pixelsWide) / screen.frame.width, sy = CGFloat(bitmap.pixelsHigh) / screen.frame.height
+        XCTAssertEqual(sx, sy, accuracy: 0.001)
+        let region = CGRect(x: frame.minX + frame.width * 0.24, y: frame.minY + frame.height * 0.20,
+                            width: frame.width * 0.72, height: frame.height * 0.67)
+        let strideSize = 3, columns = (bitmap.pixelsWide + 2) / 3
+        var points = Set<Int>()
+        let deadline = Date().addingTimeInterval(8)
+        for y in stride(from: max(0, Int(region.minY * sy)), to: min(bitmap.pixelsHigh, Int(region.maxY * sy)), by: strideSize) {
+            guard Date() < deadline else { throw NSError(domain: "SyntheticPhotosVisualMatch", code: 1) }
+            for x in stride(from: max(0, Int(region.minX * sx)), to: min(bitmap.pixelsWide, Int(region.maxX * sx)), by: strideSize) {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                if abs(color.redComponent - 0.1) < 0.055 && abs(color.greenComponent - 0.6) < 0.055 && abs(color.blueComponent - 0.9) < 0.055 {
+                    points.insert((y / strideSize) * columns + x / strideSize)
                 }
             }
         }
-        XCTAssertTrue(found, app.debugDescription); image.click()
-        let addButton = app.buttons["Add"].firstMatch
-        XCTAssertTrue(addButton.waitForExistence(timeout: 10), app.debugDescription); addButton.click()
-        XCTAssertTrue(app.staticTexts["1200 × 800 px"].waitForExistence(timeout: 20), app.debugDescription)
-        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-mac-real-system-photos-import"; shot.lifetime = .keepAlways; add(shot)
-        print("NATIVE_MAC_PHOTOS_E2E normal local-library seed and real system picker import completed")
+        var matches: [CGRect] = []
+        while let first = points.first {
+            var queue = [first], index = 0; points.remove(first)
+            var minX = first % columns, maxX = minX, minY = first / columns, maxY = minY
+            while index < queue.count {
+                let current = queue[index]; index += 1
+                minX = min(minX, current % columns); maxX = max(maxX, current % columns)
+                minY = min(minY, current / columns); maxY = max(maxY, current / columns)
+                for next in [current - 1, current + 1, current - columns, current + columns] where points.remove(next) != nil { queue.append(next) }
+            }
+            let box = CGRect(x: CGFloat(minX * 3) / sx, y: CGFloat(minY * 3) / sy, width: CGFloat((maxX - minX + 1) * 3) / sx, height: CGFloat((maxY - minY + 1) * 3) / sy)
+            if queue.count >= 200 && (45...180).contains(box.width) && (45...180).contains(box.height) { matches.append(box) }
+        }
+        XCTAssertEqual(matches.count, 1, "Exactly one bounded synthetic thumbnail must be observed: \(matches)")
+        let match = try XCTUnwrap(matches.first), center = CGPoint(x: match.midX, y: match.midY)
+        print("NATIVE_MAC_PHOTOS_VISUAL_MATCH sheet=\(frame) thumbnail=\(match) screenPixels=\(bitmap.pixelsWide)x\(bitmap.pixelsHigh)")
+        if AXIsProcessTrusted() {
+            let root = AXUIElementCreateSystemWide(); AXUIElementSetMessagingTimeout(root, 0.2)
+            var hit: AXUIElement?
+            let result = AXUIElementCopyElementAtPosition(root, Float(center.x), Float(center.y), &hit)
+            if result == .success, let hit {
+                var pid: pid_t = 0; AXUIElementGetPid(hit, &pid)
+                var role: CFTypeRef?; AXUIElementCopyAttributeValue(hit, kAXRoleAttribute as CFString, &role)
+                print("NATIVE_MAC_PHOTOS_HIT_OWNER pid=\(pid) role=\(String(describing: role))")
+            } else { print("NATIVE_MAC_PHOTOS_HIT_OWNER error=\(result.rawValue)") }
+        }
+        sheet.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: center.x - frame.minX, dy: center.y - frame.minY)).click()
+        let selected = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); selected.name = "native-mac-photos-thumbnail-selected"; selected.lifetime = .keepAlways; add(selected)
+        // Return invokes the visible system picker's default Add action. A wrong
+        // selection cannot pass: the sheet must close and original pixels match.
+        app.typeKey(.return, modifierFlags: [])
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: sheet)
+        waitForExpectations(timeout: 15)
+    }
+    @MainActor private func inspectPhotosHelpers() {
+        // Read only public AX APIs for actual observed PIDs. A bundle identifier
+        // can resolve a different instance or an unavailable XPC app in XCTest.
+        // Never prompt for trust or modify TCC if this diagnostic is unavailable.
+        let trusted = AXIsProcessTrusted()
+        print("NATIVE_MAC_PHOTOS_AX_TRUST \(trusted)")
+        let helpers = NSWorkspace.shared.runningApplications.filter {
+            ($0.bundleIdentifier?.hasPrefix("com.apple.") == true) &&
+            (($0.bundleIdentifier?.localizedCaseInsensitiveContains("photo") == true) ||
+             ($0.localizedName?.localizedCaseInsensitiveContains("photo") == true) ||
+             ($0.localizedName?.localizedCaseInsensitiveContains("Celluloid") == true))
+        }.prefix(12)
+        let deadline = Date().addingTimeInterval(5)
+        for helper in helpers {
+            print("NATIVE_MAC_PHOTOS_HELPER bundle=\(helper.bundleIdentifier ?? "nil") name=\(helper.localizedName ?? "nil") pid=\(helper.processIdentifier) active=\(helper.isActive) hidden=\(helper.isHidden)")
+            guard trusted, Date() < deadline else { continue }
+            let root = AXUIElementCreateApplication(helper.processIdentifier)
+            AXUIElementSetMessagingTimeout(root, 0.2)
+            var visited = Set<CFHashCode>(), count = 0
+            func read(_ node: AXUIElement, depth: Int) {
+                guard depth <= 6, count < 64, Date() < deadline, visited.insert(CFHash(node)).inserted else { return }
+                count += 1
+                func attribute(_ key: String) -> CFTypeRef? {
+                    var value: CFTypeRef?
+                    let result = AXUIElementCopyAttributeValue(node, key as CFString, &value)
+                    return result == .success ? value : nil
+                }
+                let keys = [kAXRoleAttribute, kAXSubroleAttribute, kAXTitleAttribute, kAXDescriptionAttribute, kAXIdentifierAttribute]
+                let values = keys.map { key in "\(key)=\(String(describing: attribute(key)).prefix(160))" }.joined(separator: " ")
+                var actions: CFArray?
+                let result = AXUIElementCopyActionNames(node, &actions)
+                print("NATIVE_MAC_PHOTOS_PID_AX pid=\(helper.processIdentifier) depth=\(depth) \(values) actions=\(result == .success ? String(describing: actions) : String(result.rawValue))")
+                if let children = attribute(kAXChildrenAttribute) as? [AXUIElement] {
+                    for child in children.prefix(32) { read(child, depth: depth + 1) }
+                }
+            }
+            read(root, depth: 0)
+        }
     }
     @MainActor func testAccessibilityOfNativeEmptyEditor() throws {
         guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] != "YES" else { throw XCTSkip("The audit runs on the ordinary UI lane without the debug sandbox diagnostic overlay") }
@@ -237,6 +354,23 @@ final class NativeEditorUITests: XCTestCase {
             for line in data.split(separator: "\n") { print("NATIVE_APPKIT_AX " + line) }
         } else { print("NATIVE_APPKIT_AX report unavailable; issue.element hierarchy remains required") }
         try auditOrdinary(app, state: "empty-editor")
+    }
+    @MainActor func testZDiagnosticNativeAppKitAuditControls() throws {
+        guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] != "YES" else { throw XCTSkip("The isolated diagnostic runs only in the ordinary lane") }
+        continueAfterFailure = false
+        let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
+        let app = XCUIApplication(url: URL(fileURLWithPath: path))
+        app.launchEnvironment["CELLULOID_NATIVE_AUDIT_CONTROL"] = "YES"
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
+        app.launch(); defer { app.terminate() }
+        let cancel = app.windows["open-panel"].buttons["CancelButton"]; if cancel.waitForExistence(timeout: 3) { cancel.click() }
+        app.typeKey("n", modifierFlags: .command)
+        let action = app.buttons["probe.action"]
+        XCTAssertTrue(action.waitForExistence(timeout: 10)); XCTAssertTrue(app.sliders["probe.slider"].exists)
+        print("NATIVE_AUDIT_CONTROL_AX " + String(app.debugDescription.prefix(24000)))
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-mac-audit-control"; shot.lifetime = .keepAlways; add(shot)
+        try auditOrdinary(app, state: "diagnostic-appkit-control")
+        action.click(); XCTAssertEqual(app.staticTexts["probe.status"].value as? String, "Action completed")
     }
     @MainActor private func auditOrdinary(_ app: XCUIApplication, state: String) throws {
         // The external sandbox lane retains its own real document operations;

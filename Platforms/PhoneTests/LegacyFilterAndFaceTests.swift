@@ -2,6 +2,7 @@ import XCTest
 import UIKit
 import CoreImage
 import CryptoKit
+import ImageIO
 import CelluloidDomain
 import CelluloidRendering
 @testable import CelluloidPhoneCompanion
@@ -31,6 +32,7 @@ final class LegacyFilterAndFaceTests: XCTestCase {
             let difference = maximumDelta(pixels(CIImage(cgImage:try XCTUnwrap(rendered.cgImage)),bounds,context), pixels(CIImage(cgImage:native),bounds,context))
             print("MAC_NEW_FILTER_UIKIT_PIXELS filter=\(row.filter) maximumChannelDifference=\(difference)")
             if difference > 2 {
+                try diagnoseInputPaths(data:sourceBytes,preset:nativeRecipe.filter,uiCG:cg,legacy:try XCTUnwrap(rendered.cgImage),tag:row.filter)
                 let input = try RasterCodec.image(sourceBytes)
                 let graph = try RecipeRenderer().apply(nativeRecipe.filter,to:input)
                 diagnoseMaterialization(graph:graph,legacy:try XCTUnwrap(rendered.cgImage),native:native,tag:row.filter)
@@ -41,7 +43,7 @@ final class LegacyFilterAndFaceTests: XCTestCase {
             XCTAssertLessThanOrEqual(difference,2,"New native filter archive must mean the same rendered edit to UIKit")
             XCTAssertEqual(try AdjustmentData.decode(decoded.encode()).filterType.rawValue, row.filter)
         }
-        print("MAC_NEW_FILTER_UIKIT_ROUNDTRIP all newly authored filter-only archives decoded/rendered/reencoded by original UIKit source")
+        print("MAC_NEW_FILTER_UIKIT_ROUNDTRIP completed newly authored archive decode/render/reencode comparisons; XCTest assertions determine equivalence")
     }
     func testMacBakedFallbackIsDeclinedByOriginalUIKitReader() throws {
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("mac-baked-filter-fixture.json")
@@ -84,6 +86,7 @@ final class LegacyFilterAndFaceTests: XCTestCase {
         let actual = pixels(CIImage(cgImage: native), input.extent, context)
         let actualDelta = maximumDelta(expected,actual)
         print("FACE_DETECTOR_ACTUAL_OUTPUT maximumChannelDifference=\(actualDelta)")
+        try diagnoseInputPaths(data:data,preset:.pixellateFace,uiCG:cg,legacy:legacy,tag:"portrait")
         diagnoseMaterialization(graph:try RecipeRenderer().apply(.pixellateFace,to:nativeInput),legacy:legacy,native:native,tag:"portrait")
         XCTAssertLessThanOrEqual(actualDelta, 2)
         for face in faces {
@@ -97,9 +100,11 @@ final class LegacyFilterAndFaceTests: XCTestCase {
                 if faces.allSatisfy({ hypot(center.x-$0.midX,center.y-$0.midY)>min($0.width,$0.height/1.5)+10 }) {
                     let rect=CGRect(x:x,y:y,width:8,height:8)
                     let before = pixels(input,rect,context), after = pixels(CIImage(cgImage:native),rect,context)
+                    let legacyOutside = pixels(CIImage(cgImage:legacy),rect,context)
+                    if before != after { print("FACE_DETECTOR_ACTUAL_OUTSIDE_PATHS regionX=\(x) regionY=\(y) legacyVersusInput=\(maximumDelta(before,legacyOutside)) nativeVersusInput=\(maximumDelta(before,after)) nativeVersusLegacy=\(maximumDelta(legacyOutside,after))") }
                     if before != after {
                         let changed = stride(from:0,to:before.count,by:4).filter { Array(before[$0..<$0+4]) != Array(after[$0..<$0+4]) }.prefix(4)
-                        for offset in changed { print("FACE_DETECTOR_ACTUAL_OUTSIDE x=\(x+(offset/4)%8) y=\(y+(offset/4)/8) original=\(Array(before[offset..<offset+4])) native=\(Array(after[offset..<offset+4]))") }
+                        for offset in changed { print("FACE_DETECTOR_ACTUAL_OUTSIDE regionX=\(x) regionY=\(y) storageColumn=\((offset/4)%8) storageRow=\((offset/4)/8) original=\(Array(before[offset..<offset+4])) native=\(Array(after[offset..<offset+4]))") }
                     }
                     XCTAssertEqual(before,after,"Outside region x=\(x) y=\(y)");outsideChecks += 1
                 }
@@ -122,6 +127,31 @@ final class LegacyFilterAndFaceTests: XCTestCase {
     }
     private func decodedFilter(_ raw: String) -> FilterType { FilterType(rawValue:raw)! }
     /// Diagnostic only: none of these variants replace the strict production oracle.
+    private func diagnoseInputPaths(data:Data,preset:FilterPreset,uiCG:CGImage,legacy:CGImage,tag:String) throws {
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData,nil))
+        let decoded = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source,0,[kCGImageSourceShouldCache:false] as CFDictionary))
+        let ui = CIImage(cgImage:uiCG), read = CIContext(), bounds = ui.extent
+        let variants:[(String,CIImage)] = [("UIImageCG",ui),("ImageIOCG",CIImage(cgImage:decoded)),("CIData",try RasterCodec.image(data))]
+        func floats(_ image:CIImage)->[Float] {
+            var result=[Float](repeating:0,count:Int(bounds.width*bounds.height)*4)
+            result.withUnsafeMutableBytes { read.render(image,toBitmap:$0.baseAddress!,rowBytes:Int(bounds.width)*16,bounds:bounds,format:.RGBAf,colorSpace:RasterCodec.colorSpace) }
+            return result
+        }
+        let expectedInput=floats(ui),expected=pixels(CIImage(cgImage:legacy),bounds,read)
+        let originalLegacyGraph=Filters.filter(decodedFilter(preset.rawValue))(ui)
+        let expectedGraph=floats(originalLegacyGraph)
+        for (name,input) in variants {
+            let values=floats(input),floatDelta=zip(values,expectedInput).map {abs($0-$1)}.max() ?? 0
+            let graph=try RecipeRenderer().apply(preset,to:input),graphValues=floats(graph)
+            let graphDelta=zip(graphValues,expectedGraph).map {abs($0-$1)}.max() ?? 0
+            let nativeCG=try XCTUnwrap(read.createCGImage(graph,from:bounds))
+            let legacyGraph=Filters.filter(decodedFilter(preset.rawValue))(input)
+            let legacyCG=try XCTUnwrap(read.createCGImage(legacyGraph,from:bounds))
+            print("NATIVE_INPUT_PRECISION tag=\(tag) source=\(name) inputFloatMax=\(floatDelta) graphFloatMax=\(graphDelta) nativeGraphCGMax=\(maximumDelta(expected,pixels(CIImage(cgImage:nativeCG),bounds,read))) legacyGraphCGMax=\(maximumDelta(expected,pixels(CIImage(cgImage:legacyCG),bounds,read)))")
+            let offsets=values.indices.filter {values[$0] != expectedInput[$0]}.prefix(4)
+            for offset in offsets { print("NATIVE_INPUT_PRECISION_SAMPLE tag=\(tag) source=\(name) offset=\(offset) expected=\(expectedInput[offset]) actual=\(values[offset])") }
+        }
+    }
     private func diagnoseMaterialization(graph: CIImage, legacy: CGImage, native: CGImage, tag: String) {
         let bounds = graph.extent, read = CIContext()
         let expected = pixels(CIImage(cgImage:legacy),bounds,read)

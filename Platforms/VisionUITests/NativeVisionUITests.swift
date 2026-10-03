@@ -10,12 +10,12 @@ final class NativeVisionUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         defer { app.terminate() }
-        print("VISION_NATIVE_UI_AX " + app.debugDescription)
+        print("VISION_NATIVE_LAUNCH state=\(app.state.rawValue)")
         let capture = XCTAttachment(screenshot: app.screenshot()); capture.name = "native-vision-launch"; capture.lifetime = .keepAlways; add(capture)
         try openEditor(in:app)
         let editor = app.buttons["editor.import-files"]
         XCTAssertTrue(editor.isHittable)
-        print("VISION_NATIVE_EDITOR_AX " + app.debugDescription)
+        print("VISION_NATIVE_EDITOR_READY importHittable=\(editor.isHittable)")
         let editorCapture = XCTAttachment(screenshot: app.screenshot()); editorCapture.name = "native-vision-editor-ready"; editorCapture.lifetime = .keepAlways; add(editorCapture)
         if #available(visionOS 27.0, *) { try app.performAccessibilityAudit(for: .all) { issue in
             print("NATIVE_ACCESSIBILITY_ISSUE description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
@@ -32,7 +32,7 @@ extension NativeVisionUITests {
         try openEditor(in:app)
         let importButton = app.buttons["editor.import-files"]
         importButton.tap()
-        print("VISION_FILES_PICKER_AX " + app.debugDescription)
+        print("VISION_FILES_PICKER_REQUESTED state=\(app.state.rawValue)")
         let file = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'VisionSynthetic' OR label == 'VisionSynthetic.png'")).firstMatch
         if !file.waitForExistence(timeout: 4) {
             let browse = app.buttons["Browse"]
@@ -52,12 +52,12 @@ extension NativeVisionUITests {
         let bubble = app.buttons["asset.say1"]; XCTAssertTrue(bubble.waitForExistence(timeout: 10)); bubble.tap()
         let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 10)); text.tap()
-        print("VISION_TEXT_FOCUS_AX " + app.debugDescription)
+        print("VISION_TEXT_FOCUS_AX " + text.debugDescription)
         text.typeText("Vision 世界")
         capture(app, name: "vision-imported-editable-bubble")
         app.buttons["editor.export"].tap()
         let png = app.buttons["PNG…"]; XCTAssertTrue(png.waitForExistence(timeout: 10)); png.tap()
-        print("VISION_EXPORT_PICKER_AX " + app.debugDescription)
+        print("VISION_EXPORT_PICKER_AX " + app.navigationBars.debugDescription)
         let save = app.buttons.matching(NSPredicate(format: "label == 'Export' OR label == 'Save' OR label == 'Move'")).firstMatch
         XCTAssertTrue(save.waitForExistence(timeout: 15)); save.tap()
         let verified = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Exported and verified '")).firstMatch
@@ -72,15 +72,15 @@ extension NativeVisionUITests {
     }
     private func openEditor(in app:XCUIApplication) throws {
         let editor = app.buttons["editor.import-files"]
-        if editor.waitForExistence(timeout:5) { return }
+        if editor.exists { return }
         let create = app.buttons["FullDocumentManagerViewControllerNavigationBarCreateButtonIdentifier"]
-        if !create.waitForExistence(timeout:3) {
+        if !create.exists {
             // The exact f9 hierarchy showed the native No Document shell, with
             // a Documents navigation button. Opening that real browser is a
             // required user action, not an arbitrary additional wait for Create.
             let documents = app.navigationBars.buttons["Documents"].firstMatch
-            print("VISION_DOCUMENT_BEFORE_BROWSER_AX " + String(app.debugDescription.prefix(32000)))
-            if documents.waitForExistence(timeout:10) && documents.isHittable { documents.tap() }
+            print("VISION_DOCUMENT_ROUTE documentsVisible=\(documents.exists) state=\(app.state.rawValue)")
+            if documents.exists && documents.isHittable { documents.tap() }
         }
         let found = create.waitForExistence(timeout:45)
         if !found { capture(app,name:"vision-document-browser-create-failure");print("VISION_DOCUMENT_CREATE_FAILURE_AX " + String(app.debugDescription.prefix(40000))) }

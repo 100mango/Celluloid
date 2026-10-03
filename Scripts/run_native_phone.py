@@ -38,6 +38,11 @@ try:
     proc=run(['ps','-p',pid,'-o','pid=,comm='],timeout=20)
     evidence['process']=proc.stdout;assert 'CelluloidPhoneCompanion' in proc.stdout
     run(['xcrun','simctl','io',udid,'screenshot','--type=jpeg',temp/'native-phone-launch.jpg'],timeout=45,check=False)
+    # End only our manually launched probe instance before XCTest owns its host.
+    # This is a bounded lifecycle diagnostic; it does not presume the cause of
+    # the prior completed-test/session-teardown timeout.
+    stopped=run(['xcrun','simctl','terminate',udid,'Mango.Celluloid'],timeout=30,check=False)
+    evidence['pretest_terminate_exit_code']=stopped.returncode
     result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidPhoneCompanion','-destination',f'platform=iOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-phone','-resultBundlePath',temp/'CelluloidPhoneCompanion.xcresult','CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO','-maximum-concurrent-test-simulator-destinations','1','test-without-building'],timeout=600,check=False,log_name='phone-runtime-tests.log')
     evidence['test_exit_code']=result.returncode
     if result.returncode:raise RuntimeError('Native Phone Companion test invocation failed; inspect actual error/attachments, do not equate build or boot with E2E coverage')

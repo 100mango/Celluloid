@@ -88,11 +88,21 @@ for name in bundles:
                 extension='.png' if magic.startswith(b'\x89PNG\r\n\x1a\n') else '.jpg' if magic.startswith(b'\xff\xd8\xff') else None
                 if extension is None:continue
                 human=item.get('suggestedHumanReadableName','screenshot')
-                priority=0 if item.get('isAssociatedWithFailure') or 'failure' in human else 1 if 'saved-reopened-exported' in human else 2
+                priority=0 if 'failure' in human.lower() else 1 if human.startswith(('native-', 'vision-', 'tv-', 'watch-')) else 2 if item.get('isAssociatedWithFailure') else 3
                 candidates.append((priority,human,path,extension))
-        for index,(_,human,path,extension) in enumerate(sorted(candidates,key=lambda x:(x[0],x[1]))[:8]):
+        # Audit failures can attach the same full screen dozens of times. Keep
+        # named workflow checkpoints first and deduplicate exact screenshot bytes,
+        # preserving useful evidence within the unchanged outbound size limits.
+        seen=set(); retained=0
+        for _,human,path,extension in sorted(candidates,key=lambda x:(x[0],x[1])):
+            if retained>=8:break
+            if path.stat().st_size>MAX_FILE:
+                manifest['omissions'].append({'name':human,'reason':'evidence byte cap','bytes':path.stat().st_size});continue
+            digest=hashlib.sha256(path.read_bytes()).hexdigest()
+            if digest in seen:continue
+            seen.add(digest)
             safe=re.sub(r'[^A-Za-z0-9_-]+','-',human)[:100]
-            retain_file(f'{name.removesuffix(".xcresult")}-{index}-{safe}{extension}',path,name+' selected screenshot')
+            if retain_file(f'{name.removesuffix(".xcresult")}-{retained}-{safe}{extension}',path,name+' selected screenshot'):retained+=1
 
 for name in [f'native-{platform}-launch.{extension}' for platform in ['vision','tv','watch','phone'] for extension in ['png','jpg']]:
     path=TEMP/name
