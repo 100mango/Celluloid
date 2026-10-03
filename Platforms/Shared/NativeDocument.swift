@@ -20,12 +20,14 @@ struct NativeDocument: FileDocument, Equatable {
         guard wrapper.isDirectory,
               let children = wrapper.fileWrappers,
               let manifest = children["recipe.json"], manifest.isRegularFile,
+              ((manifest.fileAttributes[.size] as? NSNumber)?.intValue ?? 0) <= 2_000_000,
               let data = manifest.regularFileContents else { throw RecipeError.invalidDocument }
         recipe = try EditRecipe.decode(data)
         guard children.count == recipe.sources.count + 1 else { throw RecipeError.invalidDocument }
         var total = 0
         for source in recipe.sources {
             guard let file = children[source.filename], file.isRegularFile,
+                  ((file.fileAttributes[.size] as? NSNumber)?.intValue ?? 0) <= RasterCodec.maxSourceBytes,
                   let bytes = file.regularFileContents else { throw RecipeError.missingSource }
             total += bytes.count
             guard total <= 64 * 1024 * 1024 else { throw RecipeError.resourceLimit }
@@ -40,6 +42,7 @@ struct NativeDocument: FileDocument, Equatable {
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { try archive() }
 
     func archive() throws -> FileWrapper {
+        guard originals.count == recipe.sources.count, originals.values.reduce(0, { $0 + $1.count }) <= 64 * 1024 * 1024 else { throw RecipeError.resourceLimit }
         var files = ["recipe.json": FileWrapper(regularFileWithContents: try recipe.encoded())]
         for source in recipe.sources {
             guard let data = originals[source.id], data.count <= RasterCodec.maxSourceBytes else { throw RecipeError.missingSource }

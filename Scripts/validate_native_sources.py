@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Linux-safe structural validation only. This never substitutes for Xcode tests."""
 from pathlib import Path
-import hashlib,json,plistlib,subprocess,xml.etree.ElementTree as ET
+import hashlib,json,plistlib,subprocess,shutil,tempfile,xml.etree.ElementTree as ET
 root=Path(__file__).resolve().parents[1]
 resources=root/'Packages/CelluloidRendering/Sources/CelluloidRendering/Resources'
 manifest=json.loads((resources/'resource-provenance.json').read_text())
@@ -21,5 +21,14 @@ generated=[root/'CelluloidNative.xcodeproj/project.pbxproj', *sorted((root/'Cell
 before={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in generated}
 subprocess.run(['python3',str(root/'Scripts/generate_native_project.py')],check=True)
 assert before=={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in generated}
+# IDs must depend on repository-relative paths, not Linux/macOS checkout locations.
+with tempfile.TemporaryDirectory(prefix='celluloid-project-') as temp:
+    other=Path(temp); (other/'Scripts').mkdir()
+    shutil.copyfile(root/'Scripts/generate_native_project.py',other/'Scripts/generate_native_project.py')
+    shutil.copytree(root/'Platforms',other/'Platforms')
+    subprocess.run(['python3',str(other/'Scripts/generate_native_project.py')],check=True)
+    for path in generated:
+        assert path.read_bytes()==(other/path.relative_to(root)).read_bytes(),path
+
 assert not subprocess.check_output(['git','diff','--name-only','--','Celluloid','CelluloidKit','CelluloidPhotoExtension','Celluloid.xcodeproj','CelluloidTests','CelluloidUITests'],cwd=root).strip()
-print(json.dumps({'status':'passed','checks':['33 copied artwork files byte-identical','25 original collage templates retained','original bubble text areas retained','license byte-identical','generated plists and schemes parse','project generator deterministic','existing iOS production and tests unchanged'],'swift_compilation':'not_run','apple_runtime':'not_run'},indent=2))
+print(json.dumps({'status':'passed','checks':['33 copied artwork files byte-identical','25 original collage templates retained','original bubble text areas retained','license byte-identical','generated plists and schemes parse','project generator deterministic across checkout roots','existing iOS production and tests unchanged'],'swift_compilation':'not_run','apple_runtime':'not_run'},indent=2))

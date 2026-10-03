@@ -20,6 +20,7 @@ struct EditorView: View {
     @State private var preview: CGImage?
     @State private var rendering = false
     @State private var importing = false
+    @State private var exporting = false
     @State private var error: String?
     @State private var status = ""
     @State private var importGeneration = UUID()
@@ -46,7 +47,7 @@ struct EditorView: View {
                 Menu("Export") {
                     Button("PNG…") { prepareExport(.png) }
                     Button("JPEG…") { prepareExport(.jpeg) }
-                }.disabled(document.recipe.sources.isEmpty || rendering || importing)
+                }.disabled(document.recipe.sources.isEmpty || rendering || importing || exporting)
             }
         }
         .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image], allowsMultipleSelection: true, onCompletion: importFiles)
@@ -79,7 +80,7 @@ struct EditorView: View {
                             .multilineTextAlignment(.center).foregroundStyle(.secondary)
                     }.padding(24)
                 }
-                if rendering || importing { ProgressView().padding().background(.regularMaterial).clipShape(RoundedRectangle(cornerRadius: 10)) }
+                if rendering || importing || exporting { ProgressView().padding().background(.regularMaterial).clipShape(RoundedRectangle(cornerRadius: 10)) }
             }
             .onDrop(of: [.fileURL, .image], isTargeted: nil, perform: drop)
             .accessibilityIdentifier("editor.canvas")
@@ -124,7 +125,8 @@ struct EditorView: View {
                     finishImport(items, generation: generation)
                 } catch { if generation == importGeneration { importing = false; self.error = error.localizedDescription } }
             }
-        case .failure(let error): self.error = error.localizedDescription
+        case .failure(let error):
+            if (error as NSError).code != CocoaError.userCancelled.rawValue { self.error = error.localizedDescription }
         }
     }
     private func importPhotos(_ items: [PhotosPickerItem]) {
@@ -209,15 +211,16 @@ struct EditorView: View {
         catch { if !Task.isCancelled { self.error = error.localizedDescription; rendering = false } }
     }
     private func prepareExport(_ type: UTType) {
-        rendering = true; let snapshot = document
+        exporting = true; let snapshot = document
         exportTask?.cancel()
         exportTask = Task {
             do {
                 let bytes = try await NativeRenderQueue.shared.export(snapshot.recipe, sources: snapshot.originals, type: type)
                 try Task.checkCancellation()
                 exported = RasterExport(data: bytes); exportType = type; exportPicker = true
-                rendering = false
-            } catch { rendering = false; self.error = error.localizedDescription }
+                exporting = false
+            } catch is CancellationError { exporting = false }
+            catch { exporting = false; self.error = error.localizedDescription }
         }
     }
     private func verifyExport(_ result: Result<URL, Error>) {
@@ -229,7 +232,8 @@ struct EditorView: View {
                 _ = try RasterCodec.metadata(bytes, maximumBytes: 256 * 1024 * 1024)
                 status = "Exported and verified \(url.lastPathComponent)"
             } catch { self.error = "The export was written, but could not be read back: \(error.localizedDescription)" }
-        case .failure(let error): self.error = error.localizedDescription
+        case .failure(let error):
+            if (error as NSError).code != CocoaError.userCancelled.rawValue { self.error = error.localizedDescription }
         }
     }
 }

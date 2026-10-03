@@ -67,6 +67,16 @@ final class RenderingTests: XCTestCase {
                     if r < 15 && g < 15 && b > 240 { found.insert(2) }
                     if r > 240 && g > 240 && b < 15 { found.insert(3) }
                 }
+                if found != Set(0..<count), template.assetName == (try NativeResources.templates(count: count).first?.assetName) {
+                    var histogram: [String: Int] = [:]
+                    for offset in stride(from: 0, to: 800 * 800 * 4, by: 400) {
+                        let key = "\(pixels[offset]),\(pixels[offset+1]),\(pixels[offset+2]),\(pixels[offset+3])"
+                        histogram[key, default: 0] += 1
+                    }
+                    print("COLLAGE_DIAGNOSTIC count=\(count) alpha=\(image.alphaInfo.rawValue) byteOrder=\(image.bitmapInfo.rawValue) pixels=\(histogram.sorted { $0.value > $1.value }.prefix(10))")
+                    let encoded = try RasterCodec.encode(image, as: .png)
+                    print("COLLAGE_SYNTHETIC_PNG count=\(count) base64=\(encoded.base64EncodedString())")
+                }
                 XCTAssertEqual(found, Set(0..<count), template.assetName)
             }
         }

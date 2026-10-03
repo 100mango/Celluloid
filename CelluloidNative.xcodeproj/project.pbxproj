@@ -40,7 +40,7 @@
 			"path" = "Platforms/Shared/EditorInspector.swift";
 			"sourceTree" = "<group>";
 		};
-		"7BB8EC803A43B2BEA19ABA9A" = {
+		"6535D58D1B93AF2BE31E5117" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "15E4AE0E4F10C1CCED2C1AE4";
 		};
@@ -50,7 +50,7 @@
 			"path" = "Platforms/Shared/EditorView.swift";
 			"sourceTree" = "<group>";
 		};
-		"B27A17E8A48874388EF97415" = {
+		"6BC2D8EF7D0E58A0EB01850F" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "BA1EE020EAA817969B9AF6D0";
 		};
@@ -60,7 +60,7 @@
 			"path" = "Platforms/Shared/NativeDocument.swift";
 			"sourceTree" = "<group>";
 		};
-		"BC68767448FC574CB154046B" = {
+		"25388334531764AEE3E85C0F" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "15CB0613891975E941DDB140";
 		};
@@ -70,7 +70,7 @@
 			"path" = "Platforms/Shared/SourceInspector.swift";
 			"sourceTree" = "<group>";
 		};
-		"A0DF660B5D21D8DA706AD92D" = {
+		"8148ED83AF14CF71A643170B" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "EDEEACE576FA2E263E7A5785";
 		};
@@ -80,7 +80,7 @@
 			"path" = "Platforms/macOS/CelluloidMacApp.swift";
 			"sourceTree" = "<group>";
 		};
-		"0559A56E24419A8CFDCB6822" = {
+		"901BF6DF62E3BD0753A501D6" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "15ECB0C351A51871CB00A8D3";
 		};
@@ -105,7 +105,7 @@
 		"FCBEF293623C00A0F831AC3D" = {
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
-			"files" = ("7BB8EC803A43B2BEA19ABA9A", "B27A17E8A48874388EF97415", "BC68767448FC574CB154046B", "A0DF660B5D21D8DA706AD92D", "0559A56E24419A8CFDCB6822");
+			"files" = ("6535D58D1B93AF2BE31E5117", "6BC2D8EF7D0E58A0EB01850F", "25388334531764AEE3E85C0F", "8148ED83AF14CF71A643170B", "901BF6DF62E3BD0753A501D6");
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
 		"17FFDEE2B7A439489FEFCE10" = {
@@ -185,19 +185,19 @@
 			"dependencies" = ();
 			"packageProductDependencies" = ("4A0A7B794080F5F4DC92EB00", "BF7FC0A44D99C9E7965706D5");
 		};
-		"175D22ABE86FDC10F74E7949" = {
+		"41BF5FEB36F51C539FEAC831" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "15E4AE0E4F10C1CCED2C1AE4";
 		};
-		"A2947FDE27E6B7B367058578" = {
+		"7C9F1EC2C3AA56A955FD4573" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "BA1EE020EAA817969B9AF6D0";
 		};
-		"DEC308A8B79593FAF605B9F8" = {
+		"EEC8E2618615B82FED161FA2" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "15CB0613891975E941DDB140";
 		};
-		"06354956F045C16B4768D70A" = {
+		"2104F47FA14F65DADB8EF750" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "EDEEACE576FA2E263E7A5785";
 		};
@@ -207,7 +207,7 @@
 			"path" = "Platforms/visionOS/CelluloidVisionApp.swift";
 			"sourceTree" = "<group>";
 		};
-		"36F8F6E316B7AEE406DD5CCA" = {
+		"302DA5A93D3F971E787C0880" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "34CD17BD0B21355F501346C8";
 		};
@@ -232,7 +232,7 @@
 		"7F8402196162D6F03EC8DE86" = {
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
-			"files" = ("175D22ABE86FDC10F74E7949", "A2947FDE27E6B7B367058578", "DEC308A8B79593FAF605B9F8", "06354956F045C16B4768D70A", "36F8F6E316B7AEE406DD5CCA");
+			"files" = ("41BF5FEB36F51C539FEAC831", "7C9F1EC2C3AA56A955FD4573", "EEC8E2618615B82FED161FA2", "2104F47FA14F65DADB8EF750", "302DA5A93D3F971E787C0880");
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
 		"CB6B033E6F13804AF768297C" = {
@@ -314,13 +314,33 @@
 			"dependencies" = ();
 			"packageProductDependencies" = ("7832C98181B718C282966C4F", "BD51F4EF0C83AA7C35E295B9");
 		};
+		"99DD9D813FB8A17E64801B21" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/Tests/LaunchProvenanceTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"8E4A136A8AB44FBC25A803E6" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "99DD9D813FB8A17E64801B21";
+		};
+		"276DDD039BAAABAC8C9A74FF" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/Tests/NativeDocumentStressTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"BEB68B43DED9E626135129EA" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "276DDD039BAAABAC8C9A74FF";
+		};
 		"399C234FAAD22663EAA8B41A" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
 			"path" = "Platforms/Tests/NativeDocumentTests.swift";
 			"sourceTree" = "<group>";
 		};
-		"2CF4D2B80B321E7368354FE1" = {
+		"CA8BDEA2E5E8EB14D325B9B3" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "399C234FAAD22663EAA8B41A";
 		};
@@ -357,7 +377,7 @@
 		"6D715CF2C4C02DBFF03C59A5" = {
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
-			"files" = ("2CF4D2B80B321E7368354FE1");
+			"files" = ("8E4A136A8AB44FBC25A803E6", "BEB68B43DED9E626135129EA", "CA8BDEA2E5E8EB14D325B9B3");
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
 		"C7F7A7F8FD6C1ACFA9A58383" = {
@@ -389,7 +409,7 @@
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "macosx";
 				"SUPPORTED_PLATFORMS" = "macosx";
-				"MACOSX_DEPLOYMENT_TARGET" = "13.0";
+				"MACOSX_DEPLOYMENT_TARGET" = "14.0";
 				"TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/CelluloidMac.app/Contents/MacOS/CelluloidMac";
 				"BUNDLE_LOADER" = "$(TEST_HOST)";
 				"GENERATE_INFOPLIST_FILE" = "YES";
@@ -416,7 +436,7 @@
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "macosx";
 				"SUPPORTED_PLATFORMS" = "macosx";
-				"MACOSX_DEPLOYMENT_TARGET" = "13.0";
+				"MACOSX_DEPLOYMENT_TARGET" = "14.0";
 				"TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/CelluloidMac.app/Contents/MacOS/CelluloidMac";
 				"BUNDLE_LOADER" = "$(TEST_HOST)";
 				"GENERATE_INFOPLIST_FILE" = "YES";
@@ -449,7 +469,7 @@
 		};
 		"C3C8853CC2AF9E3CF862AA78" = {
 			"isa" = "PBXGroup";
-			"children" = ("15E4AE0E4F10C1CCED2C1AE4", "BA1EE020EAA817969B9AF6D0", "15CB0613891975E941DDB140", "EDEEACE576FA2E263E7A5785", "15ECB0C351A51871CB00A8D3", "34CD17BD0B21355F501346C8", "399C234FAAD22663EAA8B41A", "C275A667CEA49A4BEB9C5D81");
+			"children" = ("15E4AE0E4F10C1CCED2C1AE4", "BA1EE020EAA817969B9AF6D0", "15CB0613891975E941DDB140", "EDEEACE576FA2E263E7A5785", "15ECB0C351A51871CB00A8D3", "34CD17BD0B21355F501346C8", "99DD9D813FB8A17E64801B21", "276DDD039BAAABAC8C9A74FF", "399C234FAAD22663EAA8B41A", "C275A667CEA49A4BEB9C5D81");
 			"sourceTree" = "<group>";
 		};
 		"DED267C77AB07A6FF4168D2F" = {
