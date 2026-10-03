@@ -58,9 +58,10 @@ jobs:
           small_id=$(grep 'iPhone SE (3rd generation)$' /tmp/test-devices.txt | cut -d' ' -f1)
           failures=0
           setup_simulator() {
-            python3 Scripts/run_bounded.py --seconds 60 --label "$name boot" xcrun simctl boot "$id" || true
-            python3 Scripts/run_bounded.py --seconds 600 --label "$name bootstatus" xcrun simctl bootstatus "$id" -b || return 1
-            python3 Scripts/run_bounded.py --seconds 180 --label "$name addmedia" xcrun simctl addmedia "$id" /tmp/celluloid-fixture.png /tmp/celluloid-fixture-2.png /tmp/celluloid-composition-{0,1,2,3}.png || return 1
+            # A fresh-iPad diagnostic reproduced cold-boot host pressure even
+            # before app installation. Retain bounded readiness/process evidence
+            # and import tiny fixtures individually instead of one opaque batch.
+            python3 -u Scripts/prepare_simulator.py "$id" "$name" || return 1
             python3 Scripts/run_bounded.py --seconds 120 --label "$name install" xcrun simctl install "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app || return 1
             python3 Scripts/run_bounded.py --seconds 60 --label "$name grant-photos" xcrun simctl privacy "$id" grant photos Mango.Celluloid || return 1
             python3 Scripts/run_bounded.py --seconds 60 --label "$name light-appearance" xcrun simctl ui "$id" appearance light || return 1

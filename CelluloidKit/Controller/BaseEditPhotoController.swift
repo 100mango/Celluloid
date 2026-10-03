@@ -190,16 +190,17 @@ open class BaseEditPhotoController: UIViewController {
         super.viewDidLoad()
         self.view.backgroundColor = .blackBackgroundColor
         
-        self.view.addSubview(preview)
-        preview.snp.makeConstraints { (make) in
-            make.edges.equalTo(view.safeAreaLayoutGuide).inset(UIEdgeInsets(top: 0, left: 0, bottom: 49, right: 0))
-        }
-        
         toolBar.delegate = self
+        self.view.addSubview(preview)
         self.view.addSubview(toolBar)
-        toolBar.snp.makeConstraints  { (make) in
-            make.height.equalTo(49)
+        toolBar.setContentHuggingPriority(.required, for: .vertical)
+        toolBar.setContentCompressionResistancePriority(.required, for: .vertical)
+        toolBar.snp.makeConstraints { make in
             make.left.right.bottom.equalTo(view.safeAreaLayoutGuide)
+        }
+        preview.snp.makeConstraints { make in
+            make.top.left.right.equalTo(view.safeAreaLayoutGuide)
+            make.bottom.equalTo(toolBar.snp.top)
         }
     }
     

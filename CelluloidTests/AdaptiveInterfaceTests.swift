@@ -168,6 +168,53 @@ final class AdaptiveInterfaceTests: XCTestCase {
         }
     }
 
+    func testEditorToolbarTitlesScaleAndFitWithoutCoveringPreview() throws {
+        for language in ["en", "zh-Hans"] {
+            let url = try XCTUnwrap(Bundle(for: BubbleLabel.self).url(forResource: language, withExtension: "lproj"))
+            let strings = try XCTUnwrap(Bundle(url: url))
+            for size in [CGSize(width: 320, height: 568), CGSize(width: 568, height: 320),
+                         CGSize(width: 375, height: 667), CGSize(width: 667, height: 375),
+                         CGSize(width: 744, height: 1133), CGSize(width: 1376, height: 1032)] {
+                var normalHeight: CGFloat = 0
+                var normalFontSize: CGFloat = 0
+                for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+                    let parent = UIViewController()
+                    let editor = BaseEditPhotoController()
+                    parent.addChild(editor)
+                    parent.setOverrideTraitCollection(UITraitCollection(preferredContentSizeCategory: category), forChild: editor)
+                    parent.view.addSubview(editor.view)
+                    editor.didMove(toParent: parent)
+                    parent.view.frame = CGRect(origin: .zero, size: size)
+                    editor.view.frame = parent.view.bounds
+                    for (label, key) in zip(editor.toolBar.titleLabels, ["filter", "bubble", "sticker"]) {
+                        label.text = strings.localizedString(forKey: key, value: nil, table: nil)
+                        XCTAssertTrue(label.adjustsFontForContentSizeCategory)
+                    }
+                    editor.toolBar.invalidateIntrinsicContentSize()
+                    // First layout discovers the toolbar's actual width; second
+                    // applies its width-dependent multiline intrinsic height.
+                    for _ in 0..<3 { editor.view.setNeedsLayout(); editor.view.layoutIfNeeded() }
+                    let toolbar = editor.toolBar
+                    for (label, control) in zip(toolbar.titleLabels, toolbar.itemControls) {
+                        assertFullTitle(label, within: control)
+                        XCTAssertGreaterThanOrEqual(control.bounds.height, 44)
+                        XCTAssertTrue(toolbar.bounds.contains(control.convert(control.bounds, to: toolbar)))
+                    }
+                    XCTAssertEqual(editor.preview.frame.maxY, toolbar.frame.minY, accuracy: 1)
+                    XCTAssertGreaterThan(editor.preview.bounds.height, 0)
+                    XCTAssertTrue(editor.view.bounds.contains(toolbar.frame))
+                    if category == .large {
+                        normalHeight = toolbar.bounds.height
+                        normalFontSize = toolbar.titleLabels[0].font.pointSize
+                    } else {
+                        XCTAssertGreaterThan(toolbar.bounds.height, normalHeight)
+                        XCTAssertGreaterThan(toolbar.titleLabels[0].font.pointSize, normalFontSize)
+                    }
+                }
+            }
+        }
+    }
+
     private func assertFullTitle(_ label: UILabel, within container: UIView,
                                  file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertFalse(label.text?.isEmpty ?? true, file: file, line: line)
