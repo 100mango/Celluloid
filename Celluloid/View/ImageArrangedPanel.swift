@@ -106,9 +106,9 @@ extension ImageArrangedPanel: ArrangedCollectionViewCellDelegate {
                 collectionView.deleteItems(at: [indexPath])
                 self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
             } else {
-                let alert = UIAlertController(title: nil, message: "拼图最少需要两张照片", preferredStyle: .alert)
+                let alert = UIAlertController(title: nil, message: NSLocalizedString("A collage needs at least two photos.", comment: "Minimum collage selection"), preferredStyle: .alert)
                 self.parentViewController?.present(alert, animated: true, completion: nil)
-                alert.addAction(UIAlertAction(title: "确定", style: .cancel, handler: { action in
+                alert.addAction(UIAlertAction(title: tr(.done), style: .cancel, handler: { action in
                     alert.dismiss(animated: true, completion: nil)
                 }))
             }
