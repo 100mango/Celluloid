@@ -38,6 +38,10 @@ if __name__ == '__main__':
     if command(name + ' boot', 60, 'xcrun', 'simctl', 'boot', device): sys.exit(1)
     if command(name + ' bootstatus', 600, 'xcrun', 'simctl', 'bootstatus', device, '-b'): sys.exit(1)
     evidence(name + ' after-boot')
+    # Boot completion does not establish that the Photos service has initialized.
+    # Launch only the built-in Photos app; do not accept account/privacy dialogs.
+    if command(name + ' Photos-warm-up', 600, 'xcrun', 'simctl', 'launch', device, 'com.apple.mobileslideshow'): sys.exit(1)
+    evidence(name + ' after-Photos-launch')
     paths = [pathlib.Path('/tmp/celluloid-fixture.png'), pathlib.Path('/tmp/celluloid-fixture-2.png')] + sorted(pathlib.Path('/tmp').glob('celluloid-composition-*.png'))
     for index, path in enumerate(paths):
         data = path.read_bytes()

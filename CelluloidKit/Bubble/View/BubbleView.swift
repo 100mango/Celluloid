@@ -24,6 +24,7 @@ open class BubbleView: AttachView {
     open var bubbleModel: BubbleModel {
         didSet {
             bubbleLabel.text = bubbleModel.content
+            imageView.accessibilityValue = bubbleModel.content
             bubbleLabel.adjustFrame()
         }
     }
@@ -61,6 +62,7 @@ open class BubbleView: AttachView {
         self.imageView.image = bubbleModel.bubbleImage
         self.imageView.addSubview(bubbleLabel)
         imageView.accessibilityLabel = NSLocalizedString("Bubble", bundle: extensionBundle, comment: "")
+        imageView.accessibilityValue = bubbleModel.content
         imageView.accessibilityCustomActions?.append(UIAccessibilityCustomAction(
             name: NSLocalizedString("Edit Bubble Text", bundle: extensionBundle, comment: ""), target: self, selector: #selector(accessibleEditText)))
     }
@@ -85,9 +87,15 @@ extension BubbleView {
         let editBubbleVC = EditBubbleViewController(bubbleModel: self.bubbleModel)
         editBubbleVC.delegate = self
         let navigationVC = UINavigationController(rootViewController: editBubbleVC)
-        navigationVC.modalPresentationStyle = .formSheet
-        navigationVC.sheetPresentationController?.detents = [.medium(), .large()]
-        navigationVC.sheetPresentationController?.prefersGrabberVisible = true
+        // A compact half-sheet leaves too little room for caption editing and
+        // exposes old canvas text outside the modal accessibility boundary.
+        // Phones use the whole screen; iPad keeps its spacious form presentation.
+        let isPad = traitCollection.userInterfaceIdiom == .pad
+        navigationVC.modalPresentationStyle = isPad ? .formSheet : .fullScreen
+        if isPad {
+            navigationVC.sheetPresentationController?.detents = [.large()]
+            navigationVC.sheetPresentationController?.prefersGrabberVisible = true
+        }
         self.parentViewController?.present(navigationVC, animated: true)
     }
 }

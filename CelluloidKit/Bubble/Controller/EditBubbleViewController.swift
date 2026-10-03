@@ -31,6 +31,7 @@ open class EditBubbleViewController: UIViewController {
         textView.font = .preferredFont(forTextStyle: .body)
         textView.adjustsFontForContentSizeCategory = true
         textView.accessibilityIdentifier = "bubble-text"
+        textView.accessibilityLabel = NSLocalizedString("Bubble Text", bundle: extensionBundle, comment: "Editable bubble caption")
         return textView
     }()
     
@@ -65,6 +66,18 @@ open class EditBubbleViewController: UIViewController {
         
         self.navigationItem.rightBarButtonItem = self.rightBarButtonItem
     }
+
+    open override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Include the navigation Done control in the modal focus boundary.
+        // Marking only the content view would hide its sibling navigation bar.
+        if let navigation = navigationController, navigation.presentingViewController != nil {
+            navigation.view.accessibilityViewIsModal = true
+        } else if presentingViewController != nil {
+            view.accessibilityViewIsModal = true
+        }
+    }
+
 }
 
 //MARK: Action
