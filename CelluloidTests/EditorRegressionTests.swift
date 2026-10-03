@@ -64,6 +64,68 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertFalse(editor.canHandle(PHAdjustmentData(formatIdentifier: "Other", formatVersion: "1.0", data: valid)))
         XCTAssertFalse(editor.canHandle(PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: "1.0", data: Data([0,1,2]))))
     }
+    func testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation() throws {
+        XCTAssertEqual(PHPhotoLibrary.authorizationStatus(for: .readWrite), .authorized,
+                       "The integration suite requires simulator Photos access to its synthetic fixtures")
+        let asset = try XCTUnwrap(PHAsset.fetchAssets(with: .image, options: nil).firstObject)
+        let loaded = expectation(description: "Photos editing input")
+        var editingInput: PHContentEditingInput?
+        let options = PHContentEditingInputRequestOptions()
+        options.isNetworkAccessAllowed = false
+        asset.requestContentEditingInput(with: options) { input, _ in
+            DispatchQueue.main.async { editingInput = input; loaded.fulfill() }
+        }
+        wait(for: [loaded], timeout: 15)
+        let input = try XCTUnwrap(editingInput)
+        let placeholder = try XCTUnwrap(input.displaySizeImage)
+        let editor = PhotoEditingViewController()
+        editor.loadViewIfNeeded()
+        editor.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        editor.view.layoutIfNeeded()
+        var adjustment = AdjustmentData()
+        adjustment.filterType = .Sepia
+        editor.restoreFromData(adjustment)
+        var callbacks = 0
+        let finished = expectation(description: "Extension rendered output")
+        editor.finishContentEditing { output in
+            callbacks += 1
+            XCTAssertNotNil(output)
+            if let output = output {
+                XCTAssertNotNil(UIImage(contentsOfFile: output.renderedContentURL.path))
+                XCTAssertEqual(output.adjustmentData?.formatIdentifier, AdjustmentData.formatIdentifier)
+                XCTAssertEqual(output.adjustmentData?.formatVersion, "1.0")
+                if let bytes = output.adjustmentData?.data {
+                    XCTAssertEqual(try? AdjustmentData.decode(bytes).filterType, .Sepia)
+                } else { XCTFail("Missing reversible adjustment archive") }
+            }
+            finished.fulfill()
+        }
+        wait(for: [finished], timeout: 10)
+        XCTAssertEqual(callbacks, 1)
+        editor.cancelContentEditing()
+        let cancelled = expectation(description: "Cancelled extension output")
+        editor.finishContentEditing { output in
+            XCTAssertNil(output)
+            cancelled.fulfill()
+        }
+        wait(for: [cancelled], timeout: 1)
+        // No PHPhotoLibrary.performChanges: the synthetic library asset is never mutated here.
+    }
+
+    func testExtensionWithoutInputCompletesWithFailureExactlyOnce() {
+        let editor = PhotoEditingViewController()
+        let failed = expectation(description: "Missing input rejected")
+        var callbacks = 0
+        editor.finishContentEditing { output in
+            callbacks += 1
+            XCTAssertNil(output)
+            failed.fulfill()
+        }
+        wait(for: [failed], timeout: 1)
+        XCTAssertEqual(callbacks, 1)
+    }
+
     func testCancelledExtensionNeverReturnsOutput() {
         let editor = PhotoEditingViewController()
         editor.cancelContentEditing()

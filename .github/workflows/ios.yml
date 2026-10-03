@@ -29,6 +29,7 @@ jobs:
       - name: Verify reproducible project
         run: |
           python3 Scripts/generate_project.py
+          python3 Scripts/validate_release.py
           git diff --exit-code -- Celluloid.xcodeproj Celluloid.xcworkspace
       - name: Build and run regression suites on iPhone and iPad
         run: |
