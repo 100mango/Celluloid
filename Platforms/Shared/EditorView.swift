@@ -37,7 +37,7 @@ struct EditorView: View {
         .toolbar {
             ToolbarItemGroup {
                 Button { filePicker = true } label: { Label("Import Files", systemImage: "photo.on.rectangle") }
-                    .help("Choose one photo, or two to four photos for a collage")
+                    .help("Choose one photo, or two to four photos for a collage").accessibilityIdentifier("editor.import-files")
                 PhotosPicker(selection: $photos, maxSelectionCount: 4, selectionBehavior: .ordered, matching: .images) {
                     Label("Photos", systemImage: "photo")
                 }

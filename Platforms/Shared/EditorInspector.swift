@@ -26,11 +26,13 @@ struct EditorInspector: View {
                             Button("Sticker \(asset.rawValue)") { add(Overlay(sticker: asset)) }
                         }
                     }
+                    .accessibilityIdentifier("editor.add-sticker")
                     Menu("Bubble") {
                         ForEach(BubbleAsset.allCases, id: \.rawValue) { asset in
                             Button(asset.rawValue) { add(Overlay(bubble: asset)) }
                         }
                     }
+                    .accessibilityIdentifier("editor.add-bubble")
                 }.disabled(recipe.sources.isEmpty || recipe.overlays.count >= 100)
                 SourceInspector(recipe: recipe, change: change)
                 Text("Layers").font(.headline)

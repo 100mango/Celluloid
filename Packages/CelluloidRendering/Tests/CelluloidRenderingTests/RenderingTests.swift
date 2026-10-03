@@ -32,7 +32,7 @@ final class RenderingTests: XCTestCase {
         XCTAssertEqual(try [2, 3, 4].flatMap { try NativeResources.templates(count: $0) }.count, 25)
     }
     func testEveryPresetProducesExpectedExtentAndFadeIsInstant() throws {
-        let (base, sources) = try document([CGColor(red: 0.8, green: 0.3, blue: 0.1, alpha: 1)])
+        let (base, sources) = try document([CGColor(colorSpace: RasterCodec.colorSpace, components: [0.8, 0.3, 0.1, 1])!])
         for preset in FilterPreset.allCases {
             var recipe = base; recipe.filter = preset
             let image = try RecipeRenderer().render(recipe, sources: sources)
@@ -48,8 +48,8 @@ final class RenderingTests: XCTestCase {
         XCTAssertEqual(try RasterCodec.encode(a, as: .png), try RasterCodec.encode(b, as: .png))
     }
     func testEveryCollageHasEachSourceColorAndEightHundredPixelOutput() throws {
-        let colors = [CGColor(red: 1, green: 0, blue: 0, alpha: 1), CGColor(red: 0, green: 1, blue: 0, alpha: 1),
-                      CGColor(red: 0, green: 0, blue: 1, alpha: 1), CGColor(red: 1, green: 1, blue: 0, alpha: 1)]
+        let colors = [CGColor(colorSpace: RasterCodec.colorSpace, components: [1, 0, 0, 1])!, CGColor(colorSpace: RasterCodec.colorSpace, components: [0, 1, 0, 1])!,
+                      CGColor(colorSpace: RasterCodec.colorSpace, components: [0, 0, 1, 1])!, CGColor(colorSpace: RasterCodec.colorSpace, components: [1, 1, 0, 1])!]
         for count in 2...4 {
             let (base, data) = try document(Array(colors.prefix(count)))
             for template in try NativeResources.templates(count: count) {
@@ -74,8 +74,6 @@ final class RenderingTests: XCTestCase {
                         histogram[key, default: 0] += 1
                     }
                     print("COLLAGE_DIAGNOSTIC count=\(count) alpha=\(image.alphaInfo.rawValue) byteOrder=\(image.bitmapInfo.rawValue) pixels=\(histogram.sorted { $0.value > $1.value }.prefix(10))")
-                    let encoded = try RasterCodec.encode(image, as: .png)
-                    print("COLLAGE_SYNTHETIC_PNG count=\(count) base64=\(encoded.base64EncodedString())")
                 }
                 XCTAssertEqual(found, Set(0..<count), template.assetName)
             }

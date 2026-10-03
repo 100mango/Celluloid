@@ -37,8 +37,8 @@ final class PixelFormatTests: XCTestCase {
         XCTAssertTrue(bytes.allSatisfy { $0 == 0 })
     }
     func testExplicitRGBA8OracleForSourceRenderedCanvasAndPNGReadback() throws {
-        let colors = [CGColor(red: 1, green: 0, blue: 0, alpha: 1), CGColor(red: 0, green: 1, blue: 0, alpha: 1),
-                      CGColor(red: 0, green: 0, blue: 1, alpha: 1), CGColor(red: 1, green: 1, blue: 0, alpha: 1)]
+        let colors = [CGColor(colorSpace: RasterCodec.colorSpace, components: [1, 0, 0, 1])!, CGColor(colorSpace: RasterCodec.colorSpace, components: [0, 1, 0, 1])!,
+                      CGColor(colorSpace: RasterCodec.colorSpace, components: [0, 0, 1, 1])!, CGColor(colorSpace: RasterCodec.colorSpace, components: [1, 1, 0, 1])!]
         let expected: [[UInt8]] = [[255,0,0,255],[0,255,0,255],[0,0,255,255],[255,255,0,255]]
         var recipe = EditRecipe(); var originals: [UUID: Data] = [:]
         for (index, color) in colors.enumerated() {

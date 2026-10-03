@@ -9,9 +9,9 @@ import CelluloidDomain
 final class OrientationAndCropTests: XCTestCase {
     private func stripedImage(width: Int = 120, height: Int = 80) throws -> CGImage {
         let context = try RasterCodec.bitmap(width: width, height: height)
-        for (index, color) in [CGColor(red: 1, green: 0, blue: 0, alpha: 1),
-                               CGColor(red: 0, green: 1, blue: 0, alpha: 1),
-                               CGColor(red: 0, green: 0, blue: 1, alpha: 1)].enumerated() {
+        for (index, color) in [CGColor(colorSpace: RasterCodec.colorSpace, components: [1, 0, 0, 1])!,
+                               CGColor(colorSpace: RasterCodec.colorSpace, components: [0, 1, 0, 1])!,
+                               CGColor(colorSpace: RasterCodec.colorSpace, components: [0, 0, 1, 1])!].enumerated() {
             context.setFillColor(color)
             context.fill(CGRect(x: index * width / 3, y: 0, width: width / 3, height: height))
         }
@@ -87,10 +87,19 @@ final class OrientationAndCropTests: XCTestCase {
             XCTAssertEqual(preview.width, 300); XCTAssertEqual(preview.height, 200)
             let a = try pixels(preview), b = try pixels(reference)
             XCTAssertEqual(a.count, b.count)
+            if preset == .original {
+                let y = 100
+                let previewBoundary = (0..<300).first { a[(y * 300 + $0) * 4 + 2] > a[(y * 300 + $0) * 4 + 1] }
+                let exportBoundary = (0..<300).first { b[(y * 300 + $0) * 4 + 2] > b[(y * 300 + $0) * 4 + 1] }
+                // Original stripe at source x=800 maps to x=(800×2−960)/4=160.
+                XCTAssertEqual(Double(try XCTUnwrap(previewBoundary)), 160, accuracy: 1)
+                XCTAssertEqual(Double(try XCTUnwrap(exportBoundary)), 160, accuracy: 1)
+            }
+            // Samples deliberately exclude the analytically known x=160 stripe boundary.
             // Separate sRGB8 quantization can vary by ≤2 in interior samples. Edges are
             // excluded because filtering a graph before/after rasterization resamples them.
             for y in stride(from: 10, to: 190, by: 30) {
-                for x in stride(from: 10, to: 290, by: 30) {
+                for x in [15, 45, 75, 105, 135, 195, 225, 255, 285] {
                     for channel in 0..<4 {
                         let offset = (y * 300 + x) * 4 + channel
                         XCTAssertEqual(Double(a[offset]), Double(b[offset]), accuracy: 2, "\(preset.rawValue) \(x),\(y)")

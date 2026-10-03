@@ -27,6 +27,13 @@
 			"sourceTree" = "BUILT_PRODUCTS_DIR";
 			"includeInIndex" = "0";
 		};
+		"4CDDF93E27FBA5DA5508EBC2" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.cfbundle";
+			"path" = "CelluloidMacUITests.xctest";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+			"includeInIndex" = "0";
+		};
 		"67A226CA56047A1191144BEF" = {
 			"isa" = "PBXFileReference";
 			"explicitFileType" = "wrapper.cfbundle";
@@ -314,6 +321,131 @@
 			"dependencies" = ();
 			"packageProductDependencies" = ("7832C98181B718C282966C4F", "BD51F4EF0C83AA7C35E295B9");
 		};
+		"BA91D03DE64529F8FED4C192" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/UITests/NativeEditorUITests.swift";
+			"sourceTree" = "<group>";
+		};
+		"07E953A963E51A7A7F8F9C56" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "BA91D03DE64529F8FED4C192";
+		};
+		"67875E962B8CF83B12D175B9" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "1956D5CADB6B83076877198D";
+			"productName" = "CelluloidDomain";
+		};
+		"0903532973311E589A6F0B53" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "67875E962B8CF83B12D175B9";
+		};
+		"044610A21CA7668B15209FF8" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "6B70AD80DCFEDAB4F8B18304";
+			"productName" = "CelluloidRendering";
+		};
+		"02EA906FE9EDE0C0D7108E3D" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "044610A21CA7668B15209FF8";
+		};
+		"E75C98FFFDB8F52290465A8D" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "87F32FC03770D1E2B6D2558C";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "AC8FC0BF7A55AD36C59A04F7";
+			"remoteInfo" = "CelluloidMac";
+		};
+		"C71158F499F362DB55C02DF7" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "AC8FC0BF7A55AD36C59A04F7";
+			"targetProxy" = "E75C98FFFDB8F52290465A8D";
+		};
+		"F3FECCEC296068980273D9D2" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("07E953A963E51A7A7F8F9C56");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"998600F04B6F3EDB197312B4" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("0903532973311E589A6F0B53", "02EA906FE9EDE0C0D7108E3D");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"8C722687CCD1F087914A8D0D" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ();
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"65BC9CF2C069E207CEAF97B3" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Debug";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.CelluloidMacUITests";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"CODE_SIGNING_ALLOWED" = "NO";
+				"CODE_SIGNING_REQUIRED" = "NO";
+				"CODE_SIGN_IDENTITY" = "";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"MARKETING_VERSION" = "2.0";
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
+				"SDKROOT" = "macosx";
+				"SUPPORTED_PLATFORMS" = "macosx";
+				"MACOSX_DEPLOYMENT_TARGET" = "14.0";
+				"TEST_TARGET_NAME" = "CelluloidMac";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"ENABLE_TESTABILITY" = "YES";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"ONLY_ACTIVE_ARCH" = "YES";
+			};
+		};
+		"50D7D2A5F73738D1EFB80CF7" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Release";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.CelluloidMacUITests";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"CODE_SIGNING_ALLOWED" = "NO";
+				"CODE_SIGNING_REQUIRED" = "NO";
+				"CODE_SIGN_IDENTITY" = "";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"MARKETING_VERSION" = "2.0";
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
+				"SDKROOT" = "macosx";
+				"SUPPORTED_PLATFORMS" = "macosx";
+				"MACOSX_DEPLOYMENT_TARGET" = "14.0";
+				"TEST_TARGET_NAME" = "CelluloidMac";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+			};
+		};
+		"EB1A41E6BBC7CC5BDDCFEE75" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("65BC9CF2C069E207CEAF97B3", "50D7D2A5F73738D1EFB80CF7");
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"BC8C0C44E2BBFED3A9F5383E" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "CelluloidMacUITests";
+			"productName" = "CelluloidMacUITests";
+			"productReference" = "4CDDF93E27FBA5DA5508EBC2";
+			"productType" = "com.apple.product-type.bundle.ui-testing";
+			"buildConfigurationList" = "EB1A41E6BBC7CC5BDDCFEE75";
+			"buildPhases" = ("F3FECCEC296068980273D9D2", "998600F04B6F3EDB197312B4", "8C722687CCD1F087914A8D0D");
+			"buildRules" = ();
+			"dependencies" = ("C71158F499F362DB55C02DF7");
+			"packageProductDependencies" = ("67875E962B8CF83B12D175B9", "044610A21CA7668B15209FF8");
+		};
 		"99DD9D813FB8A17E64801B21" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -397,7 +529,7 @@
 			"name" = "Debug";
 			"buildSettings" = {
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.NativeTests";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.CelluloidMacTests";
 				"SWIFT_VERSION" = "5.0";
 				"SWIFT_STRICT_CONCURRENCY" = "minimal";
 				"CODE_SIGNING_ALLOWED" = "NO";
@@ -424,7 +556,7 @@
 			"name" = "Release";
 			"buildSettings" = {
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
-				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.NativeTests";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.CelluloidMacTests";
 				"SWIFT_VERSION" = "5.0";
 				"SWIFT_STRICT_CONCURRENCY" = "minimal";
 				"CODE_SIGNING_ALLOWED" = "NO";
@@ -464,12 +596,12 @@
 		"C275A667CEA49A4BEB9C5D81" = {
 			"isa" = "PBXGroup";
 			"name" = "Products";
-			"children" = ("2355AC81A5EA82D139D94882", "33517A0555587B8A7314175F", "67A226CA56047A1191144BEF");
+			"children" = ("2355AC81A5EA82D139D94882", "33517A0555587B8A7314175F", "4CDDF93E27FBA5DA5508EBC2", "67A226CA56047A1191144BEF");
 			"sourceTree" = "<group>";
 		};
 		"C3C8853CC2AF9E3CF862AA78" = {
 			"isa" = "PBXGroup";
-			"children" = ("15E4AE0E4F10C1CCED2C1AE4", "BA1EE020EAA817969B9AF6D0", "15CB0613891975E941DDB140", "EDEEACE576FA2E263E7A5785", "15ECB0C351A51871CB00A8D3", "34CD17BD0B21355F501346C8", "99DD9D813FB8A17E64801B21", "276DDD039BAAABAC8C9A74FF", "399C234FAAD22663EAA8B41A", "C275A667CEA49A4BEB9C5D81");
+			"children" = ("15E4AE0E4F10C1CCED2C1AE4", "BA1EE020EAA817969B9AF6D0", "15CB0613891975E941DDB140", "EDEEACE576FA2E263E7A5785", "15ECB0C351A51871CB00A8D3", "34CD17BD0B21355F501346C8", "BA91D03DE64529F8FED4C192", "99DD9D813FB8A17E64801B21", "276DDD039BAAABAC8C9A74FF", "399C234FAAD22663EAA8B41A", "C275A667CEA49A4BEB9C5D81");
 			"sourceTree" = "<group>";
 		};
 		"DED267C77AB07A6FF4168D2F" = {
@@ -510,6 +642,9 @@
 					"D21117425E7F28CC55766CC2" = {
 						"TestTargetID" = "AC8FC0BF7A55AD36C59A04F7";
 					};
+					"BC8C0C44E2BBFED3A9F5383E" = {
+						"TestTargetID" = "AC8FC0BF7A55AD36C59A04F7";
+					};
 				};
 			};
 			"buildConfigurationList" = "16D24D3EFE46CA58CBB2DD88";
@@ -521,7 +656,7 @@
 			"productRefGroup" = "C275A667CEA49A4BEB9C5D81";
 			"projectDirPath" = "";
 			"projectRoot" = "";
-			"targets" = ("AC8FC0BF7A55AD36C59A04F7", "9A651FCEC4C2DF0939D398BB", "D21117425E7F28CC55766CC2");
+			"targets" = ("AC8FC0BF7A55AD36C59A04F7", "9A651FCEC4C2DF0939D398BB", "BC8C0C44E2BBFED3A9F5383E", "D21117425E7F28CC55766CC2");
 			"packageReferences" = ("1956D5CADB6B83076877198D", "6B70AD80DCFEDAB4F8B18304");
 		};
 	};
