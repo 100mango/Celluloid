@@ -1,0 +1,102 @@
+name: Celluloid App Store captures
+on:
+  push:
+    branches: [codex/app-store-screenshots]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-app-store-captures
+  cancel-in-progress: true
+jobs:
+  capture:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Verify frozen app source and capture-only allowlist
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 100mango/Celluloid
+          test "$GITHUB_REF" = refs/heads/codex/app-store-screenshots
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code HEAD --
+          python3 - <<'PY'
+          import subprocess
+          frozen='738b45f0c53f724d6f782d6346bb43c19c2f69d7'
+          allowed={'.github/workflows/app-store-screenshots.yml','CelluloidUITests/CelluloidUITests.swift','Celluloid.xcodeproj/xcshareddata/xcschemes/CelluloidCapture.xcscheme'}
+          changed=set(subprocess.check_output(['git','diff','--name-only',frozen,'HEAD'],text=True).splitlines())
+          assert changed and changed <= allowed, changed
+          print('FROZEN_APP_SOURCE',frozen,'CAPTURE_COMMIT',subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
+          print('CAPTURE_DIFF_ALLOWLIST',sorted(changed))
+          PY
+          shasum -a 256 .github/workflows/app-store-screenshots.yml
+      - name: Verify stable Apple environment and exact devices
+        run: |
+          set -euo pipefail
+          sw_vers
+          xcodebuild -version
+          xcodebuild -version | grep '^Xcode 27.0$'
+          xcrun simctl list runtimes | grep 'iOS 27.0'
+          xcrun simctl list devices available -j > /tmp/celluloid-devices.json
+          python3 - <<'PY' > /tmp/celluloid-capture-devices.txt
+          import json
+          runtimes=json.load(open('/tmp/celluloid-devices.json'))['devices']
+          devices=next(v for k,v in runtimes.items() if k.endswith('iOS-27-0'))
+          for name in ['iPhone 18 Pro Max','iPad Pro 13-inch (M5)']:
+              matches=[d for d in devices if d['name']==name and d['isAvailable']]
+              assert len(matches)==1, (name,devices)
+              print(matches[0]['udid'],name)
+          PY
+          cat /tmp/celluloid-capture-devices.txt
+      - name: Capture Chinese Release UI on iPhone and iPad
+        run: |
+          set -euo pipefail
+          python3 Scripts/create_fixture.py
+          while read -r id name; do
+            echo "CAPTURE_DEVICE $name ($id)"
+            if ! xcodebuild -project Celluloid.xcodeproj -scheme CelluloidCapture -configuration Release -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-capture build-for-testing CODE_SIGNING_ALLOWED=NO > "build-capture-$id.log" 2>&1; then
+              tail -200 "build-capture-$id.log"; exit 1
+            fi
+            xcrun simctl boot "$id" || true
+            xcrun simctl bootstatus "$id" -b
+            xcrun simctl addmedia "$id" /tmp/celluloid-fixture.png /tmp/celluloid-fixture-2.png
+            xcrun simctl install "$id" .build-capture/Build/Products/Release-iphonesimulator/Celluloid.app
+            xcrun simctl privacy "$id" grant photos Mango.Celluloid
+            xcodebuild -project Celluloid.xcodeproj -scheme CelluloidCapture -configuration Release -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-capture -resultBundlePath "Capture-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidCaptureTests/testStoreScreenshots test-without-building CODE_SIGNING_ALLOWED=NO | tee "capture-$id.log"
+            xcrun xcresulttool get test-results summary --path "Capture-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY"
+            xcrun simctl shutdown "$id"
+          done < /tmp/celluloid-capture-devices.txt
+      - name: Assess actual Photos host after main captures
+        continue-on-error: true
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          id=$(head -1 /tmp/celluloid-capture-devices.txt | cut -d' ' -f1)
+          xcrun simctl boot "$id" || true
+          xcrun simctl bootstatus "$id" -b
+          xcodebuild -project Celluloid.xcodeproj -scheme CelluloidCapture -configuration Release -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-capture -resultBundlePath PhotosHost.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidCaptureTests/testPhotosHostAssessment test-without-building CODE_SIGNING_ALLOWED=NO | tee photos-host.log
+          xcrun simctl shutdown "$id"
+      - name: Verify capture count and final source
+        if: always()
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code HEAD --
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          markers=[]
+          for p in Path('.').glob('capture-*.log'):
+              markers += re.findall(r'^CELLULOID_STORE_END:(.+)$',p.read_text(),re.M)
+          print('CAPTURE_FILES',markers)
+          assert len(markers)==6 and len(set(markers))==6, markers
+          PY
+          echo "FINAL_CAPTURE_COMMIT $(git rev-parse HEAD)"
+          shasum -a 256 .github/workflows/app-store-screenshots.yml

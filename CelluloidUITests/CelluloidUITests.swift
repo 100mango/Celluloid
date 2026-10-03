@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import CryptoKit
 
 final class CelluloidUITests: XCTestCase {
     private var app: XCUIApplication!
@@ -129,4 +130,183 @@ final class CelluloidUITests: XCTestCase {
         print("SCREENSHOT_END:\(name)")
     }
 
+}
+
+
+// Isolated App Store capture suite. The shipping app and Release settings are unchanged.
+final class CelluloidCaptureTests: XCTestCase {
+    private var app = XCUIApplication()
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+    }
+    override func tearDown() { app.terminate(); super.tearDown() }
+
+    private func launchChinese() {
+        app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        app.launch()
+        XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 15))
+    }
+    private func ready(_ element: XCUIElement) {
+        XCTAssertTrue(element.waitForExistence(timeout: 15))
+        let predicate = NSPredicate(format: "enabled == true AND hittable == true")
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)], timeout: 15), .completed)
+    }
+    func testStoreScreenshots() throws {
+        launchChinese()
+        for (identifier, label) in [("edit-photo", "美化"), ("make-collage", "拼图"), ("privacy-policy", "隐私政策")] {
+            XCTAssertEqual(app.buttons[identifier].label, label)
+            XCTAssertTrue(app.buttons[identifier].isHittable)
+        }
+        try emitStoreScreenshot("01-home")
+
+        app.buttons["edit-photo"].tap()
+        let photo = app.descendants(matching: .any)["photo-0"]
+        ready(photo); photo.tap()
+        app.buttons["picker-done"].tap()
+        let editDone = app.buttons["editor-done"]
+        ready(editDone)
+        app.buttons["tool-filter"].tap()
+        ready(app.collectionViews.cells.element(boundBy: 1))
+        app.collectionViews.cells.element(boundBy: 1).tap()
+        if app.buttons["取消"].exists && !editDone.isHittable { app.buttons["取消"].tap() }
+        app.buttons["tool-sticker"].tap()
+        ready(app.collectionViews.cells.firstMatch)
+        app.collectionViews.cells.firstMatch.tap()
+        ready(editDone)
+        XCTAssertTrue(app.buttons["tool-filter"].isHittable)
+        XCTAssertTrue(app.buttons["tool-sticker"].isHittable)
+        try emitStoreScreenshot("02-edited-fixture")
+        app.buttons["取消"].tap()
+        ready(app.buttons["make-collage"])
+
+        app.buttons["make-collage"].tap()
+        ready(app.descendants(matching: .any)["photo-1"])
+        app.descendants(matching: .any)["photo-0"].tap()
+        app.descendants(matching: .any)["photo-1"].tap()
+        app.buttons["picker-done"].tap()
+        ready(app.buttons["collage-done"])
+        XCTAssertTrue(app.scrollViews["collage-image"].firstMatch.waitForExistence(timeout: 5))
+        try emitStoreScreenshot("03-collage")
+    }
+
+    private func emitStoreScreenshot(_ screen: String) throws {
+        XCTAssertFalse(app.alerts.firstMatch.exists, "No permission or error prompt may cover a store capture")
+        Thread.sleep(forTimeInterval: 1)
+        let capture = XCUIScreen.main.screenshot()
+        let image = capture.image
+        let pixels = try XCTUnwrap(image.cgImage)
+        let width = pixels.width, height = pixels.height
+        let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+        let accepted = isPhone ? [(1260,2736),(1290,2796),(1320,2868)] : [(2064,2752),(2048,2732)]
+        XCTAssertTrue(accepted.contains { $0.0 == width && $0.1 == height }, "Unaccepted native pixels \(width)x\(height)")
+        // Encoding only: no resize, cropping, drawing, retouching, or overlays.
+        // JPEG has no alpha. Fail visibly if an acceptable-quality native file cannot fit the approved bridge.
+        var data: Data?
+        var quality: CGFloat = 1
+        for q in [CGFloat(1), 0.95, 0.90, 0.85, 0.80] {
+            if let candidate = image.jpegData(compressionQuality: q), candidate.count <= 786432 {
+                data = candidate; quality = q; break
+            }
+        }
+        let jpeg = try XCTUnwrap(data, "Native capture exceeds 786432-byte bridge at quality >=0.80; request approved artifact bridge")
+        let name = "celluloid-zh-Hans-\(isPhone ? "iphone-6.9" : "ipad-13")-\(screen).jpg"
+        let hash = SHA256.hash(data: jpeg).map { String(format: "%02x", $0) }.joined()
+        print("CELLULOID_STORE_META name=\(name) width=\(width) height=\(height) bytes=\(jpeg.count) sha256=\(hash) quality=\(quality) source=XCUIScreen.main configuration=Release")
+        print("CELLULOID_STORE_BEGIN:\(name)")
+        let base64 = jpeg.base64EncodedString()
+        var index = base64.startIndex
+        while index < base64.endIndex {
+            let end = base64.index(index, offsetBy: 4000, limitedBy: base64.endIndex) ?? base64.endIndex
+            print(String(base64[index..<end])); index = end
+        }
+        print("CELLULOID_STORE_END:\(name)")
+    }
+
+    func testPhotosHostAssessment() {
+        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
+        let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
+        photos.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        photos.launch()
+        Thread.sleep(forTimeInterval: 3)
+        func hierarchy(_ stage: String) {
+            print("PHOTOS_HOST_HIERARCHY_BEGIN:\(stage)")
+            print(String(photos.debugDescription.prefix(24000)))
+            print("PHOTOS_HOST_HIERARCHY_END:\(stage)")
+        }
+        func tapLabel(_ labels: [String]) -> Bool {
+            for label in labels {
+                let control = photos.buttons[label].firstMatch
+                if control.exists && control.isHittable { control.tap(); return true }
+            }
+            return false
+        }
+        hierarchy("launch")
+        _ = tapLabel(["继续", "Continue"])
+        _ = tapLabel(["图库", "Library", "所有照片", "All Photos"])
+        Thread.sleep(forTimeInterval: 2)
+        hierarchy("library")
+        let cells = photos.collectionViews.cells.allElementsBoundByIndex.filter { $0.exists && $0.isHittable }
+        guard let first = cells.first else {
+            print("PHOTOS_HOST_RESULT:BLOCKED no accessible seeded-photo grid cell in actual Photos host")
+            return
+        }
+        first.tap()
+        Thread.sleep(forTimeInterval: 2)
+        hierarchy("selected-photo")
+        guard tapLabel(["编辑", "Edit"]) else {
+            print("PHOTOS_HOST_RESULT:BLOCKED selected Photos content exposes no accessible Edit action")
+            return
+        }
+        Thread.sleep(forTimeInterval: 2)
+        hierarchy("editing")
+        _ = tapLabel(["更多", "More", "扩展", "Extensions", "更多选项", "More options"])
+        Thread.sleep(forTimeInterval: 2)
+        hierarchy("extensions")
+        guard tapLabel(["Celluloid"]) else {
+            print("PHOTOS_HOST_RESULT:BLOCKED Photos Edit does not expose accessible Celluloid extension after bounded normal UI attempt")
+            return
+        }
+        Thread.sleep(forTimeInterval: 3)
+        hierarchy("celluloid")
+        let filter = photos.buttons["tool-filter"]
+        guard filter.exists && filter.isHittable else {
+            print("PHOTOS_HOST_RESULT:BLOCKED extension entry selected but Celluloid editor not accessible")
+            return
+        }
+        filter.tap()
+        let preset = photos.collectionViews.cells.element(boundBy: 1)
+        guard preset.waitForExistence(timeout: 5) && preset.isHittable else {
+            print("PHOTOS_HOST_RESULT:BLOCKED extension filter selector not accessible")
+            return
+        }
+        preset.tap()
+        Thread.sleep(forTimeInterval: 2)
+        hierarchy("filtered")
+        guard tapLabel(["完成", "Done"]) else {
+            print("PHOTOS_HOST_RESULT:BLOCKED no accessible extension completion action")
+            return
+        }
+        Thread.sleep(forTimeInterval: 3)
+        hierarchy("rendered")
+        _ = tapLabel(["完成", "Done"])
+        Thread.sleep(forTimeInterval: 2)
+        hierarchy("saved")
+        guard tapLabel(["编辑", "Edit"]) else {
+            print("PHOTOS_HOST_RESULT:PARTIAL extension rendering attempted; save/reopen not established")
+            return
+        }
+        Thread.sleep(forTimeInterval: 2)
+        _ = tapLabel(["更多", "More", "扩展", "Extensions", "更多选项", "More options"])
+        Thread.sleep(forTimeInterval: 2)
+        guard tapLabel(["Celluloid"]) else {
+            hierarchy("reopen-blocked")
+            print("PHOTOS_HOST_RESULT:PARTIAL editing reopened but extension state restoration not established")
+            return
+        }
+        Thread.sleep(forTimeInterval: 3)
+        hierarchy("reopened")
+        print("PHOTOS_HOST_RESULT:REOPENED extension UI reopened through actual Photos; adjustment/pixel integrity requires separate visual review")
+    }
 }
