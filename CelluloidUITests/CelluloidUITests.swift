@@ -287,6 +287,8 @@ final class CelluloidCaptureTests: XCTestCase {
 
     func testPhotosHostAssessment() {
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
+        launchChinese()
+        app.terminate()
         let photos = XCUIApplication(bundleIdentifier: "com.apple.mobileslideshow")
         photos.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         photos.launch()
@@ -298,10 +300,40 @@ final class CelluloidCaptureTests: XCTestCase {
         }
         func tapLabel(_ labels: [String]) -> Bool {
             for label in labels {
-                let control = photos.buttons[label].firstMatch
-                if control.exists && control.isHittable { control.tap(); return true }
+                for control in photos.buttons.matching(NSPredicate(format: "label == %@", label)).allElementsBoundByIndex {
+                    if control.exists && control.isEnabled && control.isHittable { control.tap(); return true }
+                }
             }
             return false
+        }
+        func tapReady(_ control: XCUIElement) -> Bool {
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND enabled == true AND hittable == true"), object: control)
+            guard XCTWaiter.wait(for: [ready], timeout: 10) == .completed else { return false }
+            control.tap()
+            return true
+        }
+        func openExtensionsPicker(_ stage: String) -> Bool {
+            guard tapReady(photos.buttons["edit.moreButton"].firstMatch) else {
+                hierarchy(stage + "-more-unavailable"); return false
+            }
+            // This exact submenu button was observed in the previous actual Photos hierarchy.
+            guard tapReady(photos.buttons["扩展"].firstMatch) else {
+                hierarchy(stage + "-submenu-unavailable"); return false
+            }
+            return true
+        }
+        func enterCelluloid(_ stage: String) -> Bool {
+            let query = photos.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "CelluloidPhotoExtension", "Celluloid"))
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                query.allElementsBoundByIndex.contains { $0.exists && $0.isHittable }
+            }, object: nil)
+            guard XCTWaiter.wait(for: [ready], timeout: 10) == .completed,
+                  let entry = query.allElementsBoundByIndex.first(where: { $0.exists && $0.isHittable }) else {
+                hierarchy(stage + "-entry-unavailable"); return false
+            }
+            hierarchy(stage + "-extension-picker")
+            entry.tap()
+            return true
         }
         hierarchy("launch")
         _ = tapLabel(["图库", "Library", "所有照片", "All Photos"])
@@ -374,11 +406,12 @@ final class CelluloidCaptureTests: XCTestCase {
         }
         Thread.sleep(forTimeInterval: 2)
         hierarchy("editing")
-        _ = tapLabel(["更多", "More", "扩展", "Extensions", "更多选项", "More options"])
-        Thread.sleep(forTimeInterval: 2)
-        hierarchy("extensions")
-        guard tapLabel(["CelluloidPhotoExtension", "Celluloid"]) else {
-            print("PHOTOS_HOST_RESULT:BLOCKED Photos Edit does not expose accessible Celluloid extension after bounded normal UI attempt")
+        guard openExtensionsPicker("open") else {
+            print("PHOTOS_HOST_RESULT:BLOCKED observed More-to-Extensions path was not ready; inspect recorded hierarchy")
+            return
+        }
+        guard enterCelluloid("open") else {
+            print("PHOTOS_HOST_RESULT:BLOCKED actual Extensions picker has no accessible named Celluloid entry; inspect recorded hierarchy")
             return
         }
         Thread.sleep(forTimeInterval: 3)
@@ -411,11 +444,12 @@ final class CelluloidCaptureTests: XCTestCase {
             return
         }
         Thread.sleep(forTimeInterval: 2)
-        _ = tapLabel(["更多", "More", "扩展", "Extensions", "更多选项", "More options"])
-        Thread.sleep(forTimeInterval: 2)
-        guard tapLabel(["CelluloidPhotoExtension", "Celluloid"]) else {
-            hierarchy("reopen-blocked")
-            print("PHOTOS_HOST_RESULT:PARTIAL editing reopened but extension state restoration not established")
+        guard openExtensionsPicker("reopen") else {
+            print("PHOTOS_HOST_RESULT:PARTIAL Photos Edit reopened but observed More-to-Extensions path was not ready")
+            return
+        }
+        guard enterCelluloid("reopen") else {
+            print("PHOTOS_HOST_RESULT:PARTIAL editing reopened but accessible Celluloid entry was not established")
             return
         }
         Thread.sleep(forTimeInterval: 3)
