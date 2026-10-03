@@ -72,6 +72,7 @@ final class NativeEditorUITests: XCTestCase {
         let app = XCUIApplication(url: URL(fileURLWithPath: path))
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
         if ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" { app.launchEnvironment["CELLULOID_SANDBOX_DIAGNOSTICS"] = "YES" }
+        app.launchEnvironment["CELLULOID_UNDO_DIAGNOSTICS"] = "YES"
         try launch(app); defer { app.terminate() }
         let cancel = app.windows["open-panel"].buttons["CancelButton"]
         if cancel.waitForExistence(timeout: 3) { cancel.click() }
@@ -91,7 +92,9 @@ final class NativeEditorUITests: XCTestCase {
         let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 5)); text.click()
         app.typeKey("a", modifierFlags: .command); text.typeText("Saved 世界")
-        app.typeKey(.tab, modifierFlags: [])
+        // Invoke the real document shortcut while text input is still focused;
+        // the production transform command must relinquish that text responder.
+        XCTAssertEqual(text.value as? String, "Saved 世界")
         app.typeKey(.rightArrow, modifierFlags: [.command, .option])
         let horizontal = app.staticTexts["editor.layer.value.Horizontal position"]
         expectation(for: NSPredicate(format: "value == '0.51'"), evaluatedWith: horizontal)
@@ -101,6 +104,11 @@ final class NativeEditorUITests: XCTestCase {
         expectation(for: NSPredicate(format: "value == '15.00'"), evaluatedWith: rotation)
         waitForExpectations(timeout: 5)
         app.typeKey("z", modifierFlags: .command)
+        print("NATIVE_MAC_KEYBOARD_UNDO_RESULT rotation=\(rotation.value ?? "missing") horizontal=\(horizontal.value ?? "missing") text=\(text.value ?? "missing")")
+        let undoShot = XCTAttachment(screenshot: app.screenshot()); undoShot.name = "native-mac-keyboard-undo-result"; undoShot.lifetime = .keepAlways; add(undoShot)
+        app.menuBarItems["Edit"].click()
+        print("NATIVE_MAC_KEYBOARD_UNDO_EDIT_MENU " + String(app.menus.debugDescription.prefix(20000)))
+        app.typeKey(.escape, modifierFlags: [])
         expectation(for: NSPredicate(format: "value == '0.00'"), evaluatedWith: rotation)
         waitForExpectations(timeout: 5)
         app.typeKey("z", modifierFlags: [.command, .shift])

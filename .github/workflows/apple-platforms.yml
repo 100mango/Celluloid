@@ -33,6 +33,7 @@ jobs:
           python3 Scripts/test_native_fixture_handoff.py
           python3 Scripts/test_native_process.py
           python3 Scripts/test_native_workflow_syntax.py
+          python3 Scripts/test_native_watch_profiles.py
           python3 Scripts/test_native_phone_fixture.py
           python3 Scripts/test_phone_harness_release.py
           python3 Scripts/test_native_release.py
@@ -135,7 +136,7 @@ jobs:
     needs: native-mac
     if: always()
     runs-on: xcode-27
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.platform == 'watch' && 45 || 30 }}
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -163,6 +164,7 @@ jobs:
           python3 Scripts/test_native_fixture_handoff.py
           python3 Scripts/test_native_process.py
           python3 Scripts/test_native_workflow_syntax.py
+          python3 Scripts/test_native_watch_profiles.py
           python3 Scripts/test_native_phone_fixture.py
           python3 Scripts/test_phone_harness_release.py
           python3 Scripts/test_native_release.py

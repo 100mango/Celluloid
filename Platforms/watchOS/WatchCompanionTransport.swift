@@ -31,8 +31,7 @@ final class WatchCompanionTransport: NSObject, WCSessionDelegate {
         guard let previous = photo.job,
               let cancelled = try await store.cancelRequest(sourceID: photo.id, requestID: previous.request.id) else { return }
         for transfer in WCSession.default.outstandingFileTransfers {
-            if let bytes = transfer.file.metadata?["celluloid.request.v1"] as? Data,
-               let request = try? CompanionRequest.decode(bytes), request.id == cancelled.id { transfer.cancel() }
+            if WatchRequestTransfer.matches(transfer.file.metadata, request: cancelled) { transfer.cancel() }
         }
         // Cancellation stops applying late responses. The phone may already have processed it.
         await notify()

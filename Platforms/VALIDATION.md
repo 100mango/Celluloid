@@ -2,6 +2,20 @@
 
 This branch is an **implementation and validation candidate**, not a release. The UIKit production baseline remains isolated at `920671dd` until the iOS owner supplies its qualified repair head. Native/embedded companion marketing versions still need final alignment to iPhone1.1(2); document and Photos-adjustment format versions remain independent.
 
+
+## Latest completed checkpoint: b49b2e2
+
+[Run37154335257](https://github.com/100mango/Celluloid/actions/runs/37154335257) is terminal, with Watch and Vision rows green and Mac/TV/phone rows red:
+- Vision:2hosted+2UI, unsuppressed empty/edited audits and unsigned device Release/package passed. Real Files import, sequential A/B keystrokes with retained focus, real Select All→exact“Vision 世界”, bubble rendering and actual system PNG Save/readback passed. Captures show the real image/text but crop off the inspector/right toolbar; they are diagnostic evidence, not accepted Store captures. UI Undo/reopen and richer workflows remain separate.
+- Mac:18domain,27renderer+1explicit encoder skip,18hosted passed. The ImageIO-CG Sketch/Comic alpha/no-alpha regression is exact0difference;4×48,771,072-pixel/5×crop previews remain flat at575,979,520resident bytes. Real minimal-sandbox Photos library→picker→editable-document original readback passed. Four sandbox UI cases pass, one new keyboard Undo case fails, three diagnostic cases skip. Ordinary audits remain red. Mac Release/isolated extension compile passed.
+- Watch:7hosted+2UI and native Release/package passed on46mm. Physical import/file transport remain open.
+- TV:6hosted pass,4real UI cases fail, keyboard API availability probe passes only as infrastructure. A concrete sheet regression places a fixed1280×860child outside its actual620×700host. Tests finished at21:32:46 but xcodebuild remained alive until21:42:00; the post-suite stall is separate from app failures. Release passed.
+- Phone:Debug app/unit/UI compile and actual launch/PID passed. Optional simctl screenshot timeout incorrectly stopped the harness before XCTest. No UIKit parity or seeded-phone UI result exists at this head. Generic-device Release validation-host identity/iOS15/DEBUG-exclusion checks passed.
+- All five artifacts' ZIP digests and source manifests were verified:7,565,790selected bytes, one-day retention. No raw xcresults.
+
+The next staged candidate retains b49's proven Vision text/export checks and adds actual Undo/reopen, narrowly repairs TV outer-sheet containment with per-step focus traces, separates optional captures from required tests, and tests Mac native control/Undo/Photos-cancel behavior plus Watch persisted transfer cancellation and40/49mm geometry. New Swift changes require their own Apple compiler/runtime result;19Linux helper tests and structural checks pass. No previous result is inherited.
+
+
 ## Current verified checkpoints
 
 - `a20d452`, [run37144612442](https://github.com/100mango/Celluloid/actions/runs/37144612442):18domain,26renderer plus1explicit unsupported generic HEIF encoder skip,18hosted Mac tests passed. Strict minimally entitled ad-hoc sandbox UI passed4flows (Files/edit/resize; save/reopen/PNG+JPEG readback; Chinese; clipboard/Undo/Redo/rejected replacement). Real Photos.app import populated a synthetic library, and actual sandboxed picker pixels show the seeded image; picker selection/import remains unproved. Ordinary Mac audits retain54issues across3cases and are not suppressed.

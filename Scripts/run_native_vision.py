@@ -3,7 +3,7 @@
 import json,os,signal,subprocess,sys,time,struct,zlib,plistlib
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];temp=Path(os.environ['RUNNER_TEMP'])
-from native_process import run
+from native_process import run,optional_diagnostic
 runtimes=json.loads(run(['xcrun','simctl','list','runtimes','--json'],echo=False).stdout)['runtimes']
 types=json.loads(run(['xcrun','simctl','list','devicetypes','--json'],echo=False).stdout)['devicetypes']
 possible=[r for r in runtimes if r.get('isAvailable') and ('vision' in r.get('name','').lower() or 'xros' in r.get('identifier','').lower())]
@@ -60,7 +60,7 @@ try:
     time.sleep(4)
     proc=run(['ps','-p',pid,'-o','pid=,comm='],timeout=20)
     evidence['process']=proc.stdout;assert 'CelluloidVision' in proc.stdout
-    run(['xcrun','simctl','io',udid,'screenshot','--type=jpeg',temp/'native-vision-launch.jpg'],timeout=45,check=False)
+    evidence['launch_screenshot']=optional_diagnostic(['xcrun','simctl','io',udid,'screenshot','--type=jpeg',temp/'native-vision-launch.jpg'],timeout=45)
     stopped=run(['xcrun','simctl','terminate',udid,'Mango.Celluloid'],timeout=30,check=False)
     evidence['pretest_terminate_exit_code']=stopped.returncode
     # Actual a20 cold XCTest setup took3min and the first UI case229s. Preserve

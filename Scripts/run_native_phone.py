@@ -3,7 +3,7 @@
 import json,os,signal,subprocess,sys,time,re,base64,hashlib,shutil
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];temp=Path(os.environ['RUNNER_TEMP'])
-from native_process import run
+from native_process import run,optional_diagnostic
 runtimes=json.loads(run(['xcrun','simctl','list','runtimes','--json'],echo=False).stdout)['runtimes']
 types=json.loads(run(['xcrun','simctl','list','devicetypes','--json'],echo=False).stdout)['devicetypes']
 possible=[r for r in runtimes if r.get('isAvailable') and ('ios' == r.get('name','').lower().split(' ')[0])]
@@ -40,7 +40,7 @@ try:
     time.sleep(4)
     proc=run(['ps','-p',pid,'-o','pid=,comm='],timeout=20)
     evidence['process']=proc.stdout;assert 'CelluloidPhoneCompanion' in proc.stdout
-    run(['xcrun','simctl','io',udid,'screenshot','--type=jpeg',temp/'native-phone-launch.jpg'],timeout=45,check=False)
+    evidence['launch_screenshot']=optional_diagnostic(['xcrun','simctl','io',udid,'screenshot','--type=jpeg',temp/'native-phone-launch.jpg'],timeout=45)
     # End only our manually launched probe instance before XCTest owns its host.
     # This is a bounded lifecycle diagnostic; it does not presume the cause of
     # the prior completed-test/session-teardown timeout.

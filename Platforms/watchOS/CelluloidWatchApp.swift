@@ -74,7 +74,7 @@ struct WatchGalleryView: View {
                         Text(Bundle.main.url(forResource: "PrivacyPolicy", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "https://100mango.github.io/app-privacy/")
                         Text("https://100mango.github.io/app-privacy/").font(.footnote)
                     }.padding()
-                }
+                }.accessibilityIdentifier("watch.privacy")
             }.navigationTitle("Celluloid")
         }
         .task { await model.transport?.recoverIncoming(); await model.reload() }
@@ -109,12 +109,12 @@ private struct WatchPhotoView: View {
                     }
                     Picker("Phone Filter", selection: $filter) {
                         ForEach(FilterPreset.allCases, id: \.rawValue) { Text($0.localizedTitle).tag($0) }
-                    }
+                    }.accessibilityIdentifier("watch.filter")
                     if filter == .pixellateFace { Text("Face detection can miss faces. Check the result before sharing.").font(.caption) }
                     Button("Process on iPhone") { Task { do { try await model.transport?.request(photo, filter: filter) } catch { model.error = error.localizedDescription } } }
                         .accessibilityIdentifier("watch.process-phone").disabled(model.transport == nil)
                     Text("Sends only this selected image to your paired iPhone. A returned preview is not a Photos save. Open the phone app to save the full result.").font(.footnote)
-                    Button("Remove from Watch", role: .destructive) { confirmDelete = true }
+                    Button("Remove from Watch", role: .destructive) { confirmDelete = true }.accessibilityIdentifier("watch.remove")
                 }
             }
         }.task(id: photo?.job?.phase) {
@@ -122,8 +122,8 @@ private struct WatchPhotoView: View {
             catch { model.error = error.localizedDescription }
         }
         .confirmationDialog("Remove this local photo?", isPresented: $confirmDelete) {
-            Button("Remove from Watch", role: .destructive) { if let photo { Task { await model.remove(photo); dismiss() } } }
-            Button("Cancel", role: .cancel) { }
+            Button("Remove from Watch", role: .destructive) { if let photo { Task { await model.remove(photo); dismiss() } } }.accessibilityIdentifier("watch.remove-confirm")
+            Button("Cancel", role: .cancel) { }.accessibilityIdentifier("watch.remove-cancel")
         } message: { Text("This removes only the Watch copy. Photos and the paired iPhone stay unchanged.") }
     }
 }

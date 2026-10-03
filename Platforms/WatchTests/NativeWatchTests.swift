@@ -24,6 +24,36 @@ final class NativeWatchTests: XCTestCase {
         try await store.receive(response, preview: bytes)
         try await store.remove(photo.id); let remaining = try await reopened.load(); XCTAssertTrue(remaining.isEmpty)
     }
+    func testRelaunchedCancellationSelectsOnlyOwnedTransfersAndIgnoresLateReply() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let original = try WatchGalleryStore(folder: folder), bytes = try fixture()
+        let photo = try await original.importPhoto(bytes, name: "Cancellation ownership fixture")
+        let request = try await original.beginRequest(photo.id, filter: .fade) { _, _ in }
+        let relaunched = try WatchGalleryStore(folder: folder)
+        let accepted = try await relaunched.cancelRequest(sourceID: photo.id, requestID: request.id)
+        let cancelled = try XCTUnwrap(accepted)
+        let different = CompanionRequest(sourceID: photo.id, sourceSHA256: request.sourceSHA256, sourceBytes: bytes.count, filter: .fade)
+        let wrongSource = CompanionRequest(id: request.id, sourceID: UUID(), sourceSHA256: request.sourceSHA256, sourceBytes: bytes.count, filter: .fade)
+        let metadata: [[String: Any]?] = [
+            ["celluloid.request.v1": try request.encoded()],
+            ["celluloid.request.v1": try different.encoded()],
+            ["celluloid.request.v1": try wrongSource.encoded()],
+            ["unrelated.request": try request.encoded()],
+            ["celluloid.request.v1": Data("malformed".utf8)],
+            ["celluloid.request.v1": "wrong representation"], nil
+        ]
+        // These are injectable metadata handles, not physical transport evidence.
+        XCTAssertEqual(metadata.enumerated().filter { WatchRequestTransfer.matches($0.element, request: cancelled) }.map(\.offset), [0])
+        let late = CompanionResult(requestID: request.id, sourceSHA256: request.sourceSHA256,
+            previewSHA256: WatchGalleryStore.digest(bytes), pixelWidth: 64, pixelHeight: 40, failure: nil)
+        try await relaunched.receive(late, preview: bytes)
+        try await relaunched.markProcessing(request)
+        let persisted = try await WatchGalleryStore(folder: folder).load()
+        XCTAssertEqual(persisted.first?.job?.phase, .cancelled)
+        XCTAssertNil(persisted.first?.job?.result)
+        XCTAssertEqual(persisted.first?.sourceSHA256, photo.sourceSHA256)
+    }
     func testGalleryRefusesOverflowAndCorruptImagesWithoutEviction() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

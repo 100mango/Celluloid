@@ -98,7 +98,10 @@ struct TVEditorView: View {
                         }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(48)
                     }.focusSection()
-                }.frame(width: 1280, height: 860)
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel(LocalizedStringKey(panelTitle(value)))
+                    .accessibilityIdentifier("tv.editor.panel")
             }
         }
         .alert("Celluloid", isPresented: Binding(get: { editor.error != nil }, set: { if !$0 { editor.error = nil } })) {

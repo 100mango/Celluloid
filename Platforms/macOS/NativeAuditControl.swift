@@ -55,6 +55,8 @@ struct NativeSwiftUIAuditControl: View {
             Text(verbatim: "Explicit black text on white.").font(.system(size: 18)).foregroundColor(.black).accessibilityIdentifier("probe.explicit-black")
             Text(verbatim: "Semantic primary text on white.").font(.system(size: 18)).foregroundStyle(.primary).accessibilityIdentifier("probe.semantic-primary")
             Text(verbatim: "Semantic primary caption on white.").font(.caption).foregroundStyle(.primary).accessibilityIdentifier("probe.semantic-caption")
+            Text(verbatim: "Semantic primary body 13 on white.").font(.system(size: 13)).foregroundStyle(.primary).accessibilityIdentifier("probe.semantic-body")
+            Text(verbatim: "Semantic primary medium 13 on white.").font(.system(size: 13, weight: .medium)).foregroundStyle(.primary).accessibilityIdentifier("probe.semantic-medium")
             Slider(value: $value, in: 0...1).frame(width: 320).accessibilityLabel("Diagnostic value").accessibilityIdentifier("probe.slider")
             Text(verbatim: completed ? "Action completed" : "Ready").font(.system(size: 18)).foregroundColor(.black).accessibilityIdentifier("probe.status")
             Button { completed = true } label: { Text(verbatim: "Diagnostic action") }.accessibilityIdentifier("probe.action")

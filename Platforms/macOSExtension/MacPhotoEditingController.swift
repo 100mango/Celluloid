@@ -11,7 +11,7 @@ import CelluloidRendering
     private let session = MacPhotoSession()
     private var input: PHContentEditingInput?
     private var generation = UUID()
-    private var export: Task<Void, Never>?
+    private let finish = PhotosHostFinishCoordinator<PHContentEditingOutput>()
     override func loadView() { view = NSHostingView(rootView: MacPhotoFilterView(session: session)); view.setFrameSize(NSSize(width: 900, height: 640)) }
     func canHandle(_ adjustmentData: PHAdjustmentData) -> Bool {
         return LegacyFilterAdjustment.accepts(identifier: adjustmentData.formatIdentifier, version: adjustmentData.formatVersion, data: adjustmentData.data)
@@ -22,29 +22,28 @@ import CelluloidRendering
         session.begin(contentEditingInput, previous: previous)
     }
     func finishContentEditing(completionHandler: @escaping (PHContentEditingOutput?) -> Void) {
-        export?.cancel()
+        finish.cancel()
         guard let input, let document = session.snapshot else { completionHandler(nil); return }
         let token = generation, previous = session.preserved, preset = session.preset, isBakedBase = session.isBakedBase
-        export = Task {
-            do {
-                var recipe = document.0; recipe.filter = preset
-                let jpeg = try await NativeRenderQueue.shared.export(recipe, sources: document.1, type: .jpeg)
-                try Task.checkCancellation()
-                let output = PHContentEditingOutput(contentEditingInput: input)
-                output.adjustmentData = PHAdjustmentData(formatIdentifier: LegacyFilterAdjustment.identifier, formatVersion: LegacyFilterAdjustment.outputVersion(isBakedBase: isBakedBase),
-                                                        data: try LegacyFilterAdjustment.encode(preset, preserving: previous, isBakedBase: isBakedBase))
-                try jpeg.write(to: output.renderedContentURL, options: .atomic)
-                guard try Data(contentsOf: output.renderedContentURL) == jpeg else { throw RenderError.exportFailed }
-                guard generation == token, self.input === input, !Task.isCancelled else { completionHandler(nil); return }
-                completionHandler(output)
-            } catch {
-                if generation == token { session.error = error.localizedDescription }
-                completionHandler(nil)
-            }
-        }
+        finish.finish(preparing: { [weak session] value in session?.finishing = value },
+                      failed: { [weak session] error in session?.error = error.localizedDescription }, operation: { [self] in
+            var recipe = document.0; recipe.filter = preset
+            let jpeg = try await NativeRenderQueue.shared.export(recipe, sources: document.1, type: .jpeg)
+            try Task.checkCancellation()
+            guard generation == token, self.input === input else { throw CancellationError() }
+            let output = PHContentEditingOutput(contentEditingInput: input)
+            output.adjustmentData = PHAdjustmentData(formatIdentifier: LegacyFilterAdjustment.identifier,
+                formatVersion: LegacyFilterAdjustment.outputVersion(isBakedBase: isBakedBase),
+                data: try LegacyFilterAdjustment.encode(preset, preserving: previous, isBakedBase: isBakedBase))
+            try jpeg.write(to: output.renderedContentURL, options: .atomic)
+            guard try Data(contentsOf: output.renderedContentURL) == jpeg else { throw RenderError.exportFailed }
+            try Task.checkCancellation()
+            guard generation == token, self.input === input else { throw CancellationError() }
+            return output
+        }, completion: completionHandler)
     }
     var shouldShowCancelConfirmation: Bool { true }
-    func cancelContentEditing() { generation = UUID(); export?.cancel(); export = nil; session.cancel(); input = nil }
+    func cancelContentEditing() { generation = UUID(); finish.cancel(); session.cancel(); input = nil }
 }
 
 @MainActor final class MacPhotoSession: ObservableObject {
@@ -52,12 +51,13 @@ import CelluloidRendering
     @Published var preview: CGImage?
     @Published var error: String?
     @Published var busy = false
+    @Published var finishing = false
     @Published var isBakedBase = false
     private(set) var snapshot: (EditRecipe, [UUID: Data])?
     private(set) var preserved: LegacyFilterAdjustment.Preserved?
     private var task: Task<Void, Never>?
     private var generation = UUID()
-    func cancel() { generation = UUID(); task?.cancel(); task = nil; snapshot = nil; preserved = nil; preview = nil; error = nil; busy = false }
+    func cancel() { generation = UUID(); task?.cancel(); task = nil; snapshot = nil; preserved = nil; preview = nil; error = nil; busy = false; finishing = false }
     func begin(_ input: PHContentEditingInput, previous: LegacyFilterAdjustment.Preserved?) {
         cancel(); let token = generation; busy = true; preset = .original; isBakedBase = true
         // With no associated metadata, do not infer a pristine system original or
@@ -83,7 +83,7 @@ import CelluloidRendering
         }
     }
     func render() {
-        guard let snapshot else { return }
+        guard !finishing, let snapshot else { return }
         var recipe = snapshot.0
         let sources = snapshot.1
         task?.cancel(); recipe.filter = preset; busy = true; let token = generation
@@ -103,7 +103,7 @@ private struct MacPhotoFilterView: View {
         HStack(spacing: 20) {
             ZStack {
                 if let preview = session.preview { Image(preview, scale: 1, label: Text("Edited photo preview")).resizable().aspectRatio(contentMode: .fit) }
-                if session.busy { ProgressView() }
+                if session.busy || session.finishing { ProgressView() }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
             VStack(alignment: .leading, spacing: 18) {
                 Text("Celluloid").font(.title)
@@ -119,6 +119,7 @@ private struct MacPhotoFilterView: View {
                 Spacer()
             }.frame(width: 260)
         }.padding(20).frame(minWidth: 640, minHeight: 440)
+            .disabled(session.finishing)
             .onChange(of: session.preset) { _ in session.render() }
     }
 }

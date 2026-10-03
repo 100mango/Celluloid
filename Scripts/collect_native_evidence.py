@@ -43,7 +43,8 @@ if PLATFORM=='mac' and (TEMP/'mac.log').is_file():
         manifest['omissions'].append({'name':'mac-filter-fixtures.json','reason':str(error)})
 
 logs=['mac-release.log','tv-release.log','watch-release.log','vision-release.log','domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox-app-build.log','sandbox.log','mac-photos-build.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log','tv-build.log','tv-runtime.log','tv-runtime-tests.log','tv-filter-oracle.log','tv-composition-oracle.log','watch-build.log','watch-runtime.log','watch-runtime-tests.log','phone-build.log','phone-runtime.log','phone-runtime-tests.log','phone-output-oracle.log','phone-release.log']
-markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|VISION_TEXT_|VISION_FILES_|VISION_EXPORT_|VISION_DOCUMENT_|TV_NATIVE_|TV_PHOTOS_|TV_FOCUS_|WATCH_NATIVE_|PHONE_COMPANION_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|FACE_DETECTOR_ACTUAL|MAC_NEW_FILTER_UIKIT_ROUNDTRIP|MAC_FILTER_ONLY_FIXTURE|MAC_BAKED_BASE_|MAC_LEGACY_CANDIDATE)')
+markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|VISION_TEXT_|VISION_FILES_|VISION_EXPORT_|VISION_DOCUMENT_|TV_NATIVE_|TV_PHOTOS_|TV_FOCUS_|WATCH_NATIVE_|WATCH_ENDPOINT_|PHONE_COMPANION_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|FACE_DETECTOR_ACTUAL|MAC_NEW_FILTER_UIKIT_ROUNDTRIP|MAC_FILTER_ONLY_FIXTURE|MAC_BAKED_BASE_|MAC_LEGACY_CANDIDATE)')
+logs += [f'watch-{profile}-runtime-tests.log' for profile in ['small','large']]
 for name in logs:
     path=TEMP/name
     if not path.is_file():continue
@@ -56,11 +57,14 @@ for name in logs:
             line=part.decode('utf8','replace')
             if markers.search(line):selected.append(line[:2000].rstrip())
     retain_bytes(name+'.summary.txt',('\n'.join(selected)+'\n').encode(),name+' (test/error markers)')
-for name in ['native-icon-provenance-runtime.json','mac-release-packaging.json','tv-release-packaging.json','watch-release-packaging.json','vision-release-packaging.json','vision-runtime-evidence.json','tv-runtime-evidence.json','tv-text-input-probe.json','watch-runtime-evidence.json','phone-runtime-evidence.json','phone-harness-release.json','sandbox-entitlements.plist','sandbox-debug-entitlements.plist','sandbox-debug-actual.plist','sandbox-entitlements-after.plist']:
+for name in [name+'.timing.json' for name in logs]:
+    path=TEMP/name
+    if path.is_file():retain_file(name,path,'bounded process/startup/suite/teardown timing')
+for name in ['native-icon-provenance-runtime.json','mac-release-packaging.json','tv-release-packaging.json','watch-release-packaging.json','vision-release-packaging.json','vision-runtime-evidence.json','tv-runtime-evidence.json','tv-text-input-probe.json','watch-runtime-evidence.json','watch-small-runtime-evidence.json','watch-large-runtime-evidence.json','phone-runtime-evidence.json','phone-harness-release.json','sandbox-entitlements.plist','sandbox-debug-entitlements.plist','sandbox-debug-actual.plist','sandbox-entitlements-after.plist']:
     path=TEMP/name
     if path.is_file():retain_file(name,path,name)
 
-bundles=['CelluloidMac.xcresult','CelluloidMacUI.xcresult','CelluloidSandbox.xcresult','CelluloidVision.xcresult','CelluloidTV.xcresult','CelluloidWatch.xcresult','CelluloidPhoneCompanion.xcresult']
+bundles=['CelluloidMac.xcresult','CelluloidMacUI.xcresult','CelluloidSandbox.xcresult','CelluloidVision.xcresult','CelluloidTV.xcresult','CelluloidWatch.xcresult','CelluloidWatchSmall.xcresult','CelluloidWatchLarge.xcresult','CelluloidPhoneCompanion.xcresult']
 for name in bundles:
     bundle=TEMP/name
     if not bundle.is_dir():continue
@@ -104,7 +108,7 @@ for name in bundles:
             safe=re.sub(r'[^A-Za-z0-9_-]+','-',human)[:100]
             if retain_file(f'{name.removesuffix(".xcresult")}-{retained}-{safe}{extension}',path,name+' selected screenshot'):retained+=1
 
-for name in [f'native-{platform}-launch.{extension}' for platform in ['vision','tv','watch','phone'] for extension in ['png','jpg']]:
+for name in [f'native-{platform}-launch.{extension}' for platform in ['vision','tv','watch','phone'] for extension in ['png','jpg']] + [f'watch{suffix}-launch.jpg' for suffix in ['', '-small', '-large']]:
     path=TEMP/name
     if path.is_file():retain_file(path.name,path,'simctl native launch screenshot')
 manifest['retained_bytes_before_manifest']=size

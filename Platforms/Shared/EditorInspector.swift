@@ -14,11 +14,22 @@ struct EditorInspector: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Celluloid").font(.largeTitle.bold())
                 Text("Native photo editor").foregroundStyle(.primary)
+                #if os(macOS)
+                HStack {
+                    Text("Filter")
+                    NativeChoicePicker(selection: Binding(get: { recipe.filter.rawValue }, set: { raw in
+                        guard let preset = FilterPreset(rawValue: raw) else { return }
+                        var next = recipe; next.filter = preset; change(next, "Change Filter")
+                    }), options: FilterPreset.allCases.map { (id: $0.rawValue, title: $0.localizedTitle) },
+                       label: NSLocalizedString("Filter", comment: "Filter menu"), identifier: "editor.filter")
+                }
+                #else
                 Picker("Filter", selection: Binding(get: { recipe.filter }, set: { preset in
                     var next = recipe; next.filter = preset; change(next, "Change Filter")
                 })) {
                     ForEach(FilterPreset.allCases, id: \.rawValue) { Text($0.localizedTitle).tag($0) }
                 }.accessibilityIdentifier("editor.filter")
+                #endif
                 if recipe.filter == .pixellateFace { Text("Face detection can miss faces. Check the result before sharing.").font(.caption) }
                 if recipe.sources.count > 1 {
                     CollagePicker(recipe: recipe, change: change)
@@ -51,10 +62,10 @@ struct EditorInspector: View {
                     OverlayInspector(overlay: selected, update: update, remove: remove)
                 }
                 Divider()
-                Text("Static photos · sRGB SDR export").font(.caption).foregroundStyle(.primary)
-                Text("RAW/ProRAW and animation are not supported. Live Photos import as still images.").font(.caption).foregroundStyle(.primary)
+                Text("Static photos · sRGB SDR export").editorHelperText()
+                Text("RAW/ProRAW and animation are not supported. Live Photos import as still images.").editorHelperText()
                 Text("Save this .celluloid document to reopen all originals, layers and text. Export PNG or JPEG for a finished image.")
-                    .font(.caption).foregroundStyle(.primary)
+                    .editorHelperText()
                 Button("Privacy Policy") { showingPrivacy = true }.accessibilityIdentifier("editor.privacy")
             }.padding(18)
         }.sheet(isPresented: $showingPrivacy) { PrivacyView() }
@@ -103,6 +114,9 @@ private struct OverlayInspector: View {
     let overlay: Overlay
     let update: (Overlay, String) -> Void
     let remove: (Overlay) -> Void
+    #if os(macOS)
+    @FocusState private var editingText: Bool
+    #endif
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Divider()
@@ -116,6 +130,7 @@ private struct OverlayInspector: View {
                 TextField("Bubble text", text: Binding(get: { overlay.text }, set: { text in
                     var next = overlay; next.text = text; update(next, "Edit Bubble Text")
                 }), axis: .vertical).lineLimit(3...8).accessibilityIdentifier("editor.bubble-text")
+                    .focused($editingText)
                 #endif
                 number("Text size", \.fontSize, range: 0.005...0.2)
             }
@@ -138,23 +153,31 @@ private struct OverlayInspector: View {
                 Button("Rotate +15°") { rotate(15) }.keyboardShortcut("]", modifiers: [.command, .option])
             }
             Button("Delete Layer", role: .destructive) { remove(overlay) }
-            Text("Move with ⌥⌘ arrows; rotate with ⌥⌘ [ or ].").font(.caption).foregroundStyle(.primary)
+            Text("Move with ⌥⌘ arrows; rotate with ⌥⌘ [ or ].").editorHelperText()
         }
     }
     private func number(_ label: String, _ path: WritableKeyPath<Overlay, Double>, range: ClosedRange<Double>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack { Text(LocalizedStringKey(label)); Spacer(); Text(overlay[keyPath: path], format: .number.precision(.fractionLength(2))).monospacedDigit().accessibilityIdentifier("editor.layer.value." + label) }
-            Slider(value: Binding(get: { overlay[keyPath: path] }, set: { value in
+            HStack { Text(LocalizedStringKey(label)).editorAdjustmentLabel(); Spacer(); Text(overlay[keyPath: path], format: .number.precision(.fractionLength(2))).monospacedDigit().accessibilityIdentifier("editor.layer.value." + label) }
+            EditorSlider(value: Binding(get: { overlay[keyPath: path] }, set: { value in
                 var next = overlay; next[keyPath: path] = value; update(next, label)
-            }), in: range).accessibilityLabel(label)
+            }), range: range, label: NSLocalizedString(label, comment: "Layer adjustment"))
         }
     }
     private func nudge(x: Double, y: Double) {
+        #if os(macOS)
+        // These are document-transform commands, even when invoked while a
+        // multiline field is focused. End text input before the next Undo.
+        editingText = false
+        #endif
         var next = overlay
         next.centerX = min(3, max(-2, next.centerX + x)); next.centerY = min(3, max(-2, next.centerY + y))
         update(next, "Move Layer")
     }
     private func rotate(_ delta: Double) {
+        #if os(macOS)
+        editingText = false
+        #endif
         var next = overlay; next.rotation = (next.rotation + delta).truncatingRemainder(dividingBy: 360)
         update(next, "Rotate Layer")
     }

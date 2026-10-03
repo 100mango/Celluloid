@@ -36,10 +36,10 @@ struct SourceInspector: View {
     }
     private func cropSlider(_ label: String, _ source: SourceImage, _ path: WritableKeyPath<SourceCrop, Double>, range: ClosedRange<Double>) -> some View {
         VStack(alignment: .leading) {
-            HStack { Text(LocalizedStringKey(label)); Spacer(); Text(source.crop[keyPath: path], format: .number.precision(.fractionLength(2))) }
-            Slider(value: Binding(get: { source.crop[keyPath: path] }, set: { value in
+            HStack { Text(LocalizedStringKey(label)).editorAdjustmentLabel(); Spacer(); Text(source.crop[keyPath: path], format: .number.precision(.fractionLength(2))) }
+            EditorSlider(value: Binding(get: { source.crop[keyPath: path] }, set: { value in
                 var crop = source.crop; crop[keyPath: path] = value; update(source.id, crop: crop)
-            }), in: range).accessibilityLabel(String(format: NSLocalizedString("%@ for %@", comment: "Source crop accessibility"), NSLocalizedString(label, comment: "Crop control"), source.displayName))
+            }), range: range, label: String(format: NSLocalizedString("%@ for %@", comment: "Source crop accessibility"), NSLocalizedString(label, comment: "Crop control"), source.displayName))
         }
     }
     private func update(_ id: UUID, crop: SourceCrop) {

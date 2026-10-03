@@ -57,7 +57,7 @@ for name,platform in settings_by_name.items():
              'CelluloidWatchTests':['WatchTests'],'CelluloidWatchUITests':['WatchUITests'],
              'CelluloidPhoneCompanionTests':['PhoneTests'],'CelluloidPhoneCompanionUITests':['PhoneUITests']}
     paths=[path for folder in folders[name] for path in (ROOT/'Platforms'/folder).glob('*.swift')]
-    if name=='CelluloidMacPhotosExtension':paths += [ROOT/'Platforms/macOS/LegacyFilterAdjustment.swift',ROOT/'Platforms/Shared/NativeFileAccess.swift']
+    if name=='CelluloidMacPhotosExtension':paths += [ROOT/'Platforms/macOS/LegacyFilterAdjustment.swift',ROOT/'Platforms/macOS/PhotosHostFinishCoordinator.swift',ROOT/'Platforms/Shared/NativeFileAccess.swift']
     if name=='CelluloidPhoneCompanion':
         paths += [ROOT/path for path in ['CelluloidKit/Filter/Filter.swift','CelluloidKit/Model/AdjustmentData.swift','CelluloidKit/Extension/JSONCodableExtension.swift','CelluloidKit/Bubble/Model/BubbleModel.swift','CelluloidKit/Sticker/Model/StickerModel.swift','CelluloidKit/Constant/Assets.swift']]
     localized=[]

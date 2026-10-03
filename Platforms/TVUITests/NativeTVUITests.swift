@@ -35,7 +35,14 @@ final class NativeTVUITests: XCTestCase {
         try select(app.buttons["tv.edit-selected"], in: app)
         XCTAssertTrue(app.images["tv.preview"].waitForExistence(timeout: 15))
         try select(app.buttons["tv.filters"], in: app)
-        try select(app.buttons["tv.filter.Fade"], in: app)
+        let panel = app.otherElements["tv.editor.panel"].firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 5))
+        let done = app.buttons["tv.panel.done"], fade = app.buttons["tv.filter.Fade"]
+        print("TV_FOCUS_MINIMAL_FADE panel=\(panel.frame) done=\(done.frame) fade=\(fade.frame)")
+        XCTAssertTrue(panel.frame.contains(done.frame), "The fixed Done header must remain inside the actual sheet")
+        try focus(fade, in: app)
+        XCTAssertTrue(panel.frame.contains(fade.frame), "The actual focused Fade choice must be inside the sheet")
+        XCUIRemote.shared.press(.select)
         XCTAssertEqual(app.buttons["tv.filters"].label, "Fade", "The selected non-default filter must reach visible editor state")
         try select(app.buttons["tv.keep-recipe"], in: app)
         try select(app.buttons["tv.save-photos"], in: app)
@@ -117,10 +124,22 @@ final class NativeTVUITests: XCTestCase {
         if #available(tvOS 27.0, *) {
             try select(field,in:app)
             print("TV_NATIVE_KEYBOARD_AX " + String(app.debugDescription.prefix(24000)))
-            app.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:5)+"TV 世界")
+            app.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:5))
+            app.typeText("T"); app.typeText("V")
             XCUIRemote.shared.press(.menu)
-            XCTAssertTrue(field.waitForExistence(timeout:10));XCTAssertEqual(field.value as? String,"TV 世界")
-            text = "TV 世界"; keyboard = true
+            XCTAssertTrue(field.waitForExistence(timeout:10));XCTAssertEqual(field.value as? String,"TV")
+            print("TV_NATIVE_KEYBOARD_ASCII actual system keyboard committed TV from two ordinary key events")
+            text = "TV"; keyboard = true
+            // The two-source end-to-end case retains ASCII through recipe
+            // relaunch/export even if a separate Unicode keyboard case fails.
+            if count > 2 {
+                try select(field,in:app)
+                app.typeText(String(repeating:XCUIKeyboardKey.delete.rawValue,count:2)+"TV 世界")
+                XCUIRemote.shared.press(.menu)
+                XCTAssertTrue(field.waitForExistence(timeout:10));XCTAssertEqual(field.value as? String,"TV 世界")
+                print("TV_NATIVE_KEYBOARD_UNICODE actual system keyboard committed full multilingual text")
+                text = "TV 世界"
+            }
         }
         #endif
         try select(app.buttons["tv.layer.rotation.increase"],in:app)
@@ -145,12 +164,18 @@ final class NativeTVUITests: XCTestCase {
     @MainActor private func select(_ target: XCUIElement, in app: XCUIApplication) throws {
         try focus(target,in:app); XCUIRemote.shared.press(.select)
     }
+    @MainActor private func assertFocusedControlFitsSheet(_ target: XCUIElement, in app: XCUIApplication) {
+        let panel = app.otherElements["tv.editor.panel"].firstMatch
+        guard panel.exists else { return }
+        print("TV_FOCUS_CONTAINMENT target=\(target.identifier) frame=\(target.frame) sheet=\(panel.frame)")
+        XCTAssertTrue(panel.frame.contains(target.frame), "A real focused sheet control must remain within the presented sheet")
+    }
     @MainActor private func focus(_ target: XCUIElement, in app: XCUIApplication) throws {
         XCTAssertTrue(target.waitForExistence(timeout: 10))
         let remote = XCUIRemote.shared
         var attempted: [String: Set<String>] = [:]
-        for _ in 0..<60 {
-            if target.hasFocus { return }
+        for attempt in 0..<60 {
+            if target.hasFocus { assertFocusedControlFitsSheet(target, in: app); return }
             let button = app.buttons.matching(NSPredicate(format: "hasFocus == true")).firstMatch
             let focused = button.exists ? button : app.descendants(matching: .any).matching(NSPredicate(format: "hasFocus == true")).firstMatch
             if focused.exists {
@@ -158,7 +183,7 @@ final class NativeTVUITests: XCTestCase {
                 // PineBoard exposes the focused inner button and outer query with
                 // identical title and geometry. Match that exact visible choice.
                 if focused.label == target.label && abs(destination.midX-current.midX) < 1 && abs(destination.midY-current.midY) < 1 && abs(destination.width-current.width) < 1 && abs(destination.height-current.height) < 1 {
-                    return
+                    assertFocusedControlFitsSheet(target, in: app); return
                 }
                 let state = focused.identifier.isEmpty ? focused.label : focused.identifier
                 let vertical = destination.midY >= current.midY ? "down" : "up"
@@ -169,8 +194,9 @@ final class NativeTVUITests: XCTestCase {
                 let next = directions.first(where: { !tried.contains($0) }) ?? directions[0]
                 if tried.count == 4 { attempted[state] = [] }
                 attempted[state, default: []].insert(next)
+                print("TV_FOCUS_STEP target=\(target.identifier) attempt=\(attempt) focused=\(state) frame=\(current) destination=\(destination) direction=\(next)")
                 switch next { case "up": remote.press(.up); case "down": remote.press(.down); case "left": remote.press(.left); default: remote.press(.right) }
-            } else { remote.press(.down) }
+            } else { print("TV_FOCUS_STEP target=\(target.identifier) attempt=\(attempt) focused=none destination=\(target.frame) direction=down"); remote.press(.down) }
         }
         print("TV_FOCUS_FAILURE_AX " + app.debugDescription)
         XCTFail("Could not focus target through actual remote navigation: " + target.identifier)

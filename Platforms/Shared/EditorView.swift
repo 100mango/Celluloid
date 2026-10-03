@@ -64,13 +64,24 @@ struct EditorView: View {
                 PhotosPicker(selection: $photos, maxSelectionCount: 4, selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
                     Label("Photos", systemImage: "photo")
                 }.accessibilityIdentifier("editor.import-photos").accessibilityHidden(error != nil)
+                #if os(visionOS)
+                Button { undoManager?.undo() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
+                    .accessibilityIdentifier("editor.undo").disabled(undoManager?.canUndo != true).accessibilityHidden(error != nil)
+                Button { undoManager?.redo() } label: { Label("Redo", systemImage: "arrow.uturn.forward") }
+                    .accessibilityIdentifier("editor.redo").disabled(undoManager?.canRedo != true).accessibilityHidden(error != nil)
+                #endif
                 #if os(macOS)
                 Button(action: paste) { Label("Paste", systemImage: "doc.on.clipboard") }.keyboardShortcut("v", modifiers: .command).accessibilityHidden(error != nil)
                 #endif
+                #if os(macOS)
+                NativeExportMenu { png in prepareExport(png ? .png : .jpeg) }
+                    .frame(minWidth: 75).accessibilityHidden(error != nil).disabled(document.recipe.sources.isEmpty || rendering || importing || exporting)
+                #else
                 Menu("Export") {
                     Button("PNG…") { prepareExport(.png) }
                     Button("JPEG…") { prepareExport(.jpeg) }
                 }.accessibilityIdentifier("editor.export").accessibilityHidden(error != nil).disabled(document.recipe.sources.isEmpty || rendering || importing || exporting)
+                #endif
             }
         }
         .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image], allowsMultipleSelection: true, onCompletion: importFiles)
@@ -111,7 +122,7 @@ struct EditorView: View {
                 Text(verbatim: document.recipe.sources.isEmpty ? NSLocalizedString("No photos imported", comment: "Empty editor") : "\(document.recipe.canvasWidth) × \(document.recipe.canvasHeight) px").accessibilityIdentifier("editor.dimensions")
                 Spacer()
                 Text(status).accessibilityIdentifier("editor.status")
-            }.font(.caption).foregroundStyle(.primary).padding(.horizontal).padding(.bottom, 8)
+            }.editorHelperText().padding(.horizontal).padding(.bottom, 8)
         }
     }
 

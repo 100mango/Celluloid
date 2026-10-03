@@ -30,6 +30,8 @@ extension NativeVisionUITests {
         let app = XCUIApplication(); app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch(); defer { app.terminate() }
         try openEditor(in:app)
+        let documentName = app.navigationBars.firstMatch.identifier
+        XCTAssertFalse(documentName.isEmpty)
         let importButton = app.buttons["editor.import-files"]
         importButton.tap()
         print("VISION_FILES_PICKER_REQUESTED state=\(app.state.rawValue)")
@@ -97,6 +99,30 @@ extension NativeVisionUITests {
         if !completed { capture(app, name: "vision-export-readback-failure"); print("VISION_EXPORT_RESULT_AX " + app.debugDescription) }
         XCTAssertTrue(completed)
         capture(app, name: "vision-png-export-verified")
+        let undo = app.buttons["editor.undo"], redo = app.buttons["editor.redo"]
+        XCTAssertTrue(undo.isEnabled); undo.tap()
+        XCTAssertTrue(text.waitForExistence(timeout: 10), "Undoing the last text edit should keep its bubble")
+        XCTAssertNotEqual(text.value as? String, "Vision 世界")
+        XCTAssertTrue(redo.isEnabled); redo.tap()
+        XCTAssertEqual(text.value as? String, "Vision 世界")
+        print("VISION_NATIVE_UNDO_REDO real document controls restored exact multilingual text")
+        let documents = app.navigationBars.buttons["Documents"].firstMatch
+        XCTAssertTrue(documents.exists); documents.tap()
+        app.terminate(); app.launch()
+        if !app.buttons["editor.import-files"].waitForExistence(timeout: 5) {
+            let browse = app.navigationBars.buttons["Documents"].firstMatch
+            if browse.exists { browse.tap() }
+            let saved = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH %@", documentName + ",")).firstMatch
+            let found = saved.waitForExistence(timeout: 30)
+            if !found { print("VISION_REOPEN_BROWSER_AX " + String(app.debugDescription.prefix(24000))) }
+            XCTAssertTrue(found); saved.tap()
+        }
+        XCTAssertTrue(app.staticTexts["1200 × 800 px"].waitForExistence(timeout: 20))
+        let layer = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'layer.' AND label == %@", "Select layer: Vision 世界")).firstMatch
+        XCTAssertTrue(layer.waitForExistence(timeout: 10)); layer.tap()
+        XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertEqual(text.value as? String, "Vision 世界")
+        capture(app, name: "vision-saved-document-reopened")
+        print("VISION_NATIVE_DOCUMENT_REOPEN real process relaunch restored source dimensions and exact bubble text")
         if #available(visionOS 27.0, *) { try app.performAccessibilityAudit(for: .all) { issue in
             print("NATIVE_ACCESSIBILITY_ISSUE description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
             return false // Report every real issue; this callback suppresses nothing.

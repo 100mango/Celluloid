@@ -3,6 +3,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 import CelluloidDomain
 import CelluloidRendering
+#if os(macOS)
+import AppKit
+#endif
 
 extension UTType {
     static let celluloidDocument = UTType(exportedAs: "Mango.Celluloid.document", conformingTo: .package)
@@ -80,6 +83,12 @@ struct NativeDocument: FileDocument, Equatable {
 
     func change(from previous: NativeDocument, to next: NativeDocument, manager: UndoManager?, name: String) {
         guard previous != next else { return }
+        #if DEBUG && os(macOS)
+        if ProcessInfo.processInfo.environment["CELLULOID_UNDO_DIAGNOSTICS"] == "YES" {
+            let responder = NSApp.keyWindow?.firstResponder
+            print("NATIVE_DOCUMENT_UNDO name=\(name) undoing=\(manager?.isUndoing ?? false) redoing=\(manager?.isRedoing ?? false) groups=\(manager?.groupingLevel ?? -1) action=\(manager?.undoActionName ?? "nil") firstResponder=\(responder.map { String(describing: type(of: $0)) } ?? "nil") rotation=\(previous.recipe.overlays.first?.rotation ?? -999)->\(next.recipe.overlays.first?.rotation ?? -999)")
+        }
+        #endif
         manager?.levelsOfUndo = 20
         if manager?.isUndoing != true && manager?.isRedoing != true {
             var budget = retainedSources

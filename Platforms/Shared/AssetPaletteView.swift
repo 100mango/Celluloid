@@ -31,8 +31,12 @@ struct AssetPaletteView: View {
                         }
                     }
                 }.padding(2)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel(panel == .stickers ? Text("Choose a Sticker") : Text("Choose a Bubble"))
             }
         }.padding(16).frame(width: 350, height: 410)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(panel == .stickers ? Text("Choose a Sticker") : Text("Choose a Bubble"))
     }
 }
 
