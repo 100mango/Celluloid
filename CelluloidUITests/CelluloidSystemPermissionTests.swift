@@ -67,11 +67,11 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US")
-        formatter.dateFormat = "MMMM d"
+        formatter.dateFormat = "MMMM dd"
         let today = formatter.string(from: Date())
         func fixtureCandidates() -> [XCUIElement] {
             [app, system].flatMap { root in
-                root.images.allElementsBoundByIndex + root.collectionViews.cells.allElementsBoundByIndex
+                root.images.matching(identifier: "PXGGridLayout-Info").allElementsBoundByIndex
             }.filter { $0.exists && $0.isHittable && ($0.label.contains(today) || $0.label.contains("Today")) }
         }
         let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !fixtureCandidates().isEmpty }, object: nil)
@@ -85,18 +85,32 @@ final class CelluloidSystemPermissionTests: XCTestCase {
             return
         }
         fixture.tap()
-        let confirmation = [app.buttons["Done"], app.buttons["Add"], system.buttons["Done"], system.buttons["Add"]].first { $0.exists && $0.isHittable && $0.isEnabled }
+        let confirmation = [app.buttons["Update"], app.buttons["Done"], app.buttons["Add"], system.buttons["Done"], system.buttons["Add"]].first { $0.exists && $0.isHittable && $0.isEnabled }
         XCTAssertNotNil(confirmation)
         confirmation?.tap()
         XCTAssertTrue(app.buttons["manage-photos"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any)["photo-0"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.descendants(matching: .any)["photo-1"].exists, "Limited access must expose only the selected synthetic fixture")
+        app.descendants(matching: .any)["photo-0"].tap()
+        XCTAssertTrue(app.buttons["picker-done"].isEnabled)
         app.buttons["manage-photos"].tap()
         let managementGrid = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !fixtureCandidates().isEmpty }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [managementGrid], timeout: 10), .completed)
-        [app.buttons["Done"], app.buttons["Add"], system.buttons["Done"], system.buttons["Add"]].first { $0.exists && $0.isHittable && $0.isEnabled }?.tap()
+        let selected = fixtureCandidates().filter { $0.isSelected || (($0.value as? String)?.localizedCaseInsensitiveContains("selected") ?? false) }
+        guard selected.count == 1 else {
+            recordLimitedDiagnostics(system: system)
+            XCTFail("The real management picker must identify exactly one selected synthetic fixture before removal")
+            return
+        }
+        selected[0].tap()
+        [app.buttons["Update"], app.buttons["Done"], app.buttons["Add"], system.buttons["Done"], system.buttons["Add"]].first { $0.exists && $0.isHittable && $0.isEnabled }?.tap()
         XCTAssertTrue(app.buttons["picker-done"].waitForExistence(timeout: 10))
-        print("SYSTEM_LIMITED_RESULT:PASS real limited authorization, selected asset and management picker")
+        let pruned = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !self.app.buttons["picker-done"].isEnabled && !self.app.descendants(matching: .any)["photo-0"].exists
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [pruned], timeout: 10), .completed)
+        XCTAssertTrue(app.staticTexts["photos-state"].label.contains("No photos"))
+        print("SYSTEM_LIMITED_RESULT:PASS real limited authorization, selection, management and revoked-selection pruning")
     }
     private func recordLimitedDiagnostics(system: XCUIApplication) {
         // Named XCTest attachment is exported by the workflow AFTER test execution,
