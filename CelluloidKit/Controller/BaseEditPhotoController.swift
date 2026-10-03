@@ -38,7 +38,7 @@ open class BaseEditPhotoController: UIViewController {
                 self.preview.image = sourceImage
             }else{
             
-                self.preview.image = sourceImage?.filteredImage((input?.fullSizeImageOrientation ?? 1), filter: Filters.filter(filterType))
+                self.preview.image = sourceImage?.filteredImage(Filters.filter(filterType))
 
             }
         }
@@ -54,7 +54,7 @@ open class BaseEditPhotoController: UIViewController {
     }
     
     open var outputImage: UIImage? {
-        if let fullSizeImage = input?.fullSizeImageURL.flatMap({ UIImage(contentsOfFile: $0.path) }) ?? sourceImage {
+        if let fullSizeImage = normalizedFullSizeImage {
             guard preview.imageRect.width > 0, fullSizeImage.size.width > 0, fullSizeImage.size.height > 0 else { return nil }
             let fullSizeImageView = UIImageView()
             fullSizeImageView.image = fullSizeImage
@@ -64,7 +64,7 @@ open class BaseEditPhotoController: UIViewController {
             //filter
             if filterType != .Original {
                 
-                fullSizeImageView.image = fullSizeImage.filteredImage((input?.fullSizeImageOrientation ?? 1), filter: Filters.filter(filterType))
+                fullSizeImageView.image = fullSizeImage.filteredImage(Filters.filter(filterType))
                 
             }
             
@@ -102,6 +102,26 @@ open class BaseEditPhotoController: UIViewController {
         }
     }
     
+    private var normalizedFullSizeImage: UIImage? {
+        if let url = input?.fullSizeImageURL, let image = UIImage(contentsOfFile: url.path) {
+            return image.filteredImage(input?.fullSizeImageOrientation ?? 1, filter: Filters.filter(.Original))
+        }
+        guard let image = sourceImage else { return nil }
+        let orientation: Int32
+        switch image.imageOrientation {
+        case .up: orientation = 1
+        case .upMirrored: orientation = 2
+        case .down: orientation = 3
+        case .downMirrored: orientation = 4
+        case .leftMirrored: orientation = 5
+        case .right: orientation = 6
+        case .rightMirrored: orientation = 7
+        case .left: orientation = 8
+        @unknown default: orientation = 1
+        }
+        return image.filteredImage(orientation, filter: Filters.filter(.Original))
+    }
+
     //MARK: View Lift Cycle
     override open func viewDidLoad() {
         super.viewDidLoad()

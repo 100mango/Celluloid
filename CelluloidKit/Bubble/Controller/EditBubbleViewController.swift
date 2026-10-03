@@ -52,8 +52,9 @@ open class EditBubbleViewController: UIViewController {
         super.viewDidLoad()
         self.view.addSubview(self.textView)
         self.textView.snp.makeConstraints { (make) -> Void in
-            make.top.equalTo(self.view.top).offset(10)
-            make.left.right.bottom.equalTo(textView.superview!).inset(10)
+            make.top.equalTo(self.view.safeAreaLayoutGuide.snp.top).offset(10)
+            make.left.right.equalTo(view.safeAreaLayoutGuide).inset(10)
+            make.bottom.equalTo(view.keyboardLayoutGuide.snp.top).offset(-10)
         }
         
         self.navigationItem.rightBarButtonItem = self.rightBarButtonItem

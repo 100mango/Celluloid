@@ -20,7 +20,10 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         super.init(collectionViewLayout: layout)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-    deinit { if observing { PHPhotoLibrary.shared().unregisterChangeObserver(self) } }
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        if observing { PHPhotoLibrary.shared().unregisterChangeObserver(self) }
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -35,6 +38,8 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         message.textAlignment = .center
         message.accessibilityIdentifier = "photos-state"
         collectionView.backgroundView = message
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshAuthorization),
+            name: UIScene.didActivateNotification, object: nil)
         refreshAuthorization()
     }
     override func viewDidLayoutSubviews() {
@@ -43,7 +48,7 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         let side = (view.safeAreaLayoutGuide.layoutFrame.width - CGFloat(columns - 1) * 4) / CGFloat(columns)
         (collectionViewLayout as? UICollectionViewFlowLayout)?.itemSize = CGSize(width: side, height: side)
     }
-    private func refreshAuthorization() {
+    @objc private func refreshAuthorization() {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--photos-denied") { update(status: .denied); return }
         if ProcessInfo.processInfo.arguments.contains("--photos-limited-empty") { update(status: .limited, forceEmpty: true); return }
@@ -57,9 +62,15 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
     }
     private func update(status: PHAuthorizationStatus, forceEmpty: Bool = false) {
         guard status == .authorized || status == .limited else {
+            assets = PHFetchResult<PHAsset>()
+            selected.removeAll()
+            navigationItem.rightBarButtonItem?.isEnabled = false
+            navigationItem.leftBarButtonItems = [UIBarButtonItem(title: tr(.cancel), style: .plain, target: self, action: #selector(cancel))]
+            collectionView.reloadData()
             message.text = NSLocalizedString("Photos access is unavailable. Allow access in Settings to edit your library.", comment: "Photos denied")
             return
         }
+        navigationItem.leftBarButtonItems = [UIBarButtonItem(title: tr(.cancel), style: .plain, target: self, action: #selector(cancel))]
         if status == .limited {
             let manage = UIBarButtonItem(title: NSLocalizedString("Manage Photos", comment: "Limited photo selection"), style: .plain, target: self, action: #selector(managePhotos))
             manage.accessibilityIdentifier = "manage-photos"
@@ -70,6 +81,10 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
             options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
             assets = PHAsset.fetchAssets(with: .image, options: options)
         }
+        var accessible = Set<String>()
+        assets.enumerateObjects { asset, _, _ in accessible.insert(asset.localIdentifier) }
+        selected.removeAll { !accessible.contains($0.localIdentifier) }
+        navigationItem.rightBarButtonItem?.isEnabled = !selected.isEmpty
         message.text = assets.count == 0 ? NSLocalizedString("No photos are available. Add photos or update your selection.", comment: "Empty library") : nil
         collectionView.reloadData()
         if !observing && !forceEmpty {

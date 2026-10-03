@@ -47,7 +47,7 @@ jobs:
             echo "Testing $name ($id)"
             xcrun simctl boot "$id" || true
             xcrun simctl bootstatus "$id" -b
-            xcrun simctl addmedia "$id" /tmp/celluloid-fixture.png
+            xcrun simctl addmedia "$id" /tmp/celluloid-fixture.png /tmp/celluloid-fixture-2.png
             xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build build-for-testing CODE_SIGNING_ALLOWED=NO | tee "build-$id.log"
             xcrun simctl install "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app
             xcrun simctl privacy "$id" grant photos Mango.Celluloid

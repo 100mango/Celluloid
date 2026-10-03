@@ -15,6 +15,8 @@ class CollageViewController: UIViewController {
     
     //MARK: Property
     var assets: [PHAsset]
+    private var lastLayoutSize = CGSize.zero
+    private var saving = false
     
     fileprivate lazy var collageStylePanel: CollageStylePanel = {
         let panel = CollageStylePanel(models: [])
@@ -51,6 +53,8 @@ class CollageViewController: UIViewController {
         self.view.backgroundColor = .white
         self.navigationItem.setLeftBarButton(leftButtonItem, animated: false)
         self.navigationItem.setRightBarButton(rightButtonItem, animated: false)
+        rightButtonItem.accessibilityIdentifier = "collage-done"
+        rightButtonItem.isEnabled = false
         
         self.view.addSubview(stackView)
         stackView.snp.makeConstraints { (make) in
@@ -73,6 +77,7 @@ class CollageViewController: UIViewController {
         collageStylePanel.collageModels = collageModels
         //collageView
         collageView.setupWithCollageModel(first, photoModels: models)
+        preload(models)
     }
     
     //MARK: init
@@ -123,7 +128,11 @@ extension CollageViewController {
     }
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        setupConstraintForSize(view.bounds.size)
+        let size = view.safeAreaLayoutGuide.layoutFrame.size
+        guard size != lastLayoutSize else { return }
+        lastLayoutSize = size
+        setupConstraintForSize(size)
+        stackView.layoutIfNeeded()
         collageView.resize()
     }
 
@@ -160,12 +169,40 @@ private extension Selector {
 
 private extension CollageViewController {
     
+    func preload(_ models: [PhotoModel]) {
+        rightButtonItem.isEnabled = false
+        let group = DispatchGroup()
+        var loadError: Error?
+        for model in models {
+            group.enter()
+            model.loadImage { result in
+                if case .failure(let error) = result { loadError = error }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            if let error = loadError {
+                let alert = UIAlertController(title: NSLocalizedString("Unable to Load Photos", comment: "Load error"), message: error.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: NSLocalizedString("Retry", comment: "Retry"), style: .default) { _ in self.preload(models) })
+                alert.addAction(UIAlertAction(title: tr(.cancel), style: .cancel))
+                self.present(alert, animated: true)
+            } else {
+                self.collageView.resize()
+                self.rightButtonItem.isEnabled = true
+            }
+        }
+    }
+
     @objc func dismissSelf() {
+        guard !saving else { return }
         self.dismiss(animated: true, completion: nil)
     }
     
     @objc func done() {
-        
+        guard !saving, let models = collageView.photoModels,
+              models.allSatisfy({ $0.loadedImage != nil }) else { return }
+        saving = true
         let holder = UIView(frame: CGRect(x: 0, y: 0, width: 800, height: 800))
         let collageView = CollageView(frame: CGRect(x: 0, y: 0, width: 800, height: 800))
         holder.addSubview(collageView)
@@ -178,6 +215,7 @@ private extension CollageViewController {
         }) { [weak self] success, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                self.saving = false
                 self.rightButtonItem.isEnabled = true
                 if success {
                     self.navigationController?.pushViewController(SharePhotoViewController(image: image), animated: true)

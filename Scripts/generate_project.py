@@ -17,7 +17,7 @@ def configlist(key,settings):
  for name in ['Debug','Release']:
   s=dict(settings)
   s.update({'SWIFT_OPTIMIZATION_LEVEL':'-Onone' if name=='Debug' else '-O','DEBUG_INFORMATION_FORMAT':'dwarf' if name=='Debug' else 'dwarf-with-dsym'})
-  if name=='Debug':s.update({'SWIFT_ACTIVE_COMPILATION_CONDITIONS':'DEBUG','ENABLE_TESTABILITY':'YES'})
+  if name=='Debug':s.update({'SWIFT_ACTIVE_COMPILATION_CONDITIONS':'DEBUG','ENABLE_TESTABILITY':'YES','ONLY_ACTIVE_ARCH':'YES'})
   configs.append(add(key+name,'XCBuildConfiguration',name=name,buildSettings=s))
  return add(key+'configs','XCConfigurationList',buildConfigurations=configs,defaultConfigurationIsVisible='0',defaultConfigurationName='Release')
 children=[]
@@ -73,7 +73,7 @@ for n in names:
    embed=add('embed:'+other,'PBXBuildFile',fileRef=products[other],settings={'ATTRIBUTES':['RemoveHeadersOnCopy','CodeSignOnCopy']})
    phases.append(add('embedphase:'+other,'PBXCopyFilesBuildPhase',buildActionMask='2147483647',dstPath='',dstSubfolderSpec=dst,files=[embed],name='Embed '+other,runOnlyForDeploymentPostprocessing='0'))
  ids={'Celluloid':'Mango.Celluloid','CelluloidKit':'Mango.CelluloidKit','CelluloidPhotoExtension':'Mango.Celluloid.CelluloidPhotoExtension','CelluloidTests':'Mango.Celluloid.Tests','CelluloidUITests':'Mango.Celluloid.UITests'}
- settings={'PRODUCT_NAME':'$(TARGET_NAME)','PRODUCT_BUNDLE_IDENTIFIER':ids[n],'SWIFT_VERSION':'5.0','SWIFT_STRICT_CONCURRENCY':'minimal','IPHONEOS_DEPLOYMENT_TARGET':'15.0','TARGETED_DEVICE_FAMILY':'1,2','CODE_SIGN_STYLE':'Automatic','LD_RUNPATH_SEARCH_PATHS':['$(inherited)','@executable_path/Frameworks','@loader_path/Frameworks'],'ENABLE_USER_SCRIPT_SANDBOXING':'YES','SUPPORTED_PLATFORMS':'iphoneos iphonesimulator'}
+ settings={'PRODUCT_NAME':'$(TARGET_NAME)','PRODUCT_BUNDLE_IDENTIFIER':ids[n],'SWIFT_VERSION':'5.0','SWIFT_STRICT_CONCURRENCY':'minimal','IPHONEOS_DEPLOYMENT_TARGET':'15.0','TARGETED_DEVICE_FAMILY':'1,2','CODE_SIGN_STYLE':'Automatic','CURRENT_PROJECT_VERSION':'1','LD_RUNPATH_SEARCH_PATHS':['$(inherited)','@executable_path/Frameworks','@loader_path/Frameworks'],'ENABLE_USER_SCRIPT_SANDBOXING':'YES','SUPPORTED_PLATFORMS':'iphoneos iphonesimulator'}
  if n in ['Celluloid','CelluloidKit','CelluloidPhotoExtension']:settings['INFOPLIST_FILE']=n+'/Info.plist'
  else:settings['GENERATE_INFOPLIST_FILE']='YES'
  if n=='Celluloid':settings['ASSETCATALOG_COMPILER_APPICON_NAME']='AppIcon'

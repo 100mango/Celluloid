@@ -360,6 +360,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "1";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -372,6 +373,7 @@
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
 				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
 			};
 		};
 		"1819DF04E9213B4B2E056804" = {
@@ -385,6 +387,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "1";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -494,6 +497,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "1";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -504,6 +508,7 @@
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
 				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
 			};
 		};
 		"78672E00AE8EA5E9678C24E8" = {
@@ -517,6 +522,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "1";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -807,6 +813,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "1";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -816,6 +823,7 @@
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
 				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
 			};
 		};
 		"BE30AE42D1CB2B900321FACD" = {
@@ -829,6 +837,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "1";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -937,6 +946,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "1";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -947,6 +957,7 @@
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
 				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
 			};
 		};
 		"CDF81136FAF14161A3874946" = {
@@ -960,6 +971,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "1";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -1039,6 +1051,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "1";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -1048,6 +1061,7 @@
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
 				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
 			};
 		};
 		"C40B765F6EC53413A81356C2" = {
@@ -1061,6 +1075,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "1";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -1114,6 +1129,7 @@
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
 				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
 			};
 		};
 		"E6DE6C99132752C914FEF632" = {

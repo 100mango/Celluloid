@@ -84,6 +84,8 @@ public extension UIView {
     }
     
     public func render() -> UIImage {
+        layoutIfNeeded()
+        subviews.forEach { $0.layoutIfNeeded() }
         // One output pixel per image point prevents 2x/3x full-resolution memory amplification.
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1

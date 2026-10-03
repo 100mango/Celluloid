@@ -13,7 +13,7 @@ Run `python3 Scripts/generate_project.py` after adding source/resources. Open th
 
 The GitHub workflow verifies stable Xcode 27.0 and the iOS 27.0 runtime before building. One job runs unit/UI tests serially on an available iPhone and iPad simulator, seeds a generated RGB fixture into Photos, grants simulator Photos access, and builds an unsigned device archive including the extension. Logs, xcresult bundles and an xcresult summary are generated on the runner. No artifact/cache upload or paid runner is configured.
 
-Coverage includes legacy archive compatibility, malformed archive rejection, all presets/assets, filter pixels/orientation, repeat state restoration, rendering, extension adjustment validation/cancel, collage polygons, permission-denied recovery, limited/empty library management, repeat cancel, background/foreground, rotation, seeded photo edit/save/reopen. Permission-denied/limited UI states use DEBUG-only injected authorization states; they do not prove the system limited-library picker itself works.
+Coverage includes legacy archive compatibility, malformed archive rejection, all presets/assets, filter pixels/orientation, repeat state restoration, rendering, extension adjustment validation/cancel, collage polygons, permission-denied recovery, limited/empty library management, repeat cancel, background/foreground, rotation, seeded photo edit/save/reopen and two-photo collage zoom/rotate/save. Collage source images are loaded/coalesced at up to 1600×1600 before export; the historical final collage size remains 800×800. Permission-denied/limited UI states use DEBUG-only injected authorization states; they do not prove the system limited-library picker itself works.
 
 ## Remaining release gates
 

@@ -41,7 +41,8 @@ final class CelluloidUITests: XCTestCase {
         app.buttons["picker-done"].tap()
         let done = app.buttons["editor-done"]
         XCTAssertTrue(done.waitForExistence(timeout: 15))
-        XCTAssertTrue(done.isEnabled)
+        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true AND hittable == true"), object: done)
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 15), .completed)
         app.buttons["tool-filter"].tap()
         XCTAssertTrue(app.collectionViews.cells.firstMatch.waitForExistence(timeout: 5))
         app.collectionViews.cells.element(boundBy: 1).tap()
@@ -61,4 +62,26 @@ final class CelluloidUITests: XCTestCase {
         app.buttons["Cancel"].tap()
         XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 5))
     }
+    func testTwoPhotoCollageZoomRotateAndSave() {
+        launch()
+        app.buttons["make-collage"].tap()
+        XCTAssertTrue(app.cells["photo-1"].waitForExistence(timeout: 15))
+        app.cells["photo-0"].tap()
+        app.cells["photo-1"].tap()
+        app.buttons["picker-done"].tap()
+        let done = app.buttons["collage-done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: done)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed)
+        let image = app.scrollViews["collage-image"].firstMatch
+        XCTAssertTrue(image.waitForExistence(timeout: 5))
+        image.pinch(withScale: 1.5, velocity: 1)
+        image.swipeLeft()
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(done.isHittable)
+        XCUIDevice.shared.orientation = .portrait
+        done.tap()
+        XCTAssertTrue(app.staticTexts["photo-saved"].waitForExistence(timeout: 20))
+    }
+
 }
