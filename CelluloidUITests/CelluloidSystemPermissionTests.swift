@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 /// Run explicitly after simctl changes the real app Photos grant. These tests do
 /// not use the DEBUG authorization overrides and are excluded from the main suite.
@@ -49,8 +50,7 @@ final class CelluloidSystemPermissionTests: XCTestCase {
             _ = system.alerts.firstMatch.waitForExistence(timeout: 1)
         }
         guard let limited = limited else {
-            print("SYSTEM_LIMITED_PROMPT_APP " + String(app.debugDescription.prefix(12000)))
-            print("SYSTEM_LIMITED_PROMPT_SYSTEM " + String(system.debugDescription.prefix(12000)))
+            recordLimitedDiagnostics(system: system)
             XCTFail("The real Photos authorization sheet has no recognized limited-access action")
             return
         }
@@ -64,6 +64,7 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         let cells = app.collectionViews.cells.allElementsBoundByIndex.filter { $0.isHittable && $0.label.contains(today) }
         print("SYSTEM_LIMITED_PICKER " + String(app.debugDescription.prefix(18000)))
         guard let fixture = cells.last else {
+            recordLimitedDiagnostics(system: system)
             XCTFail("Could not verify a synthetic fixture dated today in the real limited picker")
             return
         }
@@ -80,4 +81,18 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         XCTAssertTrue(app.buttons["picker-done"].waitForExistence(timeout: 10))
         print("SYSTEM_LIMITED_RESULT:PASS real limited authorization, selected asset and management picker")
     }
+    private func recordLimitedDiagnostics(system: XCUIApplication) {
+        // Named XCTest attachment is exported by the workflow AFTER test execution,
+        // keeping large screenshot bytes out of the live XCTest activity stream.
+        let jpeg = XCUIScreen.main.screenshot().image.jpegData(compressionQuality: 0.55)!
+        XCTAssertLessThanOrEqual(jpeg.count, 500_000)
+        let attachment = XCTAttachment(data: jpeg, uniformTypeIdentifier: "public.jpeg")
+        attachment.name = "celluloid-limited-picker-diagnostic"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        print("SYSTEM_LIMITED_DIAGNOSTIC_APP " + String(app.debugDescription.prefix(20000)))
+        print("SYSTEM_LIMITED_DIAGNOSTIC_SYSTEM " + String(system.debugDescription.prefix(24000)))
+        print("SYSTEM_LIMITED_EFFECTIVE_STATE manage=\(app.buttons["manage-photos"].exists) settings=\(app.buttons["photos-settings"].exists) done=\(app.buttons["picker-done"].isEnabled)")
+    }
+
 }

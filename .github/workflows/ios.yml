@@ -66,8 +66,6 @@ jobs:
             xcrun simctl install "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app
             xcrun simctl privacy "$id" grant photos Mango.Celluloid
             xcrun simctl ui "$id" appearance light
-            xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never -skip-testing:CelluloidUITests/CelluloidSystemPermissionTests test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-$id.log"
-            xcrun xcresulttool get test-results summary --path "TestResults-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY"
             if [[ "$id" = "$first_id" ]]; then
               for state in granted revoked limited; do
                 case "$state" in
@@ -81,6 +79,8 @@ jobs:
               done
               xcrun simctl privacy "$id" grant photos Mango.Celluloid
             fi
+            xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never -skip-testing:CelluloidUITests/CelluloidSystemPermissionTests test-without-building CODE_SIGNING_ALLOWED=NO | tee "test-$id.log"
+            xcrun xcresulttool get test-results summary --path "TestResults-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY"
             if [[ "$id" = "$first_id" || "$name" = 'iPad Pro 13-inch (M5)' ]]; then
               xcrun simctl ui "$id" appearance dark
               echo "DARK_APPEARANCE_REGRESSION $name"
@@ -92,7 +92,9 @@ jobs:
       - name: Collect targeted failure diagnostics
         if: failure()
         timeout-minutes: 3
-        run: python3 Scripts/collect_simulator_diagnostics.py
+        run: |
+          python3 Scripts/export_permission_screenshot.py || echo 'NAMED_PERMISSION_SCREENSHOT_EXPORT_FAILED'
+          python3 Scripts/collect_simulator_diagnostics.py
       - name: Build unsigned distribution archive including Photos extension
         run: |
           set -euo pipefail
