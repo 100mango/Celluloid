@@ -57,10 +57,25 @@ jobs:
         PY
         id=$(cat /tmp/current-celluloid-simulator)
         python3 Scripts/run_bounded.py --seconds 900 --label build xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -jobs 2 build-for-testing CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO
+        python3 Scripts/run_bounded.py --seconds 20 --label pre-boot-memory memory_pressure -Q
+        python3 Scripts/run_bounded.py --seconds 20 --label pre-boot-vm vm_stat
+        python3 Scripts/run_bounded.py --seconds 20 --label pre-boot-swap sysctl vm.swapusage
+        python3 - <<'PYHOST'
+        import json,os,subprocess
+        p=subprocess.run(['ps','-axo','pid=,ppid=,rss=,comm='],capture_output=True,text=True,timeout=15)
+        rows=[]
+        for line in p.stdout.splitlines():
+            f=line.split(None,3)
+            if len(f)!=4: continue
+            name=os.path.basename(f[3])
+            if any(v in name.lower() for v in ['swift','clang','xcbuild','index','sourcekit','xcodebuild','simulator','simctl','launchd_sim','photolibrary','assetsd']):
+                rows.append({'pid':int(f[0]),'ppid':int(f[1]),'rss_kib':int(f[2]),'name':name})
+        print('PRE_BOOT_PROCESS_RSS',json.dumps(sorted(rows,key=lambda p:p['rss_kib'],reverse=True)[:40]))
+        PYHOST
         python3 Scripts/run_bounded.py --seconds 60 --label boot xcrun simctl boot "$id"
         python3 Scripts/run_bounded.py --seconds 600 --label bootstatus xcrun simctl bootstatus "$id" -b
-        python3 Scripts/run_bounded.py --seconds 120 --label install xcrun simctl install "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app
-        python3 Scripts/run_bounded.py --seconds 60 --label grant xcrun simctl privacy "$id" grant photos Mango.Celluloid
+        # XCTest performs normal test-host installation for pure units. Photos
+        # registration/grant is a separate prerequisite after those tests.
     - name: Validate pure units before media import
       id: units
       run: |
@@ -78,7 +93,10 @@ jobs:
       if: ${{ !cancelled() && steps.preparation.conclusion == 'success' && steps.units.conclusion == 'success' }}
       run: |
         set -euo pipefail
-        python3 -u Scripts/probe_photos_bootstrap.py "$(cat /tmp/current-celluloid-simulator)" --already-prepared
+        id=$(cat /tmp/current-celluloid-simulator)
+        python3 Scripts/run_bounded.py --seconds 45 --label verify-XCTest-registration xcrun simctl get_app_container "$id" Mango.Celluloid app
+        python3 Scripts/run_bounded.py --seconds 60 --label grant-after-pure-tests xcrun simctl privacy "$id" grant photos Mango.Celluloid
+        python3 -u Scripts/probe_photos_bootstrap.py "$id" --already-prepared
     - name: Validate original Photos integration cases
       if: ${{ !cancelled() && steps.preparation.conclusion == 'success' && steps.units.conclusion == 'success' }}
       run: |
