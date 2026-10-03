@@ -64,7 +64,7 @@ public struct Filters {
         return { image in
             // Construct a filter for each call: CIFilter instances are mutable and
             // must not be shared by concurrent preview/export work.
-            return CIFilter(name: name, withInputParameters: [kCIInputImageKey: image])?.outputImage ?? image
+            return CIFilter(name: name, parameters: [kCIInputImageKey: image])?.outputImage ?? image
         }
     }
 
@@ -85,7 +85,7 @@ public struct Filters {
                 kCIInputImageKey: image,
                 kCIInputScaleKey: max(1, max(image.extent.width, image.extent.height) / 60)
             ]
-            return CIFilter(name: "CIPixellate", withInputParameters: parameters)?.outputImage ?? image
+            return CIFilter(name: "CIPixellate", parameters: parameters)?.outputImage ?? image
         }
     }
 
@@ -95,7 +95,7 @@ public struct Filters {
                 kCIInputImageKey: inputImage,
                 kCIInputBackgroundImageKey: image
             ]
-            return CIFilter(name: "CISourceOverCompositing", withInputParameters: parameters)?.outputImage ?? image
+            return CIFilter(name: "CISourceOverCompositing", parameters: parameters)?.outputImage ?? image
         }
     }
 
@@ -111,7 +111,7 @@ public struct Filters {
             "inputColor1": inputColor1,
             kCIInputCenterKey: inputCenter
         ]
-        return CIFilter(name: "CIRadialGradient", withInputParameters: parameters)?.outputImage
+        return CIFilter(name: "CIRadialGradient", parameters: parameters)?.outputImage
     }
 
     public static func pixellateFace() -> Filter {
@@ -137,7 +137,7 @@ public struct Filters {
                 kCIInputBackgroundImageKey: image,
                 kCIInputMaskImageKey: mask.cropped(to: image.extent)
             ]
-            return CIFilter(name: "CIBlendWithMask", withInputParameters: parameters)?.outputImage?.cropped(to: image.extent) ?? image
+            return CIFilter(name: "CIBlendWithMask", parameters: parameters)?.outputImage?.cropped(to: image.extent) ?? image
         }
     }
 
@@ -148,7 +148,7 @@ public struct Filters {
                 kCIInputRadiusKey: radius,
                 kCIInputImageKey: image
             ]
-            return CIFilter(name: "CIGaussianBlur", withInputParameters: parameters)?.outputImage ?? image
+            return CIFilter(name: "CIGaussianBlur", parameters: parameters)?.outputImage ?? image
         }
     }
 

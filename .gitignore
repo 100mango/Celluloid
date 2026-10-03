@@ -70,3 +70,5 @@ TestResults-*.xcresult/
 build-*.log
 test-*.log
 archive.log
+
+__pycache__/

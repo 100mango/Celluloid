@@ -204,7 +204,7 @@ final class FilterTests: XCTestCase {
             (.Comic, "CIComicEffect"), (.Crystal, "CICrystallize")
         ]
         for (type, name) in names {
-            let expected = try XCTUnwrap(CIFilter(name: name, withInputParameters: [kCIInputImageKey: input])?.outputImage)
+            let expected = try XCTUnwrap(CIFilter(name: name, parameters: [kCIInputImageKey: input])?.outputImage)
             XCTAssertEqual(pixels(Filters.filter(type)(input)), pixels(expected), name)
         }
     }
