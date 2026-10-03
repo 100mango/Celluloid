@@ -51,7 +51,20 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         message.font = .preferredFont(forTextStyle: .body)
         message.adjustsFontForContentSizeCategory = true
         message.textColor = .label
+        // UICollectionView's background spans underneath navigation/toolbar bars.
+        // Put the scrollable status inside its safe area so large/empty messages
+        // cannot be technically present but visually covered by navigation chrome.
+        let background = UIView()
         let state = UIScrollView()
+        state.contentInsetAdjustmentBehavior = .never
+        state.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(state)
+        NSLayoutConstraint.activate([
+            state.topAnchor.constraint(equalTo: background.safeAreaLayoutGuide.topAnchor),
+            state.bottomAnchor.constraint(equalTo: background.safeAreaLayoutGuide.bottomAnchor),
+            state.leadingAnchor.constraint(equalTo: background.safeAreaLayoutGuide.leadingAnchor),
+            state.trailingAnchor.constraint(equalTo: background.safeAreaLayoutGuide.trailingAnchor)
+        ])
         let stateStack = UIStackView(arrangedSubviews: [message, settingsButton])
         stateStack.axis = .vertical
         stateStack.spacing = 16
@@ -68,7 +81,7 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
             stateStack.leadingAnchor.constraint(equalTo: state.contentLayoutGuide.leadingAnchor, constant: 24),
             stateStack.trailingAnchor.constraint(equalTo: state.contentLayoutGuide.trailingAnchor, constant: -24)
         ])
-        collectionView.backgroundView = state
+        collectionView.backgroundView = background
         NotificationCenter.default.addObserver(self, selector: #selector(refreshAuthorization),
             name: UIScene.didActivateNotification, object: nil)
         refreshAuthorization()

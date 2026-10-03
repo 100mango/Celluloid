@@ -32,6 +32,7 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         let state = app.staticTexts["photos-state"]
         XCTAssertTrue(state.waitForExistence(timeout: 10))
         XCTAssertTrue(state.label.contains("Settings"))
+        XCTAssertGreaterThanOrEqual(state.frame.minY, app.navigationBars.firstMatch.frame.maxY, "Permission recovery text must not hide underneath the navigation bar")
         XCTAssertTrue(app.buttons["photos-settings"].isHittable)
         XCTAssertFalse(app.buttons["picker-done"].isEnabled)
         XCTAssertFalse(app.descendants(matching: .any)["photo-0"].exists)
@@ -55,13 +56,28 @@ final class CelluloidSystemPermissionTests: XCTestCase {
             return
         }
         limited.tap()
-        let picker = app.collectionViews.firstMatch
-        _ = picker.waitForExistence(timeout: 10)
+        // Observed iOS27 selection action grants limited access with zero selected
+        // assets and returns to this app. Use its real management entry to choose.
+        let manage = app.buttons["manage-photos"]
+        XCTAssertTrue(manage.waitForExistence(timeout: 10))
+        if manage.isHittable {
+            let message = app.staticTexts["photos-state"]
+            if message.exists { XCTAssertGreaterThanOrEqual(message.frame.minY, app.navigationBars.firstMatch.frame.maxY) }
+            manage.tap()
+        }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US")
         formatter.dateFormat = "MMMM d"
         let today = formatter.string(from: Date())
-        let cells = app.collectionViews.cells.allElementsBoundByIndex.filter { $0.isHittable && $0.label.contains(today) }
+        func fixtureCandidates() -> [XCUIElement] {
+            [app, system].flatMap { root in
+                root.images.allElementsBoundByIndex + root.collectionViews.cells.allElementsBoundByIndex
+            }.filter { $0.exists && $0.isHittable && ($0.label.contains(today) || $0.label.contains("Today")) }
+        }
+        let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !fixtureCandidates().isEmpty }, object: nil)
+        _ = XCTWaiter.wait(for: [visible], timeout: 10)
+        let cells = fixtureCandidates()
+        print("SYSTEM_LIMITED_GRID_CANDIDATES " + cells.map { $0.label }.joined(separator: " | "))
         print("SYSTEM_LIMITED_PICKER " + String(app.debugDescription.prefix(18000)))
         guard let fixture = cells.last else {
             recordLimitedDiagnostics(system: system)
@@ -69,15 +85,16 @@ final class CelluloidSystemPermissionTests: XCTestCase {
             return
         }
         fixture.tap()
-        let confirmation = [app.buttons["Done"], app.buttons["Add"]].first { $0.exists && $0.isHittable }
+        let confirmation = [app.buttons["Done"], app.buttons["Add"], system.buttons["Done"], system.buttons["Add"]].first { $0.exists && $0.isHittable && $0.isEnabled }
         XCTAssertNotNil(confirmation)
         confirmation?.tap()
         XCTAssertTrue(app.buttons["manage-photos"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any)["photo-0"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.descendants(matching: .any)["photo-1"].exists, "Limited access must expose only the selected synthetic fixture")
         app.buttons["manage-photos"].tap()
-        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 10) || app.buttons["Add"].exists)
-        [app.buttons["Done"], app.buttons["Add"]].first { $0.isHittable }?.tap()
+        let managementGrid = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !fixtureCandidates().isEmpty }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [managementGrid], timeout: 10), .completed)
+        [app.buttons["Done"], app.buttons["Add"], system.buttons["Done"], system.buttons["Add"]].first { $0.exists && $0.isHittable && $0.isEnabled }?.tap()
         XCTAssertTrue(app.buttons["picker-done"].waitForExistence(timeout: 10))
         print("SYSTEM_LIMITED_RESULT:PASS real limited authorization, selected asset and management picker")
     }
