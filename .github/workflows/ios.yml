@@ -66,6 +66,11 @@ jobs:
             xcrun simctl install "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app
             xcrun simctl privacy "$id" grant photos Mango.Celluloid
             xcrun simctl ui "$id" appearance light
+            if [[ "$name" = 'iPhone 18 Pro Max' ]]; then
+              echo 'FOCUSED_LANDSCAPE_HIT_TEST_PREFLIGHT'
+              xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-rotation-preflight.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests/testLimitedEmptyPhotosHasManagementAndAdaptiveLayout test-without-building CODE_SIGNING_ALLOWED=NO | tee test-rotation-preflight.log
+              xcrun xcresulttool get test-results summary --path TestResults-rotation-preflight.xcresult | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
             if [[ "$id" = "$small_id" ]]; then
               for state in granted revoked limited; do
                 case "$state" in
