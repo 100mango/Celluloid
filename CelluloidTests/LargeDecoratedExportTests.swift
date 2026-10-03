@@ -156,7 +156,8 @@ final class LargeDecoratedExportTests: XCTestCase {
                         XCTAssertEqual(output.image.cgImage?.width, 4000)
                         XCTAssertEqual(output.image.cgImage?.height, 3000)
                         XCTAssertEqual(storage.completedOverlayCount, 12, "No decoration may be discarded to reduce memory")
-                        XCTAssertGreaterThan(storage.rasterizedCount, 12, "Large overlapping art must exercise real tile boundaries")
+                        XCTAssertEqual(storage.rasterizedCount, 12, "4000x3000 must exercise twelve final-output tiles with the complete layer stack")
+                        XCTAssertEqual(storage.consumedRasterCount, 12)
                         XCTAssertEqual(try? AdjustmentData.decode(output.adjustmentData).bubbles.count, 6)
                         XCTAssertEqual(try? AdjustmentData.decode(output.adjustmentData).stickers.count, 6)
                         var decorated = 0

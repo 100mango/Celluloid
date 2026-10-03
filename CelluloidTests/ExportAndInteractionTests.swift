@@ -1,5 +1,7 @@
 import XCTest
 import UIKit
+import ImageIO
+import CryptoKit
 @testable import CelluloidKit
 
 @MainActor
@@ -163,14 +165,26 @@ final class ExportAndInteractionTests: XCTestCase {
         sticker.center = CGPoint(x: editor.preview.imageRect.width / 2, y: editor.preview.imageRect.height / 2)
         data.stickers = [sticker]
         editor.restoreFromData(data)
-        let expected = try XCTUnwrap(editor.outputImage?.pngData())
+        let reference = try XCTUnwrap(editor.outputImage)
+        let expected = try XCTUnwrap(reference.pngData())
         XCTAssertNotEqual(blank, expected)
         editor.overlayView.subviews.compactMap { $0 as? AttachView }.forEach { $0.hideButtonEnable = false }
         let completed = expectation(description: "Decorated snapshot without controls")
         var count = 0
         editor.exportPhoto { result in
             count += 1
-            if case .success(let output) = result { XCTAssertEqual(output.image.pngData(), expected) }
+            if case .success(let output) = result {
+                let actual = output.image.pngData()!
+                let decodedActual = self.rgba(UIImage(data: actual)!)
+                let decodedExpected = self.rgba(UIImage(data: expected)!)
+                var maximum = 0, changed = 0
+                for (a, b) in zip(decodedActual, decodedExpected) { let delta = abs(Int(a) - Int(b)); maximum = max(maximum, delta); if delta != 0 { changed += 1 } }
+                let wrapped = UIImage(cgImage: reference.cgImage!, scale: reference.scale, orientation: reference.imageOrientation).pngData()!
+                print("HANDLE_PNG_PIXEL_DIAGNOSTIC max_delta=\(maximum) changed_channels=\(changed) actual_bytes=\(actual.count) reference_bytes=\(expected.count) matches_rewrapped_reference=\(actual == wrapped)")
+                print("HANDLE_PNG_REFERENCE " + self.pngSummary(expected, image: reference))
+                print("HANDLE_PNG_ACTUAL " + self.pngSummary(actual, image: output.image))
+                XCTAssertEqual(output.image.pngData(), expected)
+            }
             else { XCTFail("Decorated export failed") }
             completed.fulfill()
         }
@@ -335,6 +349,26 @@ final class ExportAndInteractionTests: XCTestCase {
             finished.fulfill()
         }
         wait(for: [finished], timeout: 30)
+    }
+
+    private func pngSummary(_ data: Data, image: UIImage) -> String {
+        var chunks: [[String: Any]] = []
+        var offset = 8
+        while offset + 12 <= data.count {
+            let length = data[offset..<(offset + 4)].reduce(0) { ($0 << 8) | Int($1) }
+            guard length <= data.count - offset - 12 else { break }
+            let type = String(decoding: data[(offset + 4)..<(offset + 8)], as: UTF8.self)
+            let payload = data[(offset + 8)..<(offset + 8 + length)]
+            chunks.append(["type": type, "bytes": length, "sha256": SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()])
+            offset += length + 12
+        }
+        let cg = image.cgImage!
+        let fields: [String: Any] = ["chunks": chunks, "width": cg.width, "height": cg.height,
+            "bpc": cg.bitsPerComponent, "bpp": cg.bitsPerPixel, "bitmap_info": cg.bitmapInfo.rawValue,
+            "row_bytes": cg.bytesPerRow, "profile": String(describing: cg.colorSpace?.name),
+            "alpha_info": cg.alphaInfo.rawValue, "rendering_intent": cg.renderingIntent.rawValue,
+            "scale": image.scale, "orientation": image.imageOrientation.rawValue]
+        return String(decoding: try! JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]), as: UTF8.self)
     }
 
     private func extendedRGBA(_ image: UIImage) -> Data {

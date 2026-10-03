@@ -120,18 +120,12 @@ open class BaseEditPhotoController: UIViewController {
                 } else {
                     guard let models = Self.scaledOverlayModels(for: image.size, data: data),
                           let source = image.cgImage else { finish(.failure(.invalidState)); return }
-                    let result = Self.compositeOffMain(source, size: image.size, models: models, format: format, task: task,
-                        bounds: { model in
-                            DispatchQueue.main.sync {
-                                guard self != nil, !task.isCancelled else { return .failure(.cancelled) }
-                                return Self.overlayBounds(model, size: image.size)
-                            }
-                        }, rasterize: { model, rect in
-                            DispatchQueue.main.sync {
-                                guard self != nil, !task.isCancelled else { return .failure(.cancelled) }
-                                return Self.rasterizeOverlay(model, size: image.size, rect: rect)
-                            }
-                        })
+                    let result = Self.compositeOffMain(source, size: image.size, models: models, task: task) { decoded, rect in
+                        DispatchQueue.main.sync {
+                            guard self != nil, !task.isCancelled else { return .failure(.cancelled) }
+                            return Self.rasterizeScene(decoded, size: image.size, models: models, rect: rect, format: format)
+                        }
+                    }
                     switch result {
                     case .failure(let error): finish(.failure(error))
                     case .success(let output): encode(output)
@@ -201,35 +195,21 @@ open class BaseEditPhotoController: UIViewController {
         }
     }
 
-    private static func withArtwork<T>(_ model: OverlayModel, size: CGSize, body: (UIView, AttachView) -> T) -> T {
+    private static func rasterizeScene(_ source: CGImage, size: CGSize, models: [OverlayModel], rect: CGRect,
+                                       format: UIGraphicsImageRendererFormat) -> Result<OverlayRaster, PhotoExportError> {
         precondition(Thread.isMainThread)
         return autoreleasepool {
-            let artwork: AttachView
-            switch model {
-            case .bubble(let model): artwork = BubbleView(bubbleModel: model)
-            case .sticker(let model): artwork = StickerView(stickerModel: model)
+            // Render the complete original layer stack in each final-output tile.
+            // Quantizing each decoration separately changes overlapping alpha/HDR.
+            let holder = UIImageView(image: UIImage(cgImage: source, scale: 1, orientation: .up))
+            holder.frame = CGRect(origin: .zero, size: size)
+            for model in models {
+                switch model {
+                case .bubble(let value): holder.addSubview(BubbleView(bubbleModel: value))
+                case .sticker(let value): holder.addSubview(StickerView(stickerModel: value))
+                }
             }
-            let holder = UIView(frame: CGRect(origin: .zero, size: size))
-            holder.isOpaque = false
-            holder.backgroundColor = .clear
-            holder.addSubview(artwork)
-            holder.layoutIfNeeded(); artwork.layoutIfNeeded()
-            return body(holder, artwork)
-        }
-    }
-
-    private static func overlayBounds(_ model: OverlayModel, size: CGSize) -> Result<CGRect?, PhotoExportError> {
-        withArtwork(model, size: size) { _, artwork in
-            let rect = artwork.frame.insetBy(dx: -1, dy: -1).integral.intersection(CGRect(origin: .zero, size: size))
-            return .success(rect.isNull || rect.isEmpty ? nil : rect)
-        }
-    }
-
-    private static func rasterizeOverlay(_ model: OverlayModel, size: CGSize, rect: CGRect) -> Result<OverlayRaster, PhotoExportError> {
-        withArtwork(model, size: size) { holder, _ in
-            // Integer pixel tiles retain the same global affine phase and exact
-            // typography. Reconstruction avoids retaining UIKit objects off-main.
-            let format = UIGraphicsImageRendererFormat(); format.scale = 1
+            holder.layoutIfNeeded(); holder.subviews.forEach { $0.layoutIfNeeded() }
             let image = UIGraphicsImageRenderer(size: rect.size, format: format).image { context in
                 context.cgContext.translateBy(x: -rect.minX, y: -rect.minY)
                 holder.layer.render(in: context.cgContext)
@@ -239,89 +219,98 @@ open class BaseEditPhotoController: UIViewController {
         }
     }
 
-    private nonisolated static func compositeOffMain(_ source: CGImage, size: CGSize, models: [OverlayModel],
-            format: UIGraphicsImageRendererFormat, task: PhotoExportTask,
-            bounds: (OverlayModel) -> Result<CGRect?, PhotoExportError>,
-            rasterize: (OverlayModel, CGRect) -> Result<OverlayRaster, PhotoExportError>) -> Result<UIImage, PhotoExportError> {
+    private nonisolated static func materializedImage(_ source: CGImage) -> CGImage? {
+        // Request native pixels on the export queue, avoiding lazy file decoding
+        // when UIKit later records the layer stack. Preserve native sample format,
+        // decode array, color space and rendering intent; no color/range conversion.
+        let (required, overflow) = source.bytesPerRow.multipliedReportingOverflow(by: source.height)
+        guard !overflow, let data = source.dataProvider?.data, CFDataGetLength(data) >= required,
+              let provider = CGDataProvider(data: data) else { return nil }
+        if source.isMask {
+            return CGImage(maskWidth: source.width, height: source.height, bitsPerComponent: source.bitsPerComponent,
+                bitsPerPixel: source.bitsPerPixel, bytesPerRow: source.bytesPerRow, provider: provider,
+                decode: source.decode, shouldInterpolate: source.shouldInterpolate)
+        }
+        guard let space = source.colorSpace else { return nil }
+        return CGImage(width: source.width, height: source.height, bitsPerComponent: source.bitsPerComponent,
+            bitsPerPixel: source.bitsPerPixel, bytesPerRow: source.bytesPerRow, space: space,
+            bitmapInfo: source.bitmapInfo, provider: provider, decode: source.decode,
+            shouldInterpolate: source.shouldInterpolate, intent: source.renderingIntent)
+    }
+
+    private nonisolated static func compositeOffMain(_ source: CGImage, size: CGSize, models: [OverlayModel], task: PhotoExportTask,
+            rasterize: (CGImage, CGRect) -> Result<OverlayRaster, PhotoExportError>) -> Result<UIImage, PhotoExportError> {
         precondition(!Thread.isMainThread)
         guard !task.isCancelled else { return .failure(.cancelled) }
-        // Determine the existing UIKit renderer's actual output bitmap policy.
-        // Do not force standard range, discard alpha, or substitute a color space.
-        let prototype = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1), format: format).image { rendered in
-            rendered.cgContext.translateBy(x: 0, y: 1)
-            rendered.cgContext.scaleBy(x: 1, y: -1)
-            rendered.cgContext.draw(source, in: CGRect(x: 0, y: 0, width: 1, height: 1))
-        }
+        guard let decoded = materializedImage(source) else { return .failure(.encodingFailed) }
         guard !task.isCancelled else { return .failure(.cancelled) }
-        guard let sample = prototype.cgImage, let colorSpace = sample.colorSpace,
-              let context = CGContext(data: nil, width: source.width, height: source.height,
-                bitsPerComponent: sample.bitsPerComponent, bytesPerRow: 0,
-                space: colorSpace, bitmapInfo: sample.bitmapInfo.rawValue), context.data != nil else {
-            return .failure(.encodingFailed)
-        }
-        // A concrete bitmap consumes each draw immediately. UIGraphics may record
-        // deferred commands and retain every image even if the Swift array is gone.
-        context.clear(CGRect(origin: .zero, size: size))
-        context.translateBy(x: 0, y: size.height)
-        context.scaleBy(x: 1, y: -1)
-        #if DEBUG
-        task.recordCompositionStorage(context.bytesPerRow * context.height)
-        PhotoExportDiagnostics.trace("streaming-bitmap-created", source: sample, context: context, format: format)
-        #endif
-        func draw(_ image: CGImage, in rect: CGRect) {
-            context.saveGState()
-            context.translateBy(x: rect.minX, y: rect.maxY)
-            context.scaleBy(x: 1, y: -1)
-            context.draw(image, in: CGRect(origin: .zero, size: rect.size))
-            context.restoreGState()
-        }
-        guard !task.isCancelled else { return .failure(.cancelled) }
-        draw(source, in: CGRect(origin: .zero, size: size))
-        for model in models {
-            guard !task.isCancelled else { return .failure(.cancelled) }
-            let region: CGRect
-            switch bounds(model) {
-            case .failure(let error): return .failure(error)
-            case .success(nil): continue
-            case .success(let rect?): region = rect
-            }
-            // Independent of decoration count and photo size, keep only one
-            // <=1024x1024 full-resolution raster beside the composition bitmap.
-            let edge: CGFloat = 1024
-            var y = region.minY
-            while y < region.maxY {
-                var x = region.minX
-                while x < region.maxX {
-                    guard !task.isCancelled else { return .failure(.cancelled) }
-                    let rect = CGRect(x: x, y: y, width: min(edge, region.maxX - x), height: min(edge, region.maxY - y))
-                    let result: Result<Void, PhotoExportError> = autoreleasepool {
-                        switch rasterize(model, rect) {
-                        case .failure(let error): return .failure(error)
-                        case .success(let raster):
+        var destination: CGContext?
+        let edge = 1024
+        var y = 0
+        while y < source.height {
+            var x = 0
+            while x < source.width {
+                guard !task.isCancelled else { return .failure(.cancelled) }
+                let width = min(edge, source.width - x), height = min(edge, source.height - y)
+                let rect = CGRect(x: x, y: y, width: width, height: height)
+                let result: Result<Void, PhotoExportError> = autoreleasepool {
+                    switch rasterize(decoded, rect) {
+                    case .failure(let error): return .failure(error)
+                    case .success(let raster):
+                        let tile = raster.image
+                        guard tile.width == width, tile.height == height,
+                              let space = tile.colorSpace, let pixels = tile.dataProvider?.data,
+                              let bytes = CFDataGetBytePtr(pixels), tile.bitsPerPixel > 0, tile.bitsPerPixel % 8 == 0,
+                              tile.bytesPerRow >= width * (tile.bitsPerPixel / 8),
+                              CFDataGetLength(pixels) >= tile.bytesPerRow * tile.height else { return .failure(.encodingFailed) }
+                        // The actual first finished UIKit tile determines bitmap
+                        // policy, including extended range. Later tiles must match.
+                        if destination == nil {
+                            destination = CGContext(data: nil, width: source.width, height: source.height,
+                                bitsPerComponent: tile.bitsPerComponent, bytesPerRow: 0,
+                                space: space, bitmapInfo: tile.bitmapInfo.rawValue)
+                            destination?.clear(CGRect(origin: .zero, size: size))
                             #if DEBUG
-                            let bytes = raster.image.bytesPerRow * raster.image.height
-                            task.beginRasterStorage(bytes, width: raster.image.width, height: raster.image.height)
-                            defer { task.endRasterStorage(bytes) }
+                            if let context = destination {
+                                task.recordCompositionStorage(context.bytesPerRow * context.height)
+                                PhotoExportDiagnostics.trace("spatial-bitmap-created", source: tile, context: context)
+                            }
                             #endif
-                            guard !task.isCancelled else { return .failure(.cancelled) }
-                            draw(raster.image, in: raster.rect)
-                            #if DEBUG
-                            task.recordConsumedRaster()
-                            #endif
-                            return .success(())
                         }
+                        guard let context = destination, let target = context.data,
+                              context.bitsPerComponent == tile.bitsPerComponent, context.bitsPerPixel == tile.bitsPerPixel,
+                              context.bitmapInfo == tile.bitmapInfo, let destinationSpace = context.colorSpace,
+                              CFEqual(destinationSpace, space) else { return .failure(.encodingFailed) }
+                        #if DEBUG
+                        // Conservatively count both native tile and provider copy.
+                        let storage = tile.bytesPerRow * tile.height + CFDataGetLength(pixels)
+                        task.beginRasterStorage(storage, width: tile.width, height: tile.height)
+                        defer { task.endRasterStorage(storage) }
+                        #endif
+                        guard !task.isCancelled else { return .failure(.cancelled) }
+                        let bytesPerPixel = tile.bitsPerPixel / 8
+                        for row in 0..<height {
+                            // Native CGImage rows are copied without another blend,
+                            // color conversion or premultiplication/quantization.
+                            target.advanced(by: (y + row) * context.bytesPerRow + x * bytesPerPixel)
+                                .copyMemory(from: bytes.advanced(by: row * tile.bytesPerRow), byteCount: width * bytesPerPixel)
+                        }
+                        #if DEBUG
+                        task.recordConsumedRaster()
+                        #endif
+                        return .success(())
                     }
-                    if case .failure(let error) = result { return .failure(error) }
-                    x += rect.width
                 }
-                y += min(edge, region.maxY - y)
+                if case .failure(let error) = result { return .failure(error) }
+                x += width
             }
-            #if DEBUG
-            task.recordCompletedOverlay()
-            #endif
+            y += min(edge, source.height - y)
         }
         guard !task.isCancelled else { return .failure(.cancelled) }
-        guard let image = context.makeImage() else { return .failure(.encodingFailed) }
+        guard let image = destination?.makeImage() else { return .failure(.encodingFailed) }
+        #if DEBUG
+        for _ in models { task.recordCompletedOverlay() }
+        #endif
         return .success(UIImage(cgImage: image, scale: 1, orientation: .up))
     }
 
