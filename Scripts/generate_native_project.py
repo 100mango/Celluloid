@@ -28,6 +28,8 @@ targets={};products={}
 settings_by_name={
     'CelluloidMac':dict(SDKROOT='macosx',SUPPORTED_PLATFORMS='macosx',MACOSX_DEPLOYMENT_TARGET='13.0'),
     'CelluloidVision':dict(SDKROOT='xros',SUPPORTED_PLATFORMS='xros xrsimulator',XROS_DEPLOYMENT_TARGET='1.0',TARGETED_DEVICE_FAMILY='7'),
+    'CelluloidVisionTests':dict(SDKROOT='xros',SUPPORTED_PLATFORMS='xros xrsimulator',XROS_DEPLOYMENT_TARGET='1.0',TARGETED_DEVICE_FAMILY='7',TEST_HOST='$(BUILT_PRODUCTS_DIR)/CelluloidVision.app/CelluloidVision',BUNDLE_LOADER='$(TEST_HOST)',GENERATE_INFOPLIST_FILE='YES'),
+    'CelluloidVisionUITests':dict(SDKROOT='xros',SUPPORTED_PLATFORMS='xros xrsimulator',XROS_DEPLOYMENT_TARGET='1.0',TARGETED_DEVICE_FAMILY='7',TEST_TARGET_NAME='CelluloidVision',GENERATE_INFOPLIST_FILE='YES'),
     'CelluloidMacUITests':dict(SDKROOT='macosx',SUPPORTED_PLATFORMS='macosx',MACOSX_DEPLOYMENT_TARGET='14.0',TEST_TARGET_NAME='CelluloidMac',GENERATE_INFOPLIST_FILE='YES'),
     'CelluloidMacTests':dict(SDKROOT='macosx',SUPPORTED_PLATFORMS='macosx',MACOSX_DEPLOYMENT_TARGET='14.0',TEST_HOST='$(BUILT_PRODUCTS_DIR)/CelluloidMac.app/Contents/MacOS/CelluloidMac',BUNDLE_LOADER='$(TEST_HOST)',GENERATE_INFOPLIST_FILE='YES')
 }
@@ -37,7 +39,7 @@ for name in settings_by_name:
     targets[name]=uid('target:'+name)
 for name,platform in settings_by_name.items():
     tests=name.endswith('Tests')
-    paths=list((ROOT/'Platforms'/('UITests' if name.endswith('UITests') else 'Tests' if tests else 'Shared')).glob('*.swift'))
+    paths=list((ROOT/'Platforms'/('VisionUITests' if name=='CelluloidVisionUITests' else 'VisionTests' if name=='CelluloidVisionTests' else 'UITests' if name.endswith('UITests') else 'Tests' if tests else 'Shared')).glob('*.swift'))
     if not tests: paths+=list((ROOT/'Platforms'/('macOS' if name=='CelluloidMac' else 'visionOS')).glob('*.swift'))
     localized=[]
     if not tests:
@@ -59,16 +61,17 @@ for name,platform in settings_by_name.items():
         dep=add('product:'+name+product,'XCSwiftPackageProductDependency',package=packages[package],productName=product)
         package_deps.append(dep);links.append(add('link:'+name+product,'PBXBuildFile',productRef=dep))
     if tests:
-        proxy=add('proxy:'+name,'PBXContainerItemProxy',containerPortal=uid('project'),proxyType='1',remoteGlobalIDString=targets['CelluloidMac'],remoteInfo='CelluloidMac')
-        deps.append(add('dependency:'+name,'PBXTargetDependency',target=targets['CelluloidMac'],targetProxy=proxy))
+        host='CelluloidVision' if name.startswith('CelluloidVision') else 'CelluloidMac'
+        proxy=add('proxy:'+name,'PBXContainerItemProxy',containerPortal=uid('project'),proxyType='1',remoteGlobalIDString=targets[host],remoteInfo=host)
+        deps.append(add('dependency:'+name,'PBXTargetDependency',target=targets[host],targetProxy=proxy))
     settings=dict(PRODUCT_NAME='$(TARGET_NAME)',PRODUCT_BUNDLE_IDENTIFIER='Mango.Celluloid.'+name if tests else 'Mango.Celluloid',SWIFT_VERSION='5.0',SWIFT_STRICT_CONCURRENCY='minimal',CODE_SIGNING_ALLOWED='NO',CODE_SIGNING_REQUIRED='NO',CODE_SIGN_IDENTITY='',CURRENT_PROJECT_VERSION='2',MARKETING_VERSION='2.0',ENABLE_USER_SCRIPT_SANDBOXING='YES',LD_RUNPATH_SEARCH_PATHS=['$(inherited)','@executable_path/Frameworks','@executable_path/../Frameworks'],**platform)
-    if name=='CelluloidMac': settings['ASSETCATALOG_COMPILER_APPICON_NAME']='AppIcon'
+    if name=='CelluloidMac': settings.update(ASSETCATALOG_COMPILER_APPICON_NAME='AppIcon',ENABLE_APP_SANDBOX='YES',CODE_SIGN_ENTITLEMENTS='Platforms/macOS/CelluloidMac.entitlements',CODE_SIGN_INJECT_BASE_ENTITLEMENTS='NO',ENABLE_HARDENED_RUNTIME='NO')
     if not tests: settings['INFOPLIST_FILE']='Platforms/'+('macOS' if name=='CelluloidMac' else 'visionOS')+'/Info.plist'
     phases=[add('phase:'+name+kind,'PBX'+kind+'BuildPhase',buildActionMask='2147483647',files=files,runOnlyForDeploymentPostprocessing='0') for kind,files in [('Sources',source),('Frameworks',links),('Resources',localized)]]
     add('target:'+name,'PBXNativeTarget',name=name,productName=name,productReference=products[name],productType='com.apple.product-type.'+('bundle.ui-testing' if name.endswith('UITests') else 'bundle.unit-test' if tests else 'application'),buildConfigurationList=configs(name,settings),buildPhases=phases,buildRules=[],dependencies=deps,packageProductDependencies=package_deps)
 prodgroup=add('products','PBXGroup',name='Products',children=list(products.values()),sourceTree='<group>')
 root=add('root','PBXGroup',children=children+[prodgroup],sourceTree='<group>')
-add('project','PBXProject',attributes={'LastUpgradeCheck':'2700','BuildIndependentTargetsInParallel':'YES','TargetAttributes':{targets['CelluloidMacTests']:{'TestTargetID':targets['CelluloidMac']},targets['CelluloidMacUITests']:{'TestTargetID':targets['CelluloidMac']}}},buildConfigurationList=configs('project',{'CLANG_ENABLE_MODULES':'YES','CLANG_ENABLE_OBJC_ARC':'YES','SWIFT_VERSION':'5.0'}),compatibilityVersion='Xcode 14.0',developmentRegion='en',hasScannedForEncodings='0',knownRegions=['en','zh-Hans'],mainGroup=root,productRefGroup=prodgroup,projectDirPath='',projectRoot='',targets=list(targets.values()),packageReferences=list(packages.values()))
+add('project','PBXProject',attributes={'LastUpgradeCheck':'2700','BuildIndependentTargetsInParallel':'YES','TargetAttributes':{targets[n]:{'TestTargetID':targets['CelluloidVision' if n.startswith('CelluloidVision') else 'CelluloidMac']} for n in targets if n.endswith('Tests')}},buildConfigurationList=configs('project',{'CLANG_ENABLE_MODULES':'YES','CLANG_ENABLE_OBJC_ARC':'YES','SWIFT_VERSION':'5.0','CELLULOID_EXPECT_SANDBOX':'NO'}),compatibilityVersion='Xcode 14.0',developmentRegion='en',hasScannedForEncodings='0',knownRegions=['en','zh-Hans'],mainGroup=root,productRefGroup=prodgroup,projectDirPath='',projectRoot='',targets=list(targets.values()),packageReferences=list(packages.values()))
 project=ROOT/'CelluloidNative.xcodeproj';project.mkdir(exist_ok=True)
 (project/'project.pbxproj').write_text('// !$*UTF8*$!\n'+encode({'archiveVersion':'1','classes':{},'objectVersion':'56','objects':objects,'rootObject':uid('project')})+'\n')
 for name in ['CelluloidMac','CelluloidVision','CelluloidMacUI']:
@@ -77,12 +80,13 @@ for name in ['CelluloidMac','CelluloidVision','CelluloidMacUI']:
     app_name='CelluloidMac' if name=='CelluloidMacUI' else name
     test_name='CelluloidMacUITests' if name=='CelluloidMacUI' else 'CelluloidMacTests'
     tests='<TestableReference skipped="NO">'+ref(test_name)+'</TestableReference>' if name in ['CelluloidMac','CelluloidMacUI'] else ''
-    environment='<EnvironmentVariables><EnvironmentVariable key="CELLULOID_EXPECTED_APP_PATH" value="$(BUILT_PRODUCTS_DIR)/CelluloidMac.app" isEnabled="YES"/></EnvironmentVariables>' if name in ['CelluloidMac','CelluloidMacUI'] else ''
+    if name=='CelluloidVision': tests=''.join('<TestableReference skipped="NO">'+ref(n)+'</TestableReference>' for n in ['CelluloidVisionTests','CelluloidVisionUITests'])
+    environment='<EnvironmentVariables><EnvironmentVariable key="CELLULOID_EXPECTED_APP_PATH" value="$(BUILT_PRODUCTS_DIR)/CelluloidMac.app" isEnabled="YES"/><EnvironmentVariable key="CELLULOID_EXPECT_SANDBOX" value="$(CELLULOID_EXPECT_SANDBOX)" isEnabled="YES"/></EnvironmentVariables>' if name in ['CelluloidMac','CelluloidMacUI'] else ''
     (folder/(name+'.xcscheme')).write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="2700" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{ref(app_name)}</BuildActionEntry></BuildActionEntries></BuildAction><TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="NO"><MacroExpansion>{ref(app_name)}</MacroExpansion><Testables>{tests}</Testables>{environment}</TestAction><LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB"><BuildableProductRunnable runnableDebuggingMode="0">{ref(app_name)}</BuildableProductRunnable></LaunchAction><ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES"><BuildableProductRunnable runnableDebuggingMode="0">{ref(app_name)}</BuildableProductRunnable></ProfileAction><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>\n''')
 for platform in ['macOS','visionOS']:
     info={'CFBundleIdentifier':'$(PRODUCT_BUNDLE_IDENTIFIER)','CFBundleName':'Celluloid','CFBundleDevelopmentRegion':'en','CFBundleLocalizations':['en','zh-Hans'],'CFBundleExecutable':'$(EXECUTABLE_NAME)','CFBundlePackageType':'APPL','CFBundleVersion':'$(CURRENT_PROJECT_VERSION)','CFBundleShortVersionString':'$(MARKETING_VERSION)','NSHumanReadableCopyright':'Copyright © Mango. See bundled LICENSE.txt.','CFBundleDocumentTypes':[{'CFBundleTypeName':'Celluloid Document','CFBundleTypeRole':'Editor','LSHandlerRank':'Owner','LSItemContentTypes':['Mango.Celluloid.document']}],'UTExportedTypeDeclarations':[{'UTTypeIdentifier':'Mango.Celluloid.document','UTTypeDescription':'Celluloid Editable Document','UTTypeConformsTo':['com.apple.package'],'UTTypeTagSpecification':{'public.filename-extension':['celluloid']}}]}
     if platform=='macOS': info.update(LSMinimumSystemVersion='$(MACOSX_DEPLOYMENT_TARGET)',NSPrincipalClass='NSApplication')
-    else: info.update(UIApplicationSceneManifest={'UIApplicationSupportsMultipleScenes':True},UILaunchScreen={})
+    else: info.update(UIApplicationSceneManifest={'UIApplicationSupportsMultipleScenes':True},UILaunchScreen={},UISupportsDocumentBrowser=True,LSSupportsOpeningDocumentsInPlace=True)
     with open(ROOT/'Platforms'/platform/'Info.plist','wb') as f: plistlib.dump(info,f,sort_keys=True)
 print('Generated CelluloidNative.xcodeproj (unsigned native Mac + visionOS; original iOS project untouched)')

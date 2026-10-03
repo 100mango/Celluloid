@@ -11,6 +11,7 @@ final class NativeEditorUITests: XCTestCase {
         let expected = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
         let app = XCUIApplication(url: expected)
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
+        if ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" { app.launchEnvironment["CELLULOID_SANDBOX_DIAGNOSTICS"] = "YES" }
         app.launch(); defer { app.terminate() }
         let candidates = NSRunningApplication.runningApplications(withBundleIdentifier: "Mango.Celluloid")
         let actual = try XCTUnwrap(candidates.first { $0.bundleURL?.standardizedFileURL.resolvingSymlinksInPath().path == expected.path })
@@ -22,6 +23,7 @@ final class NativeEditorUITests: XCTestCase {
         app.typeKey("n", modifierFlags: .command)
         let importButton = app.descendants(matching: .any)["editor.import-files"].firstMatch
         XCTAssertTrue(importButton.waitForExistence(timeout: 10))
+        try assertSandboxIfRequested(app)
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }
         importButton.click()
@@ -65,12 +67,14 @@ final class NativeEditorUITests: XCTestCase {
         let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
         let app = XCUIApplication(url: URL(fileURLWithPath: path))
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
+        if ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" { app.launchEnvironment["CELLULOID_SANDBOX_DIAGNOSTICS"] = "YES" }
         app.launch(); defer { app.terminate() }
         let cancel = app.windows["open-panel"].buttons["CancelButton"]
         if cancel.waitForExistence(timeout: 3) { cancel.click() }
         app.typeKey("n", modifierFlags: .command)
         let importButton = app.descendants(matching: .any)["editor.import-files"].firstMatch
         XCTAssertTrue(importButton.waitForExistence(timeout: 10))
+        try assertSandboxIfRequested(app)
         let fixture = try makeFixture(), folder = fixture.deletingLastPathComponent()
         defer { try? FileManager.default.removeItem(at: folder) }
         importButton.click(); try goTo(fixture, in: app)
@@ -115,6 +119,14 @@ final class NativeEditorUITests: XCTestCase {
         }
         let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "native-mac-saved-reopened-exported"; screenshot.lifetime = .keepAlways; add(screenshot)
     }
+    @MainActor private func assertSandboxIfRequested(_ app: XCUIApplication) throws {
+        guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" else { return }
+        let probe = app.staticTexts["sandbox.probe"]
+        XCTAssertTrue(probe.waitForExistence(timeout: 10))
+        let value = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(probe.label.utf8)) as? [String: Any])
+        XCTAssertEqual(value["passed"] as? Bool, true, probe.label)
+        print("NATIVE_SANDBOX_RUNTIME " + probe.label)
+    }
     @MainActor private func goTo(_ url: URL, in app: XCUIApplication) throws {
         app.typeKey("g", modifierFlags: [.command, .shift])
         // The Go To Folder control can be a combo box; the Save As text field
@@ -142,12 +154,14 @@ final class NativeEditorUITests: XCTestCase {
         let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
         let app = XCUIApplication(url: URL(fileURLWithPath: path))
         app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN", "-ApplePersistenceIgnoreState", "YES"]
+        if ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" { app.launchEnvironment["CELLULOID_SANDBOX_DIAGNOSTICS"] = "YES" }
         app.launch(); defer { app.terminate() }
         let cancel = app.windows["open-panel"].buttons["CancelButton"]
         if cancel.waitForExistence(timeout: 3) { cancel.click() }
         app.typeKey("n", modifierFlags: .command)
         let importButton = app.descendants(matching: .any)["editor.import-files"].firstMatch
         XCTAssertTrue(importButton.waitForExistence(timeout: 10))
+        try assertSandboxIfRequested(app)
         XCTAssertTrue(app.staticTexts["原生照片编辑器"].exists)
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.deletingLastPathComponent()) }

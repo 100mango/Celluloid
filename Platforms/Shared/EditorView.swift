@@ -34,6 +34,14 @@ struct EditorView: View {
                 .frame(minWidth: 250, idealWidth: 290, maxWidth: 360)
         }
         .frame(minWidth: 640, minHeight: 480)
+        #if os(macOS) && DEBUG
+        .overlay(alignment: .bottomLeading) {
+            if SandboxDiagnostics.enabled {
+                Text(verbatim: SandboxDiagnostics.report).font(.system(size: 8)).lineLimit(1)
+                    .accessibilityIdentifier("sandbox.probe").padding(2).background(Color.yellow)
+            }
+        }
+        #endif
         .toolbar {
             ToolbarItemGroup {
                 Button { filePicker = true } label: { Label("Import Files", systemImage: "photo.on.rectangle") }

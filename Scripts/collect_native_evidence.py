@@ -25,7 +25,7 @@ def retain_bytes(name,data,source):
     manifest['files'].append({'name':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'source':source})
     return True
 
-logs=['domain.log','rendering.log','mac.log','mac-ui.log','sandbox.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log']
+logs=['domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log']
 markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|MAC_LEGACY_CANDIDATE)')
 for name in logs:
     path=TEMP/name
@@ -34,7 +34,7 @@ for name in logs:
     retain_bytes(name+'.tail.txt',data[-200_000:],name+' (last200000 bytes)')
     selected=[line[:2000] for line in data.decode('utf8','replace').splitlines() if markers.search(line)]
     retain_bytes(name+'.summary.txt',('\n'.join(selected[-1500:])+'\n').encode(),name+' (test/error markers)')
-for name in ['vision-runtime-evidence.json','sandbox-entitlements.plist']:
+for name in ['vision-runtime-evidence.json','sandbox-entitlements.plist','sandbox-entitlements-after.plist']:
     path=TEMP/name
     if path.is_file():retain_bytes(name,path.read_bytes(),name)
 
