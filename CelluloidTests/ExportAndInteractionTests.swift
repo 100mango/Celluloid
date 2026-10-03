@@ -99,7 +99,7 @@ final class ExportAndInteractionTests: XCTestCase {
         editor.view.layoutIfNeeded()
         var data = AdjustmentData()
         data.referenceCanvasSize = CGSize(width: 1, height: 1)
-        var sticker = StickerModel.stickers[0]; sticker.center = CGPoint(x: .greatestFiniteMagnitude, y: 1)
+        var sticker = StickerModel.stickers[0]; sticker.center = CGPoint(x: CGFloat.greatestFiniteMagnitude, y: 1)
         data.stickers = [sticker]
         editor.restoreFromData(data)
         XCTAssertNil(editor.outputImage)

@@ -223,7 +223,7 @@ final class OverlayResizeTests: XCTestCase {
     func testOptionalReferenceCanvasRejectsWrongTypeZeroNegativeAndNonfiniteValues() throws {
         let invalid: [Any] = [NSNumber(value: 1), NSValue(cgPoint: .zero), NSValue(cgSize: .zero),
                               NSValue(cgSize: CGSize(width: -1, height: 200)),
-                              NSValue(cgSize: CGSize(width: 300, height: .infinity)),
+                              NSValue(cgSize: CGSize(width: 300, height: CGFloat.infinity)),
                               NSValue(cgSize: CGSize(width: CGFloat.nan, height: 200))]
         for value in invalid {
             XCTAssertThrowsError(try AdjustmentData(object: ["filterType": "Original", "referenceCanvasSize": value]))
