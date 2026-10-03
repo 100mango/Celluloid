@@ -10,6 +10,7 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
     private var assets = PHFetchResult<PHAsset>()
     private var selected: [PHAsset] = []
     private let message = UILabel()
+    private let stateBackground = PhotoPickerStateBackground()
     private var observing = false
     private lazy var settingsButton: UIButton = {
         let button = UIButton(type: .system)
@@ -51,20 +52,11 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
         message.font = .preferredFont(forTextStyle: .body)
         message.adjustsFontForContentSizeCategory = true
         message.textColor = .label
-        // UICollectionView's background spans underneath navigation/toolbar bars.
-        // Put the scrollable status inside its safe area so large/empty messages
-        // cannot be technically present but visually covered by navigation chrome.
-        let background = UIView()
-        let state = UIScrollView()
-        state.contentInsetAdjustmentBehavior = .never
-        state.translatesAutoresizingMaskIntoConstraints = false
-        background.addSubview(state)
-        NSLayoutConstraint.activate([
-            state.topAnchor.constraint(equalTo: background.safeAreaLayoutGuide.topAnchor),
-            state.bottomAnchor.constraint(equalTo: background.safeAreaLayoutGuide.bottomAnchor),
-            state.leadingAnchor.constraint(equalTo: background.safeAreaLayoutGuide.leadingAnchor),
-            state.trailingAnchor.constraint(equalTo: background.safeAreaLayoutGuide.trailingAnchor)
-        ])
+        // UICollectionView.backgroundView does not inherit bar occlusion insets.
+        // Its scroll frame is inset explicitly from the collection's actual
+        // adjustedContentInset during layout, including navigation and toolbar.
+        let background = stateBackground
+        let state = background.scrollView
         let stateStack = UIStackView(arrangedSubviews: [message, settingsButton])
         stateStack.axis = .vertical
         stateStack.spacing = 16
@@ -88,6 +80,8 @@ final class PhotoPickerViewController: UICollectionViewController, PHPhotoLibrar
     }
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        stateBackground.occlusionInsets = collectionView.adjustedContentInset
+        stateBackground.layoutIfNeeded()
         let columns = max(2, Int(view.bounds.width / 140))
         let side = (view.safeAreaLayoutGuide.layoutFrame.width - CGFloat(columns - 1) * 4) / CGFloat(columns)
         (collectionViewLayout as? UICollectionViewFlowLayout)?.itemSize = CGSize(width: side, height: side)
@@ -205,4 +199,23 @@ private final class PhotoCell: UICollectionViewCell {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func layoutSubviews() { super.layoutSubviews(); imageView.frame = contentView.bounds }
     override func prepareForReuse() { super.prepareForReuse(); representedIdentifier = nil; imageView.image = nil }
+}
+
+/// Kept independent of backgroundView.safeAreaInsets, which UIKit reports as zero
+/// even while the owning collection is underneath navigation/toolbar chrome.
+final class PhotoPickerStateBackground: UIView {
+    let scrollView = UIScrollView()
+    var occlusionInsets: UIEdgeInsets = .zero {
+        didSet { if occlusionInsets != oldValue { setNeedsLayout() } }
+    }
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        scrollView.contentInsetAdjustmentBehavior = .never
+        addSubview(scrollView)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        scrollView.frame = bounds.inset(by: occlusionInsets)
+    }
 }

@@ -60,6 +60,18 @@ final class AdaptiveInterfaceTests: XCTestCase {
         XCTAssertEqual(renders[0], renders[1], "Host appearance must not recolor text in exported bubble artwork")
     }
 
+    func testPhotoStatusBackdropUsesExplicitNavigationAndToolbarInsets() {
+        let backdrop = PhotoPickerStateBackground()
+        backdrop.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+        backdrop.occlusionInsets = UIEdgeInsets(top: 74, left: 0, bottom: 86, right: 0)
+        backdrop.layoutIfNeeded()
+        XCTAssertEqual(backdrop.scrollView.frame, CGRect(x: 0, y: 74, width: 375, height: 507))
+        backdrop.frame.size = CGSize(width: 667, height: 375)
+        backdrop.occlusionInsets = UIEdgeInsets(top: 32, left: 0, bottom: 64, right: 0)
+        backdrop.layoutIfNeeded()
+        XCTAssertEqual(backdrop.scrollView.frame, CGRect(x: 0, y: 32, width: 667, height: 279))
+    }
+
     private func contrast(_ foreground: UIColor, _ background: UIColor, style: UIUserInterfaceStyle) -> CGFloat {
         func luminance(_ color: UIColor) -> CGFloat {
             var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
