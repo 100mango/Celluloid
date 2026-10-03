@@ -1,0 +1,167 @@
+[
+  {
+    "asset": "32",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/32.imageset/32.png",
+    "sha256": "1307d753a3810c81a135e642ce1e819a2cc069149191613a460fa013e66121ba"
+  },
+  {
+    "asset": "33",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/33.imageset/33.png",
+    "sha256": "23cf7beb7ac814165b89f4b4923ec644f2d3093c9358cb1e5fb6c5a71168e749"
+  },
+  {
+    "asset": "34",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/34.imageset/34.png",
+    "sha256": "7847dd18dcad4052d6f05d67cbd120b97ff30033ab388c0d19844b1e470a68c9"
+  },
+  {
+    "asset": "35",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/35.imageset/35.png",
+    "sha256": "eb63ffeb9e473e2ccf453f57c6763e86119efb86c1d03f5c9f5819acc2c6d460"
+  },
+  {
+    "asset": "36",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/36.imageset/36.png",
+    "sha256": "c9ef4003cf468a682f35c8ae2f91e9a290eeb0804c100c5aab32b85748c9b4df"
+  },
+  {
+    "asset": "37",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/37.imageset/37.png",
+    "sha256": "0120ba7922b728b5910dc0c629104be184925af83e2b0099651c53eb992269b1"
+  },
+  {
+    "asset": "38",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/38.imageset/38.png",
+    "sha256": "7e2592325962069fa3e15bef271bf38ac49b966549f144144319079d04abbfbe"
+  },
+  {
+    "asset": "39",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/39.imageset/39.png",
+    "sha256": "b73119ba654b64fb786ebbfe2fe1202d32651629b3c32b7b3ebc1825b648784c"
+  },
+  {
+    "asset": "40",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/40.imageset/40.png",
+    "sha256": "ee5e06c2981830239d0af18dda98fde618ee191c40213635de5ec50e6c994d5c"
+  },
+  {
+    "asset": "41",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/41.imageset/41.png",
+    "sha256": "85a7f610b013aaacd7a15f215df84bbfde352af3840b3097e0380c0fd98ad936"
+  },
+  {
+    "asset": "42",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/42.imageset/42.png",
+    "sha256": "b8864e08786ebe6d95821d3df99808cbd60afdc9e50164e459ed2eb027d98419"
+  },
+  {
+    "asset": "43",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/43.imageset/43.png",
+    "sha256": "d125f42e6bec34c1e0f92670601a04a6227d8dec26222668bc78ce53ea5e9fd1"
+  },
+  {
+    "asset": "44",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/44.imageset/44.png",
+    "sha256": "4166cea964f63b040d8ce7cde3a3ab3109da44d6bdfb831792412eeba715d02c"
+  },
+  {
+    "asset": "45",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/45.imageset/45.png",
+    "sha256": "fd303ac0b48adf94cb6595673bff261715f7e2413e8ea6986c9969f64a614f82"
+  },
+  {
+    "asset": "46",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/46.imageset/46.png",
+    "sha256": "96b0cc0cb9f4335acabd3e8ba1d06049acfe8e61b01bc90f1ac9a97f4cdab9f9"
+  },
+  {
+    "asset": "47",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/47.imageset/47.png",
+    "sha256": "5101d2bd8627ce8a677bc99f791f1330e9bcdca8b3367cf229e359ef5f9f60e6"
+  },
+  {
+    "asset": "48",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/48.imageset/48.png",
+    "sha256": "95c293243a53913d59534fd6671d7bb323d42e43a7c94e160a1e3c8024b86027"
+  },
+  {
+    "asset": "49",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/49.imageset/49.png",
+    "sha256": "c2370d2e54a597d973af2f648185d3d654196e6fc4fbf01e86169798c62162bb"
+  },
+  {
+    "asset": "50",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/50.imageset/50.png",
+    "sha256": "9a7c8e5562798a5e7793ea07997d3a9b273dd2e427be5ec08854f8a657fc22d2"
+  },
+  {
+    "asset": "51",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/51.imageset/51.png",
+    "sha256": "67609e379150885ee6e0efaefef0690c4654b12ed09b49fd1783ff6b872a6501"
+  },
+  {
+    "asset": "52",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/52.imageset/52.png",
+    "sha256": "bcf1a0792d493496db7988cb49a1eb33288b8f7446e614b4f62ebe0225b0e165"
+  },
+  {
+    "asset": "53",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/53.imageset/53.png",
+    "sha256": "d66eb1abd54d4af9bc2b629c4879fa608ba779f24d2a6fa5fa1366ed70de1c09"
+  },
+  {
+    "asset": "54",
+    "source": "CelluloidKit/CelluloidKit.xcassets/sticker/54.imageset/54.png",
+    "sha256": "3f429737a36f538f63eec4823d220c648bb77031a12217eb05fd123fbc4d4921"
+  },
+  {
+    "asset": "aside1",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/aside1.imageset/aside1@3x.png",
+    "sha256": "8ceeffb4b0090d3657a454c7d1ab35f27f1fcb5d9229bd112bcd5d61b265123f"
+  },
+  {
+    "asset": "call1",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/call1.imageset/call1@3x.png",
+    "sha256": "a8b0d1d0fcd542df05d5b0595927fccb61cb4fdbea82056fc927ea3992b4a5b4"
+  },
+  {
+    "asset": "call2",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/call2.imageset/call2@3x.png",
+    "sha256": "51ef29c6562415d2b81510373c12cd14fc9ba437ce1aa516b659faaaea889530"
+  },
+  {
+    "asset": "call3",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/call3.imageset/call3@3x.png",
+    "sha256": "4e4d12637546c339f6c5abd44cd44571926b23ec4194720b17ee1ff7f8817e41"
+  },
+  {
+    "asset": "say1",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/say1.imageset/say1@3x.png",
+    "sha256": "d0f0514d1e2c369e3cd0a29a65f341803158539df768706df4a16240a98bb1f2"
+  },
+  {
+    "asset": "say2",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/say2.imageset/say2@3x.png",
+    "sha256": "bb7e291808deec7171d32e768d282d25fab82ed1dc8dd715ab2f8a22945e8ec2"
+  },
+  {
+    "asset": "say3",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/say3.imageset/say3@3x.png",
+    "sha256": "f531f327a5e8c8890ae6ce206e2d69a9b0df9807518c2921e0b30d361d14bba0"
+  },
+  {
+    "asset": "think1",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/think1.imageset/think1@3x.png",
+    "sha256": "6d581a36d75d77d7b8aed78ea616eca1688a073cced97d970880fd60da32ef06"
+  },
+  {
+    "asset": "think2",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/think2.imageset/think2@3x.png",
+    "sha256": "3bc180e8e1427ac17c7b718653a788edf44bdb2e937f4051af06c7e4783f27e6"
+  },
+  {
+    "asset": "think3",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/think3.imageset/think3@3x.png",
+    "sha256": "81cb7d3514416ae3ed1f0e67a8e1d77996781f373d50cbc820a52dcf18a5706f"
+  }
+]

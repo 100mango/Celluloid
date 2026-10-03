@@ -10,16 +10,16 @@ concurrency:
   group: celluloid-platforms-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  portable-core:
+  native-mac-core:
     runs-on: xcode-27
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Verify exact source and stable SDKs
+      - name: Verify source and stable SDKs
         shell: bash
         run: |
           set -euo pipefail
@@ -29,13 +29,26 @@ jobs:
           xcodebuild -version
           xcodebuild -version | grep -Fx 'Xcode 27.0'
           xcodebuild -showsdks
-          xcrun simctl list runtimes
-      - name: Run portable domain tests
+          python3 Scripts/validate_native_sources.py
+      - name: Portable domain tests
         shell: bash
         run: |
           set -euo pipefail
-          swift test --package-path Packages/CelluloidCore --scratch-path "$RUNNER_TEMP/celluloid-core"
+          swift test --package-path Packages/CelluloidCore --scratch-path "$RUNNER_TEMP/celluloid-core" 2>&1 | tee "$RUNNER_TEMP/domain.log"
+      - name: Renderer tests
+        if: success() || failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift test --package-path Packages/CelluloidRendering --scratch-path "$RUNNER_TEMP/celluloid-rendering" 2>&1 | tee "$RUNNER_TEMP/rendering.log"
+      - name: Native Mac document tests
+        if: success() || failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMac -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-native" -resultBundlePath "$RUNNER_TEMP/CelluloidMac.xcresult" CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/mac.log"
       - name: Verify unchanged source
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
