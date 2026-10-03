@@ -1,0 +1,89 @@
+name: Focused iOS harness diagnostics
+on:
+  push:
+    branches: [codex/ios-ci-diagnostics]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-focused-diagnostics
+  cancel-in-progress: true
+jobs:
+  diagnose:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Verify source and stable environment
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "Diagnostic commit: $(git rev-parse HEAD)"
+          echo "Diagnostic tree: $(git rev-parse 'HEAD^{tree}')"
+          shasum -a 256 .github/workflows/ios-diagnostics.yml
+          # Shipping source must remain exactly the already reviewed189 snapshot.
+          git fetch --no-tags origin 189e5da2c42ff3f9ecd713ea908e4cbe65bc1cff
+          python3 - <<'PY'
+          import subprocess
+          allowed = {'CelluloidUITests/CelluloidUITests.swift', 'CelluloidUITests/CelluloidSystemPermissionTests.swift', 'Scripts/export_permission_screenshot.py', 'Scripts/diagnose_simulator_setup.py', '.github/workflows/ios-diagnostics.yml'}
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', '189e5da2c42ff3f9ecd713ea908e4cbe65bc1cff', 'HEAD'], text=True).splitlines())
+          assert changed <= allowed, changed - allowed
+          print('DIAGNOSTIC_ONLY_DELTA', sorted(changed))
+          PY
+          sw_vers
+          xcodebuild -version
+          xcodebuild -showsdks
+          xcrun simctl list runtimes
+          xcrun simctl list devices available
+          xcodebuild -version | grep '^Xcode 27.0$'
+      - name: Fresh iPad import and targeted phone tests
+        run: |
+          set -euo pipefail
+          python3 Scripts/create_fixture.py
+          python3 - <<'PY' > /tmp/diagnostic-devices.txt
+          import json, subprocess
+          def sim(*args): return subprocess.check_output(['xcrun','simctl',*args], text=True)
+          runtime = next(r for r in json.loads(sim('list','runtimes','-j'))['runtimes'] if r.get('version') == '27.0' and r.get('isAvailable'))
+          types = json.loads(sim('list','devicetypes','-j'))['devicetypes']
+          for name in ['iPad mini (A17 Pro)', 'iPhone SE (3rd generation)']:
+              device_type = next(t for t in types if t['name'] == name)
+              device = sim('create','Celluloid diagnostic '+name,device_type['identifier'],runtime['identifier']).strip()
+              print(device, name)
+          PY
+          failures=0
+          while read -r id name; do
+            echo "$id" > /tmp/current-celluloid-simulator
+            python3 Scripts/run_bounded.py --seconds 900 --label "$name build" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build build-for-testing CODE_SIGNING_ALLOWED=NO
+            if ! python3 -u Scripts/diagnose_simulator_setup.py "$id" "$name"; then
+              failures=$((failures + 1))
+              python3 Scripts/run_bounded.py --seconds 60 --label "$name failed-setup-shutdown" xcrun simctl shutdown "$id" || true
+              continue
+            fi
+            python3 Scripts/run_bounded.py --seconds 120 --label "$name install" xcrun simctl install "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app
+            python3 Scripts/run_bounded.py --seconds 60 --label "$name grant" xcrun simctl privacy "$id" grant photos Mango.Celluloid
+            if [[ "$name" = 'iPad mini (A17 Pro)' ]]; then
+              filters=(-only-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation -only-testing:CelluloidTests/CollageCompositionTests)
+            else
+              python3 Scripts/run_bounded.py --seconds 60 --label "$name reset" xcrun simctl privacy "$id" reset photos Mango.Celluloid
+              if ! python3 Scripts/run_bounded.py --seconds 360 --label "$name limited" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-permission-limited.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidSystemPermissionTests/testRealLimitedSelectionAndManagement test-without-building CODE_SIGNING_ALLOWED=NO; then failures=$((failures + 1)); fi
+              python3 Scripts/run_bounded.py --seconds 60 --label "$name restore-grant" xcrun simctl privacy "$id" grant photos Mango.Celluloid
+              filters=(-only-testing:CelluloidUITests/CelluloidUITests/testHomeChoiceGeometryInEnglishAndChineseAcrossRotation -only-testing:CelluloidUITests/CelluloidUITests/testLimitedEmptyPhotosHasManagementAndAdaptiveLayout -only-testing:CelluloidUITests/CelluloidUITests/testAccessibilityHomeAndDeniedPicker -only-testing:CelluloidUITests/CelluloidUITests/testAccessibilityGrantedPickerEditorAndSaved)
+            fi
+            if ! python3 Scripts/run_bounded.py --seconds 900 --label "$name tests" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-$id.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never "${filters[@]}" test-without-building CODE_SIGNING_ALLOWED=NO; then failures=$((failures + 1)); fi
+            xcrun xcresulttool get test-results summary --path "TestResults-$id.xcresult" | tee -a "$GITHUB_STEP_SUMMARY" || failures=$((failures + 1))
+            python3 Scripts/run_bounded.py --seconds 60 --label "$name shutdown" xcrun simctl shutdown "$id"
+          done < /tmp/diagnostic-devices.txt
+          echo "DIAGNOSTIC_FAILED_PHASES=$failures"
+          test "$failures" -eq 0
+      - name: Export bounded failure evidence
+        if: always()
+        timeout-minutes: 4
+        run: python3 -u Scripts/export_permission_screenshot.py
+      - name: Verify diagnostic source unchanged
+        if: always()
+        run: git diff --exit-code HEAD --

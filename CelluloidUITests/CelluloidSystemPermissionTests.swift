@@ -69,21 +69,24 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         formatter.locale = Locale(identifier: "en_US")
         formatter.dateFormat = "MMMM dd"
         let today = formatter.string(from: Date())
-        func fixtureCandidates() -> [XCUIElement] {
-            [app, system].flatMap { root in
-                root.images.matching(identifier: "PXGGridLayout-Info").allElementsBoundByIndex
-            }.filter { $0.exists && $0.isHittable && ($0.label.contains(today) || $0.label.contains("Today")) }
-        }
-        let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !fixtureCandidates().isEmpty }, object: nil)
-        _ = XCTWaiter.wait(for: [visible], timeout: 10)
+        // Keep the observed identifier/date selection. Filter on the server once,
+        // instead of querying every photo's exists, hittability and label repeatedly.
+        let fixtureQuery = app.images.matching(NSPredicate(format:
+            "identifier == %@ AND (label CONTAINS %@ OR label CONTAINS %@)",
+            "PXGGridLayout-Info", today, "Today"))
+        func fixtureCandidates() -> [XCUIElement] { fixtureQuery.allElementsBoundByIndex }
+        _ = fixtureQuery.firstMatch.waitForExistence(timeout: 10)
         let cells = fixtureCandidates()
         print("SYSTEM_LIMITED_GRID_CANDIDATES " + cells.map { $0.label }.joined(separator: " | "))
-        print("SYSTEM_LIMITED_PICKER " + String(app.debugDescription.prefix(18000)))
         guard let fixture = cells.last else {
             recordLimitedDiagnostics(system: system)
             XCTFail("Could not verify a synthetic fixture dated today in the real limited picker")
             return
         }
+        let hittable = fixture.isHittable
+        print("SYSTEM_LIMITED_SELECTED_CANDIDATE label=\(fixture.label) frame=\(fixture.frame) hittable=\(hittable)")
+        if !hittable { recordLimitedDiagnostics(system: system) }
+        XCTAssertTrue(hittable, "The observed synthetic fixture must expose a genuine semantic tap point")
         fixture.tap()
         let confirmation = [app.buttons["Update"], app.buttons["Done"], app.buttons["Add"], system.buttons["Done"], system.buttons["Add"]].first { $0.exists && $0.isHittable && $0.isEnabled }
         XCTAssertNotNil(confirmation)
@@ -94,8 +97,7 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         app.descendants(matching: .any)["photo-0"].tap()
         XCTAssertTrue(app.buttons["picker-done"].isEnabled)
         app.buttons["manage-photos"].tap()
-        let managementGrid = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !fixtureCandidates().isEmpty }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [managementGrid], timeout: 10), .completed)
+        XCTAssertTrue(fixtureQuery.firstMatch.waitForExistence(timeout: 10))
         let selected = fixtureCandidates().filter { $0.isSelected || (($0.value as? String)?.localizedCaseInsensitiveContains("selected") ?? false) }
         guard selected.count == 1 else {
             recordLimitedDiagnostics(system: system)
