@@ -306,7 +306,16 @@ final class ExportAndInteractionTests: XCTestCase {
                 let actual = self.rgba(output.image)
                 XCTAssertEqual(actual.count, expected.count)
                 var maximum = 0, changed = 0
-                for (a, b) in zip(actual, expected) { let delta = abs(Int(a) - Int(b)); maximum = max(maximum, delta); if delta != 0 { changed += 1 } }
+                var samples: [[String: Int]] = []
+                for (index, pair) in zip(actual, expected).enumerated() {
+                    let delta = abs(Int(pair.0) - Int(pair.1)); maximum = max(maximum, delta)
+                    if delta != 0 {
+                        changed += 1
+                        if samples.count < 16 { samples.append(["x": (index / 4) % 1600, "y": (index / 4) / 1600,
+                            "channel": index % 4, "actual": Int(pair.0), "reference": Int(pair.1)]) }
+                    }
+                }
+                if !samples.isEmpty { print("SPATIAL_PIXEL_DIFFERENCE_LOCATIONS " + String(decoding: try! JSONSerialization.data(withJSONObject: samples, options: [.sortedKeys]), as: UTF8.self)) }
                 print("STREAMING_MANY_OVERLAY_EQUIVALENCE maximum_channel_delta=\(maximum) changed_channels=\(changed) channels=\(actual.count)")
                 XCTAssertEqual(maximum, 0, "Do not accept tile seams or altered overlapping alpha/text pixels")
             }

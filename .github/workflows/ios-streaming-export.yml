@@ -65,12 +65,12 @@ jobs:
       run: |
         set -euo pipefail
         id=$(cat /tmp/current-celluloid-simulator)
-        python3 Scripts/run_bounded.py --seconds 600 --label units-and48MP xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-units.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests -skip-testing:CelluloidTests/CollageCompositionTests -skip-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation -skip-testing:CelluloidTests/EditorRegressionTests/testPhotosLibraryBootstrapReadiness -skip-testing:CelluloidTests/EditorRegressionTests/testReconcileSyntheticPhotosAfterImport test-without-building CODE_SIGNING_ALLOWED=NO
+        python3 Scripts/run_bounded.py --seconds 600 --label units-and48MP xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-units.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests -skip-testing:CelluloidTests/CollageCompositionTests -skip-testing:CelluloidTests/OverlayResizeTests/testPhotosExtensionRestartWithoutAdjustmentClearsDecorationsFilterAndCancellation -skip-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation -skip-testing:CelluloidTests/EditorRegressionTests/testPhotosLibraryBootstrapReadiness -skip-testing:CelluloidTests/EditorRegressionTests/testReconcileSyntheticPhotosAfterImport test-without-building CODE_SIGNING_ALLOWED=NO
         xcrun xcresulttool get test-results summary --path TestResults-units.xcresult | tee /tmp/unit-summary.json | tee -a "$GITHUB_STEP_SUMMARY"
         python3 - <<'PY'
         import json
         d=json.load(open('/tmp/unit-summary.json'))
-        assert d['totalTestCount'] ==62 and d['passedTests'] ==62 and d['failedTests'] ==0, d
+        assert d['totalTestCount'] ==61 and d['passedTests'] ==61 and d['failedTests'] ==0, d
         PY
     - name: Read PhotoKit readiness and reconcile fixtures
       id: photos
@@ -79,16 +79,20 @@ jobs:
         set -euo pipefail
         python3 -u Scripts/probe_photos_bootstrap.py "$(cat /tmp/current-celluloid-simulator)" --already-prepared
     - name: Validate original Photos integration cases
-      if: ${{ !cancelled() && steps.photos.conclusion == 'success' }}
+      if: ${{ !cancelled() && steps.preparation.conclusion == 'success' }}
       run: |
         set -euo pipefail
+        # A reconciled timeout stays red, but verified assets permit independent tests.
+        test -f /tmp/celluloid-bootstrap-assets-verified
         id=$(cat /tmp/current-celluloid-simulator)
-        python3 Scripts/run_bounded.py --seconds 600 --label Photos-integration xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-Photos-integration.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests/CollageCompositionTests -only-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation test-without-building CODE_SIGNING_ALLOWED=NO
+        python3 Scripts/run_bounded.py --seconds 600 --label Photos-integration xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-Photos-integration.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests/CollageCompositionTests -only-testing:CelluloidTests/OverlayResizeTests/testPhotosExtensionRestartWithoutAdjustmentClearsDecorationsFilterAndCancellation -only-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation test-without-building CODE_SIGNING_ALLOWED=NO
         xcrun xcresulttool get test-results summary --path TestResults-Photos-integration.xcresult | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Validate artwork semantics and official accessibility audits
-      if: ${{ !cancelled() && steps.photos.conclusion == 'success' }}
+      if: ${{ !cancelled() && steps.preparation.conclusion == 'success' }}
       run: |
         set -euo pipefail
+        # A reconciled timeout stays red, but verified assets permit independent tests.
+        test -f /tmp/celluloid-bootstrap-assets-verified
         id=$(cat /tmp/current-celluloid-simulator)
         python3 Scripts/run_bounded.py --seconds 900 --label accessibility xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-accessibility.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests/testAccessibilityHomeAndDeniedPicker -only-testing:CelluloidUITests/CelluloidUITests/testAccessibilityGrantedPickerEditorAndSaved test-without-building CODE_SIGNING_ALLOWED=NO
         xcrun xcresulttool get test-results summary --path TestResults-accessibility.xcresult | tee -a "$GITHUB_STEP_SUMMARY"

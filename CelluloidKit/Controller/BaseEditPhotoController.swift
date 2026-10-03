@@ -219,23 +219,13 @@ open class BaseEditPhotoController: UIViewController {
         }
     }
 
-    private nonisolated static func materializedImage(_ source: CGImage) -> CGImage? {
-        // Request native pixels on the export queue, avoiding lazy file decoding
-        // when UIKit later records the layer stack. Preserve native sample format,
-        // decode array, color space and rendering intent; no color/range conversion.
+    private nonisolated static func materializedImage(_ source: CGImage) -> (image: CGImage, pixels: CFData)? {
+        // Warm native pixels on the export queue, but retain the original CGImage.
+        // Reconstructing from bitmap fields can discard supplemental image/HDR
+        // metadata. Pixel warming does not prove every platform decode is eager.
         let (required, overflow) = source.bytesPerRow.multipliedReportingOverflow(by: source.height)
-        guard !overflow, let data = source.dataProvider?.data, CFDataGetLength(data) >= required,
-              let provider = CGDataProvider(data: data) else { return nil }
-        if source.isMask {
-            return CGImage(maskWidth: source.width, height: source.height, bitsPerComponent: source.bitsPerComponent,
-                bitsPerPixel: source.bitsPerPixel, bytesPerRow: source.bytesPerRow, provider: provider,
-                decode: source.decode, shouldInterpolate: source.shouldInterpolate)
-        }
-        guard let space = source.colorSpace else { return nil }
-        return CGImage(width: source.width, height: source.height, bitsPerComponent: source.bitsPerComponent,
-            bitsPerPixel: source.bitsPerPixel, bytesPerRow: source.bytesPerRow, space: space,
-            bitmapInfo: source.bitmapInfo, provider: provider, decode: source.decode,
-            shouldInterpolate: source.shouldInterpolate, intent: source.renderingIntent)
+        guard !overflow, let pixels = source.dataProvider?.data, CFDataGetLength(pixels) >= required else { return nil }
+        return (source, pixels)
     }
 
     private nonisolated static func compositeOffMain(_ source: CGImage, size: CGSize, models: [OverlayModel], task: PhotoExportTask,
@@ -244,8 +234,11 @@ open class BaseEditPhotoController: UIViewController {
         guard !task.isCancelled else { return .failure(.cancelled) }
         guard let decoded = materializedImage(source) else { return .failure(.encodingFailed) }
         guard !task.isCancelled else { return .failure(.cancelled) }
+        // Hold the warmed provider bytes through all recording/copy operations.
+        defer { withExtendedLifetime(decoded.pixels) {} }
         var destination: CGContext?
-        let edge = 1024
+        let gutter = 2
+        let edge = 1024 - 2 * gutter
         var y = 0
         while y < source.height {
             var x = 0
@@ -253,15 +246,21 @@ open class BaseEditPhotoController: UIViewController {
                 guard !task.isCancelled else { return .failure(.cancelled) }
                 let width = min(edge, source.width - x), height = min(edge, source.height - y)
                 let rect = CGRect(x: x, y: y, width: width, height: height)
+                // Record a small surrounding region, then copy only the interior.
+                // This keeps antialiasing/image sampling away from tile clip edges.
+                let expanded = rect.insetBy(dx: -CGFloat(gutter), dy: -CGFloat(gutter))
+                    .intersection(CGRect(origin: .zero, size: size))
                 let result: Result<Void, PhotoExportError> = autoreleasepool {
-                    switch rasterize(decoded, rect) {
+                    switch rasterize(decoded.image, expanded) {
                     case .failure(let error): return .failure(error)
                     case .success(let raster):
                         let tile = raster.image
-                        guard tile.width == width, tile.height == height,
+                        let offsetX = x - Int(raster.rect.minX), offsetY = y - Int(raster.rect.minY)
+                        guard offsetX >= 0, offsetY >= 0,
+                              offsetX + width <= tile.width, offsetY + height <= tile.height,
                               let space = tile.colorSpace, let pixels = tile.dataProvider?.data,
                               let bytes = CFDataGetBytePtr(pixels), tile.bitsPerPixel > 0, tile.bitsPerPixel % 8 == 0,
-                              tile.bytesPerRow >= width * (tile.bitsPerPixel / 8),
+                              tile.bytesPerRow >= tile.width * (tile.bitsPerPixel / 8),
                               CFDataGetLength(pixels) >= tile.bytesPerRow * tile.height else { return .failure(.encodingFailed) }
                         // The actual first finished UIKit tile determines bitmap
                         // policy, including extended range. Later tiles must match.
@@ -293,7 +292,7 @@ open class BaseEditPhotoController: UIViewController {
                             // Native CGImage rows are copied without another blend,
                             // color conversion or premultiplication/quantization.
                             target.advanced(by: (y + row) * context.bytesPerRow + x * bytesPerPixel)
-                                .copyMemory(from: bytes.advanced(by: row * tile.bytesPerRow), byteCount: width * bytesPerPixel)
+                                .copyMemory(from: bytes.advanced(by: (offsetY + row) * tile.bytesPerRow + offsetX * bytesPerPixel), byteCount: width * bytesPerPixel)
                         }
                         #if DEBUG
                         task.recordConsumedRaster()
