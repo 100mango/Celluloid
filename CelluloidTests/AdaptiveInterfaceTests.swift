@@ -31,9 +31,16 @@ final class AdaptiveInterfaceTests: XCTestCase {
                 host.view.frame = window.bounds; editor.view.frame = host.view.bounds
                 editor.additionalSafeAreaInsets.top = size.width > size.height ? 52 : 96
                 for _ in 0..<3 { host.view.layoutIfNeeded(); editor.view.setNeedsLayout(); editor.view.layoutIfNeeded() }
+                // UIKit delivers inherited trait updates lazily. Synchronize the
+                // test window's full subtree before asserting the real style;
+                // do not force the extension itself into the expected theme.
+                window.updateTraitsIfNeeded()
+                XCTAssertEqual(window.traitCollection.userInterfaceStyle, style)
+                XCTAssertEqual(host.traitCollection.userInterfaceStyle, style)
                 XCTAssertEqual(editor.traitCollection.userInterfaceStyle, style)
                 XCTAssertEqual(editor.overrideUserInterfaceStyle, .unspecified, "The extension must inherit the host's theme")
                 let surface = editor.hostNavigationBackground
+                XCTAssertEqual(surface.traitCollection.userInterfaceStyle, style)
                 XCTAssertEqual(surface.frame.minY, 0, accuracy: 0.5)
                 XCTAssertEqual(surface.frame.minX, 0, accuracy: 0.5)
                 XCTAssertEqual(surface.frame.width, editor.view.bounds.width, accuracy: 0.5)
