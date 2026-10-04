@@ -18,6 +18,9 @@ def configlist(key,settings):
   s=dict(settings)
   s.update({'SWIFT_OPTIMIZATION_LEVEL':'-Onone' if name=='Debug' else '-O','DEBUG_INFORMATION_FORMAT':'dwarf' if name=='Debug' else 'dwarf-with-dsym'})
   if name=='Debug':s.update({'SWIFT_ACTIVE_COMPILATION_CONDITIONS':('DEBUG '+s.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS','')).strip(),'ENABLE_TESTABILITY':'YES','ONLY_ACTIVE_ARCH':'YES'})
+  # Preserve the actual Watch Debug executable/dylibs when embedding them.
+  # Release keeps Xcode's normal, independently verified copy-strip behavior.
+  if key=='target:Celluloid' and name=='Debug':s['COPY_PHASE_STRIP']='NO'
   configs.append(add(key+name,'XCBuildConfiguration',name=name,buildSettings=s))
  return add(key+'configs','XCConfigurationList',buildConfigurations=configs,defaultConfigurationIsVisible='0',defaultConfigurationName='Release')
 children=[]

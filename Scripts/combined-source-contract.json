@@ -18,7 +18,7 @@
   "files": [
     [
       "Celluloid.xcodeproj/project.pbxproj",
-      "933aaa9fcea58ed92cb2b5a8d19698cc7c94740ad737f1716dd5e00747a1cccc"
+      "2931ef5c308c3af531c2f4f71f1d36044fd3e9664efa2f94a61d272338188321"
     ],
     [
       "Celluloid.xcodeproj/project.xcworkspace/contents.xcworkspacedata",
@@ -2149,7 +2149,7 @@
       "f7603c1c1175e32b5146b43d9e1f03bd6e839416510109795eb942cf7223579a"
     ]
   ],
-  "fingerprint": "f521689b014ecd4b16719845fb1a8c43d0934f0db0458e95ffb8ceaea6f0aa2a",
+  "fingerprint": "69836c9870ec4c497972983f6738d6c8ffb173cee4c5f0a4a98baecf0d348a9d",
   "appearance_cancel_patch_sha256": "a3f6810452a5d2d3475a4bf0a921cda863f431c0660c7d8b7616f484e019f15f",
   "expected_UIKit_executions": {
     "original_qualified": 400,

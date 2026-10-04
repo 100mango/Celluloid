@@ -1,7 +1,7 @@
-import unittest, tempfile, plistlib, shutil
+import unittest, tempfile, plistlib, shutil, runpy
 from unittest.mock import patch
 from pathlib import Path
-from verify_embedded_watch import bundle_checks, inventory, copied_inventory, discover_archive_producer
+from verify_embedded_watch import bundle_checks, inventory, copied_inventory, discover_archive_producer,hosted_test_contract
 
 class EmbeddedWatchTests(unittest.TestCase):
     def setUp(self):
@@ -57,3 +57,44 @@ class EmbeddedWatchTests(unittest.TestCase):
         self.assertEqual(discover_archive_producer(root),a)
         b=root/'Other/Release-watchos/CelluloidWatch.app';b.mkdir(parents=True)
         with self.assertRaises(ValueError):discover_archive_producer(root)
+
+    def hosted_fixture(self):
+        bundle=self.phone/'PlugIns/CelluloidCompanionTests.xctest';bundle.mkdir(parents=True)
+        metadata={'CFBundleIdentifier':'Mango.Celluloid.CompanionTests','CFBundleExecutable':'CelluloidCompanionTests','DTPlatformName':'iphonesimulator','CFBundlePackageType':'BNDL'}
+        (bundle/'Info.plist').write_bytes(plistlib.dumps(metadata));(bundle/'CelluloidCompanionTests').write_bytes(b'synthetic hosted test executable')
+        return bundle,metadata
+
+    def test_explicit_test_build_requires_the_actual_registered_bundle(self):
+        self.assertFalse(hosted_test_contract(self.phone,'simulator',True)[0],'Missing test bundle must not count as a validated test build')
+        self.hosted_fixture();ok,receipt=hosted_test_contract(self.phone,'simulator',True)
+        self.assertTrue(ok);self.assertEqual(receipt['bundle_identifier'],'Mango.Celluloid.CompanionTests');self.assertEqual(len(receipt['executable_sha256']),64)
+        self.assertFalse(hosted_test_contract(self.phone,'simulator',False)[0])
+        self.assertFalse(hosted_test_contract(self.phone,'device',False)[0])
+        with self.assertRaises(ValueError):hosted_test_contract(self.phone,'device',True)
+
+    def test_extra_relocated_and_nested_watch_test_bundles_are_not_allowed(self):
+        bundle,_=self.hosted_fixture()
+        extra=self.phone/'Watch/CelluloidWatch.app/PlugIns/CelluloidWatchTests.xctest';extra.mkdir(parents=True)
+        self.assertFalse(hosted_test_contract(self.phone,'simulator',True)[0]);shutil.rmtree(extra)
+        bundle.rename(self.phone/'Other.xctest')
+        self.assertFalse(hosted_test_contract(self.phone,'simulator',True)[0])
+
+    def test_wrong_identity_executable_platform_empty_and_symlink_are_rejected(self):
+        bundle,info=self.hosted_fixture()
+        for key,value in [('CFBundleIdentifier','Other.Tests'),('CFBundleExecutable','OtherExecutable'),('DTPlatformName','iphoneos'),('CFBundlePackageType','APPL')]:
+            changed=dict(info);changed[key]=value;(bundle/'Info.plist').write_bytes(plistlib.dumps(changed))
+            self.assertFalse(hosted_test_contract(self.phone,'simulator',True)[0],key)
+        (bundle/'Info.plist').write_bytes(plistlib.dumps(info));exe=bundle/'CelluloidCompanionTests';exe.write_bytes(b'')
+        self.assertFalse(hosted_test_contract(self.phone,'simulator',True)[0]);exe.unlink();other=self.root/'outside';other.write_bytes(b'foreign executable');exe.symlink_to(other)
+        self.assertFalse(hosted_test_contract(self.phone,'simulator',True)[0])
+
+    def test_debug_only_application_copy_setting_preserves_all_release_settings(self):
+        root=Path(__file__).resolve().parents[1]
+        graph=runpy.run_path(str(root/'Scripts/generate_project.py'))
+        objects=graph['objects'];configs=[]
+        for target in graph['targetids'].values():
+            node=objects[target]
+            for identifier in objects[node['buildConfigurationList']]['buildConfigurations']:
+                config=objects[identifier]
+                if 'COPY_PHASE_STRIP' in config['buildSettings']:configs.append((node['name'],config['name'],config['buildSettings']['COPY_PHASE_STRIP']))
+        self.assertEqual(configs,[('Celluloid','Debug','NO')])

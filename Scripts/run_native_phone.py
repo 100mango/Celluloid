@@ -27,7 +27,7 @@ try:
     run(['xcrun','simctl','boot',udid]);run(['xcrun','simctl','bootstatus',udid,'-b'],timeout=240)
     if shipping:
         from verify_embedded_watch import verify
-        embedded=verify(app,app.parent.parent/'Debug-watchsimulator/CelluloidWatch.app','simulator')
+        embedded=verify(app,app.parent.parent/'Debug-watchsimulator/CelluloidWatch.app','simulator',build_for_testing=True)
         (temp/'phone-embedded-watch.json').write_text(json.dumps(embedded,indent=2)+'\n')
         assert all(embedded['checks'].values()), 'Built shipping app must contain the exact Watch producer'
         evidence['embedded_watch']=embedded

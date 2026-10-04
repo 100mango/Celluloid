@@ -21,7 +21,23 @@ def inventory(folder):
         if len(rows) > 10000: raise ValueError('Unexpected Watch bundle inventory size')
     return rows
 
-def bundle_checks(phone, producer, mode):
+def hosted_test_contract(phone, mode, build_for_testing):
+    phone=Path(phone);found=sorted(phone.rglob('*.xctest'))
+    if not build_for_testing:return not found,{'mode':'ordinary product; all XCTest bundles forbidden','found':[str(p.relative_to(phone)) for p in found]}
+    if mode!='simulator':raise ValueError('Build-for-testing mode is forbidden for device Release')
+    expected=phone/'PlugIns/CelluloidCompanionTests.xctest'
+    report={'mode':'explicit shipping companion build-for-testing','expected_path':'PlugIns/CelluloidCompanionTests.xctest','found':[str(p.relative_to(phone)) for p in found]}
+    if found!=[expected] or expected.is_symlink() or not expected.resolve().is_relative_to(phone.resolve()):return False,report
+    metadata=expected/'Info.plist';executable=expected/'CelluloidCompanionTests'
+    if not metadata.is_file() or metadata.is_symlink() or metadata.stat().st_size>100_000 or not executable.is_file() or executable.is_symlink() or executable.stat().st_size==0:return False,report
+    info=plistlib.loads(metadata.read_bytes())
+    checks={'registered_bundle_identity':info.get('CFBundleIdentifier')=='Mango.Celluloid.CompanionTests',
+            'registered_executable':info.get('CFBundleExecutable')=='CelluloidCompanionTests',
+            'simulator_test_bundle':info.get('DTPlatformName')=='iphonesimulator' and info.get('CFBundlePackageType')=='BNDL'}
+    report.update(checks=checks,executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),bundle_identifier=info.get('CFBundleIdentifier'))
+    return all(checks.values()),report
+
+def bundle_checks(phone, producer, mode, build_for_testing=False):
     phone, producer = Path(phone), Path(producer)
     nested = phone / 'Watch/CelluloidWatch.app'
     p = plistlib.loads((phone / 'Info.plist').read_bytes())
@@ -38,10 +54,10 @@ def bundle_checks(phone, producer, mode):
         'watch_bundle_floor': w.get('MinimumOSVersion') == '9.0',
         'exact_nested_producer_inventory': bool(actual) and actual == expected,
         'only_expected_watch': [x.name for x in (phone / 'Watch').iterdir()] == ['CelluloidWatch.app'],
-        'no_test_products': not any(phone.rglob('*.xctest')),
         'compiled_watch_icon': (nested / 'Assets.car').is_file(),
         'localized_watch': all((nested / (language + '.lproj') / 'Localizable.strings').is_file() for language in ['en', 'zh-Hans']),
     }
+    checks['registered_hosted_test_product' if build_for_testing else 'no_test_products']=hosted_test_contract(phone,mode,build_for_testing)[0]
     privacy = []
     for file in sorted(nested.rglob('PrivacyInfo.xcprivacy')):
         value = plistlib.loads(file.read_bytes())
@@ -97,8 +113,8 @@ def discover_archive_producer(root):
     if len(candidates)!=1:raise ValueError('Expected one actual Release-watchos archive producer')
     return next(iter(candidates.values()))
 
-def verify(phone, producer, mode, build_log=None, archive_root=None):
-    checks, nested, rows, privacy = bundle_checks(phone, producer, mode)
+def verify(phone, producer, mode, build_log=None, archive_root=None, build_for_testing=False):
+    checks, nested, rows, privacy = bundle_checks(phone, producer, mode,build_for_testing)
     checks.pop('exact_nested_producer_inventory')
     checks['verified_nested_producer_inventory'],copy_receipt=copied_inventory(phone,producer,mode,build_log,archive_root)
     executable = nested / 'CelluloidWatch'
@@ -117,16 +133,16 @@ def verify(phone, producer, mode, build_log=None, archive_root=None):
     binary = executable.read_bytes()
     checks['watch_debug_fixture_markers_absent'] = not any(marker in binary for marker in [b'companion.synthetic-seed', b'A2E0E7B0-0A3B-47D3-94E5-309F3614E54A']) if mode == 'device' else True
     return {'source_sha': os.environ.get('GITHUB_SHA'), 'mode': mode, 'phone': str(phone), 'nested_watch': str(nested), 'watch_producer': str(producer),
-            'checks': checks, 'architectures': archs, 'linked_build_versions': loads, 'phone_build_versions':phone_loads,'copy_receipt':copy_receipt,'nested_inventory_sha256': hashlib.sha256(json.dumps(rows, separators=(',', ':')).encode()).hexdigest(),
+            'checks': checks, 'build_for_testing':build_for_testing,'test_product_receipt':hosted_test_contract(phone,mode,build_for_testing)[1],'architectures': archs, 'linked_build_versions': loads, 'phone_build_versions':phone_loads,'copy_receipt':copy_receipt,'nested_inventory_sha256': hashlib.sha256(json.dumps(rows, separators=(',', ':')).encode()).hexdigest(),
             'privacy_manifests': privacy, 'privacy_note': 'Actual nested declarations are recorded; absence is not a claim of an embedded empty manifest. All nonexecutable bytes equal the producer; any device Release executable transform requires the exact observed strip command and reproduced hash.',
             'scope': 'Actual unsigned package identity/embedding proof. This does not establish paired WatchConnectivity file delivery or oldest-runtime coverage.'}
 
 def main():
-    parser = argparse.ArgumentParser(); parser.add_argument('phone'); parser.add_argument('producer'); parser.add_argument('--mode', choices=['device', 'simulator'], required=True); parser.add_argument('--output', required=True);parser.add_argument('--build-log');parser.add_argument('--archive-producer-root',action='store_true')
+    parser = argparse.ArgumentParser(); parser.add_argument('phone'); parser.add_argument('producer'); parser.add_argument('--mode', choices=['device', 'simulator'], required=True); parser.add_argument('--output', required=True);parser.add_argument('--build-log');parser.add_argument('--archive-producer-root',action='store_true');parser.add_argument('--build-for-testing',action='store_true')
     args = parser.parse_args()
     try:
         producer=discover_archive_producer(args.producer) if args.archive_producer_root else args.producer
-        report = verify(args.phone, producer, args.mode,args.build_log,args.producer if args.archive_producer_root else None)
+        report = verify(args.phone, producer, args.mode,args.build_log,args.producer if args.archive_producer_root else None,args.build_for_testing)
     except Exception as error:
         report={'source_sha':os.environ.get('GITHUB_SHA'),'mode':args.mode,'phone':args.phone,'producer':args.producer,'checks':{'embedded_watch_verification':False},'error':str(error)}
     Path(args.output).write_text(json.dumps(report, indent=2) + '\n')

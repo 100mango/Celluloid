@@ -81,7 +81,7 @@ def main():
             proof={'project':project,'scheme':scheme,'compiled_tests':verify_test_products(debug/'Build/Products',tests)}
             if key=='phone':
                 from verify_embedded_watch import verify,inventory
-                receipt=verify(debug/'Build/Products/Debug-iphonesimulator/Celluloid.app',debug/'Build/Products/Debug-watchsimulator/CelluloidWatch.app','simulator')
+                receipt=verify(debug/'Build/Products/Debug-iphonesimulator/Celluloid.app',debug/'Build/Products/Debug-watchsimulator/CelluloidWatch.app','simulator',build_for_testing=True)
                 actual={r[0]:r for r in inventory(debug/'Build/Products/Debug-iphonesimulator/Celluloid.app/Watch/CelluloidWatch.app')}
                 expected={r[0]:r for r in inventory(debug/'Build/Products/Debug-watchsimulator/CelluloidWatch.app')}
                 receipt['observed_debug_copy_differences']=[{'path':name,'nested':actual.get(name),'producer':expected.get(name)} for name in sorted(actual.keys()|expected.keys()) if actual.get(name)!=expected.get(name)][:20]
