@@ -503,6 +503,7 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
     private var receiptNumber = 0
     private var selectedLabel = ""
     private var recordedFailure = false
+    private var gridGeometryReports = 0
     private let notificationTitle = "“Photos” Would Like to Send You Notifications"
     private let expectedResources = [
         "celluloid-fixture-a.png": "90ce9a3adb8b98b667d6cd9fcd4c092b748744c2b49b20c15ef7d50317d6686d",
@@ -586,6 +587,7 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
         #endif
     }
     private func bindFixtures() throws {
+        try verifyGridGeometryContract()
         try requireSyntheticAuthorization()
         fixtures = try captureFixtureIdentities("host-case-baseline")
         guard Set(fixtures.map { $0.resourceFilename }) == Set(expectedResources.keys),
@@ -653,7 +655,7 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
                 guard let month = parts.month, let day = parts.day,
                       image.label.range(of: "\\b\(month)月0?\(day)日", options: .regularExpression) != nil else { priorReadyFrames = []; return false }
             }
-            let frames = latest.map { $0.frame }
+            let frames = latest.map { $0.pixelFrame }
             let stable = frames == priorReadyFrames
             priorReadyFrames = frames
             return stable
@@ -666,19 +668,75 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
     private struct HostGridEntry {
         let label: String
         let frame: CGRect
+        let pixelFrame: CGRect
+    }
+    /// AX coordinates are fractional points. Compare the actual backing-pixel
+    /// edges, so invisible floating-point drift at x=0 or maxX cannot remove a
+    /// whole visible column. A full physical pixel outside remains rejected.
+    private func gridPixelFrame(_ frame: CGRect, scale: CGFloat) -> CGRect? {
+        guard scale.isFinite, scale > 0,
+              [frame.origin.x, frame.origin.y, frame.width, frame.height].allSatisfy({ $0.isFinite }),
+              frame.width > 0, frame.height > 0 else { return nil }
+        let edges = [frame.minX, frame.minY, frame.maxX, frame.maxY].map { ($0 * scale).rounded() }
+        guard edges.allSatisfy({ $0.isFinite }), edges[2] > edges[0], edges[3] > edges[1] else { return nil }
+        return CGRect(x: edges[0], y: edges[1], width: edges[2] - edges[0], height: edges[3] - edges[1])
+    }
+    private func gridFrameIsVisible(_ frame: CGRect, viewport: CGRect, scale: CGFloat) -> Bool {
+        guard let item = gridPixelFrame(frame, scale: scale), let window = gridPixelFrame(viewport, scale: scale) else { return false }
+        return item.minX >= window.minX && item.minY >= window.minY && item.maxX <= window.maxX && item.maxY <= window.maxY
+    }
+    private func verifyGridGeometryContract() throws {
+        let viewport = CGRect(x: 0, y: 0, width: 440, height: 956)
+        let epsilon: CGFloat = 0.0000001
+        for scale in [CGFloat(2), 3] {
+            let left = CGRect(x: -epsilon, y: 430.7, width: 145.6 + epsilon, height: 145.7)
+            let right = CGRect(x: 294.4, y: 136, width: 145.6 + epsilon, height: 145.7)
+            let top = CGRect(x: 147.2, y: -epsilon, width: 145.6, height: 145.7 + epsilon)
+            let bottom = CGRect(x: 147.2, y: 810.3, width: 145.6, height: 145.7 + epsilon)
+            guard gridFrameIsVisible(left, viewport: viewport, scale: scale),
+                  gridFrameIsVisible(right, viewport: viewport, scale: scale),
+                  gridFrameIsVisible(top, viewport: viewport, scale: scale),
+                  gridFrameIsVisible(bottom, viewport: viewport, scale: scale),
+                  gridPixelFrame(left, scale: scale) == gridPixelFrame(CGRect(x: 0, y: 430.7, width: 145.6, height: 145.7), scale: scale),
+                  !gridFrameIsVisible(CGRect(x: -1 / scale, y: 136, width: 145.6, height: 145.7), viewport: viewport, scale: scale),
+                  !gridFrameIsVisible(CGRect(x: 294.4, y: 136, width: 145.6 + 1 / scale, height: 145.7), viewport: viewport, scale: scale),
+                  !gridFrameIsVisible(CGRect(x: 147.2, y: -1 / scale, width: 145.6, height: 145.7), viewport: viewport, scale: scale),
+                  !gridFrameIsVisible(CGRect(x: 147.2, y: 810.3, width: 145.6, height: 145.7 + 1 / scale), viewport: viewport, scale: scale),
+                  !gridFrameIsVisible(CGRect(x: 500, y: 136, width: 145.6, height: 145.7), viewport: viewport, scale: scale),
+                  gridPixelFrame(.zero, scale: scale) == nil,
+                  gridPixelFrame(CGRect(x: 0, y: 0, width: CGFloat.infinity, height: 100), scale: scale) == nil,
+                  gridPixelFrame(CGRect(x: CGFloat.nan, y: 0, width: 100, height: 100), scale: scale) == nil else {
+                throw captureProbeError("Grid geometry regression: edge roundoff, true clipping or invalid frames were misclassified")
+            }
+        }
+        print("PHOTOS_HOST_GRID_GEOMETRY_CONTRACT_PASS edge_roundoff_included=true one_pixel_clipping_rejected=true scales=2,3")
     }
     private func snapshotGridEntries() -> [HostGridEntry] {
-        guard let snapshot = try? photos.snapshot(), !snapshot.frame.isEmpty else { return [] }
+        guard let snapshot = try? photos.snapshot() else { return [] }
         func descendants(_ node: XCUIElementSnapshot) -> [XCUIElementSnapshot] {
             [node] + node.children.flatMap(descendants)
         }
-        return descendants(snapshot).compactMap { node -> HostGridEntry? in
+        let nodes = descendants(snapshot)
+        let scale = UIScreen.main.scale
+        // The actual top-level Window owns the viewport. Application AX frames
+        // are not a view-layout contract. Only valid public window geometry is used.
+        let windows = nodes.filter { $0.elementType == .window && gridPixelFrame($0.frame, scale: scale) != nil }
+        guard let viewport = windows.max(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })?.frame else { return [] }
+        let images = nodes.filter { $0.elementType == .image && $0.identifier == "PXGGridLayout-Info" && !$0.label.isEmpty }
+        if gridGeometryReports < 3, !images.isEmpty {
+            gridGeometryReports += 1
+            print("PHOTOS_HOST_GRID_GEOMETRY viewport=\(viewport) applicationFrame=\(snapshot.frame) scale=\(scale)")
+            for node in images.prefix(32) {
+                print("PHOTOS_HOST_GRID_EDGE label=\(node.label) minX=\(Double(node.frame.minX)) maxX=\(Double(node.frame.maxX)) minY=\(Double(node.frame.minY)) maxY=\(Double(node.frame.maxY)) visible=\(gridFrameIsVisible(node.frame, viewport: viewport, scale: scale))")
+            }
+        }
+        return images.compactMap { node -> HostGridEntry? in
             let frame = node.frame
-            guard node.elementType == .image, node.identifier == "PXGGridLayout-Info", !node.label.isEmpty,
-                  !frame.isEmpty, !frame.isInfinite, !frame.isNull,
-                  frame.width > 40, frame.height > 40, snapshot.frame.contains(frame) else { return nil }
-            return HostGridEntry(label: node.label, frame: frame)
-        }.sorted { ($0.frame.minY, $0.frame.minX) < ($1.frame.minY, $1.frame.minX) }
+            guard frame.width > 40, frame.height > 40,
+                  gridFrameIsVisible(frame, viewport: viewport, scale: scale),
+                  let pixels = gridPixelFrame(frame, scale: scale) else { return nil }
+            return HostGridEntry(label: node.label, frame: frame, pixelFrame: pixels)
+        }.sorted { ($0.pixelFrame.minY, $0.pixelFrame.minX) < ($1.pixelFrame.minY, $1.pixelFrame.minX) }
     }
     private func selectFixture(_ baseline: CaptureFixtureIdentity, verifyCurrentPixels: Bool = true) throws {
         _ = try freshOwnedAsset(baseline)
@@ -695,13 +753,14 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
         let bound = latest[index]; selectedLabel = bound.label
         let controls = photos.images.matching(identifier: "PXGGridLayout-Info")
             .matching(NSPredicate(format: "label == %@", bound.label)).allElementsBoundByIndex.filter {
-                $0.exists && $0.frame == bound.frame
+                $0.exists && gridPixelFrame($0.frame, scale: UIScreen.main.scale) == bound.pixelFrame
             }
         try require(controls.count == 1, "The selected fixture snapshot no longer resolves to one exact grid control")
         let image = controls[0]
         try captureJSON("PHOTOS_HOST_SELECTION_BINDING", ["asset_identifier": baseline.assetIdentifier,
             "resource_filename": baseline.resourceFilename, "creation_date": baseline.creationDate.timeIntervalSince1970,
-            "ascending_fixture_slot": index, "observed_grid_label": selectedLabel])
+            "ascending_fixture_slot": index, "observed_grid_label": selectedLabel,
+            "bound_pixel_frame": [bound.pixelFrame.minX, bound.pixelFrame.minY, bound.pixelFrame.width, bound.pixelFrame.height]])
         try require(tapReady(image), "Identified synthetic grid image is not actionable")
         try require(waitReady(photos.buttons["编辑"].firstMatch), "Selected fixture did not reach one-up Edit")
         if verifyCurrentPixels { try verifySelectedCurrent(baseline, phase: "before-edit-selection") }
