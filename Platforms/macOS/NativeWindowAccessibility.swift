@@ -75,6 +75,43 @@ struct NativeWindowAccessibility: NSViewRepresentable {
     }
 }
 
+/// Labels only the owned presentation pair identified by the 59f runtime trace.
+/// The bridge must be inside a real AXPopover window, and its public ancestor
+/// must be an AXGroup whose direct accessibility parent is that exact window
+/// and whose screen frame matches it. No system-wide enumeration/class matching
+/// or accessibility-child mutation is used.
+struct NativePopoverAccessibility: NSViewRepresentable {
+    let label: String
+    func makeNSView(context: Context) -> Bridge { let view = Bridge(); view.label = label; return view }
+    func updateNSView(_ view: Bridge, context: Context) { view.label = label; view.labelOwnedPresentation() }
+    final class Bridge: NSView {
+        var label = ""
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); labelOwnedPresentation() }
+        func labelOwnedPresentation() {
+            setAccessibilityElement(false)
+            guard !label.isEmpty, let window, window.accessibilityRole() == .popover else { return }
+            let bounds = window.accessibilityFrame()
+            guard !bounds.isEmpty else { return }
+            var ancestor: Any? = accessibilityParent(), visited = Set<ObjectIdentifier>()
+            for _ in 0..<12 {
+                guard let node = ancestor as? NSAccessibilityProtocol,
+                      visited.insert(ObjectIdentifier(node as AnyObject)).inserted else { return }
+                if let group = node as? NSView, group.accessibilityRole() == .group,
+                   let owner = group.accessibilityParent() as? NSWindow, owner === window {
+                    let frame = group.accessibilityFrame()
+                    guard abs(frame.minX - bounds.minX) < 1, abs(frame.minY - bounds.minY) < 1,
+                          abs(frame.width - bounds.width) < 1, abs(frame.height - bounds.height) < 1 else { return }
+                    group.setAccessibilityLabel(label)
+                    window.setAccessibilityLabel(label)
+                    return
+                }
+                if node is NSWindow { return }
+                ancestor = node.accessibilityParent()
+            }
+        }
+    }
+}
+
 #if DEBUG
 struct NativePopoverOwnershipProbe: NSViewRepresentable {
     let label: String

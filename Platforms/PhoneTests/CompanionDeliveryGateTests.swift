@@ -1,5 +1,10 @@
 import XCTest
+#if CELLULOID_SHIPPING_COMPANION
+@testable import Celluloid
+import CelluloidKit
+#else
 @testable import CelluloidPhoneCompanion
+#endif
 
 final class CompanionDeliveryGateTests: XCTestCase {
     func testInactiveAndPreviousCounterpartCannotEnqueue() {

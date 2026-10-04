@@ -26,20 +26,30 @@ final class PhoneCompanionUITests: XCTestCase {
         let app = XCUIApplication(); if app.state != .notRunning { app.terminate() }
         try super.tearDownWithError()
     }
+    @MainActor func testPendingInboxLargeTextWithoutChangingRequests() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(); app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchEnvironment["CELLULOID_PHONE_LAYOUT_FIXTURE"] = "large-text"
+        try launchCompanion(app); defer { app.terminate() }
+        XCTAssertTrue(app.buttons["companion.resume." + processID].waitForExistence(timeout: 20))
+        try verifyPendingLargeText(app)
+        XCTAssertTrue(app.buttons["companion.resume." + processID].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["companion.discard." + pendingID].exists)
+        XCTAssertFalse(app.buttons["companion.result." + processID].exists)
+    }
     @MainActor func testSeededDurableRequestResumePhotosReadbackRelaunchAndDelete() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchEnvironment.removeValue(forKey: "CELLULOID_PHONE_LAYOUT_FIXTURE")
         app.launchEnvironment["CELLULOID_PHONE_OUTPUT_PROOF"] = "YES"
-        app.launch(); defer { app.terminate() }
+        try launchCompanion(app); defer { app.terminate() }
         let resume = app.buttons["companion.resume." + processID]
         let discard = app.buttons["companion.discard." + pendingID]
         XCTAssertTrue(resume.waitForExistence(timeout: 20))
         XCTAssertTrue(discard.exists)
         try audit(app, state: "seeded-pending-inbox")
         capture(app, name: "native-phone-seeded-pending-inbox")
-        try verifyPendingLargeText(app)
-        XCTAssertTrue(resume.waitForExistence(timeout: 20)); XCTAssertTrue(discard.exists)
 
         // Cancel a genuine pending-discard dialog and prove that both requests
         // survive a process relaunch before any local processing begins.
@@ -48,7 +58,7 @@ final class PhoneCompanionUITests: XCTestCase {
         XCTAssertFalse(app.buttons["companion.result." + pendingID].exists, "Discard must never also invoke the same row's Resume action")
         XCTAssertFalse(app.buttons["companion.result." + processID].exists)
         XCTAssertTrue(resume.exists); XCTAssertTrue(discard.exists)
-        app.terminate(); app.launch()
+        app.terminate(); try launchCompanion(app)
         XCTAssertTrue(resume.waitForExistence(timeout: 20)); XCTAssertTrue(discard.exists)
         try reveal(resume, in: app); resume.tap()
         let result = app.buttons["companion.result." + processID]
@@ -67,7 +77,7 @@ final class PhoneCompanionUITests: XCTestCase {
         try reveal(remove, in: app); remove.tap()
         try dismissConfirmationWithoutChangingData(app, action: "Delete Phone Result", state: "result-delete")
         app.buttons["companion.done"].tap()
-        app.terminate(); app.launch()
+        app.terminate(); try launchCompanion(app)
         XCTAssertTrue(result.waitForExistence(timeout: 20)); XCTAssertTrue(discard.exists)
         try reveal(result, in: app); result.tap()
         let save = app.buttons["companion.save"]
@@ -89,7 +99,7 @@ final class PhoneCompanionUITests: XCTestCase {
         try chineseResultSave(app, resultID: processID)
         app.terminate()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        app.launch(); XCTAssertTrue(result.waitForExistence(timeout: 20)); try reveal(result, in: app); result.tap()
+        try launchCompanion(app); XCTAssertTrue(result.waitForExistence(timeout: 20)); try reveal(result, in: app); result.tap()
         XCTAssertTrue(app.images["companion.preview"].waitForExistence(timeout: 15))
         try reveal(remove, in: app); remove.tap()
         let deletePanel = try confirmationPanel(in: app, action: "Delete Phone Result")
@@ -100,19 +110,39 @@ final class PhoneCompanionUITests: XCTestCase {
         let discardPanel = try confirmationPanel(in: app, action: "Discard Pending Request")
         let confirmDiscard = discardPanel.buttons["Discard Pending Request"].firstMatch
         XCTAssertTrue(confirmDiscard.isHittable); confirmDiscard.tap()
-        app.terminate(); app.launch()
+        app.terminate(); try launchCompanion(app)
         XCTAssertTrue(app.staticTexts["companion.empty"].waitForExistence(timeout: 20))
         XCTAssertFalse(result.exists); XCTAssertFalse(discard.exists); XCTAssertFalse(resume.exists)
         try audit(app, state: "explicit-local-deletion-empty-inbox")
+        #if CELLULOID_SHIPPING_COMPANION
+        let close = app.buttons["companion.close"]
+        XCTAssertTrue(close.isHittable); close.tap()
+        XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 10)); XCTAssertTrue(app.buttons["edit-photo"].isHittable)
+        XCTAssertTrue(app.buttons["make-collage"].isHittable)
+        print("SHIPPING_COMPANION_RETURN original edit/collage navigation restored after explicit Done")
+        #endif
         print("PHONE_COMPANION_REAL_UI seeded inbox/cancel/relaunch/local resume/Photos write-refetch/delete completed; paired delivery remains untested")
+    }
+    @MainActor private func launchCompanion(_ app: XCUIApplication) throws {
+        app.launch()
+        #if CELLULOID_SHIPPING_COMPANION
+        let entry = app.buttons["watch-photos"]
+        XCTAssertTrue(entry.waitForExistence(timeout: 20), "Launch the shipping Celluloid entrance, not the standalone validation app")
+        XCTAssertTrue(app.buttons["edit-photo"].exists && app.buttons["make-collage"].exists, "Original UIKit navigation must remain alongside Watch Photos")
+        XCTAssertTrue(entry.isHittable); entry.tap()
+        XCTAssertTrue(app.buttons["companion.close"].waitForExistence(timeout: 10))
+        print("SHIPPING_COMPANION_NAVIGATION actual Celluloid entrance to production Watch Photos completed")
+        #endif
     }
     @MainActor private func verifyPendingLargeText(_ app: XCUIApplication) throws {
         let empty = app.staticTexts["companion.empty"]
         XCTAssertTrue(empty.exists); let ordinaryHeight = empty.frame.height
         app.terminate()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
-        app.launch()
-        XCTAssertTrue(app.buttons["companion.resume." + processID].waitForExistence(timeout: 20))
+        try launchCompanion(app)
+        print("PHONE_COMPANION_LARGE_INITIAL_AX " + String(app.debugDescription.prefix(18000)))
+        capture(app, name: "native-phone-large-pending-before-scroll")
+        try reveal(app.buttons["companion.resume." + processID], in: app)
         try reveal(empty, in: app)
         let largeHeight = empty.frame.height
         print("PHONE_PENDING_TEXT_SIZE ordinaryHeight=\(ordinaryHeight) largeHeight=\(largeHeight) fullValue=\(empty.label)")
@@ -123,7 +153,7 @@ final class PhoneCompanionUITests: XCTestCase {
         try audit(app, state: "large-pending-inbox")
         app.terminate()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        app.launch()
+        try launchCompanion(app)
     }
     @MainActor private func confirmationPanel(in app: XCUIApplication, action: String) throws -> XCUIElement {
         let popover = app.popovers.containing(.button, identifier: action).firstMatch
@@ -169,10 +199,10 @@ final class PhoneCompanionUITests: XCTestCase {
             app.terminate()
             app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN", "-UIPreferredContentSizeCategoryName",
                                    large ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
-            app.launch()
+            try launchCompanion(app)
             XCTAssertTrue(app.navigationBars["手表照片"].waitForExistence(timeout: 15))
             let result = app.buttons["companion.result." + resultID]
-            XCTAssertTrue(result.waitForExistence(timeout: 20)); try reveal(result, in: app); result.tap()
+            try reveal(result, in: app); result.tap()
             XCTAssertTrue(app.images["companion.preview"].waitForExistence(timeout: 15))
             let description = app.staticTexts["处理结果采用从手表接收的图像分辨率。保存时会新建一张照片，现有图库照片保持不变。"]
             XCTAssertTrue(description.waitForExistence(timeout: 10))
@@ -192,11 +222,19 @@ final class PhoneCompanionUITests: XCTestCase {
         }
     }
     @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication) throws {
-        XCTAssertTrue(element.waitForExistence(timeout: 10))
-        for _ in 0..<6 {
-            if element.isHittable { return }
-            app.swipeUp()
+        // A SwiftUI List may not materialize a below-fold row at large text.
+        // Traverse the actual list in both directions rather than require its
+        // accessibility node before any scrolling. Never change the model.
+        if !element.exists { _ = element.waitForExistence(timeout: 3) }
+        for down in [false, true] {
+            for step in 0..<6 {
+                if element.exists && element.isHittable { return }
+                print("PHONE_COMPANION_REVEAL target=\(element.identifier) direction=\(down ? "down" : "up") step=\(step) exists=\(element.exists) frame=\(element.exists ? String(describing: element.frame) : "unmaterialized")")
+                if down { app.swipeDown() } else { app.swipeUp() }
+            }
         }
+        print("PHONE_COMPANION_REVEAL_FAILURE_AX " + String(app.debugDescription.prefix(18000)))
+        capture(app, name: "native-phone-unreachable-control")
         XCTFail("Companion control remained outside the visible scroll area: " + element.identifier)
     }
     @MainActor private func audit(_ app: XCUIApplication, state: String) throws {

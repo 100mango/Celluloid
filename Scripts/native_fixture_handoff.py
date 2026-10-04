@@ -48,3 +48,41 @@ def validate_fallback(row):
     data=base64.b64decode(row['base64'],validate=True)
     if not 0<len(data)<=8192 or hashlib.sha256(data).hexdigest()!=row['sha256']:
         raise ValueError('Baked-base synthetic archive byte/hash mismatch')
+
+LAYER_FILE='mac-layer-fixture.json'
+LAYER_MAX_BYTES=500_000
+
+def validate_layer(row):
+    keys={'name','identifier','version','sha256','base64','sourceSHA256','sourceBase64','renderedSHA256','renderedBase64'}
+    if not isinstance(row,dict) or set(row)!=keys or not all(isinstance(v,str) for v in row.values()):raise ValueError('Malformed manufactured-layer fixture')
+    if (row['name'],row['identifier'],row['version'])!=('manufactured-affine','Mango.CelluloidPhotoExtension','1.0'):raise ValueError('Unexpected manufactured-layer fixture identity')
+    if len(json.dumps(row,separators=(',',':')).encode())>LAYER_MAX_BYTES:raise ValueError('Manufactured-layer fixture exceeds bounded handoff')
+    for content,sha,limit in [('base64','sha256',32_768),('sourceBase64','sourceSHA256',150_000),('renderedBase64','renderedSHA256',150_000)]:
+        data=base64.b64decode(row[content],validate=True)
+        if not 0<len(data)<=limit or hashlib.sha256(data).hexdigest()!=row[sha]:raise ValueError('Manufactured-layer byte/hash mismatch')
+        if content!='base64':
+            if data[:8]!=b'\x89PNG\r\n\x1a\n' or data[12:16]!=b'IHDR' or int.from_bytes(data[16:20],'big')!=480 or int.from_bytes(data[20:24],'big')!=640:raise ValueError('Expected fixed synthetic480x640 PNG')
+    return row
+
+def layer_from_log(path,source_sha):
+    rows=[]
+    with Path(path).open('rb') as handle:
+        for part in iter(lambda:handle.readline(LAYER_MAX_BYTES+1),b''):
+            if b'MAC_LAYER_ADJUSTMENT_FIXTURE ' not in part:continue
+            if len(part)>LAYER_MAX_BYTES:raise ValueError('Manufactured-layer log record exceeds bound')
+            rows.append(json.loads(part.split(b'MAC_LAYER_ADJUSTMENT_FIXTURE ',1)[1]))
+    if len(rows)!=1:raise ValueError('Expected exactly one real Mac-manufactured layer fixture')
+    payload={'schema':'Celluloid.SyntheticMacLayerFixture.1','source_sha':source_sha,'fixture':validate_layer(rows[0])}
+    data=(json.dumps(payload,sort_keys=True)+'\n').encode()
+    if len(data)>LAYER_MAX_BYTES:raise ValueError('Manufactured-layer handoff exceeds bound')
+    return data
+
+def load_layer_exact(directory,source_sha):
+    directory=Path(directory);path=directory/LAYER_FILE;manifest_path=directory/'manifest.json'
+    if path.is_symlink() or manifest_path.is_symlink() or path.stat().st_size>LAYER_MAX_BYTES or manifest_path.stat().st_size>MAX_BYTES:raise ValueError('Invalid bounded layer handoff')
+    data=path.read_bytes();payload=json.loads(data);manifest=json.loads(manifest_path.read_bytes())
+    if manifest['source_sha']!=source_sha or payload['source_sha']!=source_sha:raise ValueError('Layer fixture is not this exact validation commit')
+    if payload['schema']!='Celluloid.SyntheticMacLayerFixture.1':raise ValueError('Unknown layer fixture schema')
+    rows=[r for r in manifest['files'] if r['name']==LAYER_FILE]
+    if len(rows)!=1 or rows[0]['bytes']!=len(data) or rows[0]['sha256']!=hashlib.sha256(data).hexdigest():raise ValueError('Layer fixture artifact manifest/hash mismatch')
+    validate_layer(payload['fixture']);return payload

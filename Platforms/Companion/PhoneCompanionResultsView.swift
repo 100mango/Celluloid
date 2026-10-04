@@ -14,7 +14,16 @@ import CelluloidDomain
     private let transport: PhoneCompanionTransport?
     private init() {
         do {
-            let processor = try PhoneCompanionProcessor(); self.processor = processor
+            #if DEBUG
+            // A separate, explicitly seeded layout-only test store prevents the
+            // read-only large-text case sharing deletion state with output E2E.
+            let layoutFixture = ProcessInfo.processInfo.environment["CELLULOID_PHONE_LAYOUT_FIXTURE"] == "large-text"
+            let directory = layoutFixture ? try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("WatchProcessingLargeTextUI", isDirectory: true) : nil
+            let processor = try PhoneCompanionProcessor(folder: directory)
+            #else
+            let processor = try PhoneCompanionProcessor()
+            #endif
+            self.processor = processor
             let transport = PhoneCompanionTransport(processor: processor); self.transport = transport
             transport.changed = { [weak self] in Task { await self?.reload() } }
         } catch { self.processor = nil; self.transport = nil; self.error = error.localizedDescription }

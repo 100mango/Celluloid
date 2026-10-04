@@ -8,7 +8,8 @@ import zlib
 REQUEST_IDS = ['58B78AAA-30B8-44DB-BD4F-10762900A001', '58B78AAA-30B8-44DB-BD4F-10762900A002']
 
 
-def seed(container: Path, temporary: Path):
+def seed(container: Path, temporary: Path, *, namespace=None):
+    if namespace not in (None, "large-text"): raise ValueError("Unknown synthetic fixture namespace")
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
     width, height = 1200, 800
@@ -16,7 +17,7 @@ def seed(container: Path, temporary: Path):
     row = b''.join(bytes(colors[min(2, x * 3 // width)]) for x in range(width))
     png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)) + chunk(b'sRGB', b'\0') + chunk(b'IDAT', zlib.compress((b'\0' + row) * height)) + chunk(b'IEND', b'')
     digest = hashlib.sha256(png).hexdigest()
-    root = container / 'Library/Application Support/WatchProcessingResults'
+    root = container / 'Library/Application Support' / ('WatchProcessingLargeTextUI' if namespace == 'large-text' else 'WatchProcessingResults')
     if root.exists() and any(root.iterdir()):
         raise ValueError('Synthetic seeding may not overwrite an existing processing store')
     pending = root / 'Pending'
@@ -31,4 +32,4 @@ def seed(container: Path, temporary: Path):
     fixture = temporary / 'PhoneCompanionSynthetic.png'
     fixture.write_bytes(png)
     return {'scope': 'Synthetic app-owned durable inbox; no WatchConnectivity delivery',
-            'request_ids': REQUEST_IDS, 'source_sha256': digest, 'source_bytes': len(png), 'fixture': str(fixture)}
+            'namespace': namespace or 'canonical-output', 'request_ids': REQUEST_IDS, 'source_sha256': digest, 'source_bytes': len(png), 'fixture': str(fixture)}

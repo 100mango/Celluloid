@@ -66,6 +66,7 @@ final class NativeEditorUITests: XCTestCase {
         }
         XCTAssertTrue(imported)
         let bubble = app.descendants(matching: .any)["editor.add-bubble"].firstMatch
+        let documentWindowLabel = app.windows.firstMatch.label
         XCTAssertTrue(bubble.isHittable); bubble.click()
         let palette = XCTAttachment(screenshot: app.screenshot()); palette.name = "native-mac-visual-bubble-picker"; palette.lifetime = .keepAlways; add(palette)
         let say1 = app.buttons["asset.say1"]
@@ -80,6 +81,16 @@ final class NativeEditorUITests: XCTestCase {
                 for line in data.split(separator: "\n") { print("NATIVE_POPOVER_OWNERSHIP " + line) }
             } else { print("NATIVE_POPOVER_OWNERSHIP unavailable; actual wrapper audit remains required") }
         }
+        let ownedPopover = app.popovers["Choose a Bubble"]
+        XCTAssertTrue(ownedPopover.waitForExistence(timeout: 5), "The owned native presentation must have its localized label")
+        XCTAssertEqual(app.windows.firstMatch.label, documentWindowLabel, "Naming the palette must not rename its document window")
+        let matchingWrapper = ownedPopover.groups.matching(NSPredicate(format: "label == %@", "Choose a Bubble")).allElementsBoundByIndex.first { group in
+            let frame = group.frame, bounds = ownedPopover.frame
+            return abs(frame.minX-bounds.minX) < 1 && abs(frame.minY-bounds.minY) < 1 && abs(frame.width-bounds.width) < 1 && abs(frame.height-bounds.height) < 1
+        }
+        XCTAssertNotNil(matchingWrapper, "The exact presentation-sized group must also be named")
+        XCTAssertTrue(ownedPopover.buttons["asset.say1"].exists); XCTAssertTrue(ownedPopover.buttons["asset.say1"].isHittable)
+        XCTAssertTrue(ownedPopover.buttons["Done"].exists); XCTAssertTrue(ownedPopover.buttons["Done"].isHittable)
         try auditOrdinary(app, state: "bubble-picker"); say1.click()
         let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 5)); text.click()
@@ -496,8 +507,20 @@ final class NativeEditorUITests: XCTestCase {
         print("NATIVE_STANDARD_DOCUMENT_AX " + String(app.debugDescription.prefix(24000)))
         try auditOrdinary(app, state: "diagnostic-standard-appkit-document-edited")
         app.buttons["probe.document-alert"].click()
-        let okay = app.buttons["OK"].firstMatch
-        XCTAssertTrue(okay.waitForExistence(timeout: 5)); XCTAssertTrue(okay.isHittable)
+        // The sheet's _NS instance identifier is incidental. Resolve this
+        // deliberately presented standard alert by both known text values.
+        func matchingAlerts() -> [XCUIElement] {
+            app.sheets.allElementsBoundByIndex.filter { sheet in
+                sheet.staticTexts.matching(NSPredicate(format: "value == %@", "Celluloid")).firstMatch.exists &&
+                sheet.staticTexts.matching(NSPredicate(format: "value == %@", "This file could not be decoded as an image.")).firstMatch.exists
+            }
+        }
+        let alertReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in matchingAlerts().count == 1 }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [alertReady], timeout: 5), .completed)
+        let alert = try XCTUnwrap(matchingAlerts().first)
+        let okay = alert.buttons["action-button-1"]
+        XCTAssertTrue(okay.waitForExistence(timeout: 5)); XCTAssertEqual(okay.label, "OK"); XCTAssertTrue(okay.isHittable)
+        XCTAssertTrue(alert.frame.contains(okay.frame), "Use the observed real sheet action, never its Touch Bar clone")
         print("NATIVE_STANDARD_NSALERT_AX markEnabled=\(mark.isEnabled) markHittable=\(mark.isHittable) " + String(app.debugDescription.prefix(24000)))
         try auditOrdinary(app, state: "diagnostic-standard-appkit-nsalert")
         okay.click()

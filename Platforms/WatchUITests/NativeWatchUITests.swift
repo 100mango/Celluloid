@@ -56,6 +56,9 @@ final class NativeWatchUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["watch.job-status"].exists, "Unavailable transport must not invent a processing job")
         let remove = app.buttons["watch.remove"]
         try reveal(remove, in: app); remove.tap()
+        print("WATCH_NATIVE_REMOVE_CONFIRMATION_AX " + String(app.debugDescription.prefix(18000)))
+        let confirmation = XCTAttachment(screenshot: app.screenshot())
+        confirmation.name = "native-watch-remove-confirmation"; confirmation.lifetime = .keepAlways; add(confirmation)
         let cancel = app.buttons["watch.remove-cancel"]
         XCTAssertTrue(cancel.waitForExistence(timeout: 5)); cancel.tap()
         app.terminate(); app.launch()

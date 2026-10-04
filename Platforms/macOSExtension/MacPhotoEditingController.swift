@@ -2,124 +2,95 @@ import AppKit
 import SwiftUI
 import Photos
 import PhotosUI
-import ImageIO
 import CelluloidDomain
 import CelluloidRendering
 
-/// First native host milestone: filter-only editing. The full layered-extension gate remains open.
 @MainActor final class MacPhotoEditingController: NSViewController, PHContentEditingController {
-    private let session = MacPhotoSession()
+    let session = MacPhotoSession()
     private var input: PHContentEditingInput?
     private var generation = UUID()
-    private let finish = PhotosHostFinishCoordinator<PHContentEditingOutput>()
-    override func loadView() { view = NSHostingView(rootView: MacPhotoFilterView(session: session)); view.setFrameSize(NSSize(width: 900, height: 640)) }
-    func canHandle(_ adjustmentData: PHAdjustmentData) -> Bool {
-        return LegacyFilterAdjustment.accepts(identifier: adjustmentData.formatIdentifier, version: adjustmentData.formatVersion, data: adjustmentData.data)
+    private var active = false
+    private var pendingWrite: PhotosOutputWrite?
+    private let finish = PhotosHostFinishCoordinator<PreparedPhotoOutput>()
+    private struct PreparedPhotoOutput {
+        let output: PHContentEditingOutput
+        let writer: PhotosOutputWrite
     }
-    func startContentEditing(with contentEditingInput: PHContentEditingInput, placeholderImage: NSImage) {
-        let previous = contentEditingInput.adjustmentData.map { LegacyFilterAdjustment.Preserved(identifier: $0.formatIdentifier, version: $0.formatVersion, data: $0.data) }
-        cancelContentEditing(); input = contentEditingInput; generation = UUID(); _ = view // Access lazily loads the view on the macOS 13 floor.
-        session.begin(contentEditingInput, previous: previous)
+    deinit { pendingWrite?.cancel() }
+    override func loadView() {
+        // The principal object is an NSViewController; the hosted SwiftUI root has
+        // real child containment and a resizable, Photos-sized content view.
+        let host = NSHostingController(rootView: MacPhotoEditorView(session: session))
+        addChild(host); view = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 640))
+        host.view.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(host.view)
+        NSLayoutConstraint.activate([host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor), host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)])
+    }
+    func canHandle(_ data: PHAdjustmentData) -> Bool {
+        // Format negotiation is pure; validation uses only the actual start input.
+        // Returning true for damaged supported bytes lets us preserve them with a
+        // no-change result instead of replacing them with a flattened recipe.
+        MacPhotoAdjustment.supports(identifier: data.formatIdentifier, version: data.formatVersion)
+    }
+    func startContentEditing(with input: PHContentEditingInput, placeholderImage: NSImage) {
+        cancelContentEditing(); self.input = input; active = true; generation = UUID(); _ = view
+        session.begin(url: input.fullSizeImageURL, orientation: input.fullSizeImageOrientation,
+            previous: input.adjustmentData.map { .init(identifier: $0.formatIdentifier, version: $0.formatVersion, bytes: $0.data) },
+            placeholder: placeholderImage)
     }
     func finishContentEditing(completionHandler: @escaping (PHContentEditingOutput?) -> Void) {
-        finish.cancel()
-        guard let input, let document = session.snapshot else { completionHandler(nil); return }
-        let token = generation, previous = session.preserved, preset = session.preset, isBakedBase = session.isBakedBase
-        finish.finish(preparing: { [weak session] value in session?.finishing = value },
-                      failed: { [weak session] error in session?.error = error.localizedDescription }, operation: { [self] in
-            var recipe = document.0; recipe.filter = preset
-            let jpeg = try await NativeRenderQueue.shared.export(recipe, sources: document.1, type: .jpeg)
+        guard active else { return }
+        generation = UUID(); finish.cancel(); pendingWrite?.cancel(); pendingWrite = nil
+        guard let input else { completionHandler(nil); return }
+        // Commit active native text editing before taking the frozen snapshot.
+        guard view.window?.makeFirstResponder(nil) != false else { completionHandler(nil); return }
+        let snapshot: MacPhotoSnapshot
+        switch session.prepareHostFinish() {
+        case .noChange:
+            // Apple's explicit no-change contract preserves the adjustment bytes,
+            // current raster, and original PhotoKit resources without any rewrite.
+            completionHandler(PHContentEditingOutput(contentEditingInput: input)); return
+        case .unavailable:
+            completionHandler(nil); return
+        case .render(let prepared):
+            snapshot = prepared
+        }
+        let token = generation
+        finish.finish(preparing: { [weak session] in session?.finishing = $0 }, failed: { [weak session] in session?.report($0) }, operation: { [weak self] in
+            let adjustmentBytes = try snapshot.adjustment.encode()
+            let jpeg = try await MacPhotoRenderQueue.shared.export(snapshot.adjustment, source: snapshot.source, bytes: snapshot.bytes)
             try Task.checkCancellation()
-            guard generation == token, self.input === input else { throw CancellationError() }
+            guard let self, active, generation == token, self.input === input else { throw CancellationError() }
             let output = PHContentEditingOutput(contentEditingInput: input)
-            output.adjustmentData = PHAdjustmentData(formatIdentifier: LegacyFilterAdjustment.identifier,
-                formatVersion: LegacyFilterAdjustment.outputVersion(isBakedBase: isBakedBase),
-                data: try LegacyFilterAdjustment.encode(preset, preserving: previous, isBakedBase: isBakedBase))
-            try jpeg.write(to: output.renderedContentURL, options: .atomic)
-            guard try Data(contentsOf: output.renderedContentURL) == jpeg else { throw RenderError.exportFailed }
-            try Task.checkCancellation()
-            guard generation == token, self.input === input else { throw CancellationError() }
-            return output
-        }, completion: completionHandler)
-    }
-    var shouldShowCancelConfirmation: Bool { true }
-    func cancelContentEditing() { generation = UUID(); finish.cancel(); session.cancel(); input = nil }
-}
-
-@MainActor final class MacPhotoSession: ObservableObject {
-    @Published var preset = FilterPreset.original
-    @Published var preview: CGImage?
-    @Published var error: String?
-    @Published var busy = false
-    @Published var finishing = false
-    @Published var isBakedBase = false
-    private(set) var snapshot: (EditRecipe, [UUID: Data])?
-    private(set) var preserved: LegacyFilterAdjustment.Preserved?
-    private var task: Task<Void, Never>?
-    private var generation = UUID()
-    func cancel() { generation = UUID(); task?.cancel(); task = nil; snapshot = nil; preserved = nil; preview = nil; error = nil; busy = false; finishing = false }
-    func begin(_ input: PHContentEditingInput, previous: LegacyFilterAdjustment.Preserved?) {
-        cancel(); let token = generation; busy = true; preset = .original; isBakedBase = true
-        // With no associated metadata, do not infer a pristine system original or
-        // borrow the last canHandle probe. A native baked-base version is safest.
-        if let previous {
-            if previous.identifier == LegacyFilterAdjustment.identifier, previous.version == LegacyFilterAdjustment.version,
-               let filter = try? LegacyFilterAdjustment.decode(previous.data) { preset = filter; isBakedBase = false }
-            else { preserved = previous; isBakedBase = true }
-        }
-        task = Task {
-            do {
-                guard let url = input.fullSizeImageURL else { throw RenderError.invalidImage }
-                let data = try await NativeImportQueue.shared.read([url])[0].1
-                try Task.checkCancellation()
-                guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-                      (properties[kCGImagePropertyOrientation] as? Int ?? 1) == Int(input.fullSizeImageOrientation) else { throw RenderError.invalidImage }
-                let image = try RasterCodec.metadata(data)
-                var recipe = EditRecipe(); recipe.sources = [image]; recipe.canvasWidth = image.pixelWidth; recipe.canvasHeight = image.pixelHeight
-                guard token == generation else { return }
-                snapshot = (recipe, [image.id: data]); busy = false; render()
-            } catch { if token == generation { busy = false; self.error = error.localizedDescription } }
-        }
-    }
-    func render() {
-        guard !finishing, let snapshot else { return }
-        var recipe = snapshot.0
-        let sources = snapshot.1
-        task?.cancel(); recipe.filter = preset; busy = true; let token = generation
-        task = Task {
-            do {
-                let image = try await NativeRenderQueue.shared.preview(recipe, sources: sources)
-                try Task.checkCancellation(); guard token == generation else { return }
-                preview = image; busy = false
-            } catch is CancellationError { }
-            catch { if token == generation { self.error = error.localizedDescription; busy = false } }
-        }
-    }
-}
-private struct MacPhotoFilterView: View {
-    @ObservedObject var session: MacPhotoSession
-    var body: some View {
-        HStack(spacing: 20) {
-            ZStack {
-                if let preview = session.preview { Image(preview, scale: 1, label: Text("Edited photo preview")).resizable().aspectRatio(contentMode: .fit) }
-                if session.busy || session.finishing { ProgressView() }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity)
-            VStack(alignment: .leading, spacing: 18) {
-                Text("Celluloid").font(.title)
-                Picker("Filter", selection: $session.preset) {
-                    ForEach(FilterPreset.allCases, id: \.rawValue) { filter in
-                        Text(filter == .original && session.isBakedBase ? NSLocalizedString("Starting image", comment: "Photos fallback") : filter.localizedTitle).tag(filter)
+            output.adjustmentData = PHAdjustmentData(formatIdentifier: MacPhotoAdjustment.identifier,
+                formatVersion: MacPhotoAdjustment.version, data: adjustmentBytes)
+            let writer = PhotosOutputWrite(destination: output.renderedContentURL)
+            pendingWrite = writer
+            return try await withTaskCancellationHandler(operation: {
+                try await withCheckedThrowingContinuation { continuation in
+                    writer.start(jpeg: jpeg) { writer, result in
+                        switch result {
+                        case .success: continuation.resume(returning: PreparedPhotoOutput(output: output, writer: writer))
+                        case .failure(let error): writer.cancel(); continuation.resume(throwing: error)
+                        }
                     }
-                }.accessibilityIdentifier("photos-extension.filter")
-                if session.preset == .pixellateFace { Text("Face detection can miss faces. Check the result before sharing.").font(.caption) }
-                if session.isBakedBase { Text("The starting image is preserved as provided by Photos. Previous layers cannot be restored here.").font(.callout) }
-                Text("This native Photos extension currently edits filters. Use the Celluloid document app for stickers, bubbles and collages.").font(.callout)
-                if let error = session.error { Text(error).foregroundStyle(.red) }
-                Spacer()
-            }.frame(width: 260)
-        }.padding(20).frame(minWidth: 640, minHeight: 440)
-            .disabled(session.finishing)
-            .onChange(of: session.preset) { _ in session.render() }
+                }
+            }, onCancel: { writer.cancel() })
+        }, completion: { [weak self] prepared in
+            guard let self, active, generation == token, self.input === input else { prepared?.writer.cancel(); return }
+            guard let prepared else { pendingWrite?.cancel(); pendingWrite = nil; completionHandler(nil); return }
+            guard pendingWrite === prepared.writer, prepared.writer.claimForDelivery() else {
+                prepared.writer.cancel(); pendingWrite = nil; completionHandler(nil); return
+            }
+            pendingWrite = nil
+            completionHandler(prepared.output)
+            prepared.writer.completeDelivery()
+        })
+    }
+    var shouldShowCancelConfirmation: Bool { session.changed }
+    func cancelContentEditing() {
+        active = false; generation = UUID(); finish.cancel(); pendingWrite?.cancel(); pendingWrite = nil
+        session.cancel(); input = nil
     }
 }

@@ -5,21 +5,32 @@ import UIKit
 /// not use the DEBUG authorization overrides and are excluded from the main suite.
 final class CelluloidSystemPermissionTests: XCTestCase {
     private let app = XCUIApplication()
+    private var failClosedMonitor: NSObjectProtocol?
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
+        failClosedMonitor = installFailClosedSystemAlertMonitor()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
     }
-    override func tearDown() { app.terminate(); super.tearDown() }
+    override func tearDown() {
+        app.terminate()
+        if let monitor = failClosedMonitor { removeUIInterruptionMonitor(monitor) }
+        failClosedMonitor = nil
+        super.tearDown()
+    }
     private func openPicker() {
         app.launch()
         XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 10))
         app.buttons["edit-photo"].tap()
     }
     func testRealGrantedAccessCanSelectFixture() {
+        app.resetAuthorizationStatus(for: .photos)
+        let monitor = installExpectedFullPhotosAccessMonitor()
+        defer { removeUIInterruptionMonitor(monitor) }
         openPicker()
         let fixture = app.descendants(matching: .any)["photo-0"]
-        XCTAssertTrue(fixture.waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForFullPhotoAccessPicker(app))
+        assertFullPhotoAccessPicker(app)
         fixture.tap()
         XCTAssertTrue(app.buttons["picker-done"].isEnabled)
         app.buttons["Cancel"].tap()
@@ -41,24 +52,38 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         XCTAssertFalse(app.buttons["picker-done"].isEnabled)
     }
     func testRealLimitedSelectionAndManagement() {
+        let monitor = installExpectedLimitedPhotosAccessMonitor()
+        defer { removeUIInterruptionMonitor(monitor) }
         openPicker()
         let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let limitedNames = ["Select Photos…", "Select Photos...", "Select Photos", "Allow Limited Access", "Limited Access"]
+        let permissionTitle = "Allow “Celluloid” to access your photo library?"
+        let manage = app.buttons["manage-photos"]
         var limited: XCUIElement?
+        var observedPermission: XCUIElement?
         for _ in 0..<10 {
-            limited = limitedNames.flatMap { [app.buttons[$0], system.buttons[$0]] }.first { $0.exists && $0.isHittable }
-            if limited != nil { break }
+            if manage.exists { break } // The narrow monitor may have performed the same explicit limited choice.
+            if let alert = [system.alerts[permissionTitle], app.alerts[permissionTitle]].first(where: { $0.exists }) {
+                let choices = alert.buttons.matching(NSPredicate(format: "label IN %@", limitedNames))
+                if choices.count == 1, choices.element.isEnabled, choices.element.isHittable {
+                    observedPermission = alert; limited = choices.element; break
+                }
+            }
             _ = system.alerts.firstMatch.waitForExistence(timeout: 1)
         }
-        guard let limited = limited else {
+        if let limited = limited {
+            XCTAssertEqual(observedPermission?.label, permissionTitle)
+            XCTAssertTrue(observedPermission?.exists == true)
+            print("DIRECT_LIMITED_PHOTOS_AUTHORIZATION_ACTION " + limited.label)
+            limited.tap()
+        }
+        else if !manage.exists {
             recordLimitedDiagnostics(system: system)
-            XCTFail("The real Photos authorization sheet has no recognized limited-access action")
+            XCTFail("Neither the exact limited-access action nor its required management postcondition appeared")
             return
         }
-        limited.tap()
         // Observed iOS27 selection action grants limited access with zero selected
         // assets and returns to this app. Use its real management entry to choose.
-        let manage = app.buttons["manage-photos"]
         XCTAssertTrue(manage.waitForExistence(timeout: 10))
         if manage.isHittable {
             let message = app.staticTexts["photos-state"]
@@ -69,21 +94,24 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         formatter.locale = Locale(identifier: "en_US")
         formatter.dateFormat = "MMMM dd"
         let today = formatter.string(from: Date())
-        func fixtureCandidates() -> [XCUIElement] {
-            [app, system].flatMap { root in
-                root.images.matching(identifier: "PXGGridLayout-Info").allElementsBoundByIndex
-            }.filter { $0.exists && $0.isHittable && ($0.label.contains(today) || $0.label.contains("Today")) }
-        }
-        let visible = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !fixtureCandidates().isEmpty }, object: nil)
-        _ = XCTWaiter.wait(for: [visible], timeout: 10)
+        // Keep the observed identifier/date selection. Filter on the server once,
+        // instead of querying every photo's exists, hittability and label repeatedly.
+        let fixtureQuery = app.images.matching(NSPredicate(format:
+            "identifier == %@ AND (label CONTAINS %@ OR label CONTAINS %@)",
+            "PXGGridLayout-Info", today, "Today"))
+        func fixtureCandidates() -> [XCUIElement] { fixtureQuery.allElementsBoundByIndex }
+        _ = fixtureQuery.firstMatch.waitForExistence(timeout: 10)
         let cells = fixtureCandidates()
         print("SYSTEM_LIMITED_GRID_CANDIDATES " + cells.map { $0.label }.joined(separator: " | "))
-        print("SYSTEM_LIMITED_PICKER " + String(app.debugDescription.prefix(18000)))
         guard let fixture = cells.last else {
             recordLimitedDiagnostics(system: system)
             XCTFail("Could not verify a synthetic fixture dated today in the real limited picker")
             return
         }
+        let hittable = fixture.isHittable
+        print("SYSTEM_LIMITED_SELECTED_CANDIDATE label=\(fixture.label) frame=\(fixture.frame) hittable=\(hittable)")
+        if !hittable { recordLimitedDiagnostics(system: system) }
+        XCTAssertTrue(hittable, "The observed synthetic fixture must expose a genuine semantic tap point")
         fixture.tap()
         let confirmation = [app.buttons["Update"], app.buttons["Done"], app.buttons["Add"], system.buttons["Done"], system.buttons["Add"]].first { $0.exists && $0.isHittable && $0.isEnabled }
         XCTAssertNotNil(confirmation)
@@ -94,8 +122,7 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         app.descendants(matching: .any)["photo-0"].tap()
         XCTAssertTrue(app.buttons["picker-done"].isEnabled)
         app.buttons["manage-photos"].tap()
-        let managementGrid = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !fixtureCandidates().isEmpty }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [managementGrid], timeout: 10), .completed)
+        XCTAssertTrue(fixtureQuery.firstMatch.waitForExistence(timeout: 10))
         let selected = fixtureCandidates().filter { $0.isSelected || (($0.value as? String)?.localizedCaseInsensitiveContains("selected") ?? false) }
         guard selected.count == 1 else {
             recordLimitedDiagnostics(system: system)

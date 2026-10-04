@@ -8,7 +8,7 @@ class ReleaseCheckerTests(unittest.TestCase):
         app=folder/'CelluloidWatch.app';app.mkdir()
         info={'CFBundleIdentifier':'Mango.Celluloid.watchkitapp','CFBundleExecutable':'CelluloidWatch',
               'DTPlatformName':'watchos','DTSDKName':'watchos27.0','MinimumOSVersion':'9.0',
-              'CFBundleShortVersionString':'2.0','CFBundleVersion':'2','WKApplication':True,'WKCompanionAppBundleIdentifier':'Mango.Celluloid'}
+              'CFBundleShortVersionString':'1.1','CFBundleVersion':'2','WKApplication':True,'WKCompanionAppBundleIdentifier':'Mango.Celluloid'}
         if icon:info['CFBundleIconName']='AppIcon'
         if platform=='tv':
             info.update(CFBundleIdentifier='Mango.Celluloid',CFBundleExecutable='CelluloidTV',DTPlatformName='appletvos',DTSDKName='appletvos27.0',MinimumOSVersion='17.0')

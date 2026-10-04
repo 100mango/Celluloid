@@ -21,6 +21,10 @@ open class BubbleLabel: UILabel {
         self.numberOfLines = 0
         self.lineBreakMode = .byCharWrapping
         self.text = model.content
+        // This is the visual text inside image artwork. BubbleView exposes one
+        // editable image element with this caption as its accessibility value.
+        self.isAccessibilityElement = false
+        self.accessibilityIdentifier = "bubble-artwork-text"
         // Bubble artwork is intentionally light in both appearances. Persisted edits
         // must not acquire white text merely because the host uses Dark Mode.
         self.textColor = .black
@@ -58,7 +62,9 @@ private extension UILabel {
         let constrainSize = CGSize(width: self.width, height: CGFloat.greatestFiniteMagnitude)
         var textSize: CGSize
         repeat {
-            self.font = UIFont(name: self.font.fontName, size: maxFontSize)
+            // Preserve the system font descriptor. Recreating private .SFUI names
+            // is unsupported and iOS27 falls back to Times New Roman.
+            self.font = self.font.withSize(maxFontSize)
             textSize = self.sizeThatFits(constrainSize)
             maxFontSize -= 1
         } while maxFontSize > minFontSize && textSize.height >= self.height

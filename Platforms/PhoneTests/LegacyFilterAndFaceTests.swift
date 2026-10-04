@@ -6,7 +6,12 @@ import ImageIO
 import UniformTypeIdentifiers
 import CelluloidDomain
 import CelluloidRendering
+#if CELLULOID_SHIPPING_COMPANION
+@testable import Celluloid
+import CelluloidKit
+#else
 @testable import CelluloidPhoneCompanion
+#endif
 
 /// Uses the original, unmodified UIKit Filters and AdjustmentData source in this validation host.
 final class LegacyFilterAndFaceTests: XCTestCase {

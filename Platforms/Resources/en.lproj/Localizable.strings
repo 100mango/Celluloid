@@ -169,3 +169,13 @@
 "Off" = "Off";
 
 "Redo" = "Redo";
+
+/* Native Photos extension */
+"Current photo from Photos" = "Current photo from Photos";
+"Preparing photo" = "Preparing photo";
+"Photo editing controls" = "Photo editing controls";
+"Celluloid photo editor" = "Celluloid photo editor";
+"These edits cannot be safely restored here. You can view the current photo. Done and Cancel leave its existing edits and original unchanged." = "These edits cannot be safely restored here. You can view the current photo. Done and Cancel leave its existing edits and original unchanged.";
+"Use Done in Photos to save and reopen these editable filters, stickers and bubbles." = "Use Done in Photos to save and reopen these editable filters, stickers and bubbles.";
+"Make Smaller" = "Make Smaller";
+"Make Larger" = "Make Larger";

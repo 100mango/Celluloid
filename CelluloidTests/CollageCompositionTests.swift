@@ -28,12 +28,16 @@ final class CollageCompositionTests: XCTestCase {
         for (index, model) in models.enumerated() {
             let source = try XCTUnwrap(model.loadedImage)
             let cg = try XCTUnwrap(source.cgImage)
+            let hash = SHA256.hash(data: try XCTUnwrap(source.pngData())).map { String(format: "%02x", $0) }.joined()
+            let pixelHash = try rgbaHash(cg)
+            let resources = PHAssetResource.assetResources(for: model.asset)
+            let adjusted = resources.contains { $0.type == .adjustmentData }
+            hashes.append(hash)
+            print("COLLAGE_INITIAL_SOURCE role=\(index) asset=\(model.asset.localIdentifier) files=\(resources.map { $0.originalFilename }) pixels=\(cg.width)x\(cg.height) current_rgba_sha256=\(pixelHash) loaded_png_sha256=\(hash) has_adjustment=\(adjusted)")
+            XCTAssertFalse(adjusted, "Pristine composition checks must run before any UI phase edits these fixtures")
             assertColor(pixel(source, x: cg.width / 2, y: cg.height / 2), palette[index])
             assertColor(pixel(source, x: 5, y: 5), [255, 255, 255])
             assertColor(pixel(source, x: cg.width - 5, y: cg.height - 5), [0, 0, 0])
-            let hash = SHA256.hash(data: try XCTUnwrap(source.pngData())).map { String(format: "%02x", $0) }.joined()
-            hashes.append(hash)
-            print("COLLAGE_SOURCE role=\(index) asset=\(model.asset.localIdentifier) pixels=\(cg.width)x\(cg.height) loaded_png_sha256=\(hash)")
         }
         XCTAssertEqual(Set(hashes).count, 4)
         let collage = CollageView(frame: CGRect(x: 0, y: 0, width: 800, height: 800))
@@ -58,8 +62,21 @@ final class CollageCompositionTests: XCTestCase {
                 let left = Int(CGFloat(position) * 800 / CGFloat(count))
                 assertColor(pixel(result, x: left + 10, y: 10), [255, 255, 255])
             }
-            print("COLLAGE_RENDER_PASS count=\(count) source_roles=\(order) asset_ids=\(order.map { assets[$0].localIdentifier })")
+            print("COLLAGE_RENDER_CHECK count=\(count) source_roles=\(order) asset_ids=\(order.map { assets[$0].localIdentifier })")
         }
+    }
+
+    private func rgbaHash(_ image: CGImage) throws -> String {
+        var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let rendered = bytes.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: image.width, height: image.height,
+                bitsPerComponent: 8, bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: CGFloat(image.width), height: CGFloat(image.height)))
+            return true
+        }
+        XCTAssertTrue(rendered)
+        return SHA256.hash(data: Data(bytes)).map { String(format: "%02x", $0) }.joined()
     }
 
     private func assertColor(_ actual: [UInt8], _ expected: [Int], file: StaticString = #filePath, line: UInt = #line) {

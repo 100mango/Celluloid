@@ -1,13 +1,28 @@
 import XCTest
 import UIKit
+import Photos
 import CelluloidDomain
 import CelluloidRendering
+#if CELLULOID_SHIPPING_COMPANION
+@testable import Celluloid
+import CelluloidKit
+#else
 @testable import CelluloidPhoneCompanion
+#endif
 
 final class PhoneCompanionTests: XCTestCase {
     @MainActor func testNativePhoneCompanionHost() {
         XCTAssertEqual(Bundle.main.infoDictionary?["DTPlatformName"] as? String, "iphonesimulator")
+        #if CELLULOID_SHIPPING_COMPANION
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleExecutable") as? String, "Celluloid")
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String, "1.1")
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String, "2")
+        XCTAssertTrue(UIApplication.shared.windows.contains { $0.rootViewController != nil })
+        XCTAssertEqual(PHPhotoLibrary.authorizationStatus(for: .readWrite), .authorized,
+                       "Shipping companion fixtures require the actual synthetic full-access prerequisite; permission UI is tested separately")
+        #else
         XCTAssertFalse(UIApplication.shared.connectedScenes.isEmpty)
+        #endif
     }
     func testProductionProcessorFullRenderPreviewPersistenceAndIdempotency() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

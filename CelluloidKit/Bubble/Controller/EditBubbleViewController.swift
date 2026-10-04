@@ -31,6 +31,7 @@ open class EditBubbleViewController: UIViewController {
         textView.font = .preferredFont(forTextStyle: .body)
         textView.adjustsFontForContentSizeCategory = true
         textView.accessibilityIdentifier = "bubble-text"
+        textView.accessibilityLabel = NSLocalizedString("Bubble Text", bundle: extensionBundle, comment: "Editable bubble caption")
         return textView
     }()
     
@@ -59,16 +60,41 @@ open class EditBubbleViewController: UIViewController {
         self.view.addSubview(self.textView)
         self.textView.snp.makeConstraints { (make) -> Void in
             make.top.equalTo(self.view.safeAreaLayoutGuide.snp.top).offset(10)
-            make.left.right.equalTo(view.safeAreaLayoutGuide).inset(10)
+            make.centerX.equalTo(view.safeAreaLayoutGuide)
+            make.width.lessThanOrEqualTo(720)
+            make.width.equalTo(view.safeAreaLayoutGuide.snp.width).offset(-20).priority(999)
             make.bottom.equalTo(view.keyboardLayoutGuide.snp.top).offset(-10)
         }
         
         self.navigationItem.rightBarButtonItem = self.rightBarButtonItem
     }
+
+    open override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Include the navigation Done control in the modal focus boundary.
+        // Marking only the content view would hide its sibling navigation bar.
+        if let navigation = navigationController, navigation.presentingViewController != nil {
+            navigation.view.accessibilityViewIsModal = true
+            if navigation.viewControllers.first === self {
+                // Full-screen presentation retains the old sheet's ability to
+                // discard an unfinished edit without changing the bubble model.
+                let cancel = UIBarButtonItem(title: tr(.cancel), style: .plain, target: self, action: #selector(cancelEditing))
+                cancel.accessibilityIdentifier = "bubble-text-cancel"
+                navigationItem.leftBarButtonItem = cancel
+            }
+        } else if presentingViewController != nil {
+            view.accessibilityViewIsModal = true
+        }
+    }
+
 }
 
 //MARK: Action
 private extension EditBubbleViewController {
+    @objc func cancelEditing() {
+        dismiss(animated: true, completion: nil)
+    }
+
     @objc func done(){
         self.bubbleModel.content = self.textView.text
         self.delegate?.editBubbleViewController(self, didEditedBubbleModel: self.bubbleModel)

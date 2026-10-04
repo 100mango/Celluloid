@@ -76,6 +76,13 @@
 			"sourceTree" = "BUILT_PRODUCTS_DIR";
 			"includeInIndex" = "0";
 		};
+		"934224C512460BA7D504A5F4" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.cfbundle";
+			"path" = "CelluloidMacPhotosExtensionTests.xctest";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+			"includeInIndex" = "0";
+		};
 		"34AB49646332B92390FFEDDB" = {
 			"isa" = "PBXFileReference";
 			"explicitFileType" = "wrapper.app-extension";
@@ -268,13 +275,14 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "watchos";
 				"SUPPORTED_PLATFORMS" = "watchos watchsimulator";
 				"WATCHOS_DEPLOYMENT_TARGET" = "9.0";
 				"TARGETED_DEVICE_FAMILY" = "4";
+				"SKIP_INSTALL" = "YES";
 				"ASSETCATALOG_COMPILER_APPICON_NAME" = "AppIcon";
 				"INFOPLIST_FILE" = "Platforms/watchOS/Info.plist";
 				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
@@ -295,13 +303,14 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "watchos";
 				"SUPPORTED_PLATFORMS" = "watchos watchsimulator";
 				"WATCHOS_DEPLOYMENT_TARGET" = "9.0";
 				"TARGETED_DEVICE_FAMILY" = "4";
+				"SKIP_INSTALL" = "YES";
 				"ASSETCATALOG_COMPILER_APPICON_NAME" = "AppIcon";
 				"INFOPLIST_FILE" = "Platforms/watchOS/Info.plist";
 				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
@@ -386,7 +395,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "watchos";
@@ -414,7 +423,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "watchos";
@@ -506,7 +515,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "watchos";
@@ -533,7 +542,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "watchos";
@@ -645,6 +654,16 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "7570ABF541FDE4AFB8B600C8";
 		};
+		"BD9DAEE1CC34616D19756E7E" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/Companion/PhoneCompanionEntryController.swift";
+			"sourceTree" = "<group>";
+		};
+		"F138AB8669918F721E712900" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "BD9DAEE1CC34616D19756E7E";
+		};
 		"E4B8FA295C523DE370E8BB3D" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -716,7 +735,7 @@
 		"409EB3671A3E2C96A4AE7631" = {
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
-			"files" = ("5C219E866348C59233AAA242", "66EEC755400AF050B728858C", "954DAC23FFA6B72E135CA474", "F6F055C9E79082F8556AF484", "12E4C94DFAF28F48B14D95CA", "DF503BFFDEF8238B00BD9FAF", "8BD62309C75DB82F87BDF690", "769E5698CD81891452A847B7", "BF7156226A0011FB6D413CB8", "1621412255A11909949C3039", "06245958358031D5E1343B73", "C25D9F38C42136B4C7793378");
+			"files" = ("5C219E866348C59233AAA242", "66EEC755400AF050B728858C", "954DAC23FFA6B72E135CA474", "F6F055C9E79082F8556AF484", "12E4C94DFAF28F48B14D95CA", "DF503BFFDEF8238B00BD9FAF", "8BD62309C75DB82F87BDF690", "F138AB8669918F721E712900", "769E5698CD81891452A847B7", "BF7156226A0011FB6D413CB8", "1621412255A11909949C3039", "06245958358031D5E1343B73", "C25D9F38C42136B4C7793378");
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
 		"18658D02F334D4F548FFAD75" = {
@@ -743,7 +762,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "iphoneos";
@@ -770,7 +789,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "iphoneos";
@@ -890,7 +909,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "iphoneos";
@@ -918,7 +937,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "iphoneos";
@@ -1019,7 +1038,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "iphoneos";
@@ -1046,7 +1065,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "iphoneos";
@@ -1210,7 +1229,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "appletvos";
@@ -1237,7 +1256,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "appletvos";
@@ -1337,7 +1356,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "appletvos";
@@ -1365,7 +1384,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "appletvos";
@@ -1466,7 +1485,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "appletvos";
@@ -1493,7 +1512,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "appletvos";
@@ -1523,6 +1542,299 @@
 			"dependencies" = ("B4FA50CE4AAF727D7BB8CF4D");
 			"packageProductDependencies" = ("4FE4645F2FE14751BC21EAB1", "DE7A219456D3AF116CC0F01F");
 		};
+		"C9773051686560FF9764C976" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text";
+			"path" = "Packages/CelluloidCore/Tests/CelluloidDomainTests/Fixtures/legacy-points.base64";
+			"sourceTree" = "<group>";
+		};
+		"D2A703FD8C94291A46F6DB52" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "C9773051686560FF9764C976";
+		};
+		"9BE598F17341332F74964153" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text";
+			"path" = "Packages/CelluloidCore/Tests/CelluloidDomainTests/Fixtures/legacy-points.json";
+			"sourceTree" = "<group>";
+		};
+		"04C460AA35DEB449CD1EB9B3" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "9BE598F17341332F74964153";
+		};
+		"D2E3C544CDC4C4B6F87B2F3B" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text";
+			"path" = "Packages/CelluloidCore/Tests/CelluloidDomainTests/Fixtures/reference-canvas.base64";
+			"sourceTree" = "<group>";
+		};
+		"8CA3BFDCC46219B4E5A9B6F2" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "D2E3C544CDC4C4B6F87B2F3B";
+		};
+		"9B063F6129AFEC39D2D2ACBF" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text";
+			"path" = "Packages/CelluloidCore/Tests/CelluloidDomainTests/Fixtures/reference-canvas.json";
+			"sourceTree" = "<group>";
+		};
+		"08B26816EA124D160FD99F62" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "9B063F6129AFEC39D2D2ACBF";
+		};
+		"943D73D92302425961A46426" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidPhotoExtension/PhotosOutputWrite.swift";
+			"sourceTree" = "<group>";
+		};
+		"F9FFE476388F3C38367B2CBC" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "943D73D92302425961A46426";
+		};
+		"C0F1EB7FBC359FA6432E8907" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidTests/PhotosOutputWriteTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"3B74C411DEA268E49016935A" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "C0F1EB7FBC359FA6432E8907";
+		};
+		"3AE89F0093F0E106A149D681" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"4B67153D3873BF315F54FEF4" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "3AE89F0093F0E106A149D681";
+		};
+		"2021BAA5C97C44CC414FFD9C" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/MacExtensionTests/MacPhotoHostLifecycleTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"9ADA3AE1134A118270353868" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "2021BAA5C97C44CC414FFD9C";
+		};
+		"5F0636E6C6733030B543EF1F" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/MacExtensionTests/MacPhotoRendererTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"63FFFC52DBD64D23739D7405" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "5F0636E6C6733030B543EF1F";
+		};
+		"300C3E3761E3091D00E2C3C9" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/MacExtensionTests/MacPhotoSessionTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"FCA638ACCA5CFAA5E3FBACBC" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "300C3E3761E3091D00E2C3C9";
+		};
+		"E13835FF6F860A539DFDDDFB" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/Shared/NativeFileAccess.swift";
+			"sourceTree" = "<group>";
+		};
+		"6177C55CBC7E65C17EB28025" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E13835FF6F860A539DFDDDFB";
+		};
+		"24AC0CE954F1239A15B19B28" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/macOS/NativeChoicePicker.swift";
+			"sourceTree" = "<group>";
+		};
+		"5DAD672CC8A4E891FFA360B9" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "24AC0CE954F1239A15B19B28";
+		};
+		"A2DB7CC001F342989EFDF3C9" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/macOS/PhotosHostFinishCoordinator.swift";
+			"sourceTree" = "<group>";
+		};
+		"AEF4D09EB61209EF32467F13" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A2DB7CC001F342989EFDF3C9";
+		};
+		"B208045350986A9C12951F20" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/macOSExtension/MacPhotoAdjustment.swift";
+			"sourceTree" = "<group>";
+		};
+		"C5073BB965A440EBA873C649" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "B208045350986A9C12951F20";
+		};
+		"8CC6D15C2CD770DD2B66F65D" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/macOSExtension/MacPhotoEditingController.swift";
+			"sourceTree" = "<group>";
+		};
+		"D76A80CA104584E35E254590" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "8CC6D15C2CD770DD2B66F65D";
+		};
+		"899F6DF5A042561E7FA71BE1" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/macOSExtension/MacPhotoEditorView.swift";
+			"sourceTree" = "<group>";
+		};
+		"EC8B1BDE57E5A84DA023F0D4" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "899F6DF5A042561E7FA71BE1";
+		};
+		"7CEA1F5EB90C077C26A751F1" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/macOSExtension/MacPhotoRenderer.swift";
+			"sourceTree" = "<group>";
+		};
+		"BD5A04CEA800F1A9D5CA722F" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7CEA1F5EB90C077C26A751F1";
+		};
+		"80DF6CB981A1F04319CA83ED" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/macOSExtension/MacPhotoSession.swift";
+			"sourceTree" = "<group>";
+		};
+		"76E8A3DB1F547A4392C822DE" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "80DF6CB981A1F04319CA83ED";
+		};
+		"9BC5CFD6BE9B56AFF9D06AEE" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "1956D5CADB6B83076877198D";
+			"productName" = "CelluloidDomain";
+		};
+		"7C441B904FDD037FA82944C7" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "9BC5CFD6BE9B56AFF9D06AEE";
+		};
+		"B77B309FC295B5C392F63622" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "6B70AD80DCFEDAB4F8B18304";
+			"productName" = "CelluloidRendering";
+		};
+		"FF2497323F7A17D104F65335" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "B77B309FC295B5C392F63622";
+		};
+		"C1195AD9EE42E3127CF2EEA2" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "87F32FC03770D1E2B6D2558C";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "DF86D0D9A7064F8559E2F43C";
+			"remoteInfo" = "CelluloidMacPhotosExtension";
+		};
+		"695075FE328EC7805447F6D2" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "DF86D0D9A7064F8559E2F43C";
+			"targetProxy" = "C1195AD9EE42E3127CF2EEA2";
+		};
+		"62C816DB168936C3A5B95DFB" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("F9FFE476388F3C38367B2CBC", "3B74C411DEA268E49016935A", "4B67153D3873BF315F54FEF4", "9ADA3AE1134A118270353868", "63FFFC52DBD64D23739D7405", "FCA638ACCA5CFAA5E3FBACBC", "6177C55CBC7E65C17EB28025", "5DAD672CC8A4E891FFA360B9", "AEF4D09EB61209EF32467F13", "C5073BB965A440EBA873C649", "D76A80CA104584E35E254590", "EC8B1BDE57E5A84DA023F0D4", "BD5A04CEA800F1A9D5CA722F", "76E8A3DB1F547A4392C822DE");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"4956CF188F452724A7616D3C" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("7C441B904FDD037FA82944C7", "FF2497323F7A17D104F65335");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"5DE76539D1070346B8A6F6A7" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("D2A703FD8C94291A46F6DB52", "04C460AA35DEB449CD1EB9B3", "8CA3BFDCC46219B4E5A9B6F2", "08B26816EA124D160FD99F62");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"DB7DBEF496B197A6920E48F6" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Debug";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.CelluloidMacPhotosExtensionTests";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"CODE_SIGNING_ALLOWED" = "NO";
+				"CODE_SIGNING_REQUIRED" = "NO";
+				"CODE_SIGN_IDENTITY" = "";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"MARKETING_VERSION" = "1.1";
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
+				"SDKROOT" = "macosx";
+				"SUPPORTED_PLATFORMS" = "macosx";
+				"MACOSX_DEPLOYMENT_TARGET" = "13.0";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"ENABLE_TESTABILITY" = "YES";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"ONLY_ACTIVE_ARCH" = "YES";
+			};
+		};
+		"4BABCF467ADE6CC9C5815630" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Release";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.CelluloidMacPhotosExtensionTests";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"CODE_SIGNING_ALLOWED" = "NO";
+				"CODE_SIGNING_REQUIRED" = "NO";
+				"CODE_SIGN_IDENTITY" = "";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"MARKETING_VERSION" = "1.1";
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
+				"SDKROOT" = "macosx";
+				"SUPPORTED_PLATFORMS" = "macosx";
+				"MACOSX_DEPLOYMENT_TARGET" = "13.0";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+			};
+		};
+		"19BBC7C7C4B3B3AE16FF54F5" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("DB7DBEF496B197A6920E48F6", "4BABCF467ADE6CC9C5815630");
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"8EF1CE50F4AF40981F4A933D" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "CelluloidMacPhotosExtensionTests";
+			"productName" = "CelluloidMacPhotosExtensionTests";
+			"productReference" = "934224C512460BA7D504A5F4";
+			"productType" = "com.apple.product-type.bundle.unit-test";
+			"buildConfigurationList" = "19BBC7C7C4B3B3AE16FF54F5";
+			"buildPhases" = ("62C816DB168936C3A5B95DFB", "4956CF188F452724A7616D3C", "5DE76539D1070346B8A6F6A7");
+			"buildRules" = ();
+			"dependencies" = ("695075FE328EC7805447F6D2");
+			"packageProductDependencies" = ("9BC5CFD6BE9B56AFF9D06AEE", "B77B309FC295B5C392F63622");
+		};
 		"861987938BCF18A03E447C90" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "CF9728FDF59D3B41358595B6";
@@ -1535,45 +1847,41 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "42B143D6CDAA563A53B451C4";
 		};
-		"E13835FF6F860A539DFDDDFB" = {
-			"isa" = "PBXFileReference";
-			"lastKnownFileType" = "sourcecode.swift";
-			"path" = "Platforms/Shared/NativeFileAccess.swift";
-			"sourceTree" = "<group>";
+		"13D98FEEA0A17B45D4B5B899" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "943D73D92302425961A46426";
 		};
 		"AA3B7D1DE169809982E65522" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "E13835FF6F860A539DFDDDFB";
 		};
-		"47E912F50AFC01806D708C4E" = {
-			"isa" = "PBXFileReference";
-			"lastKnownFileType" = "sourcecode.swift";
-			"path" = "Platforms/macOS/LegacyFilterAdjustment.swift";
-			"sourceTree" = "<group>";
-		};
-		"C714C903A4CCCB323B866485" = {
+		"C4ACBBA5D29E28F7111CF3B5" = {
 			"isa" = "PBXBuildFile";
-			"fileRef" = "47E912F50AFC01806D708C4E";
-		};
-		"A2DB7CC001F342989EFDF3C9" = {
-			"isa" = "PBXFileReference";
-			"lastKnownFileType" = "sourcecode.swift";
-			"path" = "Platforms/macOS/PhotosHostFinishCoordinator.swift";
-			"sourceTree" = "<group>";
+			"fileRef" = "24AC0CE954F1239A15B19B28";
 		};
 		"7FFBA8B8E4BCB68F486EE3D3" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "A2DB7CC001F342989EFDF3C9";
 		};
-		"8CC6D15C2CD770DD2B66F65D" = {
-			"isa" = "PBXFileReference";
-			"lastKnownFileType" = "sourcecode.swift";
-			"path" = "Platforms/macOSExtension/MacPhotoEditingController.swift";
-			"sourceTree" = "<group>";
+		"03ABC1A4AF239ABBBDCDB25D" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "B208045350986A9C12951F20";
 		};
 		"F47D30725DCD7FEB59B10519" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "8CC6D15C2CD770DD2B66F65D";
+		};
+		"5A2AA7AA3EEA1FC1CF2C9FBE" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "899F6DF5A042561E7FA71BE1";
+		};
+		"697BAC0D9D4C680924A7EBE3" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7CEA1F5EB90C077C26A751F1";
+		};
+		"325F20F995F67B64C4389D83" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "80DF6CB981A1F04319CA83ED";
 		};
 		"825E76B812673233ED438FBD" = {
 			"isa" = "XCSwiftPackageProductDependency";
@@ -1596,7 +1904,7 @@
 		"CD3F3716AFB6D852BF4A958B" = {
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
-			"files" = ("AA3B7D1DE169809982E65522", "C714C903A4CCCB323B866485", "7FFBA8B8E4BCB68F486EE3D3", "F47D30725DCD7FEB59B10519");
+			"files" = ("13D98FEEA0A17B45D4B5B899", "AA3B7D1DE169809982E65522", "C4ACBBA5D29E28F7111CF3B5", "7FFBA8B8E4BCB68F486EE3D3", "03ABC1A4AF239ABBBDCDB25D", "F47D30725DCD7FEB59B10519", "5A2AA7AA3EEA1FC1CF2C9FBE", "697BAC0D9D4C680924A7EBE3", "325F20F995F67B64C4389D83");
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
 		"1AA16C45E773949DDEFB9DEF" = {
@@ -1623,7 +1931,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "macosx";
@@ -1653,7 +1961,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "macosx";
@@ -1812,6 +2120,12 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "15ECB0C351A51871CB00A8D3";
 		};
+		"47E912F50AFC01806D708C4E" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Platforms/macOS/LegacyFilterAdjustment.swift";
+			"sourceTree" = "<group>";
+		};
 		"4F6F332BE5244A05863A53FB" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "47E912F50AFC01806D708C4E";
@@ -1825,12 +2139,6 @@
 		"E2DA7DD7AF630376EA403658" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "79A8AFA28DCA3B2F3D013F82";
-		};
-		"24AC0CE954F1239A15B19B28" = {
-			"isa" = "PBXFileReference";
-			"lastKnownFileType" = "sourcecode.swift";
-			"path" = "Platforms/macOS/NativeChoicePicker.swift";
-			"sourceTree" = "<group>";
 		};
 		"72E7493D4A69A82BA209BB4B" = {
 			"isa" = "PBXBuildFile";
@@ -1878,6 +2186,18 @@
 			"isa" = "PBXBuildFile";
 			"productRef" = "BF7FC0A44D99C9E7965706D5";
 		};
+		"CB60DB2EEB6CB278186AFA7B" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "87F32FC03770D1E2B6D2558C";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "DF86D0D9A7064F8559E2F43C";
+			"remoteInfo" = "CelluloidMacPhotosExtension";
+		};
+		"298DCA1E5B94B02A174E5E3A" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "DF86D0D9A7064F8559E2F43C";
+			"targetProxy" = "CB60DB2EEB6CB278186AFA7B";
+		};
 		"FCBEF293623C00A0F831AC3D" = {
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
@@ -1896,6 +2216,22 @@
 			"files" = ("492E5EE31E7A61E8627BA7F4", "C9CC31206280D216AB174703", "13FAD0D37F90163154739015", "88F80F4777C3FBFD1903989A");
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
+		"DFF5A583FB84D09FF32576CE" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "34AB49646332B92390FFEDDB";
+			"settings" = {
+				"ATTRIBUTES" = ("RemoveHeadersOnCopy");
+			};
+		};
+		"452BB10EBAEA3BD9D3493267" = {
+			"isa" = "PBXCopyFilesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"dstPath" = "";
+			"dstSubfolderSpec" = "13";
+			"files" = ("DFF5A583FB84D09FF32576CE");
+			"name" = "Embed Photos Extension";
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
 		"00BDB47A67344E17EC508B63" = {
 			"isa" = "XCBuildConfiguration";
 			"name" = "Debug";
@@ -1908,7 +2244,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "macosx";
@@ -1938,7 +2274,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "macosx";
@@ -1966,9 +2302,9 @@
 			"productReference" = "2355AC81A5EA82D139D94882";
 			"productType" = "com.apple.product-type.application";
 			"buildConfigurationList" = "447A323DD27737BCF968783A";
-			"buildPhases" = ("FCBEF293623C00A0F831AC3D", "17FFDEE2B7A439489FEFCE10", "B48FC1C5D41A4DCCBE59FE23");
+			"buildPhases" = ("FCBEF293623C00A0F831AC3D", "17FFDEE2B7A439489FEFCE10", "B48FC1C5D41A4DCCBE59FE23", "452BB10EBAEA3BD9D3493267");
 			"buildRules" = ();
-			"dependencies" = ();
+			"dependencies" = ("298DCA1E5B94B02A174E5E3A");
 			"packageProductDependencies" = ("4A0A7B794080F5F4DC92EB00", "BF7FC0A44D99C9E7965706D5");
 		};
 		"B3885BC80A5950C46F3538AB" = {
@@ -2091,7 +2427,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "xros";
@@ -2118,7 +2454,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "xros";
@@ -2218,7 +2554,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "xros";
@@ -2246,7 +2582,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "xros";
@@ -2347,7 +2683,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "xros";
@@ -2374,7 +2710,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "xros";
@@ -2474,7 +2810,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "macosx";
@@ -2500,7 +2836,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "macosx";
@@ -2669,7 +3005,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "macosx";
@@ -2696,7 +3032,7 @@
 				"CODE_SIGNING_REQUIRED" = "NO";
 				"CODE_SIGN_IDENTITY" = "";
 				"CURRENT_PROJECT_VERSION" = "2";
-				"MARKETING_VERSION" = "2.0";
+				"MARKETING_VERSION" = "1.1";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../Frameworks");
 				"SDKROOT" = "macosx";
@@ -2729,12 +3065,12 @@
 		"C275A667CEA49A4BEB9C5D81" = {
 			"isa" = "PBXGroup";
 			"name" = "Products";
-			"children" = ("2C58FC7089157792FC2EAF9E", "6C93B0419B5D25733AD9C7B1", "C9325B47DCD6D6CC1EAD1797", "860A68F065A2AA92B5948277", "862168288C2DD8C64CDC1848", "7CBB17D04FE08BA9D0259D65", "5CCD50722BDB2F8B77EC37DD", "AD2B7A8EEC352046F5432936", "4D089C507CDF610D0B56C29B", "34AB49646332B92390FFEDDB", "2355AC81A5EA82D139D94882", "33517A0555587B8A7314175F", "93506CEDBD2ED7AC44CA04EF", "8FD803587693323ECCFEE395", "4CDDF93E27FBA5DA5508EBC2", "67A226CA56047A1191144BEF");
+			"children" = ("2C58FC7089157792FC2EAF9E", "6C93B0419B5D25733AD9C7B1", "C9325B47DCD6D6CC1EAD1797", "860A68F065A2AA92B5948277", "862168288C2DD8C64CDC1848", "7CBB17D04FE08BA9D0259D65", "5CCD50722BDB2F8B77EC37DD", "AD2B7A8EEC352046F5432936", "4D089C507CDF610D0B56C29B", "934224C512460BA7D504A5F4", "34AB49646332B92390FFEDDB", "2355AC81A5EA82D139D94882", "33517A0555587B8A7314175F", "93506CEDBD2ED7AC44CA04EF", "8FD803587693323ECCFEE395", "4CDDF93E27FBA5DA5508EBC2", "67A226CA56047A1191144BEF");
 			"sourceTree" = "<group>";
 		};
 		"C3C8853CC2AF9E3CF862AA78" = {
 			"isa" = "PBXGroup";
-			"children" = ("CF9728FDF59D3B41358595B6", "659F58CF1E20A8C9BA70CAA5", "42B143D6CDAA563A53B451C4", "C15628DFB104EE33688A8750", "76058F2AF1F690EC8A4209D5", "C66FB748C9C1EEB5900DCD4A", "AC36AAA270439C984237D532", "A8BCC40C6D9B70BC8A8FD258", "DC3EE743DA3B28C255AD984D", "A3498199788979A9CEBEDEAE", "98BDF6CF1E5CBD4ED0806D54", "FD48A50D7598743F991CA7E2", "4FAB07B1458813AF00B2C4C0", "A8B8F0029DB87422084FFB94", "283401C086737A4FB5A6323C", "7BCEC7270D0EDDF1B237E1B2", "56ED7AFF91814E0739EEE7F7", "7570ABF541FDE4AFB8B600C8", "E4B8FA295C523DE370E8BB3D", "688B7BD23F3BB124C09906B3", "1849F45F745487C4AEA29A72", "01CFAC5519C92C550DD0A671", "16B09F1997ACF8B6F87CB6F1", "6667376FB3B27AA08FB332AF", "6BA2A4EB6EA4D2CD9116E8C4", "B79A9268AD8BFF2B98010699", "1FD699C47A543E36F9F4EFA9", "81378DC39C8762BA6F373B10", "59F56F21D3295E9BBC6B5E5C", "D92FB8CDDBC0D4CCDD4A9384", "27CFBAF1A071B3D78CE34F1C", "B71975C38FA0E10D786813A7", "83132D67BA78C06EB934A65B", "6905B9041FA9C5095C031CDB", "ACFBF0810E14CF3B407F6087", "E13835FF6F860A539DFDDDFB", "47E912F50AFC01806D708C4E", "A2DB7CC001F342989EFDF3C9", "8CC6D15C2CD770DD2B66F65D", "CEC90113D30C18038D38A890", "FD487CF6F9095694E5C931A3", "15E4AE0E4F10C1CCED2C1AE4", "43C3A5C1E3FC9D8DC418B7AD", "777A8CF60D62E93029C8AFE7", "BA1EE020EAA817969B9AF6D0", "15CB0613891975E941DDB140", "AEC2CA0F70E1D93DEE74A07C", "4D53B861CB96DE6DF4DCA745", "EDEEACE576FA2E263E7A5785", "15ECB0C351A51871CB00A8D3", "79A8AFA28DCA3B2F3D013F82", "24AC0CE954F1239A15B19B28", "93A94D72990D33FD9BEDEF3B", "3E687546CEA8F826F2ACF52B", "B3D7A5F3D1E319AD72BE6DEA", "34CD17BD0B21355F501346C8", "ACB4CD484C3942647B95548A", "9E1942CFF9A0FF9F9D2F521F", "BA91D03DE64529F8FED4C192", "99DD9D813FB8A17E64801B21", "529E7A2C7BB9E8BF9781AC03", "8A0098842FEB43E7E61319AC", "276DDD039BAAABAC8C9A74FF", "399C234FAAD22663EAA8B41A", "D0D7EEB49C632C56F7D022C7", "A11A4B2016116F12256EDDAC", "6DADC367C99A5A866B249EFA", "C275A667CEA49A4BEB9C5D81");
+			"children" = ("CF9728FDF59D3B41358595B6", "659F58CF1E20A8C9BA70CAA5", "42B143D6CDAA563A53B451C4", "C15628DFB104EE33688A8750", "76058F2AF1F690EC8A4209D5", "C66FB748C9C1EEB5900DCD4A", "AC36AAA270439C984237D532", "A8BCC40C6D9B70BC8A8FD258", "DC3EE743DA3B28C255AD984D", "A3498199788979A9CEBEDEAE", "98BDF6CF1E5CBD4ED0806D54", "FD48A50D7598743F991CA7E2", "4FAB07B1458813AF00B2C4C0", "A8B8F0029DB87422084FFB94", "283401C086737A4FB5A6323C", "7BCEC7270D0EDDF1B237E1B2", "56ED7AFF91814E0739EEE7F7", "7570ABF541FDE4AFB8B600C8", "BD9DAEE1CC34616D19756E7E", "E4B8FA295C523DE370E8BB3D", "688B7BD23F3BB124C09906B3", "1849F45F745487C4AEA29A72", "01CFAC5519C92C550DD0A671", "16B09F1997ACF8B6F87CB6F1", "6667376FB3B27AA08FB332AF", "6BA2A4EB6EA4D2CD9116E8C4", "B79A9268AD8BFF2B98010699", "1FD699C47A543E36F9F4EFA9", "81378DC39C8762BA6F373B10", "59F56F21D3295E9BBC6B5E5C", "D92FB8CDDBC0D4CCDD4A9384", "27CFBAF1A071B3D78CE34F1C", "B71975C38FA0E10D786813A7", "83132D67BA78C06EB934A65B", "6905B9041FA9C5095C031CDB", "ACFBF0810E14CF3B407F6087", "C9773051686560FF9764C976", "9BE598F17341332F74964153", "D2E3C544CDC4C4B6F87B2F3B", "9B063F6129AFEC39D2D2ACBF", "943D73D92302425961A46426", "C0F1EB7FBC359FA6432E8907", "3AE89F0093F0E106A149D681", "2021BAA5C97C44CC414FFD9C", "5F0636E6C6733030B543EF1F", "300C3E3761E3091D00E2C3C9", "E13835FF6F860A539DFDDDFB", "24AC0CE954F1239A15B19B28", "A2DB7CC001F342989EFDF3C9", "B208045350986A9C12951F20", "8CC6D15C2CD770DD2B66F65D", "899F6DF5A042561E7FA71BE1", "7CEA1F5EB90C077C26A751F1", "80DF6CB981A1F04319CA83ED", "CEC90113D30C18038D38A890", "FD487CF6F9095694E5C931A3", "15E4AE0E4F10C1CCED2C1AE4", "43C3A5C1E3FC9D8DC418B7AD", "777A8CF60D62E93029C8AFE7", "BA1EE020EAA817969B9AF6D0", "15CB0613891975E941DDB140", "AEC2CA0F70E1D93DEE74A07C", "4D53B861CB96DE6DF4DCA745", "EDEEACE576FA2E263E7A5785", "15ECB0C351A51871CB00A8D3", "47E912F50AFC01806D708C4E", "79A8AFA28DCA3B2F3D013F82", "93A94D72990D33FD9BEDEF3B", "3E687546CEA8F826F2ACF52B", "B3D7A5F3D1E319AD72BE6DEA", "34CD17BD0B21355F501346C8", "ACB4CD484C3942647B95548A", "9E1942CFF9A0FF9F9D2F521F", "BA91D03DE64529F8FED4C192", "99DD9D813FB8A17E64801B21", "529E7A2C7BB9E8BF9781AC03", "8A0098842FEB43E7E61319AC", "276DDD039BAAABAC8C9A74FF", "399C234FAAD22663EAA8B41A", "D0D7EEB49C632C56F7D022C7", "A11A4B2016116F12256EDDAC", "6DADC367C99A5A866B249EFA", "C275A667CEA49A4BEB9C5D81");
 			"sourceTree" = "<group>";
 		};
 		"DED267C77AB07A6FF4168D2F" = {
@@ -2815,7 +3151,7 @@
 			"productRefGroup" = "C275A667CEA49A4BEB9C5D81";
 			"projectDirPath" = "";
 			"projectRoot" = "";
-			"targets" = ("3EE3AE5A66673A1F2499647C", "F0B5F9A34C4299382F2D6831", "203E30BA060A7EF0BB2F490D", "48F8D4E2C6E96F72EA043026", "FD3F6E5FDA35BAF60C51DF60", "1C2E305BDC91E50B109DB4C7", "46C9607DBDFA63C943B0D927", "63F7E7833B0908AFFD299A34", "BC6AC756FA295765F52443EB", "DF86D0D9A7064F8559E2F43C", "AC8FC0BF7A55AD36C59A04F7", "9A651FCEC4C2DF0939D398BB", "1786364ED0E2311A5CD33803", "BA647F12D435C4F242F919F2", "BC8C0C44E2BBFED3A9F5383E", "D21117425E7F28CC55766CC2");
+			"targets" = ("3EE3AE5A66673A1F2499647C", "F0B5F9A34C4299382F2D6831", "203E30BA060A7EF0BB2F490D", "48F8D4E2C6E96F72EA043026", "FD3F6E5FDA35BAF60C51DF60", "1C2E305BDC91E50B109DB4C7", "46C9607DBDFA63C943B0D927", "63F7E7833B0908AFFD299A34", "BC6AC756FA295765F52443EB", "8EF1CE50F4AF40981F4A933D", "DF86D0D9A7064F8559E2F43C", "AC8FC0BF7A55AD36C59A04F7", "9A651FCEC4C2DF0939D398BB", "1786364ED0E2311A5CD33803", "BA647F12D435C4F242F919F2", "BC8C0C44E2BBFED3A9F5383E", "D21117425E7F28CC55766CC2");
 			"packageReferences" = ("1956D5CADB6B83076877198D", "6B70AD80DCFEDAB4F8B18304");
 		};
 	};

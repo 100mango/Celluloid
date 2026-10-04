@@ -24,6 +24,7 @@ open class BubbleView: AttachView {
     open var bubbleModel: BubbleModel {
         didSet {
             bubbleLabel.text = bubbleModel.content
+            imageView.accessibilityValue = bubbleModel.content
             bubbleLabel.adjustFrame()
         }
     }
@@ -61,6 +62,7 @@ open class BubbleView: AttachView {
         self.imageView.image = bubbleModel.bubbleImage
         self.imageView.addSubview(bubbleLabel)
         imageView.accessibilityLabel = NSLocalizedString("Bubble", bundle: extensionBundle, comment: "")
+        imageView.accessibilityValue = bubbleModel.content
         imageView.accessibilityCustomActions?.append(UIAccessibilityCustomAction(
             name: NSLocalizedString("Edit Bubble Text", bundle: extensionBundle, comment: ""), target: self, selector: #selector(accessibleEditText)))
     }
@@ -85,9 +87,9 @@ extension BubbleView {
         let editBubbleVC = EditBubbleViewController(bubbleModel: self.bubbleModel)
         editBubbleVC.delegate = self
         let navigationVC = UINavigationController(rootViewController: editBubbleVC)
-        navigationVC.modalPresentationStyle = .formSheet
-        navigationVC.sheetPresentationController?.detents = [.medium(), .large()]
-        navigationVC.sheetPresentationController?.prefersGrabberVisible = true
+        // Keep the editing task visually and accessibly modal on every size.
+        // A form sheet left old caption text visible outside its focus boundary.
+        navigationVC.modalPresentationStyle = .fullScreen
         self.parentViewController?.present(navigationVC, animated: true)
     }
 }

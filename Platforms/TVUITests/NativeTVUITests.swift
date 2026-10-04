@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import CryptoKit
 
 final class NativeTVUITests: XCTestCase {
     private var failClosedInterruption: NSObjectProtocol?
@@ -107,6 +108,7 @@ final class NativeTVUITests: XCTestCase {
                 print("TV_ZH_HANS_PERMISSION_AX " + String(system.debugDescription.prefix(16000)))
                 try select(allow, in: system)
             }
+            if large { try panelDiagnostic(app, state: "large-text-photos", image: true) }
             let photo = try revealPhoto("CelluloidSource-1.png", in: app)
             try select(photo, in: app); try select(app.buttons["tv.edit-selected"], in: app)
             XCTAssertTrue(app.images["tv.preview"].waitForExistence(timeout: 20))
@@ -184,6 +186,7 @@ final class NativeTVUITests: XCTestCase {
         XCTAssertEqual(app.buttons["tv.layer.mirror"].value as? String, "On")
         try select(app.buttons["tv.panel.done"],in:app)
         try select(app.buttons["tv.bubbles"],in:app)
+        try panelDiagnostic(app, state: "bubbles-after-layers-\(count)", image: count == 4)
         try select(app.buttons["tv.asset.say1"],in:app)
         let field = app.textFields["tv.bubble-text"]
         XCTAssertTrue(field.waitForExistence(timeout:10))
@@ -228,6 +231,38 @@ final class NativeTVUITests: XCTestCase {
         if #available(tvOS 27.0, *) { try app.performAccessibilityAudit(for:.all) { issue in
             print("NATIVE_ACCESSIBILITY_ISSUE state=tv-collage-\(count) description=\(issue.compactDescription) element=\(issue.element?.debugDescription ?? "none")");return false
         } }
+    }
+    private static var diagnosticImages = Set<String>()
+    @MainActor private func panelDiagnostic(_ app: XCUIApplication, state: String, image: Bool) throws {
+        let panel = app.otherElements["tv.editor.panel"].firstMatch
+        let presented = panel.waitForExistence(timeout: 5)
+        let focused = app.buttons.matching(NSPredicate(format: "hasFocus == true")).firstMatch
+        print("TV_NATIVE_PANEL_DIAGNOSTIC state=\(state) presented=\(presented) panelLabel=\(presented ? panel.label : "missing") panelFrame=\(presented ? String(describing: panel.frame) : "missing") focused=\(focused.exists ? focused.identifier : "missing")")
+        print("TV_NATIVE_PANEL_DIAGNOSTIC_AX state=\(state) " + String(app.debugDescription.prefix(18000)))
+        guard image, Self.diagnosticImages.count < 2, Self.diagnosticImages.insert(state).inserted else { return }
+        // Exactly two named synthetic checkpoints, bounded before stdout. The
+        // existing NATIVE_ log selector retains this ordinary screenshot envelope
+        // even if Xcode never finalizes the failed result bundle. Artifact caps
+        // remain unchanged; no script change or unbounded screenshot loop.
+        let screenshot = app.screenshot().image
+        let ratio = min(1, 960 / max(screenshot.size.width, screenshot.size.height))
+        let size = CGSize(width: (screenshot.size.width * ratio).rounded(), height: (screenshot.size.height * ratio).rounded())
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
+        let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in screenshot.draw(in: CGRect(origin: .zero, size: size)) }
+        let jpeg = try XCTUnwrap(resized.jpegData(compressionQuality: 0.22))
+        guard jpeg.count <= 80_000 else {
+            print("TV_NATIVE_PANEL_IMAGE_OMITTED state=\(state) bytes=\(jpeg.count) limit=80000"); return
+        }
+        let metadata: [String: Any] = ["name": state, "bytes": jpeg.count, "width": Int(size.width), "height": Int(size.height),
+                                       "sha256": SHA256.hash(data: jpeg).map { String(format: "%02x", $0) }.joined()]
+        let json = try JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys])
+        print("NATIVE_SCREENSHOT_BEGIN:" + state)
+        print("NATIVE_SCREENSHOT_META " + String(decoding: json, as: UTF8.self))
+        let encoded = Array(jpeg.base64EncodedString())
+        for start in stride(from: 0, to: encoded.count, by: 1024) {
+            print("NATIVE_SCREENSHOT_CHUNK:" + String(encoded[start..<min(start + 1024, encoded.count)]))
+        }
+        print("NATIVE_SCREENSHOT_END:" + state)
     }
     @MainActor private func revealArtwork(_ id: String, initiallyDown: Bool, in app: XCUIApplication) throws {
         let target = app.buttons["tv.asset." + id]

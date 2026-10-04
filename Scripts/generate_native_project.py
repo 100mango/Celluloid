@@ -35,6 +35,7 @@ settings_by_name={
     'CelluloidTV':dict(SDKROOT='appletvos',SUPPORTED_PLATFORMS='appletvos appletvsimulator',TVOS_DEPLOYMENT_TARGET='17.0',TARGETED_DEVICE_FAMILY='3'),
     'CelluloidTVTests':dict(SDKROOT='appletvos',SUPPORTED_PLATFORMS='appletvos appletvsimulator',TVOS_DEPLOYMENT_TARGET='17.0',TARGETED_DEVICE_FAMILY='3',TEST_HOST='$(BUILT_PRODUCTS_DIR)/CelluloidTV.app/CelluloidTV',BUNDLE_LOADER='$(TEST_HOST)',GENERATE_INFOPLIST_FILE='YES'),
     'CelluloidTVUITests':dict(SDKROOT='appletvos',SUPPORTED_PLATFORMS='appletvos appletvsimulator',TVOS_DEPLOYMENT_TARGET='17.0',TARGETED_DEVICE_FAMILY='3',TEST_TARGET_NAME='CelluloidTV',GENERATE_INFOPLIST_FILE='YES'),
+    'CelluloidMacPhotosExtensionTests':dict(SDKROOT='macosx',SUPPORTED_PLATFORMS='macosx',MACOSX_DEPLOYMENT_TARGET='13.0',GENERATE_INFOPLIST_FILE='YES'),
     'CelluloidMacPhotosExtension':dict(SDKROOT='macosx',SUPPORTED_PLATFORMS='macosx',MACOSX_DEPLOYMENT_TARGET='13.0',APPLICATION_EXTENSION_API_ONLY='YES',SKIP_INSTALL='YES'),
     'CelluloidMac':dict(SDKROOT='macosx',SUPPORTED_PLATFORMS='macosx',MACOSX_DEPLOYMENT_TARGET='13.0'),
     'CelluloidVision':dict(SDKROOT='xros',SUPPORTED_PLATFORMS='xros xrsimulator',XROS_DEPLOYMENT_TARGET='1.0',TARGETED_DEVICE_FAMILY='7'),
@@ -49,7 +50,7 @@ for name in settings_by_name:
     targets[name]=uid('target:'+name)
 for name,platform in settings_by_name.items():
     tests=name.endswith('Tests')
-    folders={'CelluloidMacPhotosExtension':['macOSExtension'],'CelluloidMac':['Shared','macOS'],'CelluloidVision':['Shared','visionOS'],'CelluloidTV':['tvOS'],
+    folders={'CelluloidMacPhotosExtensionTests':['MacExtensionTests','macOSExtension'],'CelluloidMacPhotosExtension':['macOSExtension'],'CelluloidMac':['Shared','macOS'],'CelluloidVision':['Shared','visionOS'],'CelluloidTV':['tvOS'],
              'CelluloidWatch':['watchOS'],'CelluloidPhoneCompanion':['Companion','PhoneHarness'],
              'CelluloidMacTests':['Tests'],'CelluloidMacUITests':['UITests'],
              'CelluloidVisionTests':['VisionTests'],'CelluloidVisionUITests':['VisionUITests'],
@@ -57,7 +58,9 @@ for name,platform in settings_by_name.items():
              'CelluloidWatchTests':['WatchTests'],'CelluloidWatchUITests':['WatchUITests'],
              'CelluloidPhoneCompanionTests':['PhoneTests'],'CelluloidPhoneCompanionUITests':['PhoneUITests']}
     paths=[path for folder in folders[name] for path in (ROOT/'Platforms'/folder).glob('*.swift')]
-    if name=='CelluloidMacPhotosExtension':paths += [ROOT/'Platforms/macOS/LegacyFilterAdjustment.swift',ROOT/'Platforms/macOS/PhotosHostFinishCoordinator.swift',ROOT/'Platforms/Shared/NativeFileAccess.swift']
+    if name in ['CelluloidMacPhotosExtension','CelluloidMacPhotosExtensionTests']:
+        paths += [ROOT/path for path in ['Platforms/macOS/PhotosHostFinishCoordinator.swift','Platforms/macOS/NativeChoicePicker.swift','Platforms/Shared/NativeFileAccess.swift','CelluloidPhotoExtension/PhotosOutputWrite.swift']]
+    if name=='CelluloidMacPhotosExtensionTests': paths += [ROOT/'CelluloidTests/PhotosOutputWriteTests.swift']
     if name=='CelluloidPhoneCompanion':
         paths += [ROOT/path for path in ['CelluloidKit/Filter/Filter.swift','CelluloidKit/Model/AdjustmentData.swift','CelluloidKit/Extension/JSONCodableExtension.swift','CelluloidKit/Bubble/Model/BubbleModel.swift','CelluloidKit/Sticker/Model/StickerModel.swift','CelluloidKit/Constant/Assets.swift']]
     localized=[]
@@ -73,6 +76,10 @@ for name,platform in settings_by_name.items():
         localized.append(add('build:localization:'+name,'PBXBuildFile',fileRef=uid('variant:shared-localizations')))
         localized.append(add('build:privacy:'+name,'PBXBuildFile',fileRef=reference('Platforms/Resources/PrivacyPolicy.txt')))
         localized.append(add('build:license:'+name,'PBXBuildFile',fileRef=reference('LICENSE.txt')))
+    if name=='CelluloidMacPhotosExtensionTests':
+        for fixture in ['legacy-points.base64','legacy-points.json','reference-canvas.base64','reference-canvas.json']:
+            path='Packages/CelluloidCore/Tests/CelluloidDomainTests/Fixtures/'+fixture
+            localized.append(add('build:mac-photos-fixture:'+fixture,'PBXBuildFile',fileRef=reference(path)))
     if name=='CelluloidTV':
         localized.append(add('build:tv-privacy-manifest','PBXBuildFile',fileRef=reference('Platforms/tvOS/PrivacyInfo.xcprivacy')))
         refs=[]
@@ -94,28 +101,35 @@ for name,platform in settings_by_name.items():
         dep=add('product:'+name+product,'XCSwiftPackageProductDependency',package=packages[package],productName=product)
         package_deps.append(dep);links.append(add('link:'+name+product,'PBXBuildFile',productRef=dep))
     if tests:
-        host='CelluloidWatch' if name.startswith('CelluloidWatch') else 'CelluloidPhoneCompanion' if name.startswith('CelluloidPhoneCompanion') else 'CelluloidTV' if name.startswith('CelluloidTV') else 'CelluloidVision' if name.startswith('CelluloidVision') else 'CelluloidMac'
+        host='CelluloidMacPhotosExtension' if name=='CelluloidMacPhotosExtensionTests' else 'CelluloidWatch' if name.startswith('CelluloidWatch') else 'CelluloidPhoneCompanion' if name.startswith('CelluloidPhoneCompanion') else 'CelluloidTV' if name.startswith('CelluloidTV') else 'CelluloidVision' if name.startswith('CelluloidVision') else 'CelluloidMac'
         proxy=add('proxy:'+name,'PBXContainerItemProxy',containerPortal=uid('project'),proxyType='1',remoteGlobalIDString=targets[host],remoteInfo=host)
         deps.append(add('dependency:'+name,'PBXTargetDependency',target=targets[host],targetProxy=proxy))
-    settings=dict(PRODUCT_NAME='$(TARGET_NAME)',PRODUCT_BUNDLE_IDENTIFIER='Mango.Celluloid.'+name if tests else 'Mango.Celluloid',SWIFT_VERSION='5.0',SWIFT_STRICT_CONCURRENCY='minimal',CODE_SIGNING_ALLOWED='NO',CODE_SIGNING_REQUIRED='NO',CODE_SIGN_IDENTITY='',CURRENT_PROJECT_VERSION='2',MARKETING_VERSION='2.0',ENABLE_USER_SCRIPT_SANDBOXING='YES',LD_RUNPATH_SEARCH_PATHS=['$(inherited)','@executable_path/Frameworks','@executable_path/../Frameworks'],**platform)
+    if name=='CelluloidMac':
+        proxy=add('proxy:mac-photos-extension','PBXContainerItemProxy',containerPortal=uid('project'),proxyType='1',remoteGlobalIDString=targets['CelluloidMacPhotosExtension'],remoteInfo='CelluloidMacPhotosExtension')
+        deps.append(add('dependency:mac-photos-extension','PBXTargetDependency',target=targets['CelluloidMacPhotosExtension'],targetProxy=proxy))
+    settings=dict(PRODUCT_NAME='$(TARGET_NAME)',PRODUCT_BUNDLE_IDENTIFIER='Mango.Celluloid.'+name if tests else 'Mango.Celluloid',SWIFT_VERSION='5.0',SWIFT_STRICT_CONCURRENCY='minimal',CODE_SIGNING_ALLOWED='NO',CODE_SIGNING_REQUIRED='NO',CODE_SIGN_IDENTITY='',CURRENT_PROJECT_VERSION='2',MARKETING_VERSION='1.1',ENABLE_USER_SCRIPT_SANDBOXING='YES',LD_RUNPATH_SEARCH_PATHS=['$(inherited)','@executable_path/Frameworks','@executable_path/../Frameworks'],**platform)
     if name=='CelluloidMacPhotosExtension':settings.update(PRODUCT_BUNDLE_IDENTIFIER='Mango.Celluloid.CelluloidPhotoExtension',ENABLE_APP_SANDBOX='YES',CODE_SIGN_ENTITLEMENTS='Platforms/macOSExtension/CelluloidMacPhotosExtension.entitlements',CODE_SIGN_INJECT_BASE_ENTITLEMENTS='NO')
-    if name=='CelluloidWatch':settings['PRODUCT_BUNDLE_IDENTIFIER']='Mango.Celluloid.watchkitapp'
+    if name=='CelluloidWatch':settings.update(PRODUCT_BUNDLE_IDENTIFIER='Mango.Celluloid.watchkitapp',SKIP_INSTALL='YES')
     if name in ['CelluloidWatch','CelluloidVision','CelluloidTV']:settings['ASSETCATALOG_COMPILER_APPICON_NAME']='AppIcon'
     if name=='CelluloidMac': settings.update(ASSETCATALOG_COMPILER_APPICON_NAME='AppIcon',ENABLE_APP_SANDBOX='YES',CODE_SIGN_ENTITLEMENTS='Platforms/macOS/CelluloidMac.entitlements',CODE_SIGN_INJECT_BASE_ENTITLEMENTS='NO',ENABLE_HARDENED_RUNTIME='NO')
     if not tests: settings['INFOPLIST_FILE']='Platforms/'+('macOSExtension' if name=='CelluloidMacPhotosExtension' else 'watchOS' if name=='CelluloidWatch' else 'PhoneHarness' if name=='CelluloidPhoneCompanion' else 'tvOS' if name=='CelluloidTV' else 'macOS' if name=='CelluloidMac' else 'visionOS')+'/Info.plist'
     phases=[add('phase:'+name+kind,'PBX'+kind+'BuildPhase',buildActionMask='2147483647',files=files,runOnlyForDeploymentPostprocessing='0') for kind,files in [('Sources',source),('Frameworks',links),('Resources',localized)]]
+    if name=='CelluloidMac':
+        embedded=add('build:embedded-mac-photos-extension','PBXBuildFile',fileRef=products['CelluloidMacPhotosExtension'],settings={'ATTRIBUTES':['RemoveHeadersOnCopy']})
+        phases.append(add('phase:embed-mac-photos-extension','PBXCopyFilesBuildPhase',buildActionMask='2147483647',dstPath='',dstSubfolderSpec='13',files=[embedded],name='Embed Photos Extension',runOnlyForDeploymentPostprocessing='0'))
     add('target:'+name,'PBXNativeTarget',name=name,productName=name,productReference=products[name],productType='com.apple.product-type.'+('bundle.ui-testing' if name.endswith('UITests') else 'bundle.unit-test' if tests else 'app-extension' if name=='CelluloidMacPhotosExtension' else 'application'),buildConfigurationList=configs(name,settings),buildPhases=phases,buildRules=[],dependencies=deps,packageProductDependencies=package_deps)
 prodgroup=add('products','PBXGroup',name='Products',children=list(products.values()),sourceTree='<group>')
 root=add('root','PBXGroup',children=children+[prodgroup],sourceTree='<group>')
-add('project','PBXProject',attributes={'LastUpgradeCheck':'2700','BuildIndependentTargetsInParallel':'YES','TargetAttributes':{targets[n]:{'TestTargetID':targets['CelluloidWatch' if n.startswith('CelluloidWatch') else 'CelluloidPhoneCompanion' if n.startswith('CelluloidPhoneCompanion') else 'CelluloidTV' if n.startswith('CelluloidTV') else 'CelluloidVision' if n.startswith('CelluloidVision') else 'CelluloidMac']} for n in targets if n.endswith('Tests')}},buildConfigurationList=configs('project',{'CLANG_ENABLE_MODULES':'YES','CLANG_ENABLE_OBJC_ARC':'YES','SWIFT_VERSION':'5.0','CELLULOID_EXPECT_SANDBOX':'NO'}),compatibilityVersion='Xcode 14.0',developmentRegion='en',hasScannedForEncodings='0',knownRegions=['en','zh-Hans'],mainGroup=root,productRefGroup=prodgroup,projectDirPath='',projectRoot='',targets=list(targets.values()),packageReferences=list(packages.values()))
+add('project','PBXProject',attributes={'LastUpgradeCheck':'2700','BuildIndependentTargetsInParallel':'YES','TargetAttributes':{targets[n]:{'TestTargetID':targets['CelluloidWatch' if n.startswith('CelluloidWatch') else 'CelluloidPhoneCompanion' if n.startswith('CelluloidPhoneCompanion') else 'CelluloidTV' if n.startswith('CelluloidTV') else 'CelluloidVision' if n.startswith('CelluloidVision') else 'CelluloidMac']} for n in targets if n.endswith('Tests') and n!='CelluloidMacPhotosExtensionTests'}},buildConfigurationList=configs('project',{'CLANG_ENABLE_MODULES':'YES','CLANG_ENABLE_OBJC_ARC':'YES','SWIFT_VERSION':'5.0','CELLULOID_EXPECT_SANDBOX':'NO'}),compatibilityVersion='Xcode 14.0',developmentRegion='en',hasScannedForEncodings='0',knownRegions=['en','zh-Hans'],mainGroup=root,productRefGroup=prodgroup,projectDirPath='',projectRoot='',targets=list(targets.values()),packageReferences=list(packages.values()))
 project=ROOT/'CelluloidNative.xcodeproj';project.mkdir(exist_ok=True)
 (project/'project.pbxproj').write_text('// !$*UTF8*$!\n'+encode({'archiveVersion':'1','classes':{},'objectVersion':'56','objects':objects,'rootObject':uid('project')})+'\n')
 for name in ['CelluloidMac','CelluloidVision','CelluloidMacUI','CelluloidTV','CelluloidWatch','CelluloidPhoneCompanion','CelluloidMacPhotosExtension']:
     folder=project/'xcshareddata/xcschemes';folder.mkdir(parents=True,exist_ok=True)
-    def ref(n):return f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{targets[n]}" BuildableName="{n}.{"xctest" if n.endswith("Tests") else "app"}" BlueprintName="{n}" ReferencedContainer="container:CelluloidNative.xcodeproj"/>'
+    def ref(n):return f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{targets[n]}" BuildableName="{n}.{"xctest" if n.endswith("Tests") else "appex" if n=="CelluloidMacPhotosExtension" else "app"}" BlueprintName="{n}" ReferencedContainer="container:CelluloidNative.xcodeproj"/>'
     app_name='CelluloidMac' if name=='CelluloidMacUI' else name
     test_name='CelluloidMacUITests' if name=='CelluloidMacUI' else 'CelluloidMacTests'
     tests='<TestableReference skipped="NO">'+ref(test_name)+'</TestableReference>' if name in ['CelluloidMac','CelluloidMacUI'] else ''
+    if name in ['CelluloidMac','CelluloidMacPhotosExtension']: tests += '<TestableReference skipped="NO">'+ref('CelluloidMacPhotosExtensionTests')+'</TestableReference>'
     if name=='CelluloidVision': tests=''.join('<TestableReference skipped="NO">'+ref(n)+'</TestableReference>' for n in ['CelluloidVisionTests','CelluloidVisionUITests'])
     if name=='CelluloidTV': tests=''.join('<TestableReference skipped="NO">'+ref(n)+'</TestableReference>' for n in ['CelluloidTVTests','CelluloidTVUITests'])
     if name=='CelluloidWatch': tests=''.join('<TestableReference skipped="NO">'+ref(n)+'</TestableReference>' for n in ['CelluloidWatchTests','CelluloidWatchUITests'])
@@ -128,7 +142,7 @@ for platform in ['macOS','visionOS','tvOS','watchOS','PhoneHarness','macOSExtens
     if platform=='macOS': info.update(LSMinimumSystemVersion='$(MACOSX_DEPLOYMENT_TARGET)',NSPrincipalClass='NSApplication')
     elif platform=='macOSExtension':
         for key in ['CFBundleDocumentTypes','UTExportedTypeDeclarations']:info.pop(key)
-        info.update(CFBundlePackageType='XPC!',CFBundleDisplayName='Celluloid Filters',LSMinimumSystemVersion='$(MACOSX_DEPLOYMENT_TARGET)',NSExtension={'NSExtensionPointIdentifier':'com.apple.photo-editing','NSExtensionPrincipalClass':'$(PRODUCT_MODULE_NAME).MacPhotoEditingController','NSExtensionAttributes':{'PHSupportedMediaTypes':['Image']}})
+        info.update(CFBundlePackageType='XPC!',CFBundleDisplayName='Celluloid',LSMinimumSystemVersion='$(MACOSX_DEPLOYMENT_TARGET)',NSExtension={'NSExtensionPointIdentifier':'com.apple.photo-editing','NSExtensionPrincipalClass':'$(PRODUCT_MODULE_NAME).MacPhotoEditingController','NSExtensionAttributes':{'PHSupportedMediaTypes':['Image']}})
     elif platform=='watchOS':
         for key in ['CFBundleDocumentTypes','UTExportedTypeDeclarations']:info.pop(key)
         info.update(WKApplication=True,WKCompanionAppBundleIdentifier='Mango.Celluloid')

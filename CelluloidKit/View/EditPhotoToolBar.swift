@@ -21,6 +21,42 @@ public protocol EditPhotoToolBarDelegate: AnyObject {
 open class EditPhotoToolBar: UIView {
     
     open weak var delegate: EditPhotoToolBarDelegate?
+
+    private var editingGeneration = UUID()
+    private weak var activePicker: UIViewController?
+    private var activePickerGeneration: UUID?
+
+    /// A picker belongs to the input/session that created it. Dismiss only that
+    /// owned panel; delayed callbacks cannot be rebound to the next input.
+    func invalidateEditingSession() {
+        editingGeneration = UUID()
+        if let panel = activePicker?.navigationController, panel.presentingViewController != nil {
+            panel.dismiss(animated: false)
+        }
+        activePicker = nil
+        activePickerGeneration = nil
+        buttons.forEach { $0.resetState() }
+    }
+    private func register(_ picker: UIViewController) {
+        activePicker = picker
+        activePickerGeneration = editingGeneration
+    }
+    private func consumeSelection(from picker: UIViewController) -> Bool {
+        guard activePicker === picker, activePickerGeneration == editingGeneration else { return false }
+        activePicker = nil
+        activePickerGeneration = nil
+        return true
+    }
+    func makeFilterPicker() -> FilterPickerViewController {
+        let picker = FilterPickerViewController(); picker.delegate = self; register(picker); return picker
+    }
+    func makeBubblePicker() -> BubblePickerViewController {
+        let picker = BubblePickerViewController(); picker.delegate = self; register(picker); return picker
+    }
+    func makeStickerPicker() -> StickerPickerViewController {
+        let picker = StickerPickerViewController(); picker.delegate = self; register(picker); return picker
+    }
+
     
     fileprivate lazy var stackView: UIStackView = {
         let stackView = UIStackView()
@@ -85,8 +121,34 @@ open class EditPhotoToolBar: UIView {
         commonInit()
     }
     
-    //MARK: layout
-    open override func layoutSubviews() { super.layoutSubviews() }
+    // The labels are part of app chrome, not exported artwork. Their full
+    // Dynamic Type height must participate in the editor's preview layout.
+    var titleLabels: [UILabel] { buttons.map { $0.label } }
+    var itemControls: [UIControl] { buttons }
+    private var previousLayoutWidth: CGFloat = 0
+
+    open override var intrinsicContentSize: CGSize {
+        let itemWidth = max(1, bounds.width / CGFloat(buttons.count) - 12)
+        let titleHeight = buttons.map {
+            $0.label.sizeThatFits(CGSize(width: itemWidth, height: .greatestFiniteMagnitude)).height
+        }.max() ?? 0
+        return CGSize(width: UIView.noIntrinsicMetric, height: max(49, ceil(titleHeight) + 22 + 1 + 8))
+    }
+
+    open override func layoutSubviews() {
+        super.layoutSubviews()
+        if previousLayoutWidth != bounds.width {
+            previousLayoutWidth = bounds.width
+            invalidateIntrinsicContentSize()
+        }
+    }
+
+    open override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory else { return }
+        buttons.forEach { $0.label.font = .preferredFont(forTextStyle: .caption1, compatibleWith: traitCollection) }
+        invalidateIntrinsicContentSize()
+    }
 }
 
 //MARK: Action
@@ -104,8 +166,7 @@ private extension EditPhotoToolBar {
             }
         }
         
-        let filterPicker = FilterPickerViewController()
-        filterPicker.delegate = self
+        let filterPicker = makeFilterPicker()
         presentViewControllerFromSheet(filterPicker)
     }
     
@@ -116,8 +177,7 @@ private extension EditPhotoToolBar {
             }
         }
         
-        let bubblePicker = BubblePickerViewController()
-        bubblePicker.delegate = self
+        let bubblePicker = makeBubblePicker()
         presentViewControllerFromSheet(bubblePicker)
     }
     
@@ -128,8 +188,7 @@ private extension EditPhotoToolBar {
             }
         }
         
-        let stickerPicker = StickerPickerViewController()
-        stickerPicker.delegate = self
+        let stickerPicker = makeStickerPicker()
         presentViewControllerFromSheet(stickerPicker)
     }
     
@@ -145,6 +204,7 @@ private extension EditPhotoToolBar {
 //MARK: BubblePickerViewControllerDelegate
 extension EditPhotoToolBar: BubblePickerViewControllerDelegate {
     public func bubblePickerViewController(_ bubblePickerViewController: BubblePickerViewController, didSelectBubble bubble: BubbleModel) {
+        guard consumeSelection(from: bubblePickerViewController) else { return }
         self.delegate?.editPhotoToolBar(self, didSelectBubble: bubble)
     }
 }
@@ -152,6 +212,7 @@ extension EditPhotoToolBar: BubblePickerViewControllerDelegate {
 //MARK: StickerPickerViewControllerDelegate
 extension EditPhotoToolBar: StickerPickerViewControllerDelegate {
     public func stickerPickerViewController(_ stickerPickerViewController: StickerPickerViewController, didSelectSticker sticker: StickerModel) {
+        guard consumeSelection(from: stickerPickerViewController) else { return }
         self.delegate?.editPhotoToolBar(self, didSelectSticker: sticker)
     }
 }
@@ -159,6 +220,7 @@ extension EditPhotoToolBar: StickerPickerViewControllerDelegate {
 //MARK: FilterPickerViewControllerDelegate
 extension EditPhotoToolBar: FilterPickerViewControllerDelegate {
     public func filterPickerViewController(_ filterPickerViewController: FilterPickerViewController, didSelectFilter filter: FilterType) {
+        guard consumeSelection(from: filterPickerViewController) else { return }
         self.delegate?.editPhotoToolBar(self, didSelectFilter: filter)
     }
 }
@@ -179,7 +241,9 @@ private class EditPhotoToolBarItem: UIControl {
     
     lazy var label: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 12)
+        label.font = .preferredFont(forTextStyle: .caption1)
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 0
         label.textColor = .alphaWhiteColor
         label.textAlignment = .center
         return label
@@ -222,7 +286,13 @@ private class EditPhotoToolBarItem: UIControl {
         
         self.addSubview(stackView)
         stackView.snp.makeConstraints  { (make) in
-            make.center.equalTo(stackView.superview!)
+            make.centerY.equalTo(stackView.superview!)
+            make.leading.trailing.equalTo(stackView.superview!).inset(6)
+            make.top.greaterThanOrEqualTo(stackView.superview!).offset(4)
+            make.bottom.lessThanOrEqualTo(stackView.superview!).offset(-4)
+        }
+        label.snp.makeConstraints { make in
+            make.width.equalTo(stackView)
         }
         
         self.addSubview(line)
