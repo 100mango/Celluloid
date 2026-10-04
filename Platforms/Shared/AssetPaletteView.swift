@@ -35,6 +35,9 @@ struct AssetPaletteView: View {
                     .accessibilityLabel(panel == .stickers ? Text("Choose a Sticker") : Text("Choose a Bubble"))
             }
         }.padding(16).frame(width: 350, height: 410)
+            #if DEBUG && os(macOS)
+            .background(NativePopoverOwnershipProbe(label: NSLocalizedString(panel == .stickers ? "Choose a Sticker" : "Choose a Bubble", comment: "Palette ownership diagnostic")).frame(width: 0, height: 0))
+            #endif
             .accessibilityElement(children: .contain)
             .accessibilityLabel(panel == .stickers ? Text("Choose a Sticker") : Text("Choose a Bubble"))
     }

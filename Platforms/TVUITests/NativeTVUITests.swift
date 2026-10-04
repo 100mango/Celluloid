@@ -2,7 +2,24 @@ import XCTest
 import UIKit
 
 final class NativeTVUITests: XCTestCase {
+    private var failClosedInterruption: NSObjectProtocol?
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Install before every launch. Known consent/dialog controls are handled
+        // explicitly by the test; every otherwise-unhandled interruption stops
+        // this process without returning to XCTest's default auto-handler.
+        failClosedInterruption = addUIInterruptionMonitor(withDescription: "Abort every unhandled native system interruption") { _ in
+            // No UI query, XCTest failure recorder or throwable callback work:
+            // none may fail and fall through to another monitor/default action.
+            print("CELLULOID_NATIVE_UI_FAIL_CLOSED_ABORT platform=tv")
+            fatalError("CELLULOID_NATIVE_UI_FAIL_CLOSED_ABORT platform=tv; unexpected interruption; no alert action taken")
+        }
+    }
     override func tearDownWithError() throws {
+        defer {
+            if let monitor = failClosedInterruption { removeUIInterruptionMonitor(monitor) }
+            failClosedInterruption = nil
+        }
         // XCTest assertion aborts may bypass a Swift defer. Close the waiting
         // app explicitly so Photos prompts do not hold test-session teardown.
         let app = XCUIApplication()
@@ -64,6 +81,58 @@ final class NativeTVUITests: XCTestCase {
     @MainActor func testRemoteCollageTwoSources() throws { try collage(count:2) }
     @MainActor func testRemoteCollageThreeSources() throws { try collage(count:3) }
     @MainActor func testRemoteCollageFourSources() throws { try collage(count:4) }
+    @MainActor func testSimplifiedChinesePhotoFilterReopenAndLargeText() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(); defer { app.terminate() }
+        var ordinaryHeight: CGFloat = 0
+        for large in [false, true] {
+            if app.state != .notRunning { app.terminate() }
+            app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN", "-UIPreferredContentSizeCategoryName",
+                                   large ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launch()
+            let choose = app.buttons["tv.choose-photos"]
+            XCTAssertTrue(choose.waitForExistence(timeout: 15)); XCTAssertEqual(choose.label, "选择照片")
+            let instruction = app.staticTexts["选择一张照片进行编辑，或选择 2–4 张制作拼图。"]
+            XCTAssertTrue(instruction.exists); let height = instruction.frame.height
+            if large {
+                continueAfterFailure = true
+                XCTAssertGreaterThan(height, ordinaryHeight, "A large-text argument alone does not establish actual TV typography coverage")
+                continueAfterFailure = false
+            } else { ordinaryHeight = height }
+            try select(choose, in: app)
+            let system = XCUIApplication(bundleIdentifier: "com.apple.PineBoard")
+            let allow = system.buttons.matching(NSPredicate(format: "label == 'Allow All Photos' OR label == '允许访问所有照片' OR label == '允许所有照片'")).firstMatch
+            if allow.waitForExistence(timeout: 4) {
+                XCTAssertTrue(system.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Celluloid'")).firstMatch.exists)
+                print("TV_ZH_HANS_PERMISSION_AX " + String(system.debugDescription.prefix(16000)))
+                try select(allow, in: system)
+            }
+            let photo = try revealPhoto("CelluloidSource-1.png", in: app)
+            try select(photo, in: app); try select(app.buttons["tv.edit-selected"], in: app)
+            XCTAssertTrue(app.images["tv.preview"].waitForExistence(timeout: 20))
+            XCTAssertEqual(app.buttons["tv.filters"].label, "原片")
+            try select(app.buttons["tv.filters"], in: app)
+            XCTAssertEqual(app.buttons["tv.filter.Fade"].label, "褪色")
+            try select(app.buttons["tv.filter.Fade"], in: app)
+            XCTAssertEqual(app.buttons["tv.filters"].label, "褪色")
+            XCTAssertEqual(app.buttons["tv.keep-recipe"].label, "保留可编辑记录")
+            try select(app.buttons["tv.keep-recipe"], in: app)
+            app.terminate(); app.launch()
+            try select(app.buttons["tv.reopen-recipe"], in: app)
+            XCTAssertTrue(app.staticTexts["已通过照片图库中的原图重新打开可编辑记录。"].waitForExistence(timeout: 20))
+            XCTAssertEqual(app.buttons["tv.filters"].label, "褪色")
+            try focus(app.buttons["tv.filters"], in: app)
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = large ? "native-tv-zh-Hans-large-reopened" : "native-tv-zh-Hans-reopened"; shot.lifetime = .keepAlways; add(shot)
+            print("TV_ZH_HANS_REOPEN requestedLarge=\(large) instructionHeight=\(height) ordinaryHeight=\(ordinaryHeight) localized filter persisted")
+            if #available(tvOS 27.0, *) {
+                let previous = continueAfterFailure; continueAfterFailure = true
+                defer { continueAfterFailure = previous }
+                try app.performAccessibilityAudit(for: .all) { issue in
+                print("NATIVE_ACCESSIBILITY_ISSUE state=tv-zh-Hans requestedLarge=\(large) description=\(issue.compactDescription) element=\(issue.element?.debugDescription ?? "none")"); return false
+                }
+            }
+        }
+    }
     @MainActor func testTVKeyboardAutomationAvailability() throws {
         #if !CELLULOID_TV_TYPETEXT_SUPPORTED
         throw XCTSkip("The exact SDK did not expose typeText for tvOS; remote-only multilingual keyboard entry remains an explicit open gate")
@@ -103,6 +172,12 @@ final class NativeTVUITests: XCTestCase {
         try select(app.buttons["tv.source.0.later"],in:app)
         try select(app.buttons["tv.panel.done"],in:app)
         try select(app.buttons["tv.stickers"],in:app)
+        if count == 4 {
+            try focus(app.buttons["tv.asset.32"], in: app)
+            try revealArtwork("54", initiallyDown: true, in: app)
+            try focus(app.buttons["tv.asset.54"], in: app)
+            try revealArtwork("32", initiallyDown: false, in: app)
+        }
         try select(app.buttons["tv.asset.32"],in:app)
         for _ in 0..<12 { try select(app.buttons["tv.layer.x.decrease"],in:app) }
         try select(app.buttons["tv.layer.mirror"],in:app)
@@ -153,6 +228,21 @@ final class NativeTVUITests: XCTestCase {
         if #available(tvOS 27.0, *) { try app.performAccessibilityAudit(for:.all) { issue in
             print("NATIVE_ACCESSIBILITY_ISSUE state=tv-collage-\(count) description=\(issue.compactDescription) element=\(issue.element?.debugDescription ?? "none")");return false
         } }
+    }
+    @MainActor private func revealArtwork(_ id: String, initiallyDown: Bool, in app: XCUIApplication) throws {
+        let target = app.buttons["tv.asset." + id]
+        for down in [initiallyDown, !initiallyDown] {
+            for step in 0..<16 {
+                if target.exists { return }
+                let focused = app.buttons.matching(NSPredicate(format: "hasFocus == true")).firstMatch
+                if focused.exists {
+                    print("TV_ARTWORK_REVEAL target=\(id) step=\(step) direction=\(down ? "down" : "up") focused=\(focused.identifier) frame=\(focused.frame)")
+                }
+                XCUIRemote.shared.press(down ? .down : .up)
+            }
+        }
+        print("TV_ARTWORK_REVEAL_FAILURE " + String(app.debugDescription.prefix(24000)))
+        XCTFail("The known artwork asset was not reachable by the real remote: " + id)
     }
     @MainActor private func revealPhoto(_ filename: String, in app: XCUIApplication) throws -> XCUIElement {
         // LazyVGrid only exposes materialized rows. Search by the known synthetic

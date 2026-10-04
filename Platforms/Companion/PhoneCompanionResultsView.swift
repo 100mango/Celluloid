@@ -97,14 +97,14 @@ struct PhoneCompanionResultsView: View {
                             print("PHONE_COMPANION_ROW_ACTION resume id=\(request.id)")
                             #endif
                             Task { await model.resume(request) }
-                        } label: { Text("Resume on iPhone").foregroundStyle(.primary) }
+                        } label: { Text("Resume on iPhone").foregroundStyle(Color.primary) }
                             .buttonStyle(.borderless).disabled(model.resuming).accessibilityIdentifier("companion.resume." + request.id.uuidString)
                         Button(role: .destructive) {
                             #if DEBUG
                             print("PHONE_COMPANION_ROW_ACTION discard id=\(request.id)")
                             #endif
                             discard = request
-                        } label: { Text("Discard Pending Request").foregroundStyle(.primary) }
+                        } label: { Text("Discard Pending Request").foregroundStyle(Color.primary) }
                             .buttonStyle(.borderless).disabled(model.resuming).accessibilityIdentifier("companion.discard." + request.id.uuidString)
                     }
                 }

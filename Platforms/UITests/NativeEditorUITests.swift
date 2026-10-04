@@ -8,11 +8,34 @@ import CelluloidDomain
 import CelluloidRendering
 
 final class NativeEditorUITests: XCTestCase {
+    private var failClosedInterruption: NSObjectProtocol?
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Install before every launch. Known consent/dialog controls are handled
+        // explicitly by the test; every otherwise-unhandled interruption stops
+        // this process without returning to XCTest's default auto-handler.
+        failClosedInterruption = addUIInterruptionMonitor(withDescription: "Abort every unhandled native system interruption") { _ in
+            // No UI query, XCTest failure recorder or throwable callback work:
+            // none may fail and fall through to another monitor/default action.
+            print("CELLULOID_NATIVE_UI_FAIL_CLOSED_ABORT platform=mac")
+            fatalError("CELLULOID_NATIVE_UI_FAIL_CLOSED_ABORT platform=mac; unexpected interruption; no alert action taken")
+        }
+    }
+    override func tearDownWithError() throws {
+        defer {
+            if let monitor = failClosedInterruption { removeUIInterruptionMonitor(monitor) }
+            failClosedInterruption = nil
+        }
+        try super.tearDownWithError()
+    }
     @MainActor func testExactAppLaunchImportEditAndResize() throws {
         continueAfterFailure = false
         let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
         let expected = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
         let app = XCUIApplication(url: expected)
+        let ownershipReport = FileManager.default.temporaryDirectory.appendingPathComponent("Celluloid-Popover-" + UUID().uuidString + ".jsonl")
+        defer { try? FileManager.default.removeItem(at: ownershipReport) }
+        if ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] != "YES" { app.launchEnvironment["CELLULOID_AX_REPORT"] = ownershipReport.path }
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
         if ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] == "YES" { app.launchEnvironment["CELLULOID_SANDBOX_DIAGNOSTICS"] = "YES" }
         try launch(app); defer { app.terminate() }
@@ -46,7 +69,18 @@ final class NativeEditorUITests: XCTestCase {
         XCTAssertTrue(bubble.isHittable); bubble.click()
         let palette = XCTAttachment(screenshot: app.screenshot()); palette.name = "native-mac-visual-bubble-picker"; palette.lifetime = .keepAlways; add(palette)
         let say1 = app.buttons["asset.say1"]
-        XCTAssertTrue(say1.waitForExistence(timeout: 5)); try auditOrdinary(app, state: "bubble-picker"); say1.click()
+        XCTAssertTrue(say1.waitForExistence(timeout: 5))
+        if ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] != "YES" {
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                guard let size = try? ownershipReport.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 64_000,
+                      let data = try? String(contentsOf: ownershipReport, encoding: .utf8) else { return false }
+                return data.contains("\"presentation\"")
+            }, object: nil)
+            if XCTWaiter.wait(for: [ready], timeout: 3) == .completed, let data = try? String(contentsOf: ownershipReport, encoding: .utf8) {
+                for line in data.split(separator: "\n") { print("NATIVE_POPOVER_OWNERSHIP " + line) }
+            } else { print("NATIVE_POPOVER_OWNERSHIP unavailable; actual wrapper audit remains required") }
+        }
+        try auditOrdinary(app, state: "bubble-picker"); say1.click()
         let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 5)); text.click()
         app.typeKey("a", modifierFlags: .command); text.typeText("Hello 世界")
@@ -441,6 +475,34 @@ final class NativeEditorUITests: XCTestCase {
     }
     @MainActor func testZDiagnosticNativeAppKitAuditControls() throws { try auditControl(mode: "YES", state: "diagnostic-appkit-control") }
     @MainActor func testZDiagnosticNativeSwiftUIAuditControls() throws { try auditControl(mode: "SWIFTUI", state: "diagnostic-swiftui-control") }
+    @MainActor func testZDiagnosticSameSemanticFontsInSplitContainer() throws {
+        try auditControl(mode: "SWIFTUI-SPLIT", state: "diagnostic-swiftui-same-font-split")
+    }
+    @MainActor func testZDiagnosticStandardAppKitDocumentAndAlert() throws {
+        guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] != "YES" else { throw XCTSkip("The isolated diagnostic runs only in the ordinary lane") }
+        continueAfterFailure = false
+        let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"])
+        let app = XCUIApplication(url: URL(fileURLWithPath: path))
+        app.launchEnvironment["CELLULOID_NATIVE_AUDIT_CONTROL"] = "YES"
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
+        app.launch(); defer { app.terminate() }
+        let cancel = app.windows["open-panel"].buttons["CancelButton"]; if cancel.waitForExistence(timeout: 3) { cancel.click() }
+        app.typeKey("n", modifierFlags: .command)
+        let create = app.buttons["probe.document"]
+        XCTAssertTrue(create.waitForExistence(timeout: 10)); create.click()
+        let mark = app.buttons["probe.document-mark-edited"]
+        XCTAssertTrue(mark.waitForExistence(timeout: 10)); mark.click()
+        XCTAssertEqual(app.staticTexts["probe.document-status"].value as? String, "Document is edited")
+        print("NATIVE_STANDARD_DOCUMENT_AX " + String(app.debugDescription.prefix(24000)))
+        try auditOrdinary(app, state: "diagnostic-standard-appkit-document-edited")
+        app.buttons["probe.document-alert"].click()
+        let okay = app.buttons["OK"].firstMatch
+        XCTAssertTrue(okay.waitForExistence(timeout: 5)); XCTAssertTrue(okay.isHittable)
+        print("NATIVE_STANDARD_NSALERT_AX markEnabled=\(mark.isEnabled) markHittable=\(mark.isHittable) " + String(app.debugDescription.prefix(24000)))
+        try auditOrdinary(app, state: "diagnostic-standard-appkit-nsalert")
+        okay.click()
+        XCTAssertEqual(app.staticTexts["probe.document-status"].value as? String, "Standard alert dismissed")
+    }
     @MainActor private func auditControl(mode: String, state: String) throws {
         guard ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"] != "YES" else { throw XCTSkip("The isolated diagnostic runs only in the ordinary lane") }
         continueAfterFailure = false
@@ -452,7 +514,12 @@ final class NativeEditorUITests: XCTestCase {
         let cancel = app.windows["open-panel"].buttons["CancelButton"]; if cancel.waitForExistence(timeout: 3) { cancel.click() }
         app.typeKey("n", modifierFlags: .command)
         let action = app.buttons["probe.action"]
-        XCTAssertTrue(action.waitForExistence(timeout: 10)); XCTAssertTrue(app.sliders["probe.slider"].exists)
+        XCTAssertTrue(action.waitForExistence(timeout: 10))
+        if mode == "SWIFTUI-SPLIT" {
+            XCTAssertTrue(app.staticTexts["probe.same-empty-instruction"].exists)
+            XCTAssertTrue(app.staticTexts["probe.same-label.Text size"].exists)
+            XCTAssertTrue(app.staticTexts["probe.same-label.Horizontal position"].exists)
+        } else { XCTAssertTrue(app.sliders["probe.slider"].exists) }
         print("NATIVE_AUDIT_CONTROL_AX " + String(app.debugDescription.prefix(24000)))
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-mac-audit-control-" + mode; shot.lifetime = .keepAlways; add(shot)
         try auditOrdinary(app, state: state)

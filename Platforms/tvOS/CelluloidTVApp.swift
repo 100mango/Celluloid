@@ -120,7 +120,11 @@ struct TVEditorView: View {
         }
     }
     private func artwork(stickers: Bool) -> some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 40), count: 5), spacing: 40) {
+        // Native tvOS sheets provide a 524-point padded content width. A
+        // focused 180-point artwork card actually occupies 248 points with the
+        // platform button chrome; five columns pushed the first card outside
+        // the sheet. Two 252-point minimum columns plus 20 spacing fit here.
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 252), spacing: 20)], spacing: 40) {
             if stickers {
                 ForEach(StickerAsset.all, id: \.rawValue) { asset in
                     TVAssetButton(asset: asset.rawValue, title: String(format: NSLocalizedString("Sticker %d", comment: "Sticker name"), (Int(asset.rawValue) ?? 32) - 31)) { editor.add(Overlay(sticker: asset)); panel = .layers }

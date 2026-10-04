@@ -74,3 +74,50 @@ struct NativeWindowAccessibility: NSViewRepresentable {
         #endif
     }
 }
+
+#if DEBUG
+struct NativePopoverOwnershipProbe: NSViewRepresentable {
+    let label: String
+    func makeNSView(context: Context) -> Probe { let value = Probe(); value.label = label; return value }
+    func updateNSView(_ view: Probe, context: Context) { view.label = label }
+    final class Probe: NSView {
+        var label = ""
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow(); setAccessibilityElement(false)
+            guard window != nil, ProcessInfo.processInfo.environment["CELLULOID_AX_REPORT"] != nil else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.record() }
+        }
+        private func record() {
+            guard let window, let path = ProcessInfo.processInfo.environment["CELLULOID_AX_REPORT"] else { return }
+            let target = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+            let temporary = FileManager.default.temporaryDirectory.standardizedFileURL.resolvingSymlinksInPath()
+            guard target.path.hasPrefix(temporary.path + "/") else { return }
+            var roots: [Any] = [self], view = superview
+            for _ in 0..<16 { guard let current = view else { break }; roots.append(current); view = current.superview }
+            roots.append(window)
+            var rows: [[String: Any]] = [], visited = Set<ObjectIdentifier>()
+            for root in roots {
+                var current: Any? = root
+                for depth in 0..<24 {
+                    guard let element = current, rows.count < 64 else { break }
+                    guard let node = element as? NSAccessibilityProtocol else {
+                        rows.append(["presentation": label, "depth": depth, "class": String(String(reflecting: type(of: element)).prefix(240)), "full_accessibility_protocol": false]); break
+                    }
+                    guard visited.insert(ObjectIdentifier(node as AnyObject)).inserted else { break }
+                    rows.append(["presentation": label, "depth": depth, "class": String(String(reflecting: type(of: element)).prefix(240)),
+                                 "role": node.accessibilityRole()?.rawValue ?? "nil", "label": String((node.accessibilityLabel() ?? "nil").prefix(240)),
+                                 "frame": NSStringFromRect(node.accessibilityFrame()), "enabled": node.isAccessibilityEnabled(),
+                                 "children": node.accessibilityChildren()?.count ?? 0, "is_standard_popover": node is NSPopover,
+                                 "is_own_window": (node as? NSWindow) === window])
+                    if node.accessibilityRole() == .application { break }
+                    current = node.accessibilityParent()
+                }
+            }
+            let lines = rows.compactMap { try? JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys]) }.map { String(decoding: $0, as: UTF8.self) }
+            let data = Data(lines.joined(separator: "\n").utf8)
+            guard data.count <= 64_000 else { return }
+            try? data.write(to: target, options: .atomic)
+        }
+    }
+}
+#endif

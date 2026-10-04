@@ -1,13 +1,31 @@
 import XCTest
 
 final class NativeVisionUITests: XCTestCase {
+    private var failClosedInterruption: NSObjectProtocol?
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Install before every launch. Known consent/dialog controls are handled
+        // explicitly by the test; every otherwise-unhandled interruption stops
+        // this process without returning to XCTest's default auto-handler.
+        failClosedInterruption = addUIInterruptionMonitor(withDescription: "Abort every unhandled native system interruption") { _ in
+            // No UI query, XCTest failure recorder or throwable callback work:
+            // none may fail and fall through to another monitor/default action.
+            print("CELLULOID_NATIVE_UI_FAIL_CLOSED_ABORT platform=vision")
+            fatalError("CELLULOID_NATIVE_UI_FAIL_CLOSED_ABORT platform=vision; unexpected interruption; no alert action taken")
+        }
+    }
     override func tearDownWithError() throws {
+        defer {
+            if let monitor = failClosedInterruption { removeUIInterruptionMonitor(monitor) }
+            failClosedInterruption = nil
+        }
         let app = XCUIApplication(); if app.state != .notRunning { app.terminate() }
         try super.tearDownWithError()
     }
     func testNativeDocumentBrowserLaunchAndNewDocument() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launch()
         defer { app.terminate() }
         print("VISION_NATIVE_LAUNCH state=\(app.state.rawValue)")
@@ -15,6 +33,8 @@ final class NativeVisionUITests: XCTestCase {
         try openEditor(in:app)
         let editor = app.buttons["editor.import-files"]
         XCTAssertTrue(editor.isHittable)
+        XCTAssertEqual(editor.label, "导入文件")
+        XCTAssertTrue(app.staticTexts["原生照片编辑器"].exists)
         print("VISION_NATIVE_EDITOR_READY importHittable=\(editor.isHittable)")
         let editorCapture = XCTAttachment(screenshot: app.screenshot()); editorCapture.name = "native-vision-editor-ready"; editorCapture.lifetime = .keepAlways; add(editorCapture)
         if #available(visionOS 27.0, *) { try app.performAccessibilityAudit(for: .all) { issue in
@@ -128,6 +148,46 @@ extension NativeVisionUITests {
             return false // Report every real issue; this callback suppresses nothing.
         } }
     }
+    func testSimplifiedChineseDocumentPrivacyAndLargeText() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(); defer { app.terminate() }
+        var ordinaryHeight: CGFloat = 0
+        for large in [false, true] {
+            if app.state != .notRunning { app.terminate() }
+            app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN", "-UIPreferredContentSizeCategoryName",
+                                   large ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launch(); try openEditor(in: app)
+            XCTAssertEqual(app.buttons["editor.import-files"].label, "导入文件")
+            let heading = app.staticTexts["原生照片编辑器"]
+            XCTAssertTrue(heading.waitForExistence(timeout: 10)); let height = heading.frame.height
+            if large {
+                continueAfterFailure = true
+                XCTAssertGreaterThan(height, ordinaryHeight, "The real Chinese editor must show an actual text-size change")
+                continueAfterFailure = false
+            } else { ordinaryHeight = height }
+            let privacy = app.buttons["editor.privacy"]
+            XCTAssertTrue(privacy.exists); XCTAssertEqual(privacy.label, "隐私政策")
+            for _ in 0..<8 {
+                if privacy.isHittable { break }
+                let scroll = app.scrollViews.containing(.button, identifier: "editor.privacy").firstMatch
+                XCTAssertTrue(scroll.exists); scroll.swipeUp()
+            }
+            XCTAssertTrue(privacy.isHittable); privacy.tap()
+            let done = app.buttons["完成"].firstMatch
+            XCTAssertTrue(done.waitForExistence(timeout: 10)); XCTAssertTrue(done.isHittable)
+            XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "本地数据可通过相应应用或系统删除，权限可在系统设置中撤回。")).firstMatch.exists)
+            capture(app, name: large ? "vision-zh-Hans-large-privacy" : "vision-zh-Hans-privacy")
+            if #available(visionOS 27.0, *) {
+                let previous = continueAfterFailure; continueAfterFailure = true
+                defer { continueAfterFailure = previous }
+                try app.performAccessibilityAudit(for: .all) { issue in
+                print("NATIVE_ACCESSIBILITY_ISSUE state=vision-zh-Hans requestedLarge=\(large) description=\(issue.compactDescription) element=\(issue.element?.debugDescription ?? "none")"); return false
+                }
+            }
+            done.tap(); XCTAssertTrue(app.buttons["editor.import-files"].isHittable)
+            print("VISION_ZH_HANS_DOCUMENT_PRIVACY requestedLarge=\(large) headingHeight=\(height) ordinaryHeight=\(ordinaryHeight)")
+        }
+    }
     private func openEditor(in app:XCUIApplication) throws {
         let editor = app.buttons["editor.import-files"]
         if editor.exists { return }
@@ -136,7 +196,7 @@ extension NativeVisionUITests {
             // The exact f9 hierarchy showed the native No Document shell, with
             // a Documents navigation button. Opening that real browser is a
             // required user action, not an arbitrary additional wait for Create.
-            let documents = app.navigationBars.buttons["Documents"].firstMatch
+            let documents = app.navigationBars.buttons.matching(NSPredicate(format: "label == 'Documents' OR label == '文稿' OR label == '文档'")).firstMatch
             print("VISION_DOCUMENT_ROUTE documentsVisible=\(documents.exists) state=\(app.state.rawValue)")
             if documents.exists && documents.isHittable { documents.tap() }
         }
