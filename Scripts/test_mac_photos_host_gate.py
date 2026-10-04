@@ -61,6 +61,28 @@ class MacPhotosHostGateTests(unittest.TestCase):
         self.assertNotIn('early_interop',host)
         self.assertIn('  cancel-in-progress: false',self.workflow)
         self.assertEqual(self.workflow.count('max-parallel: 1'),2)
+    def test_mac_checkout_depth_three_retains_pinned_grandparent_base(self):
+        mac=self.workflow.split('  native-mac:',1)[1].split('  native-simulator:',1)[0]
+        self.assertEqual(mac.count('fetch-depth: 3'),1)
+        self.assertEqual(gate.BASE,'9c9e7fc9c12df342c883e8a1e4462f796469842c')
+        # Reproduce the exact ancestry depth with tiny local fixtures. Public
+        #23d is independently verified to have9c as its sole parent.
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder).resolve();seed=root/'seed';seed.mkdir()
+            def git(*args):return subprocess.check_output(['git',*map(str,args)],text=True,stderr=subprocess.STDOUT)
+            git('init','--quiet',seed)
+            commits=[]
+            for content in ['pinned-base','published-parent','test-fix-successor']:
+                (seed/'fixture.txt').write_text(content)
+                git('-C',seed,'add','fixture.txt')
+                git('-C',seed,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--quiet','-m',content)
+                commits.append(git('-C',seed,'rev-parse','HEAD').strip())
+            for depth in [2,3]:
+                clone=root/('depth-'+str(depth));git('clone','--quiet','--depth',depth,seed.as_uri(),clone)
+                check=subprocess.run(['git','-C',str(clone),'cat-file','-e',commits[0]+'^{commit}'],capture_output=True,text=True)
+                self.assertEqual(check.returncode==0,depth==3)
+                self.assertEqual(git('-C',clone,'rev-parse','HEAD').strip(),commits[2])
+
     def test_existing_runtime_and_caps_reuse_compiled_product(self):
         self.assertIn('    timeout-minutes: 45',self.workflow)
         self.assertIn('        timeout-minutes: 14',self.workflow)
@@ -215,6 +237,7 @@ class RuntimeAcceptanceTests(unittest.TestCase):
     SOURCE = 'a' * 40
 
     def seed(self, root):
+        root = Path(root).resolve()  # Match real producer receipts across macOS /var -> /private/var.
         observed = root / 'mac-host-observed'
         observed.mkdir()
         app = str(root / 'Applications/CelluloidHost-test.app')
@@ -283,6 +306,24 @@ class RuntimeAcceptanceTests(unittest.TestCase):
             self.assertTrue(accepted['exactly_one_passed_zero_skipped'])
             self.assertFalse(accepted['complete_host_e2e'])
             self.assertEqual(len(accepted['receipts']), 15)
+
+    def test_synthetic_packet_uses_canonical_paths_through_temporary_directory_alias(self):
+        with tempfile.TemporaryDirectory() as folder:
+            real=Path(folder)/'real';real.mkdir();alias=Path(folder)/'alias';alias.symlink_to(real,target_is_directory=True)
+            self.seed(alias)
+            accepted=gate.verify_acceptance(alias,self.SOURCE)
+            self.assertTrue(accepted['prerequisite_accepted'])
+            registration=gate.read_receipt(alias/'mac-host-observed/registration-selected.json')
+            expected=str(real.resolve()/'Applications/CelluloidHost-test.app/Contents/PlugIns/CelluloidMacPhotosExtension.appex')
+            self.assertEqual(registration['expected_extension_path'],expected)
+            gate.write(alias/'mac-host-acceptance.json',accepted)
+            with mock.patch.dict(os.environ,RUNNER_TEMP=str(alias),GITHUB_SHA=self.SOURCE):gate.collect()
+            self.assertTrue(gate.verify_collected(alias/'mac-host-evidence',self.SOURCE)['prerequisite_accepted'])
+            # Canonicalize only synthetic producer setup; the production verifier
+            # must still reject a noncanonical claimed registration receipt.
+            registration['expected_extension_path']=str(alias/'Applications/CelluloidHost-test.app/Contents/PlugIns/CelluloidMacPhotosExtension.appex')
+            gate.write(alias/'mac-host-observed/registration-selected.json',registration)
+            with self.assertRaises(AssertionError):gate.verify_acceptance(alias,self.SOURCE)
 
     def test_each_missing_mandatory_record_rejects(self):
         paths = ['mac-job-clock.json', 'mac-host-budget.json', 'mac-host-context.json', 'mac-host-summary.json', 'mac-host-test.log',

@@ -85,7 +85,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
-          fetch-depth: 2
+          fetch-depth: 3
       - name: Verify source and stable SDKs
         shell: bash
         run: |
