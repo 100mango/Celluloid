@@ -4,6 +4,28 @@ import PhotosUI
 import CelluloidKit
 
 final class PhotoEditingViewController: BaseEditPhotoController, PHContentEditingController {
+    // Photos owns the navigation bar and displays this view behind it. Keep
+    // only that system-chrome region semantic; the existing photo canvas stays
+    // dark. No host navigation appearance or interface style is overridden.
+    let hostNavigationBackground: UIView = {
+        let surface = UIView()
+        surface.backgroundColor = .systemBackground
+        surface.isUserInteractionEnabled = false
+        surface.isAccessibilityElement = false
+        surface.accessibilityElementsHidden = true
+        surface.translatesAutoresizingMaskIntoConstraints = false
+        return surface
+    }()
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.addSubview(hostNavigationBackground)
+        NSLayoutConstraint.activate([
+            hostNavigationBackground.topAnchor.constraint(equalTo: view.topAnchor),
+            hostNavigationBackground.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hostNavigationBackground.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            hostNavigationBackground.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+        ])
+    }
     private var cancelled = false
     private var sessionGeneration: UInt64 = 0
     private var pendingOutputWrite: PhotosOutputWrite?
@@ -122,7 +144,11 @@ final class PhotoEditingViewController: BaseEditPhotoController, PHContentEditin
         }
         if Thread.isMainThread { finish() } else { DispatchQueue.main.async(execute: finish) }
     }
-    var shouldShowCancelConfirmation: Bool { true }
+    // A protected session cannot create unsaved edits and returns a no-change
+    // output. Editable sessions retain conservative confirmation, including
+    // while a render/write is preparing. Existing cancellation ownership stays
+    // unchanged for the render, writer and pending Photos callback.
+    var shouldShowCancelConfirmation: Bool { !isAdjustmentReadOnly }
     func cancelContentEditing() {
         cancelled = true
         needsUnreadableNotice = false

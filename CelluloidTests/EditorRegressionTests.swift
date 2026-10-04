@@ -154,6 +154,23 @@ final class EditorRegressionTests: XCTestCase {
         editor.loadViewIfNeeded()
         XCTAssertNil(editor.outputImage)
     }
+    func testProtectedPhotosSessionDoesNotOfferDiscardingChanges() {
+        let editor = PhotoEditingViewController(); editor.loadViewIfNeeded()
+        XCTAssertTrue(editor.shouldShowCancelConfirmation, "Ordinary editable sessions stay conservative")
+        let data = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: "1.0", data: Data([1, 2, 3]))
+        editor.preserveUnreadableAdjustment(data, currentImage: nil)
+        XCTAssertTrue(editor.isAdjustmentReadOnly)
+        XCTAssertFalse(editor.shouldShowCancelConfirmation, "Read-only state cannot create unsaved changes to discard")
+        XCTAssertEqual(editor.preservedAdjustmentData?.data, data.data)
+        editor.cancelContentEditing()
+        XCTAssertNil(editor.input)
+        editor.input = nil // A replacement editable session clears protection.
+        XCTAssertFalse(editor.isAdjustmentReadOnly)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation)
+        editor.preserveUnreadableAdjustment(data, currentImage: nil)
+        XCTAssertFalse(editor.shouldShowCancelConfirmation, "Policy follows the actual replacement state in both directions")
+    }
+
     func testReadOnlyAdjustmentKeepsOpaqueBytesAndCurrentPixelsUntilNewInput() throws {
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
         let current = UIGraphicsImageRenderer(size: CGSize(width: 120, height: 80), format: format).image { context in
@@ -300,6 +317,7 @@ final class EditorRegressionTests: XCTestCase {
         editor.loadViewIfNeeded()
         editor.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation)
         editor.view.layoutIfNeeded()
         var adjustment = AdjustmentData()
         adjustment.filterType = .Sepia
@@ -330,6 +348,7 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertNil(editor.input)
 
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation)
         let cancelledDuringRender = expectation(description: "Photos canceled during preparation: suppress pending host callback")
         cancelledDuringRender.isInverted = true
         editor.finishContentEditing { _ in cancelledDuringRender.fulfill() }
@@ -342,6 +361,7 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertTrue(editor.view.isUserInteractionEnabled)
 
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation)
         editor.view.layoutIfNeeded()
         var renderedState = editor.adjustmentData
         let canvas = try XCTUnwrap(renderedState.referenceCanvasSize)
@@ -374,6 +394,7 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertTrue(pending.isCancelled)
 
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation)
         let superseded = expectation(description: "Superseded Photos session must not invoke its host completion")
         superseded.isInverted = true
         var staleCallbacks = 0
@@ -384,6 +405,7 @@ final class EditorRegressionTests: XCTestCase {
         // Same PHContentEditingInput object, new host session: object identity alone
         // must not authorize an older asynchronous completion.
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation)
         XCTAssertTrue(editor.view.isUserInteractionEnabled)
         let replacement = expectation(description: "Replacement Photos session completes successfully once")
         replacement.assertForOverFulfill = true
@@ -402,6 +424,7 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertTrue(editor.view.isUserInteractionEnabled)
 
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation)
         editor.restoreFromData(renderedState)
         let earlierFinish = expectation(description: "Repeated finish supersedes the older host completion")
         earlierFinish.isInverted = true
@@ -445,6 +468,7 @@ final class EditorRegressionTests: XCTestCase {
             wait(for: [entered], timeout: 10)
             editor.outputWriterPreparedForTesting = nil
             guard let writer = actualWriter else { release.signal(); throw NSError(domain: "Celluloid.WriteProbe", code: 1) }
+            XCTAssertTrue(editor.shouldShowCancelConfirmation, "An editable pending write still needs conservative cancellation confirmation")
             XCTAssertFalse(FileManager.default.fileExists(atPath: writer.destination.path))
             return (writer, release, oldCallback)
         }
@@ -454,6 +478,7 @@ final class EditorRegressionTests: XCTestCase {
             wait(for: [drained], timeout: 5)
         }
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation)
         let canceledWrite = try pauseActualOutputWrite()
         editor.cancelContentEditing()
         canceledWrite.1.signal(); drainActualOutputWrites()
@@ -461,9 +486,11 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: canceledWrite.0.destination.path))
 
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation)
         let replacedWrite = try pauseActualOutputWrite()
         // Exactly the same PHContentEditingInput identity starts a new session.
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation)
         let replacementWritten = expectation(description: "Replacement output completes once")
         replacementWritten.assertForOverFulfill = true
         editor.finishContentEditing { output in
@@ -479,12 +506,15 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertTrue(editor.view.isUserInteractionEnabled)
 
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation)
         let protectedReplacementWrite = try pauseActualOutputWrite()
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation)
         // This directly tests the protected adapter mode. Actual malformed-bound
         // PhotoKit input and host preservation have separate integration gates.
         editor.preserveUnreadableAdjustment(PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier,
             formatVersion: "1.0", data: Data([1,2,3])), currentImage: placeholder)
+        XCTAssertFalse(editor.shouldShowCancelConfirmation, "Protected replacement supersedes the abandoned editable write")
         let protectedDone = expectation(description: "Protected replacement yields no-change output")
         protectedDone.assertForOverFulfill = true
         editor.finishContentEditing { output in
@@ -496,7 +526,12 @@ final class EditorRegressionTests: XCTestCase {
         protectedReplacementWrite.1.signal()
         wait(for: [protectedDone], timeout: 2); drainActualOutputWrites()
         wait(for: [protectedReplacementWrite.2], timeout: 0.1)
+        XCTAssertFalse(editor.shouldShowCancelConfirmation)
         XCTAssertFalse(FileManager.default.fileExists(atPath: protectedReplacementWrite.0.destination.path))
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation, "A later editable input restores conservative confirmation")
+        editor.cancelContentEditing()
+        XCTAssertNil(editor.input)
         print("PHOTOS_EXTENSION_CALLBACK_CONTRACT_ASSERTIONS_COMPLETED success_cancel_supersession_repeated_finish_and_queued_write use_terminal_test_status")
         // No PHPhotoLibrary.performChanges: the synthetic library asset is never mutated here.
     }

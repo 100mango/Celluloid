@@ -93,6 +93,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         editor.startContentEditing(with: protectedInput, placeholderImage: current)
         editor.view.layoutIfNeeded()
         XCTAssertTrue(editor.isAdjustmentReadOnly)
+        XCTAssertFalse(editor.shouldShowCancelConfirmation, "Actual protected input has no unsaved edits to discard")
         XCTAssertEqual(editor.preservedAdjustmentData?.data, opaque)
         XCTAssertTrue(editor.preview.image === current)
         XCTAssertNil(editor.outputImage)
@@ -103,6 +104,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         wait(for: [canceledBeforeAnyFinish], timeout: 0.1)
         editor.startContentEditing(with: protectedInput, placeholderImage: current)
         XCTAssertTrue(editor.isAdjustmentReadOnly)
+        XCTAssertFalse(editor.shouldShowCancelConfirmation, "Actual protected input has no unsaved edits to discard")
         let noChange = expectation(description: "Protected Photos session returns one documented no-change output")
         noChange.assertForOverFulfill = true
         editor.finishContentEditing { output in
@@ -123,6 +125,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         XCTAssertNil(fresh.adjustmentData)
         editor.startContentEditing(with: fresh, placeholderImage: freshPixels)
         XCTAssertFalse(editor.isAdjustmentReadOnly)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation, "Editable bound sessions remain conservative")
         XCTAssertNil(editor.preservedAdjustmentData)
         // More unrelated negotiation must not poison the bound fresh session.
         XCTAssertTrue(editor.canHandle(actualData)); XCTAssertFalse(editor.canHandle(foreign))
@@ -145,6 +148,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         editor.startContentEditing(with: validInput, placeholderImage: expectedOutput)
         editor.view.layoutIfNeeded()
         XCTAssertFalse(editor.isAdjustmentReadOnly)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation, "Editable bound sessions remain conservative")
         let restored = editor.adjustmentData
         try assertLiteralLegacy(restored, canvas: expectedCanvas)
         XCTAssertEqual(try rgba(XCTUnwrap(editor.outputImage)), try rgba(expectedOutput), "Actual bound legacy input matches the separate synchronous-compositor pixel oracle")
@@ -182,6 +186,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         XCTAssertEqual(try rgba(foreignCurrent), try rgba(expectedRenderedJPEG))
         editor.startContentEditing(with: foreignInput, placeholderImage: foreignCurrent)
         XCTAssertFalse(editor.isAdjustmentReadOnly)
+        XCTAssertTrue(editor.shouldShowCancelConfirmation, "Editable bound sessions remain conservative")
         XCTAssertEqual(try rgba(XCTUnwrap(editor.outputImage)), try rgba(foreignCurrent), "Foreign editing uses its current version, never the original")
         try finishNormally(editor, expectedImage: foreignCurrent)
         XCTAssertEqual(try integrity(protectedAsset, stage: "foreign-after-normal-export"), foreignBefore)
@@ -189,6 +194,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         XCTAssertEqual(unexpectedlyHandledForeign.adjustmentData?.formatIdentifier, foreign.formatIdentifier)
         editor.startContentEditing(with: unexpectedlyHandledForeign, placeholderImage: try currentImage(protectedAsset))
         XCTAssertTrue(editor.isAdjustmentReadOnly)
+        XCTAssertFalse(editor.shouldShowCancelConfirmation, "Actual protected input has no unsaved edits to discard")
         XCTAssertEqual(editor.preservedAdjustmentData?.data, opaque)
         XCTAssertEqual(try integrity(protectedAsset, stage: "foreign-after-protected-direct-input"), foreignBefore)
         XCTAssertEqual(try integrity(freshAsset, stage: "fresh-after-all-other-sessions"), pristineFresh)

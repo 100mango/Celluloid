@@ -20,7 +20,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           ref: ${{ github.sha }}
-      - name: Verify frozen production source and test-only delta
+      - name: Verify reviewed extension repair and bounded test delta
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = 100mango/Celluloid
@@ -31,24 +31,27 @@ jobs:
           python3 - <<'PY'
           import hashlib,json,pathlib,subprocess
           frozen='c5875ee7586611c28879b5030e5e575a9f33fcbd'
-          allowed={'.github/workflows/ios-photos-host.yml','CelluloidUITests/CelluloidUITests.swift','Celluloid.xcodeproj/xcshareddata/xcschemes/CelluloidCapture.xcscheme'}
+          allowed={'.github/workflows/ios-photos-host.yml','CelluloidUITests/CelluloidUITests.swift','Celluloid.xcodeproj/xcshareddata/xcschemes/CelluloidCapture.xcscheme','CelluloidPhotoExtension/PhotoEditingViewController.swift','CelluloidTests/AdaptiveInterfaceTests.swift','CelluloidTests/EditorRegressionTests.swift','CelluloidTests/AdjustmentPreservationPhotoKitTests.swift'}
           changed=set(p for p in subprocess.check_output(['git','diff','--name-only','-z',frozen,'HEAD']).decode().split('\0') if p)
           assert changed and changed <= allowed,changed
           paths=[p for p in subprocess.check_output(['git','ls-files','-z','Celluloid','CelluloidKit','CelluloidPhotoExtension']).decode().split('\0') if p]
           rows=[]
           for p in paths:
               data=pathlib.Path(p).read_bytes()
-              assert data==subprocess.check_output(['git','show',frozen+':'+p]),p
+              if p=='CelluloidPhotoExtension/PhotoEditingViewController.swift':
+                  assert hashlib.sha256(data).hexdigest()=='9afab858c9a6b9341c6cff42d484113a5c6d013522b92aef510b018121e0c933',p
+              else:
+                  assert data==subprocess.check_output(['git','show',frozen+':'+p]),p
               rows.append((p,hashlib.sha256(data).hexdigest()))
           digest=hashlib.sha256(json.dumps(rows,separators=(',',':')).encode()).hexdigest()
-          assert len(rows)==316 and digest=='a8e62778f438088e56e71f4ce6ea2570ecc74d115f810bbc9d36d0be6c0d8afe'
+          assert len(rows)==316 and digest=='7578578f280dd9a9b9c932afbc52a2a9799d0c5e6ec91eb1a51e4e5e327abc9c'
           settings=[p for p in subprocess.check_output(['git','ls-files','-z','*pbxproj','*xcworkspacedata','*Package.resolved']).decode().split('\0') if p]
           for p in settings:
               assert pathlib.Path(p).read_bytes()==subprocess.check_output(['git','show',frozen+':'+p]),p
           original=subprocess.check_output(['git','show',frozen+':CelluloidUITests/CelluloidUITests.swift'])
           assert pathlib.Path('CelluloidUITests/CelluloidUITests.swift').read_bytes().startswith(original),'Existing fail-closed suite/prefix changed'
           print('UNCHANGED_UI_TEST_PREFIX_SHA256',hashlib.sha256(original).hexdigest())
-          print('FROZEN_PRODUCTION_SOURCE',frozen,'FILES',len(rows),'SHA256',digest)
+          print('BASELINE_PLUS_REVIEWED_EXTENSION_REPAIR',frozen,'FILES',len(rows),'SHA256',digest)
           print('UNCHANGED_BUILD_SETTINGS',json.dumps(settings))
           print('HOST_TEST_ONLY_DELTA',json.dumps(sorted(changed)))
           print('HOST_TEST_COMMIT',subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
@@ -69,6 +72,7 @@ jobs:
           id=$(cut -d' ' -f1 /tmp/host-device.txt)
           echo "$id" > /tmp/current-celluloid-simulator
           python3 Scripts/run_bounded.py --seconds 900 --label host-build xcodebuild -project Celluloid.xcodeproj -scheme CelluloidCapture -configuration Release -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-host -jobs 2 build-for-testing CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO > host-build.log 2>&1 || { tail -200 host-build.log; exit 1; }
+          python3 Scripts/run_bounded.py --seconds 600 --label host-preflight-build xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-host-preflight -jobs 2 build-for-testing CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO > host-preflight-build.log 2>&1 || { tail -200 host-preflight-build.log; exit 1; }
           python3 Scripts/run_bounded.py --seconds 60 --label host-boot xcrun simctl boot "$id"
           python3 Scripts/run_bounded.py --seconds 600 --label host-bootstatus xcrun simctl bootstatus "$id" -b
           python3 Scripts/run_bounded.py --seconds 180 --label Photos-warm-up xcrun simctl launch "$id" com.apple.mobileslideshow -AppleLanguages '(zh-Hans)' -AppleLocale zh_CN
@@ -80,6 +84,19 @@ jobs:
           cp /tmp/celluloid-fixture-2.png /tmp/celluloid-fixture-b.png
           python3 Scripts/run_bounded.py --seconds 180 --label single-import-b xcrun simctl addmedia "$id" /tmp/celluloid-fixture-b.png
           shasum -a256 /tmp/celluloid-fixture-{a,b}.png
+          # Run the three grouped regression prerequisites before the real host:
+          # inherited light/dark chrome, protected/normal policy, and actual-input
+          # cancellation/supersession/pending-write ownership. No library edits.
+          python3 Scripts/run_bounded.py --seconds 120 --label install-preflight-app xcrun simctl install "$id" .build-host-preflight/Build/Products/Debug-iphonesimulator/Celluloid.app
+          python3 Scripts/run_bounded.py --seconds 60 --label grant-preflight-synthetic-Photos xcrun simctl privacy "$id" grant photos Mango.Celluloid
+          python3 Scripts/run_bounded.py --seconds 180 --label grouped-host-preflight xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-host-preflight -resultBundlePath HostPreflight.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests/AdaptiveInterfaceTests/testPhotosExtensionHostBackdropAdaptsWithoutChangingPhotoCanvas -only-testing:CelluloidTests/EditorRegressionTests/testProtectedPhotosSessionDoesNotOfferDiscardingChanges -only-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation test-without-building CODE_SIGNING_ALLOWED=NO | tee host-preflight.log
+          xcrun xcresulttool get test-results summary --path HostPreflight.xcresult > /tmp/host-preflight-summary.json
+          python3 - <<'PY'
+          import json
+          result=json.load(open('/tmp/host-preflight-summary.json'))
+          assert result['totalTestCount']==3 and result['passedTests']==3 and result['failedTests']==0,result
+          print('HOST_GROUPED_PREFLIGHT_RESULT',json.dumps(result))
+          PY
           python3 Scripts/run_bounded.py --seconds 120 --label install-host-app xcrun simctl install "$id" .build-host/Build/Products/Release-iphonesimulator/Celluloid.app
           runner=$(find .build-host/Build/Products/Release-iphonesimulator -maxdepth 1 -name '*UITests-Runner.app')
           test -n "$runner" && test -d "$runner"
@@ -100,7 +117,7 @@ jobs:
           set -euo pipefail
           id=$(cat /tmp/current-celluloid-simulator)
           set +e
-          TEST_RUNNER_CELLULOID_SYNTHETIC_PROBE=1 TEST_RUNNER_CELLULOID_PROBE_SOURCE_SHA="$GITHUB_SHA" TEST_RUNNER_CELLULOID_SHIPPING_SOURCE_SHA=c5875ee7586611c28879b5030e5e575a9f33fcbd python3 Scripts/run_bounded.py --seconds 900 --label actual-Photos-host xcodebuild -project Celluloid.xcodeproj -scheme CelluloidCapture -configuration Release -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-host -resultBundlePath PhotosHost.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidHostAcceptanceTests/testProtectedAdjustmentDoneCancelReopen -only-testing:CelluloidUITests/CelluloidHostAcceptanceTests/testEditableSaveDisplayProcessStateAndRevert test-without-building CODE_SIGNING_ALLOWED=NO | tee photos-host.log
+          TEST_RUNNER_CELLULOID_SYNTHETIC_PROBE=1 TEST_RUNNER_CELLULOID_PROBE_SOURCE_SHA="$GITHUB_SHA" TEST_RUNNER_CELLULOID_SHIPPING_SOURCE_SHA="$GITHUB_SHA" python3 Scripts/run_bounded.py --seconds 900 --label actual-Photos-host xcodebuild -project Celluloid.xcodeproj -scheme CelluloidCapture -configuration Release -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build-host -resultBundlePath PhotosHost.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidHostAcceptanceTests/testProtectedAdjustmentDoneCancelReopen -only-testing:CelluloidUITests/CelluloidHostAcceptanceTests/testEditableSaveDisplayProcessStateAndRevert test-without-building CODE_SIGNING_ALLOWED=NO | tee photos-host.log
           result=${PIPESTATUS[0]}
           set -e
           echo "HOST_TEST_COMMAND_EXIT $result"

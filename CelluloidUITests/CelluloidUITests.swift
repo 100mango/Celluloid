@@ -576,11 +576,11 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
         guard UIDevice.current.userInterfaceIdiom == .phone,
               environment["CELLULOID_SYNTHETIC_PROBE"] == "1",
               candidate.count == 40, candidate.allSatisfy({ "0123456789abcdef".contains($0) }),
-              environment["CELLULOID_SHIPPING_SOURCE_SHA"] == "c5875ee7586611c28879b5030e5e575a9f33fcbd",
+              environment["CELLULOID_SHIPPING_SOURCE_SHA"] == candidate,
               status == .authorized else {
             throw captureProbeError("Explicit marked Simulator/phone/full-Photos/exact-shipping prerequisites are absent")
         }
-        print("PHOTOS_HOST_AUTHORIZATION_PREREQUISITE raw=\(status.rawValue) candidate=\(candidate) shipping=c5875ee7586611c28879b5030e5e575a9f33fcbd")
+        print("PHOTOS_HOST_AUTHORIZATION_PREREQUISITE raw=\(status.rawValue) candidate=\(candidate) shipping=\(candidate)")
         #else
         throw captureProbeError("Synthetic host acceptance may not mutate a physical library")
         #endif
@@ -636,33 +636,53 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
         }
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !title.exists && !action.exists }, object: nil)
         try require(XCTWaiter.wait(for: [gone], timeout: 10) == .completed, "Observed welcome did not leave")
-        let grid = photos.images.matching(identifier: "PXGGridLayout-Info")
         let ordered = fixtures.sorted { $0.creationDate < $1.creationDate }
         var lastObservedLabels: [String] = []
+        var priorReadyFrames: [CGRect] = []
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            let visible = grid.allElementsBoundByIndex.filter { $0.exists && $0.isHittable }
+            let visible = self.snapshotGridEntries()
             let labels = visible.map { $0.label }
             if labels != lastObservedLabels {
                 print("PHOTOS_HOST_GRID_READINESS count=\(visible.count) labels=" + labels.joined(separator: " | "))
                 lastObservedLabels = labels
             }
             let latest = Array(visible.suffix(2))
-            guard latest.count == 2, ordered.count == 2 else { return false }
+            guard latest.count == 2, ordered.count == 2 else { priorReadyFrames = []; return false }
             for (image, source) in zip(latest, ordered) {
                 let parts = Calendar.current.dateComponents([.month, .day], from: source.creationDate)
                 guard let month = parts.month, let day = parts.day,
-                      image.label.range(of: "\\b\(month)月0?\(day)日", options: .regularExpression) != nil else { return false }
+                      image.label.range(of: "\\b\(month)月0?\(day)日", options: .regularExpression) != nil else { priorReadyFrames = []; return false }
             }
-            return true
+            let frames = latest.map { $0.frame }
+            let stable = frames == priorReadyFrames
+            priorReadyFrames = frames
+            return stable
         }, object: nil)
-        //612e proved that stock images can become actionable before either
-        //imported fixture reaches Photos' grid. Wait for the actual bound dates,
-        //not a generic image count; later selection still verifies CURRENT pixels.
+        // Read one coherent AX snapshot at a time while Photos ingests fixtures.
+        // Querying isHittable on every transient/stock element threw in b2fe;
+        // only the final uniquely bound actionable target is tested for a tap.
         try require(XCTWaiter.wait(for: [ready], timeout: 30) == .completed, "Actual bound fixture grid entries are not ready")
+    }
+    private struct HostGridEntry {
+        let label: String
+        let frame: CGRect
+    }
+    private func snapshotGridEntries() -> [HostGridEntry] {
+        guard let snapshot = try? photos.snapshot(), !snapshot.frame.isEmpty else { return [] }
+        func descendants(_ node: XCUIElementSnapshot) -> [XCUIElementSnapshot] {
+            [node] + node.children.flatMap(descendants)
+        }
+        return descendants(snapshot).compactMap { node -> HostGridEntry? in
+            let frame = node.frame
+            guard node.elementType == .image, node.identifier == "PXGGridLayout-Info", !node.label.isEmpty,
+                  !frame.isEmpty, !frame.isInfinite, !frame.isNull,
+                  frame.width > 40, frame.height > 40, snapshot.frame.contains(frame) else { return nil }
+            return HostGridEntry(label: node.label, frame: frame)
+        }.sorted { ($0.frame.minY, $0.frame.minX) < ($1.frame.minY, $1.frame.minX) }
     }
     private func selectFixture(_ baseline: CaptureFixtureIdentity, verifyCurrentPixels: Bool = true) throws {
         _ = try freshOwnedAsset(baseline)
-        let latest = Array(photos.images.matching(identifier: "PXGGridLayout-Info").allElementsBoundByIndex.filter { $0.exists && $0.isHittable }.suffix(2))
+        let latest = Array(snapshotGridEntries().suffix(2))
         let ordered = fixtures.sorted { $0.creationDate < $1.creationDate }
         try require(latest.count == 2 && ordered.count == 2, "Exactly two latest visible fixture grid entries are required")
         for (image, source) in zip(latest, ordered) {
@@ -672,7 +692,13 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
                         "Grid order/date does not match the exact owned fixtures")
         }
         let index = try XCTUnwrap(ordered.firstIndex { $0.assetIdentifier == baseline.assetIdentifier })
-        let image = latest[index]; selectedLabel = image.label
+        let bound = latest[index]; selectedLabel = bound.label
+        let controls = photos.images.matching(identifier: "PXGGridLayout-Info")
+            .matching(NSPredicate(format: "label == %@", bound.label)).allElementsBoundByIndex.filter {
+                $0.exists && $0.frame == bound.frame
+            }
+        try require(controls.count == 1, "The selected fixture snapshot no longer resolves to one exact grid control")
+        let image = controls[0]
         try captureJSON("PHOTOS_HOST_SELECTION_BINDING", ["asset_identifier": baseline.assetIdentifier,
             "resource_filename": baseline.resourceFilename, "creation_date": baseline.creationDate.timeIntervalSince1970,
             "ascending_fixture_slot": index, "observed_grid_label": selectedLabel])
@@ -711,8 +737,26 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
         try require(tapLabel(cancel ? ["取消", "Cancel"] : ["完成", "Done"]), "Observed extension completion action unavailable")
         let marker = protected ? photos.staticTexts["read-only-adjustment"] : photos.buttons["tool-filter"]
         let deadline = Date().addingTimeInterval(30)
+        var confirmedEditableDiscard = false
         repeat {
-            promptFree() // An unobserved discard confirmation is fatal, never accepted.
+            promptFree()
+            if photos.sheets.firstMatch.exists {
+                // Only this exact observed Photos Popover -> Sheet action may be
+                // used, and only after an explicit editable-session Cancel.
+                // Protected state must never claim unsaved changes to discard.
+                try require(cancel && !protected && !confirmedEditableDiscard && marker.exists,
+                            "Unexpected confirmation while finishing a protected/no-change session")
+                let popovers = photos.popovers.allElementsBoundByIndex.filter { $0.exists }
+                let sheets = popovers.flatMap { $0.sheets.allElementsBoundByIndex }.filter { $0.exists }
+                try require(popovers.count == 1 && sheets.count == 1 && photos.sheets.count == 1,
+                            "Editable discard is outside the observed owned Popover/Sheet")
+                let actions = sheets[0].buttons.allElementsBoundByIndex
+                try require(actions.count == 1 && actions[0].label == "放弃更改" &&
+                            actions[0].isEnabled && actions[0].isHittable,
+                            "Editable discard confirmation does not match the observed single action")
+                print("PHOTOS_HOST_EDITABLE_DISCARD_CONFIRMED after_explicit_cancel=true label=放弃更改")
+                actions[0].tap(); confirmedEditableDiscard = true
+            }
             if !marker.exists { return }
             Thread.sleep(forTimeInterval: 0.25)
         } while Date() < deadline
@@ -744,6 +788,46 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
         try persistHostEvidence(jpeg, name: name, slot: slot)
     }
 
+    private func assertHostTitleContrast(in screen: UIImage) throws {
+        let titles = photos.navigationBars["Celluloid"].staticTexts.matching(NSPredicate(format: "label == %@", "Celluloid"))
+        try require(titles.count == 1, "Expected one actual Photos-hosted Celluloid title")
+        let frame = titles.element.frame
+        let raster = try XCTUnwrap(screen.cgImage)
+        let scaleX = CGFloat(raster.width) / photos.frame.width, scaleY = CGFloat(raster.height) / photos.frame.height
+        try require(frame.width > 20 && frame.height > 10 && photos.frame.contains(frame), "Host title geometry is not visible")
+        func luminance(_ rgb: [Int]) -> Double {
+            func linear(_ byte: Int) -> Double {
+                let value = Double(byte) / 255
+                return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(rgb[0]) + 0.7152 * linear(rgb[1]) + 0.0722 * linear(rgb[2])
+        }
+        var background: [Double] = []
+        for x in [frame.minX + 4, frame.midX, frame.maxX - 4] {
+            for y in [frame.minY - 3, frame.maxY + 3] {
+                background.append(luminance(try capturePixel(screen, x: Int(x * scaleX), y: Int(y * scaleY))))
+            }
+        }
+        background.sort()
+        let backgroundLuminance = background[background.count / 2]
+        let titleRaster = try XCTUnwrap(raster.cropping(to: CGRect(x: floor(frame.minX * scaleX), y: floor(frame.minY * scaleY),
+            width: ceil(frame.width * scaleX), height: ceil(frame.height * scaleY))))
+        let pixels = Array(try captureRGB(UIImage(cgImage: titleRaster)))
+        var readable = 0, maximum = 0.0
+        for offset in stride(from: 0, to: pixels.count, by: 3) {
+            let value = luminance([Int(pixels[offset]), Int(pixels[offset + 1]), Int(pixels[offset + 2])])
+            let ratio = (max(value, backgroundLuminance) + 0.05) / (min(value, backgroundLuminance) + 0.05)
+            maximum = max(maximum, ratio)
+            if ratio >= 4.5 { readable += 1 }
+        }
+        let fraction = Double(readable) / Double(pixels.count / 3)
+        try captureJSON("PHOTOS_HOST_TITLE_PIXEL_CONTRAST", ["title": "Celluloid", "frame": [frame.minX, frame.minY, frame.width, frame.height],
+            "background_luminance": backgroundLuminance, "maximum_contrast": maximum,
+            "fraction_pixels_at_least_4_5": fraction, "minimum_ink_fraction": 0.03,
+            "frame_source": "same_native_UIImage_retained_in_protected_slot1"])
+        try require(maximum >= 4.5 && fraction >= 0.03, "Actual hosted title lacks readable foreground/background contrast")
+    }
+
     func testProtectedAdjustmentDoneCancelReopen() throws {
         try bindFixtures()
         let target = try fixture("a"), control = try fixture("b")
@@ -761,7 +845,14 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
         try launchHost(); try selectFixture(target)
         try beginExtension(target, protected: true)
         promptFree()
-        try retainScreenshot(XCUIScreen.main.screenshot().image, slot: 1, name: "celluloid-host-protected-read-only")
+        let protectedFrame = XCUIScreen.main.screenshot().image
+        try retainScreenshot(protectedFrame, slot: 1, name: "celluloid-host-protected-read-only")
+        try assertHostTitleContrast(in: protectedFrame)
+        try photos.performAccessibilityAudit(for: .contrast) { issue in
+            print("PHOTOS_HOST_CONTRAST_AUDIT_ISSUE identifier=\(issue.element?.identifier ?? "nil") label=\(issue.element?.label ?? "nil") description=\(issue.compactDescription)")
+            return false // No category or element is suppressed.
+        }
+        print("PHOTOS_HOST_CONTRAST_AUDIT_PASS protected_editor=true")
         try finishExtension(target, protected: true, cancel: false)
         try require(try integrity(target, phase: "protected-after-extension-done") == baseline, "Actual no-change Done altered protected bytes")
         try require(try integrity(control, phase: "protected-control-after-done") == unchangedControl, "Done changed other fixture")
