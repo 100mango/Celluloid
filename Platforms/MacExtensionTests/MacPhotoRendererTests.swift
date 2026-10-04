@@ -126,7 +126,7 @@ final class MacPhotoRendererTests: XCTestCase {
         XCTAssertThrowsError(try MacPhotoTextLayout.make(String(repeating: "Long multiline text 你好 ", count: 300), rect: CGRect(x: 0, y: 0, width: 1, height: 1)))
         let raster = try MacPhotoTextRaster.make(layout, bounds: CGSize(width: 27.875, height: 43.52))
         XCTAssertEqual(raster.width, 56); XCTAssertEqual(raster.height, 88)
-        XCTAssertThrowsError(try MacPhotoTextRaster.make(layout, bounds: CGSize(width: .infinity, height: 20)))
+        XCTAssertThrowsError(try MacPhotoTextRaster.make(layout, bounds: CGSize(width: CGFloat.infinity, height: 20)))
         XCTAssertThrowsError(try MacPhotoTextRaster.make(layout, bounds: CGSize(width: 1_000_000, height: 1_000_000)))
     }
     @MainActor func testPrincipalControllerHostsRealEditorAndPureFormatNegotiation() throws {
