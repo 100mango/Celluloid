@@ -57,10 +57,27 @@ final class MacPhotoAdjustmentTests: XCTestCase {
         let native = try MacPhotoRenderer().render(adjustment, source: source, bytes: sourceBytes)
         let rendered = try RasterCodec.encode(native, as: .png)
         func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
-        let record: [String: String] = ["identifier": MacPhotoAdjustment.identifier, "version": MacPhotoAdjustment.version,
+        // Same native production renderer and source, with one component at a
+        // time. The UIKit consumer independently renders each through its
+        // original controller, so a failed full image is diagnosable in one run.
+        let components: [[String: String]] = try ["filtered-base", "bubble-artwork", "sticker-artwork", "all-artwork"].map { name in
+            var component = adjustment
+            component.bubbles = component.bubbles.map { var layer = $0; layer.text = ""; return layer }
+            if name == "filtered-base" || name == "sticker-artwork" { component.bubbles = [] }
+            if name == "filtered-base" || name == "bubble-artwork" { component.stickers = [] }
+            let image = try MacPhotoRenderer().render(component, source: source, bytes: sourceBytes)
+            let png = try RasterCodec.encode(image, as: .png)
+            return ["name": name, "sha256": digest(png), "base64": png.base64EncodedString()]
+        }
+        let asset = try NativeResources.image(named: bubble.asset)
+        let textRect = try XCTUnwrap(MacPhotoRenderer.bubbleTextRect(bounds: bubble.bounds, imageWidth: asset.width,
+            imageHeight: asset.height, area: NativeResources.bubbleArea(named: bubble.asset)))
+        let layout = try MacPhotoTextLayout.make(bubble.text, rect: textRect)
+        print("MAC_LAYER_UIKIT_COMPOSITOR_NATIVE_LAYOUT asset=\(asset.width)x\(asset.height) textRect=\(textRect) fontSize=\(layout.fontSize) height=\(layout.height)")
+        let record: [String: Any] = ["identifier": MacPhotoAdjustment.identifier, "version": MacPhotoAdjustment.version,
             "name": "manufactured-affine", "sha256": digest(bytes), "base64": bytes.base64EncodedString(),
             "sourceSHA256": digest(sourceBytes), "sourceBase64": sourceBytes.base64EncodedString(),
-            "renderedSHA256": digest(rendered), "renderedBase64": rendered.base64EncodedString()]
+            "renderedSHA256": digest(rendered), "renderedBase64": rendered.base64EncodedString(), "components": components]
         print("MAC_LAYER_ADJUSTMENT_FIXTURE " + String(decoding: try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]), as: UTF8.self))
         let decoded = try MacPhotoAdjustment.decode(bytes)
         XCTAssertEqual(decoded.bubbles[0].transform, bubble.transform); XCTAssertEqual(decoded.stickers[0].bounds, sticker.bounds)

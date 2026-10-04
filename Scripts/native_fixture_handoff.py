@@ -51,10 +51,11 @@ def validate_fallback(row):
 
 LAYER_FILE='mac-layer-fixture.json'
 LAYER_MAX_BYTES=500_000
+LAYER_COMPONENTS={'filtered-base','bubble-artwork','sticker-artwork','all-artwork'}
 
 def validate_layer(row):
     keys={'name','identifier','version','sha256','base64','sourceSHA256','sourceBase64','renderedSHA256','renderedBase64'}
-    if not isinstance(row,dict) or set(row)!=keys or not all(isinstance(v,str) for v in row.values()):raise ValueError('Malformed manufactured-layer fixture')
+    if not isinstance(row,dict) or set(row) not in (keys,keys|{'components'}) or not all(isinstance(row[k],str) for k in keys):raise ValueError('Malformed manufactured-layer fixture')
     if (row['name'],row['identifier'],row['version'])!=('manufactured-affine','Mango.CelluloidPhotoExtension','1.0'):raise ValueError('Unexpected manufactured-layer fixture identity')
     if len(json.dumps(row,separators=(',',':')).encode())>LAYER_MAX_BYTES:raise ValueError('Manufactured-layer fixture exceeds bounded handoff')
     for content,sha,limit in [('base64','sha256',32_768),('sourceBase64','sourceSHA256',150_000),('renderedBase64','renderedSHA256',150_000)]:
@@ -62,6 +63,17 @@ def validate_layer(row):
         if not 0<len(data)<=limit or hashlib.sha256(data).hexdigest()!=row[sha]:raise ValueError('Manufactured-layer byte/hash mismatch')
         if content!='base64':
             if data[:8]!=b'\x89PNG\r\n\x1a\n' or data[12:16]!=b'IHDR' or int.from_bytes(data[16:20],'big')!=480 or int.from_bytes(data[20:24],'big')!=640:raise ValueError('Expected fixed synthetic480x640 PNG')
+    # Old source-bound fixtures remain reproducible. New producers include all
+    # four independent components; partial/unknown/unbound payloads fail closed.
+    if 'components' in row:
+        components=row['components']
+        if not isinstance(components,list) or len(components)!=len(LAYER_COMPONENTS):raise ValueError('Malformed layer components')
+        for component in components:
+            if not isinstance(component,dict) or set(component)!={'name','sha256','base64'} or not all(isinstance(v,str) for v in component.values()):raise ValueError('Malformed layer component')
+            data=base64.b64decode(component['base64'],validate=True)
+            if not 0<len(data)<=150_000 or hashlib.sha256(data).hexdigest()!=component['sha256']:raise ValueError('Layer component byte/hash mismatch')
+            if data[:8]!=b'\x89PNG\r\n\x1a\n' or data[12:16]!=b'IHDR' or int.from_bytes(data[16:20],'big')!=480 or int.from_bytes(data[20:24],'big')!=640:raise ValueError('Expected fixed synthetic480x640 PNG component')
+        if {c['name'] for c in components}!=LAYER_COMPONENTS:raise ValueError('Missing or duplicate layer components')
     return row
 
 def layer_from_log(path,source_sha):

@@ -519,7 +519,12 @@ final class NativeEditorUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [alertReady], timeout: 5), .completed)
         let alert = try XCTUnwrap(matchingAlerts().first)
         let okay = alert.buttons["action-button-1"]
-        XCTAssertTrue(okay.waitForExistence(timeout: 5)); XCTAssertEqual(okay.label, "OK"); XCTAssertTrue(okay.isHittable)
+        XCTAssertTrue(okay.waitForExistence(timeout: 5))
+        let actionAttributes = okay.debugDescription.components(separatedBy: "\n").first ?? ""
+        print("NATIVE_STANDARD_NSALERT_ACTION label=\(okay.label) value=\(okay.value ?? "nil") attributes=\(actionAttributes)")
+        // Standard AppKit exposes this button's title as 'OK' while XCUI label can be empty.
+        XCTAssertTrue(okay.label == "OK" || actionAttributes.contains("title: 'OK'"), "The exact owned sheet action must expose its observed OK title")
+        XCTAssertTrue(okay.isHittable)
         XCTAssertTrue(alert.frame.contains(okay.frame), "Use the observed real sheet action, never its Touch Bar clone")
         print("NATIVE_STANDARD_NSALERT_AX markEnabled=\(mark.isEnabled) markHittable=\(mark.isHittable) " + String(app.debugDescription.prefix(24000)))
         try auditOrdinary(app, state: "diagnostic-standard-appkit-nsalert")

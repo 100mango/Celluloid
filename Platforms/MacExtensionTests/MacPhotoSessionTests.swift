@@ -31,6 +31,28 @@ import CelluloidRendering
         session.begin(url: nil, orientation: 1, previous: .init(identifier: MacPhotoAdjustment.identifier, version: "1.0", bytes: data), placeholder: NSImage())
         XCTAssertTrue(session.readOnly); XCTAssertEqual(session.originalAdjustment?.bytes, data); XCTAssertNil(session.snapshot)
     }
+    func testReferenceCanvasLayersPreserveExactCurrentAppearanceUntilUIKitPixelGatePasses() throws {
+        let bundle = Bundle(for: Self.self)
+        let data = try XCTUnwrap(Data(base64Encoded: Data(contentsOf: XCTUnwrap(bundle.url(forResource: "reference-canvas", withExtension: "base64"))), options: .ignoreUnknownCharacters))
+        var reads = 0, previews = 0
+        let session = MacPhotoSession(load: { _ in reads += 1; return Data() }, preview: { _, _, _ in
+            previews += 1; throw RenderError.renderFailed
+        })
+        let current = NSImage(size: NSSize(width: 480, height: 640))
+        session.begin(url: URL(fileURLWithPath: "/must-not-render-original"), orientation: 1,
+                      previous: .init(identifier: MacPhotoAdjustment.identifier, version: "1.0", bytes: data), placeholder: current)
+        XCTAssertTrue(session.readOnly); XCTAssertTrue(session.placeholder === current)
+        XCTAssertEqual(session.originalAdjustment?.bytes, data); XCTAssertNil(session.snapshot)
+        session.change { $0.filter = .invert }; session.remove(session.adjustment.bubbles[0].id)
+        XCTAssertFalse(session.changed); XCTAssertEqual(session.adjustment.filter, .chrome)
+        XCTAssertEqual(session.adjustment.bubbles.count, 1); XCTAssertEqual(session.adjustment.stickers.count, 1)
+        switch session.prepareHostFinish() {
+        case .noChange: break
+        default: XCTFail("An unqualified layered edit must never reach Photos output preparation")
+        }
+        XCTAssertEqual(reads, 0); XCTAssertEqual(previews, 0)
+        XCTAssertTrue(session.placeholder === current); XCTAssertEqual(session.originalAdjustment?.bytes, data)
+    }
     func testCancellationAndReplacementSuppressLateSourceAndPreviewWithoutMutatingInput() async throws {
         let original = try image()
         let entered = expectation(description: "Old source loading entered")
@@ -85,13 +107,17 @@ import CelluloidRendering
         session.begin(url: URL(fileURLWithPath: "/source"), orientation: 1, previous: nil, placeholder: NSImage())
         await fulfillment(of: [loaded], timeout: 2); await Task.yield()
         XCTAssertTrue(session.editable); XCTAssertFalse(session.changed)
-        session.add(kind: .bubble, asset: "say1")
-        let id = try XCTUnwrap(session.selection)
-        session.edit(id) { $0.text = "Original + 你好"; $0.transform.tx = 13 }
+        session.change { $0.filter = .fade }
+        for (kind, asset) in [(MacPhotoLayer.Kind.bubble, "say1"), (.sticker, "32")] {
+            session.add(kind: kind, asset: asset)
+            XCTAssertTrue(session.adjustment.layers.isEmpty)
+            XCTAssertNil(session.selection); XCTAssertNotNil(session.error)
+        }
         session.prepareToFinish(); session.finishing = true
         let snapshot = try XCTUnwrap(session.snapshot)
-        session.edit(id) { $0.text = "must not change" }
-        XCTAssertEqual(session.adjustment.bubbles[0].text, "Original + 你好")
+        session.change { $0.filter = .invert }
+        XCTAssertEqual(session.adjustment.filter, .fade)
+        XCTAssertEqual(snapshot.adjustment.filter, .fade); XCTAssertTrue(snapshot.adjustment.layers.isEmpty)
         XCTAssertEqual(snapshot.bytes, original); XCTAssertEqual(session.snapshot?.bytes, original)
         XCTAssertTrue(session.changed)
         session.cancel(); XCTAssertFalse(session.changed); XCTAssertNil(session.snapshot)

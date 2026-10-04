@@ -2,7 +2,7 @@
   "schema": "Celluloid.CombinedSource.1",
   "native_base": "59fca5a8dda30d497715b592966c02310606d743",
   "uikit_base": "c5875ee7586611c28879b5030e5e575a9f33fcbd",
-  "reviewed_source_tree": "bfda88319c550aac84bdea2ec018aeab5456ea6b",
+  "reviewed_source_tree": "ffb2f5acaf7110dd66be6f8e093e6a0988abb759",
   "roots": [
     "Celluloid",
     "CelluloidKit",
@@ -1366,7 +1366,7 @@
     ],
     [
       "CelluloidTests/EditorRegressionTests.swift",
-      "a8a8b828164cd5113cb7be86cc0fbdb4851e3c3dc08e41885194d0a808d7bd61"
+      "a9d9b4ea815f117c8bee1d1243a6eb427146431fc79e562d13405a1a46798a89"
     ],
     [
       "CelluloidTests/ExportAndInteractionTests.swift",
@@ -1378,7 +1378,7 @@
     ],
     [
       "CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift",
-      "beb2071a044243d64449ceacdcd693ed319a13be17b43c3456621f4805b58958"
+      "7c466331619e6d26746bfd1474a66b3249622c1c56301b272978386f8f75ac9a"
     ],
     [
       "CelluloidTests/OverlayResizeTests.swift",
@@ -1722,11 +1722,11 @@
     ],
     [
       "Platforms/MacExtensionTests/Fixtures/PROVENANCE.md",
-      "7496bd92b7b662dcc86a64789cfba60c8a41f745b9ed4fd8c4ad5f0c87843842"
+      "5819da0e7a415d961ad1a2d3026a74fd892fa1a784f75fef98d98fc8822c50f2"
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift",
-      "2ffa2c06689678261d5c7574b3fda7c66eb617cf9e16b331199f2baf211fbea4"
+      "3671c8759743c3a05d7a36977f4da2859e7350d70d8ad3e147dcedf5c53eef6b"
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoHostLifecycleTests.swift",
@@ -1734,11 +1734,11 @@
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoRendererTests.swift",
-      "f57df6cb8662db9867f551e003078ef6b5f3821bd4ac0c27cabb565bc06a70eb"
+      "a3107daf09fda71320082ab44475252bba75fad5e1f14150c00acd9577f27940"
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoSessionTests.swift",
-      "ccb0cf2801bef2ef8ec23ee2f2327082b137acec63f46cc20fe1dff590ee2b1e"
+      "062efc61776730967b2656f3cee17d9764ed731ed62c637de77e08229bf25a03"
     ],
     [
       "Platforms/PhoneHarness/Info.plist",
@@ -1770,11 +1770,11 @@
     ],
     [
       "Platforms/Resources/en.lproj/Localizable.strings",
-      "a5c31b63b53b3740a79baae707f02b9de540cf8b515efa20ea26d3c432967ed2"
+      "0012e5ce8d3571b6d40ca2666060331b72dffc4214055fbb8822ac17667a19c4"
     ],
     [
       "Platforms/Resources/zh-Hans.lproj/Localizable.strings",
-      "e0d681f58c3d218ba24ca5e5d3c4fddfef4c157d505ee9f17c99eafe286898a9"
+      "6737f0e969fe8bbccf767e09c715c033bf4b2ffdf5005fbceb84b9b58bc79ced"
     ],
     [
       "Platforms/Shared/AssetPaletteView.swift",
@@ -1822,7 +1822,7 @@
     ],
     [
       "Platforms/TVUITests/NativeTVUITests.swift",
-      "22997974243e0229f6f903abe72d29dc2bd02570eb06bfc84612b93c734fa4fa"
+      "5cf077081e64f3563d5d2191fb87c8d6730538370fe38b65e2db559a90324e99"
     ],
     [
       "Platforms/Tests/LaunchProvenanceTests.swift",
@@ -1858,7 +1858,7 @@
     ],
     [
       "Platforms/UITests/NativeEditorUITests.swift",
-      "23fb4d1949876f7b737bbe891e85ca2991cbd67b2c72662da7514b2169c3f30c"
+      "061a4e08da2a61c13d3c71f0d5d02888d417cf7d73d4408fe2eac284166a0f13"
     ],
     [
       "Platforms/VALIDATION.md",
@@ -1878,7 +1878,7 @@
     ],
     [
       "Platforms/WatchUITests/NativeWatchUITests.swift",
-      "3b171d40dba61b023bdd39e5126426fabc79e90a8712585dc40e710c976136bd"
+      "787d9bf51627e24b789ff3020591218a9fb1e3b0a4af5355768f4153411ba54d"
     ],
     [
       "Platforms/macOS/Assets.xcassets/AppIcon.appiconset/Contents.json",
@@ -1970,7 +1970,7 @@
     ],
     [
       "Platforms/macOSExtension/ACCEPTANCE.md",
-      "9ac16386d47d6058cd352802b0a2c3e4d0a58bb384a596fcbd528f32098417a6"
+      "d458f54e42bbc6d6a0a097d7ea26eeb9595fcd52aa04c79413985f69bafcadba"
     ],
     [
       "Platforms/macOSExtension/CelluloidMacPhotosExtension.entitlements",
@@ -1990,15 +1990,15 @@
     ],
     [
       "Platforms/macOSExtension/MacPhotoEditorView.swift",
-      "4f52314576c9f87bf4b8e6a120cbf2ff616bc0872656ddcd88a142c7dd3be772"
+      "bd592449babea5b244f44944d61ed55e9fa92725a15f4ecf3bcb918b35cd5387"
     ],
     [
       "Platforms/macOSExtension/MacPhotoRenderer.swift",
-      "14c2c1432f3006f2c706d05b71ff97eec5d5a362d5314bfbf0dabda24b481a93"
+      "14391fa396cb7f069705bb56e11073f5b47a5bd4f2bd537f96f7724fb2cd2f7f"
     ],
     [
       "Platforms/macOSExtension/MacPhotoSession.swift",
-      "38a72658548002ed6126b64973e5355399a19cd3aee8a495c43078214f313b5c"
+      "a2e004cd9c222da47cf61a3145976ea095cae3bb44d6b1fb33739308b5915b7d"
     ],
     [
       "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/Contents.json",
@@ -2058,7 +2058,7 @@
     ],
     [
       "Platforms/tvOS/CelluloidTVApp.swift",
-      "c9e68713b9336c15f5c10fe10864fa5858ea92ccbc5fb635dd3a3655db005a1c"
+      "eb6c3d53642344a62e5c0f58ab3fdf813cddf3ce7b1523d0dbbc5f20166075fa"
     ],
     [
       "Platforms/tvOS/Info.plist",
@@ -2149,7 +2149,7 @@
       "f7603c1c1175e32b5146b43d9e1f03bd6e839416510109795eb942cf7223579a"
     ]
   ],
-  "fingerprint": "69836c9870ec4c497972983f6738d6c8ffb173cee4c5f0a4a98baecf0d348a9d",
+  "fingerprint": "112452572b4e67be2e6d74c716a84ff70856793ecab0043537e92c463f8ab0b7",
   "appearance_cancel_patch_sha256": "a3f6810452a5d2d3475a4bf0a921cda863f431c0660c7d8b7616f484e019f15f",
   "expected_UIKit_executions": {
     "original_qualified": 400,

@@ -38,7 +38,7 @@ def retain_file(name,path,source):
 # A missing receipt stays an explicit omission; its producing verification step is red.
 required=['combined-source-before.json','combined-source-after.json']
 if PLATFORM=='preflight':required+=['combined-preflight.json','preflight-phone-embedded-watch.json','preflight-phone-embedded-watch-release.json']
-if PLATFORM=='mac':required+=['mac-required-tests.json','sandbox-extension-entitlements-before.plist','sandbox-extension-entitlements.plist']
+if PLATFORM=='mac':required+=['early-uikit-interop.json','early-uikit-staging.json','mac-required-tests.json','sandbox-extension-entitlements-before.plist','sandbox-extension-entitlements.plist']
 if PLATFORM=='phone':required+=['phone-embedded-watch.json','phone-embedded-watch-release.json','phone-required-tests.json']
 if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'}:required+=['uikit-layer-staging.json','uikit-required-tests.json']
 if PLATFORM=='archive':required+=['archive-embedded-watch.json']
@@ -60,7 +60,7 @@ if PLATFORM=='preflight':
     if not retain_bytes('preflight-diagnostics.json',(json.dumps(diagnostics,indent=2)+'\n').encode(),'bounded all-stage compiler/copy-operation diagnostics'):raise RuntimeError('Prerequisite diagnostics exceeded reserved allocation')
 # Preserve complete scoped evidence lines even when later logs exhaust optional space.
 critical=[]
-for path in [TEMP/'phone-runtime-tests.log',TEMP/'units.log']:
+for path in [TEMP/'early-uikit-interop.log',TEMP/'phone-runtime-tests.log',TEMP/'units.log']:
     if not path.is_file():continue
     with path.open('rb') as handle:
         for part in iter(lambda:handle.readline(256_000),b''):
@@ -104,7 +104,7 @@ if PLATFORM=='mac' and (TEMP/'mac.log').is_file():
     except (ValueError,KeyError) as error:
         manifest['omissions'].append({'name':LAYER_FILE,'reason':str(error)})
 
-logs=['mac-release.log','tv-release.log','watch-release.log','vision-release.log','domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox-app-build.log','sandbox.log','mac-photos-build.log','vision-build.log','vision-runtime.log','vision-runtime-tests.log','tv-build.log','tv-runtime.log','tv-runtime-tests.log','tv-filter-oracle.log','tv-composition-oracle.log','watch-build.log','watch-runtime.log','watch-runtime-tests.log','phone-build.log','phone-runtime.log','phone-runtime-tests.log','phone-output-oracle.log','phone-release.log']
+logs=['early-uikit-build.log','early-uikit-interop.log','mac-release.log','tv-release.log','watch-release.log','vision-release.log','domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox-app-build.log','sandbox.log','mac-photos-build.log','vision-build.log','vision-runtime.log','vision-launch.log','vision-runtime-tests.log','tv-build.log','tv-runtime.log','tv-runtime-tests.log','tv-filter-oracle.log','tv-composition-oracle.log','watch-build.log','watch-runtime.log','watch-runtime-tests.log','phone-build.log','phone-runtime.log','phone-runtime-tests.log','phone-output-oracle.log','phone-release.log']
 markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|VISION_TEXT_|VISION_FILES_|VISION_EXPORT_|VISION_DOCUMENT_|TV_NATIVE_|TV_PHOTOS_|TV_FOCUS_|WATCH_NATIVE_|WATCH_ENDPOINT_|PHONE_COMPANION_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|FACE_DETECTOR_ACTUAL|MAC_LAYER_UIKIT_COMPOSITOR|SHIPPING_COMPANION_[A-Z_]+|REQUIRED_INTEROPERABILITY|COMBINED_SOURCE|MAC_NEW_FILTER_UIKIT_ROUNDTRIP|MAC_FILTER_ONLY_FIXTURE|MAC_BAKED_BASE_|MAC_LEGACY_CANDIDATE)')
 logs += ['uikit-screens.log','uikit-diagnostics.log','archive-inventory.log']
 if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'}:
@@ -138,11 +138,11 @@ if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad','archive
 for name in [name+'.timing.json' for name in logs]:
     path=TEMP/name
     if path.is_file():retain_file(name,path,'bounded process/startup/suite/teardown timing')
-for name in ['native-icon-provenance-runtime.json','mac-release-packaging.json','tv-release-packaging.json','watch-release-packaging.json','vision-release-packaging.json','vision-runtime-evidence.json','tv-runtime-evidence.json','tv-text-input-probe.json','watch-runtime-evidence.json','watch-small-runtime-evidence.json','watch-large-runtime-evidence.json','phone-runtime-evidence.json','phone-harness-release.json','sandbox-entitlements.plist','sandbox-debug-entitlements.plist','sandbox-debug-actual.plist','sandbox-entitlements-after.plist','sandbox-extension-entitlements.plist']:
+for name in ['early-uikit-interop.json','early-uikit-staging.json','native-icon-provenance-runtime.json','mac-release-packaging.json','tv-release-packaging.json','watch-release-packaging.json','vision-release-packaging.json','vision-runtime-evidence.json','tv-runtime-evidence.json','tv-text-input-probe.json','watch-runtime-evidence.json','watch-small-runtime-evidence.json','watch-large-runtime-evidence.json','phone-runtime-evidence.json','phone-harness-release.json','sandbox-entitlements.plist','sandbox-debug-entitlements.plist','sandbox-debug-actual.plist','sandbox-entitlements-after.plist','sandbox-extension-entitlements.plist']:
     path=TEMP/name
     if path.is_file() and not (OUT/name).exists():retain_file(name,path,name)
 
-bundles=['CelluloidMac.xcresult','CelluloidMacUI.xcresult','CelluloidSandbox.xcresult','CelluloidVision.xcresult','CelluloidTV.xcresult','CelluloidWatch.xcresult','CelluloidWatchSmall.xcresult','CelluloidWatchLarge.xcresult','CelluloidPhoneCompanion.xcresult']
+bundles=['CelluloidEarlyUIKit.xcresult','CelluloidMac.xcresult','CelluloidMacUI.xcresult','CelluloidSandbox.xcresult','CelluloidVision.xcresult','CelluloidTV.xcresult','CelluloidWatch.xcresult','CelluloidWatchSmall.xcresult','CelluloidWatchLarge.xcresult','CelluloidPhoneCompanion.xcresult']
 if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'}:
     bundles += [p.name for p in sorted(ROOT.glob('TestResults*.xcresult'))]
 for name in bundles:

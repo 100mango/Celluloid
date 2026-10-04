@@ -65,7 +65,7 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertTrue(entrance.privacyPolicyButton.isEnabled)
     }
 
-    func testHomeLayoutDoesNotCollapseOrOverlapAcrossPhoneAndPadSizes() {
+    func testHomeLayoutDoesNotCollapseOrOverlapAcrossPhoneAndPadSizes() throws {
         let entrance = EntranceViewController()
         entrance.loadViewIfNeeded()
         for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
@@ -85,7 +85,11 @@ final class EditorRegressionTests: XCTestCase {
                 let collage = entrance.makeCollageButton.convert(entrance.makeCollageButton.bounds, to: entrance.view)
                 let editContent = entrance.editPhotoButton.stackView.convert(entrance.editPhotoButton.stackView.bounds, to: entrance.view)
                 let collageContent = entrance.makeCollageButton.stackView.convert(entrance.makeCollageButton.stackView.bounds, to: entrance.view)
-                let footer = entrance.privacyPolicyButton.frame
+                // The privacy button now belongs to a footer stack alongside
+                // Watch Photos. Compare every control in the root coordinate space.
+                let footerStack = try XCTUnwrap(entrance.privacyPolicyButton.superview as? UIStackView)
+                let footerButtons = footerStack.arrangedSubviews.compactMap { $0 as? UIButton }
+                let footer = entrance.privacyPolicyButton.convert(entrance.privacyPolicyButton.bounds, to: entrance.view)
                 XCTAssertGreaterThanOrEqual(edit.height, 120, "\(size), \(category)")
                 XCTAssertGreaterThanOrEqual(collage.height, 120, "\(size), \(category)")
                 XCTAssertGreaterThanOrEqual(edit.width, 150, "\(size), \(category)")
@@ -96,7 +100,15 @@ final class EditorRegressionTests: XCTestCase {
                 XCTAssertFalse(editContent.intersects(collageContent), "Icons/text overlap at \(size)")
                 XCTAssertGreaterThan(footer.minY, size.height * 0.60)
                 XCTAssertGreaterThanOrEqual(footer.minY, max(edit.maxY, collage.maxY))
-                let textHeight = entrance.privacyPolicyButton.titleLabel?.sizeThatFits(CGSize(width: size.width - 32, height: .greatestFiniteMagnitude)).height ?? 0
+                for button in footerButtons {
+                    let frame = button.convert(button.bounds, to: entrance.view)
+                    XCTAssertGreaterThanOrEqual(frame.minY, max(edit.maxY, collage.maxY))
+                    XCTAssertTrue(entrance.view.bounds.insetBy(dx: -1, dy: -1).contains(frame))
+                    XCTAssertGreaterThanOrEqual(frame.height, 44)
+                }
+                let textHeight = footerButtons.map {
+                    $0.titleLabel?.sizeThatFits(CGSize(width: $0.bounds.width, height: .greatestFiniteMagnitude)).height ?? 0
+                }.max() ?? 0
                 XCTAssertEqual(footer.height, max(44, textHeight + 16), accuracy: 1)
             }
         }

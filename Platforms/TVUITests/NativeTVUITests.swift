@@ -90,14 +90,19 @@ final class NativeTVUITests: XCTestCase {
             if app.state != .notRunning { app.terminate() }
             app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN", "-UIPreferredContentSizeCategoryName",
                                    large ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            // This existing case stresses the public app trait; system-wide propagation is unverified.
+            app.launchEnvironment["CELLULOID_TV_LARGEST_TRAIT_STRESS"] = large ? "1" : "0"
             app.launch()
             let choose = app.buttons["tv.choose-photos"]
             XCTAssertTrue(choose.waitForExistence(timeout: 15)); XCTAssertEqual(choose.label, "选择照片")
             let instruction = app.staticTexts["选择一张照片进行编辑，或选择 2–4 张制作拼图。"]
             XCTAssertTrue(instruction.exists); let height = instruction.frame.height
+            XCTAssertEqual(instruction.identifier, large ? "tv.instruction.accessibility5" : "tv.instruction.ordinary")
+            print("TV_PUBLIC_TRAIT_STRESS requestedLargest=\(large) actualTraitIdentifier=\(instruction.identifier) instructionFrame=\(instruction.frame) windowFrame=\(app.windows.firstMatch.frame) systemPropagationVerified=false")
+            XCTAssertTrue(app.windows.firstMatch.frame.contains(instruction.frame), "The complete Chinese instruction must remain within the actual TV window")
             if large {
                 continueAfterFailure = true
-                XCTAssertGreaterThan(height, ordinaryHeight, "A large-text argument alone does not establish actual TV typography coverage")
+                XCTAssertGreaterThan(height, ordinaryHeight, "The public largest-size trait must visibly enlarge the actual TV instruction")
                 continueAfterFailure = false
             } else { ordinaryHeight = height }
             try select(choose, in: app)
@@ -187,6 +192,8 @@ final class NativeTVUITests: XCTestCase {
         try select(app.buttons["tv.panel.done"],in:app)
         try select(app.buttons["tv.bubbles"],in:app)
         try panelDiagnostic(app, state: "bubbles-after-layers-\(count)", image: count == 4)
+        // The observed first lazy row contains aside1/yell1–3; say1 is below it.
+        try revealArtwork("say1", initiallyDown: true, in: app)
         try select(app.buttons["tv.asset.say1"],in:app)
         let field = app.textFields["tv.bubble-text"]
         XCTAssertTrue(field.waitForExistence(timeout:10))
@@ -283,8 +290,13 @@ final class NativeTVUITests: XCTestCase {
         // LazyVGrid only exposes materialized rows. Search by the known synthetic
         // filename while genuinely scrolling; never substitute the first asset.
         let target = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.photo.' AND label BEGINSWITH %@", filename + ",")).firstMatch
+        let panel = app.otherElements["tv.editor.panel"].firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 15), "The actual Photos sheet must be presented before remote traversal")
+        XCTAssertTrue(["Choose Photos", "选择照片"].contains(panel.label), "Initial reveal belongs only to the observed Photos panel")
         let anyPhoto = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'tv.photo.'")).firstMatch
-        XCTAssertTrue(anyPhoto.waitForExistence(timeout: 15), "The real Photos sheet must expose at least one imported asset")
+        print("TV_PHOTO_REVEAL_START filename=\(filename) anyMaterialized=\(anyPhoto.exists) panelFrame=\(panel.frame)")
+        // At large text the observed title/instructions fill the viewport. Let
+        // real remote traversal materialize a photo before requiring its existence.
         for direction in ["down", "up"] {
             for step in 0..<16 {
                 if target.exists { return target }

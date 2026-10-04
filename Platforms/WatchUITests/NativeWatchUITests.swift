@@ -59,13 +59,24 @@ final class NativeWatchUITests: XCTestCase {
         print("WATCH_NATIVE_REMOVE_CONFIRMATION_AX " + String(app.debugDescription.prefix(18000)))
         let confirmation = XCTAttachment(screenshot: app.screenshot())
         confirmation.name = "native-watch-remove-confirmation"; confirmation.lifetime = .keepAlways; add(confirmation)
-        let cancel = app.buttons["watch.remove-cancel"]
-        XCTAssertTrue(cancel.waitForExistence(timeout: 5)); cancel.tap()
+        let confirmationTable = try removalConfirmation(in: app)
+        // watchOS presents the cancel role as this observed native Close control.
+        let closeQuery = app.navigationBars.buttons.matching(identifier: "AX_ActionContentControllerCancelButton")
+        XCTAssertTrue(closeQuery.firstMatch.waitForExistence(timeout: 5))
+        let closeMatches = closeQuery.allElementsBoundByIndex
+        let cancel = try XCTUnwrap(closeMatches.first)
+        XCTAssertEqual(cancel.label, "Close")
+        XCTAssertTrue(closeMatches.allSatisfy { $0.label == "Close" && $0.frame == cancel.frame }, "Nested AX matches must describe the same visible Close control")
+        XCTAssertTrue(cancel.isHittable); XCTAssertTrue(confirmationTable.frame.contains(cancel.frame))
+        cancel.tap(); XCTAssertFalse(confirmationTable.exists)
         app.terminate(); app.launch()
         XCTAssertTrue(photo.waitForExistence(timeout: 15), "Cancel must preserve the offline copy across relaunch")
         try reveal(photo, in: app); photo.tap(); try reveal(remove, in: app); remove.tap()
-        let confirm = app.buttons["watch.remove-confirm"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
+        let reopenedConfirmation = try removalConfirmation(in: app)
+        let confirm = reopenedConfirmation.buttons["Remove from Watch"].firstMatch
+        try reveal(confirm, in: app, scrollContainer: reopenedConfirmation)
+        XCTAssertTrue(confirm.isHittable); XCTAssertTrue(reopenedConfirmation.frame.contains(confirm.frame))
+        confirm.tap()
         let preserved = app.descendants(matching: .any)["watch.photo.A2E0E7B0-0A3B-47D3-94E5-309F3614E54A"].firstMatch
         XCTAssertTrue(preserved.waitForExistence(timeout: 15)); XCTAssertFalse(photo.exists)
         app.terminate(); app.launch()
@@ -116,12 +127,23 @@ final class NativeWatchUITests: XCTestCase {
             }
         }
     }
-    @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication) throws {
+    @MainActor private func removalConfirmation(in app: XCUIApplication) throws -> XCUIElement {
+        func matches() -> [XCUIElement] {
+            app.tables.allElementsBoundByIndex.filter { table in
+                table.staticTexts.matching(NSPredicate(format: "label == %@", "Remove this local photo?")).firstMatch.exists &&
+                table.staticTexts.matching(NSPredicate(format: "label == %@", "This removes only the Watch copy. Photos and the paired iPhone stay unchanged.")).firstMatch.exists
+            }
+        }
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in matches().count == 1 }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+        return try XCTUnwrap(matches().first)
+    }
+    @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication, scrollContainer: XCUIElement? = nil) throws {
         XCTAssertTrue(element.waitForExistence(timeout: 10))
         for step in 0..<12 {
             if element.isHittable { return }
             let owner = app.scrollViews.containing(.any, identifier: element.identifier).firstMatch
-            let viewport = owner.exists ? owner : app.scrollViews.firstMatch
+            let viewport = scrollContainer ?? (owner.exists ? owner : app.scrollViews.firstMatch)
             guard viewport.exists else {
                 print("WATCH_SCROLL_FAILURE_AX " + String(app.debugDescription.prefix(24000)))
                 XCTFail("No actual scroll container exposes the requested Watch control"); return

@@ -64,6 +64,33 @@ final class MacPhotoRendererTests: XCTestCase {
         let preview = try MacPhotoRenderer().render(adjustment, source: source, bytes: bytes, maximumDimension: 160)
         XCTAssertEqual(preview.width, 120); XCTAssertEqual(preview.height, 160)
     }
+    func testBubbleTextAreaUsesOriginalUIKitRoundedImageRectBeforeInsets() throws {
+        let rect = try XCTUnwrap(MacPhotoRenderer.bubbleTextRect(bounds: CGRect(x: 0, y: 0, width: 180, height: 96),
+            imageWidth: 800, imageHeight: 1000, area: [16, 84, 18.1, 80.6]))
+        // UIImageView.imageRect is (48, 0, 51, 64) inside the 16pt inset
+        // image view. Its separately rounded width is not the drawn 51.2pt.
+        XCTAssertEqual(rect.minX, 77.231, accuracy: 0.000001)
+        XCTAssertEqual(rect.minY, 26.24, accuracy: 0.000001)
+        XCTAssertEqual(rect.width, 27.875, accuracy: 0.000001)
+        XCTAssertEqual(rect.height, 43.52, accuracy: 0.000001)
+        let translated = try XCTUnwrap(MacPhotoRenderer.bubbleTextRect(bounds: CGRect(x: 2, y: 3, width: 180, height: 96),
+            imageWidth: 800, imageHeight: 1000, area: [16, 84, 18.1, 80.6]))
+        XCTAssertEqual(translated, rect.offsetBy(dx: 2, dy: 3))
+        XCTAssertNil(MacPhotoRenderer.bubbleTextRect(bounds: .zero, imageWidth: 800, imageHeight: 1000, area: [16, 84, 18.1, 80.6]))
+    }
+    func testProductionExportRejectsUnqualifiedLayersBeforeRasterOrEncoding() async throws {
+        var adjustment = MacPhotoAdjustment(); adjustment.referenceCanvas = CGSize(width: 240, height: 320)
+        XCTAssertNoThrow(try MacPhotoRenderer.requireQualifiedPhotosOutput(adjustment))
+        adjustment.stickers = [MacPhotoLayer(kind: .sticker, asset: "32", canvas: adjustment.referenceCanvas!)]
+        // Invalid source bytes deliberately prove the qualification check wins
+        // before source decoding/allocation or any Photos writer can start.
+        let source = SourceImage(displayName: "Not decoded", pixelWidth: 240, pixelHeight: 320)
+        do {
+            _ = try await MacPhotoRenderQueue.shared.export(adjustment, source: source, bytes: Data())
+            XCTFail("Unqualified layer pixels must not replace the current Photos raster")
+        } catch MacPhotoRenderQualificationError.layeredPhotosOutput { }
+        catch { XCTFail("Expected the layer qualification error before rendering, got \(error)") }
+    }
     func testOriginalAllOrientationsAndFilterMatchIndependentCoreImageInput() throws {
         let (_, _, image) = try source(width: 120, height: 80)
         let context = CIContext()

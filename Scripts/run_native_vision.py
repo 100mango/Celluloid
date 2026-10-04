@@ -54,7 +54,10 @@ try:
     png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',1200,800,8,6,0,0,0))+chunk(b'sRGB',b'\0')+chunk(b'IDAT',zlib.compress((b'\0'+row)*800))+chunk(b'IEND',b'')
     (documents/'VisionSynthetic.png').write_bytes(png)
     evidence['fixture']='Own app Documents/VisionSynthetic.png, generated1200x800 sRGB; real user-selected Files import remains under XCTest'
-    launch=run(['xcrun','simctl','launch',udid,'Mango.Celluloid'],timeout=60)
+    # The cold xrOS27 install took186s and registration74s; its following launch
+    # exceeded60s. Keep a finite three-minute launch with the unchanged PID/app
+    # identity checks and full XCTest flows still required afterward.
+    launch=run(['xcrun','simctl','launch',udid,'Mango.Celluloid'],timeout=180,log_name='vision-launch.log')
     evidence['launch_output']=launch.stdout
     pid=launch.stdout.strip().rsplit(':',1)[-1].strip(); assert pid.isdigit()
     time.sleep(4)

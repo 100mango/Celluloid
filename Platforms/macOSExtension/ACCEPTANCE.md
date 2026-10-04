@@ -6,7 +6,11 @@ The native adapter is for the original single-photo extension's filters, sticker
 
 `CelluloidMac` now depends on the actual existing extension target and embeds its `.appex` in `Contents/PlugIns`. Its principal class is an NSViewController containing an NSHostingController. The native UI edits full affine values without converting them to normalized document overlays. The exact c587 reviewed output writer is compiled by reference, not independently forked.
 
-The following are source changes and test definitions, not executed Apple evidence. Linux static checks cover generator graph/resource registration, hash-exact fixture inventory and existing repository Python regressions. Apple compilation, manufactured-writer UIKit compatibility, raster typography equivalence and actual Photos-host consumption remain open until their own source-bound runs pass.
+The source-bound `48502442` manufactured-layer run decoded successfully through the original UIKit reader, but the original UIKit compositor failed with maximum channel difference **243**, above the unchanged limit **2**, on compact iPhone and both iPads. Archive interoperability is not raster parity. The exact archive/source/native PNG hashes are recorded in `../MacExtensionTests/Fixtures/PROVENANCE.md`.
+
+Until the strict cross-platform pixel gate passes, production Photos sessions preserve every incoming layered adjustment (including reference-canvas archives) read-only using the current host placeholder and a no-change Done result. Adding new layers is disabled and rejected in session mutation; the export queue independently rejects layered output before raster/encoding. Filter-only editing remains available. This is a temporary safety restriction, **not completion of layered editing**. The experimental compositor remains available directly to the qualification tests so failures cannot be hidden by the restriction.
+
+The current source correction matches BubbleLabel's independently rounded text-area rectangle. Native/@2x artwork selection, platform fonts, UILabel rasterization and text vertical metrics still need real runtime evidence. Linux checks cannot establish Apple raster equivalence or actual Photos-host no-change consumption.
 
 ## Required deterministic gates
 
@@ -22,6 +26,10 @@ Run the native Mac or extension scheme's `CelluloidMacPhotosExtensionTests` on t
 The main native suite retains PhotosHostFinishCoordinator's repeated finish, cancellation, synchronous observer cancellation and exactly-once/error coverage. Neither controller tests nor the direct PhotoKit tests below are Photos-host E2E.
 
 Transfer only the source/hash-bound manufactured record described in `../MacExtensionTests/Fixtures/PROVENANCE.md`, then run `MacPhotosManufacturedAdjustmentTests` in the original UIKit test app. A missing/skip/failing fixture blocks a parity claim. Do not substitute a same-serializer roundtrip.
+
+The same record now includes hash-bound `filtered-base`, `bubble-artwork`, `sticker-artwork`, and `all-artwork` PNGs. The unchanged UIKit controller independently renders each case at the original strict limit. The consumer prints component maxima, mismatching pixel bounds/counts, a text-contribution diagnostic (full minus all-artwork), font/asset/layout metadata and hashes; up to five failed UIKit oracle PNGs are retained as small XCTest attachments. Native component PNGs remain in the fixture, so duplicate attachments are unnecessary. Historical fixtures without component data remain reproducible with the full strict oracle.
+
+The next admitted run must establish: (1) base decode/filter/color equality; (2) affine/artwork equality, including actual UIKit @2x/@3x asset selection; (3) full multilingual text equality. Compare the provided native and UIKit component PNGs before changing font/placement/raster behavior. Do not re-enable layered production mutations/export on a partial pass, reduce coverage, or change the ≤2 limit. Once parity is proved, restore the intended layered controls and run the host scenarios below; read-only handling alone cannot satisfy them.
 
 ## Installed package / host gate
 

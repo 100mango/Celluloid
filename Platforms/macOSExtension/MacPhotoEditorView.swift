@@ -34,7 +34,7 @@ struct MacPhotoEditorView: View {
                         HStack {
                             Button("Sticker") { palette = .sticker }.accessibilityIdentifier("photos-extension.add-sticker")
                             Button("Bubble") { palette = .bubble }.accessibilityIdentifier("photos-extension.add-bubble")
-                        }.disabled(session.adjustment.layers.count >= 100)
+                        }.disabled(true) // Independent UIKit layer-pixel gate has not passed.
                         .popover(isPresented: Binding(get: { palette != nil }, set: { if !$0 { palette = nil } })) {
                             if let kind = palette {
                                 MacPhotoAssetPicker(kind: kind, select: { asset in session.add(kind: kind, asset: asset); palette = nil }, close: { palette = nil })
@@ -56,7 +56,7 @@ struct MacPhotoEditorView: View {
                         if let layer = session.adjustment.layers.first(where: { $0.id == session.selection }) {
                             layerControls(layer).id(layer.id)
                         }
-                        Text("Use Done in Photos to save and reopen these editable filters, stickers and bubbles.").font(.callout)
+                        Text("Use Done in Photos to save and reopen editable filters. Sticker and bubble editing is temporarily unavailable while cross-platform rendering is verified.").font(.callout)
                         Text("Static photos · sRGB SDR export").font(.caption)
                     }
                     if let error = session.error { Text(error).foregroundStyle(.red).accessibilityIdentifier("photos-extension.error") }

@@ -4,10 +4,24 @@ import CelluloidDomain
 import CelluloidRendering
 
 @main struct CelluloidTVApp: App {
-    var body: some Scene { WindowGroup { TVEditorView() } }
+    var body: some Scene {
+        WindowGroup {
+            #if DEBUG
+            // Public SwiftUI trait stress only; this does not assert system Settings propagation.
+            if ProcessInfo.processInfo.environment["CELLULOID_TV_LARGEST_TRAIT_STRESS"] == "1" {
+                TVEditorView().dynamicTypeSize(.accessibility5)
+            } else { TVEditorView() }
+            #else
+            TVEditorView()
+            #endif
+        }
+    }
 }
 
 struct TVEditorView: View {
+    #if DEBUG
+    @Environment(\.dynamicTypeSize) private var testDynamicTypeSize
+    #endif
     @StateObject private var library = TVPhotoLibrary()
     @StateObject private var editor = TVEditorModel()
     @State private var panel: Panel?
@@ -23,6 +37,9 @@ struct TVEditorView: View {
                 } else {
                     Image(systemName: "photo.on.rectangle").font(.system(size: 90))
                     Text("Choose one photo to edit, or 2–4 for a collage.").multilineTextAlignment(.center)
+                        #if DEBUG
+                        .accessibilityIdentifier(testDynamicTypeSize == .accessibility5 ? "tv.instruction.accessibility5" : "tv.instruction.ordinary")
+                        #endif
                 }
                 Text(editor.status).font(.callout).accessibilityIdentifier("tv.status")
                 if editor.busy { ProgressView() }

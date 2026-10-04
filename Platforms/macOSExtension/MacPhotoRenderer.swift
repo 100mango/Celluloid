@@ -16,6 +16,7 @@ actor MacPhotoRenderQueue {
     }
     func export(_ adjustment: MacPhotoAdjustment, source: SourceImage, bytes: Data) throws -> Data {
         try Task.checkCancellation()
+        try MacPhotoRenderer.requireQualifiedPhotosOutput(adjustment)
         return try autoreleasepool {
             let image = try renderer.render(adjustment, source: source, bytes: bytes)
             try Task.checkCancellation()
@@ -29,6 +30,15 @@ actor MacPhotoRenderQueue {
 /// per-bubble text area. No lossy decomposition to rotation/normalized widths.
 final class MacPhotoRenderer {
     private let filters = RecipeRenderer()
+
+    /// Keep the experimental layer compositor available to the independent
+    /// UIKit qualification tests, but never replace a Photos raster with it.
+    /// The actual manufactured-affine fixture failed that gate (243 > 2).
+    /// Remove this restriction only after source-bound UIKit parity is proved.
+    static func requireQualifiedPhotosOutput(_ adjustment: MacPhotoAdjustment) throws {
+        guard adjustment.layers.isEmpty else { throw MacPhotoRenderQualificationError.layeredPhotosOutput }
+    }
+
     func render(_ adjustment: MacPhotoAdjustment, source: SourceImage, bytes: Data, maximumDimension: Int? = nil) throws -> CGImage {
         try adjustment.requireEditableCanvas(); try Task.checkCancellation()
         var base = EditRecipe(); base.sources = [source]; base.canvasWidth = source.pixelWidth
@@ -55,6 +65,23 @@ final class MacPhotoRenderer {
         let size = CGSize(width: CGFloat(imageWidth) * scale, height: CGFloat(imageHeight) * scale)
         return CGRect(x: box.midX - size.width / 2, y: box.midY - size.height / 2, width: size.width, height: size.height)
     }
+    /// BubbleLabel uses UIImageView.imageRect, not the fractional rectangle that
+    /// UIImageView uses to draw its artwork. Match that helper's Float scale and
+    /// independently rounded local origin/size before applying the text insets.
+    static func bubbleTextRect(bounds: CGRect, imageWidth: Int, imageHeight: Int, area: [Double]) -> CGRect? {
+        let box = bounds.insetBy(dx: 16, dy: 16)
+        guard box.width > 0, box.height > 0, imageWidth > 0, imageHeight > 0,
+              area.count == 4, area.allSatisfy(\.isFinite) else { return nil }
+        let scale = CGFloat(min(Float(box.width / CGFloat(imageWidth)), Float(box.height / CGFloat(imageHeight))))
+        let width = CGFloat(imageWidth) * scale, height = CGFloat(imageHeight) * scale
+        let rect = CGRect(x: box.minX + ((box.width - width) / 2).rounded(),
+                          y: box.minY + ((box.height - height) / 2).rounded(),
+                          width: width.rounded(), height: height.rounded())
+        return CGRect(x: rect.minX + rect.width * area[2] / 100 + 4,
+                      y: rect.minY + rect.height * area[0] / 100,
+                      width: rect.width * (area[3] - area[2]) / 100 - 4,
+                      height: rect.height * (area[1] - area[0]) / 100)
+    }
     private static func draw(_ layer: MacPhotoLayer, in canvas: CGContext) throws {
         let image = try NativeResources.image(named: layer.asset)
         guard let rect = artworkRect(bounds: layer.bounds, imageWidth: image.width, imageHeight: image.height) else { return }
@@ -68,16 +95,21 @@ final class MacPhotoRenderer {
         canvas.restoreGState()
         if layer.kind == .bubble && !layer.text.isEmpty {
             let area = try NativeResources.bubbleArea(named: layer.asset)
-            let textRect = CGRect(x: rect.minX + rect.width * area[2] / 100 + 4,
-                                  y: rect.minY + rect.height * area[0] / 100,
-                                  width: rect.width * (area[3] - area[2]) / 100 - 4,
-                                  height: rect.height * (area[1] - area[0]) / 100)
+            guard let textRect = bubbleTextRect(bounds: layer.bounds, imageWidth: image.width,
+                                               imageHeight: image.height, area: area) else { throw RecipeError.invalidGeometry }
             let layout = try MacPhotoTextLayout.make(layer.text, rect: textRect)
             canvas.saveGState(); defer { canvas.restoreGState() }
             canvas.translateBy(x: textRect.minX, y: textRect.midY + layout.height / 2)
             canvas.scaleBy(x: 1, y: -1); canvas.textMatrix = .identity
             CTFrameDraw(layout.frame, canvas)
         }
+    }
+}
+
+enum MacPhotoRenderQualificationError: Error, LocalizedError {
+    case layeredPhotosOutput
+    var errorDescription: String? {
+        NSLocalizedString("Sticker and bubble editing is temporarily unavailable in Photos while cross-platform rendering is verified. Existing edits and the original photo are unchanged.", comment: "Unqualified Photos layer rendering")
     }
 }
 

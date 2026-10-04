@@ -28,8 +28,9 @@ jobs:
           xcodebuild -version
           xcodebuild -version | grep -Fx 'Xcode 27.0'
           xcodebuild -showsdks
-          python3 Scripts/test_combined_preflight.py
-          python3 Scripts/test_native_workflow_syntax.py
+          # Fail setup regressions before expensive Apple runtime fan-out. The
+          # evidence tests explicitly exercise each inherited platform budget.
+          python3 -m unittest discover -s Scripts -p 'test_*.py' -v
           swift -swift-version 5 Scripts/materialize_native_icons.swift
           python3 Scripts/verify_native_icon_inputs.py
       - name: Grouped all-platform build testing setup and package prerequisites
@@ -59,6 +60,8 @@ jobs:
           retention-days: 1
           if-no-files-found: error
   native-mac:
+    outputs:
+      interop_passed: ${{ steps.early_interop.outputs.passed }}
     needs: build-preflight
     runs-on: xcode-27
     timeout-minutes: 45
@@ -115,12 +118,22 @@ jobs:
           set -euo pipefail
           xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMac -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-native" -resultBundlePath "$RUNNER_TEMP/CelluloidMac.xcresult" CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/mac.log"
       - name: Require all Mac extension cases and exact manufactured fixtures
+        id: mac_producer
         if: success() || failure()
         shell: bash
         run: |
           python3 Scripts/verify_required_interoperability.py mac --log "$RUNNER_TEMP/mac.log" --output "$RUNNER_TEMP/mac-required-tests.json"
+      - name: Fail early on original UIKit layered rendering mismatch
+        id: early_interop
+        if: (success() || failure()) && steps.mac_producer.outcome == 'success'
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Scripts/run_early_uikit_interop.py
+          echo "passed=true" >> "$GITHUB_OUTPUT"
       - name: Native Mac UI launch and editing
-        if: success() || failure()
+        if: (success() || failure()) && steps.early_interop.outputs.passed == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -157,7 +170,7 @@ jobs:
           codesign -d --entitlements :- "$CHILD" > "$RUNNER_TEMP/sandbox-extension-entitlements-before.plist"
           python3 -c 'import plistlib,sys; assert plistlib.load(open(sys.argv[1],"rb")) == {"com.apple.security.app-sandbox":True}' "$RUNNER_TEMP/sandbox-extension-entitlements-before.plist"
       - name: External sandbox document UI and container runtime
-        if: (success() || failure()) && steps.sandbox_build.outcome == 'success' && steps.sandbox_child.outcome == 'success'
+        if: (success() || failure()) && steps.early_interop.outputs.passed == 'true' && steps.sandbox_build.outcome == 'success' && steps.sandbox_child.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -215,7 +228,7 @@ jobs:
           if-no-files-found: error
   native-simulator:
     needs: [build-preflight, native-mac]
-    if: always() && needs.build-preflight.result == 'success'
+    if: always() && needs.build-preflight.result == 'success' && needs.native-mac.outputs.interop_passed == 'true'
     runs-on: xcode-27
     timeout-minutes: ${{ matrix.platform == 'watch' && 45 || 30 }}
     strategy:
@@ -372,7 +385,7 @@ jobs:
           if-no-files-found: error
   uikit-regression:
     needs: [build-preflight, native-mac, native-simulator]
-    if: always() && needs.build-preflight.result == 'success'
+    if: always() && needs.build-preflight.result == 'success' && needs.native-mac.outputs.interop_passed == 'true'
     name: iOS27 regression (${{ matrix.key }})
     runs-on: xcode-27
     timeout-minutes: 60

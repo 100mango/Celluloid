@@ -177,5 +177,7 @@
 "Celluloid photo editor" = "Celluloid 照片编辑器";
 "These edits cannot be safely restored here. You can view the current photo. Done and Cancel leave its existing edits and original unchanged." = "无法在此安全恢复这些编辑。你可以查看当前照片。点按“完成”或“取消”都会保留现有编辑和原片。";
 "Use Done in Photos to save and reopen these editable filters, stickers and bubbles." = "在“照片”中点按“完成”，即可保存并重新打开可编辑的滤镜、贴纸和气泡。";
+"Use Done in Photos to save and reopen editable filters. Sticker and bubble editing is temporarily unavailable while cross-platform rendering is verified." = "在“照片”中点按“完成”，即可保存并重新打开可编辑的滤镜。跨平台渲染验证完成前，贴纸和气泡编辑暂不可用。";
+"Sticker and bubble editing is temporarily unavailable in Photos while cross-platform rendering is verified. Existing edits and the original photo are unchanged." = "跨平台渲染验证完成前，“照片”中的贴纸和气泡编辑暂不可用。现有编辑和原始照片均保持不变。";
 "Make Smaller" = "缩小";
 "Make Larger" = "放大";

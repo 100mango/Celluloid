@@ -4,7 +4,7 @@ import json,os,plistlib,subprocess,tempfile,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 class ReleaseCheckerTests(unittest.TestCase):
-    def check_watch(self,folder,*,debug=False,icon=True, legacy_floor="9.0", modern_floor="26.0", archs="arm64 arm64_32", platform="watch", primary=None):
+    def check_watch(self,folder,*,debug=False,icon=True, legacy_floor="9.0", modern_floor="26.0", archs="arm64 arm64_32", platform="watch", primary=None, marker=b'sandbox.probe'):
         app=folder/'CelluloidWatch.app';app.mkdir()
         info={'CFBundleIdentifier':'Mango.Celluloid.watchkitapp','CFBundleExecutable':'CelluloidWatch',
               'DTPlatformName':'watchos','DTSDKName':'watchos27.0','MinimumOSVersion':'9.0',
@@ -16,7 +16,7 @@ class ReleaseCheckerTests(unittest.TestCase):
             (app/'PrivacyInfo.xcprivacy').write_bytes((ROOT/'Platforms/tvOS/PrivacyInfo.xcprivacy').read_bytes())
         (app/'Info.plist').write_bytes(plistlib.dumps(info))
         (app/'LICENSE.txt').write_bytes((ROOT/'LICENSE.txt').read_bytes());(app/'Assets.car').write_bytes(b'synthetic catalog')
-        (app/info['CFBundleExecutable']).write_bytes(b'synthetic executable'+(b'sandbox.probe' if debug else b''))
+        (app/info['CFBundleExecutable']).write_bytes(b'synthetic executable'+(marker if debug else b''))
         for language in ['en','zh-Hans']:
             p=app/(language+'.lproj');p.mkdir();(p/'Localizable.strings').write_text('"sample"="sample";')
         if platform=='tv':
@@ -44,4 +44,10 @@ class ReleaseCheckerTests(unittest.TestCase):
                 result=self.check_watch(Path(d),platform='tv',primary=icon,archs='arm64',modern_floor='17.0')
                 report=json.loads((Path(d)/'tv-release-packaging.json').read_text())
                 self.assertEqual(result.returncode==0,success,result.stderr);self.assertEqual(report['checks']['brand_icon_packaged'],success)
+    def test_tv_largest_trait_test_seam_is_rejected_from_release(self):
+        for marker in [b'CELLULOID_TV_LARGEST_TRAIT_STRESS',b'tv.instruction.accessibility5',b'tv.instruction.ordinary']:
+            with self.subTest(marker=marker), tempfile.TemporaryDirectory() as d:
+                result=self.check_watch(Path(d),platform='tv',primary='Small',archs='arm64',modern_floor='17.0',debug=True,marker=marker)
+                report=json.loads((Path(d)/'tv-release-packaging.json').read_text())
+                self.assertNotEqual(result.returncode,0);self.assertFalse(report['checks']['debug_seams_absent'])
 if __name__=='__main__':unittest.main()

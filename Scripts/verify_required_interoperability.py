@@ -21,7 +21,7 @@ def source_cases(paths):
 def required(scope):
     if scope == 'mac':
         cases = source_cases(sorted((ROOT/'Platforms/MacExtensionTests').glob('*.swift')) + [ROOT/'CelluloidTests/PhotosOutputWriteTests.swift'])
-        assert len(cases) == 30
+        assert len(cases) == 33
         return {'CelluloidMacPhotosExtensionTests': cases}
     if scope == 'phone':
         hosted = source_cases(sorted((ROOT/'Platforms/PhoneTests').glob('*.swift'))) + [CONSUMER]

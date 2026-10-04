@@ -23,7 +23,7 @@ items.append({'exportedFileName':name,'suggestedHumanReadableName':'native-mac-p
 (out/'manifest.json').write_text(json.dumps([{'attachments':items}]))
 ''')
             mock.chmod(0o755)
-            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,GITHUB_SHA='synthetic',PATH=str(binary)+os.pathsep+os.environ['PATH']),capture_output=True,text=True)
+            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,GITHUB_SHA='synthetic',CELLULOID_EVIDENCE_PLATFORM='local',PATH=str(binary)+os.pathsep+os.environ['PATH']),capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             output=folder/'celluloid-bounded-evidence'
             images=list(output.glob('*.png'))
@@ -32,26 +32,47 @@ items.append({'exportedFileName':name,'suggestedHumanReadableName':'native-mac-p
             self.assertEqual(len({hashlib.sha256(p.read_bytes()).hexdigest() for p in images}),2)
             self.assertLessEqual(sum(p.stat().st_size for p in output.iterdir()),3_500_000)
     def test_log_tails_markers_and_oversize_image_are_bounded(self):
-        with tempfile.TemporaryDirectory() as directory:
-            folder=Path(directory)
-            with (folder/'domain.log').open('wb') as handle:
-                for _ in range(256):handle.write(b'x'*256_000)
-                handle.write(b'\nTest Case synthetic passed\n')
-            (folder/'native-vision-launch.png').write_bytes(b'\x89PNG\r\n\x1a\n'+b'x'*5_000_000)
-            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,GITHUB_SHA='synthetic'),capture_output=True,text=True)
-            self.assertEqual(result.returncode,0,result.stderr)
-            output=folder/'celluloid-bounded-evidence'
-            manifest=json.loads((output/'manifest.json').read_text())
-            self.assertEqual(manifest['limits'],{'per_file_bytes':5_000_000,'total_bytes':3_500_000,'retention_days':1})
-            self.assertIn('Test Case synthetic passed',(output/'domain.log.summary.txt').read_text())
-            self.assertLessEqual((output/'domain.log.tail.txt').stat().st_size,200_000)
-            self.assertFalse((output/'native-vision-launch.png').exists())
-            self.assertTrue(any(item['reason']=='evidence byte cap' for item in manifest['omissions']))
-            self.assertLessEqual(sum(p.stat().st_size for p in output.iterdir()),3_500_000)
-            for record in manifest['files']:
-                data=(output/record['name']).read_bytes();self.assertEqual(hashlib.sha256(data).hexdigest(),record['sha256']);self.assertLessEqual(len(data),5_000_000)
-            again=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory),capture_output=True,text=True)
-            self.assertNotEqual(again.returncode,0,'A nonempty destination must not be merged into an upload')
+        # Exercise both the standalone default and the actual Mac job allocation.
+        # Child fixtures must not inherit whichever platform owns this test process.
+        for platform,total_budget in [('local',3_500_000),('mac',BUDGETS['mac'])]:
+            with self.subTest(platform=platform):
+                with tempfile.TemporaryDirectory() as directory:
+                    folder=Path(directory)
+                    with (folder/'domain.log').open('wb') as handle:
+                        for _ in range(256):handle.write(b'x'*256_000)
+                        handle.write(b'\nTest Case synthetic passed\n')
+                    (folder/'native-vision-launch.png').write_bytes(b'\x89PNG\r\n\x1a\n'+b'x'*5_000_000)
+                    result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,GITHUB_SHA='synthetic',CELLULOID_EVIDENCE_PLATFORM=platform),capture_output=True,text=True)
+                    self.assertEqual(result.returncode,0,result.stderr)
+                    output=folder/'celluloid-bounded-evidence'
+                    manifest=json.loads((output/'manifest.json').read_text())
+                    self.assertEqual(manifest['platform'],platform)
+                    self.assertEqual(manifest['limits'],{'per_file_bytes':5_000_000,'total_bytes':total_budget,'retention_days':1})
+                    self.assertIn('Test Case synthetic passed',(output/'domain.log.summary.txt').read_text())
+                    self.assertLessEqual((output/'domain.log.tail.txt').stat().st_size,200_000)
+                    self.assertFalse((output/'native-vision-launch.png').exists())
+                    self.assertTrue(any(item['reason']=='evidence byte cap' for item in manifest['omissions']))
+                    self.assertLessEqual(sum(p.stat().st_size for p in output.iterdir()),total_budget)
+                    for record in manifest['files']:
+                        data=(output/record['name']).read_bytes();self.assertEqual(hashlib.sha256(data).hexdigest(),record['sha256']);self.assertLessEqual(len(data),5_000_000)
+                    again=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,CELLULOID_EVIDENCE_PLATFORM=platform),capture_output=True,text=True)
+                    self.assertNotEqual(again.returncode,0,'A nonempty destination must not be merged into an upload')
+    def test_child_process_uses_each_reviewed_platform_allocation(self):
+        expected={'preflight':500_000,'mac':3_000_000,'tv':2_750_000,'watch':1_750_000,
+                  'phone':2_500_000,'vision':2_500_000,'compact-phone':1_500_000,
+                  'large-phone':1_500_000,'small-ipad':1_500_000,'large-ipad':1_500_000,'archive':500_000}
+        self.assertEqual(BUDGETS,expected)
+        for platform,total_budget in expected.items():
+            with self.subTest(platform=platform), tempfile.TemporaryDirectory() as directory:
+                # A fresh child imports the production module after its explicit env is set.
+                result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],
+                    env=dict(os.environ,RUNNER_TEMP=directory,CELLULOID_EVIDENCE_PLATFORM=platform),capture_output=True,text=True)
+                self.assertEqual(result.returncode,0,result.stderr)
+                output=Path(directory)/'celluloid-bounded-evidence'
+                manifest=json.loads((output/'manifest.json').read_text())
+                self.assertEqual(manifest['platform'],platform)
+                self.assertEqual(manifest['limits'],{'per_file_bytes':5_000_000,'total_bytes':total_budget,'retention_days':1})
+                self.assertLessEqual(sum(p.stat().st_size for p in output.iterdir()),total_budget)
     def test_eleven_job_allocations_cannot_exceed_whole_run_budget(self):
         with tempfile.TemporaryDirectory() as directory:
             folder=Path(directory)

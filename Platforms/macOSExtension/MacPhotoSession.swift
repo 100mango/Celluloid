@@ -65,6 +65,7 @@ enum MacPhotoFinishPlan {
                 guard MacPhotoAdjustment.supports(identifier: previous.identifier, version: previous.version) else { throw RecipeError.unsupportedVersion }
                 adjustment = try MacPhotoAdjustment.decode(previous.bytes)
                 try adjustment.requireEditableCanvas()
+                try MacPhotoRenderer.requireQualifiedPhotosOutput(adjustment)
             } catch { preserveReadOnly(); return }
         }
         loading = true
@@ -113,6 +114,7 @@ enum MacPhotoFinishPlan {
         var next = adjustment; mutation(&next)
         do {
             try next.requireEditableCanvas()
+            try MacPhotoRenderer.requireQualifiedPhotosOutput(next)
             // Validate the very payload that will be saved before showing an edit.
             _ = try next.encode()
             adjustment = next; changed = true; error = nil; render()

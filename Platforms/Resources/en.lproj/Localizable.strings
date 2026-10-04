@@ -177,5 +177,7 @@
 "Celluloid photo editor" = "Celluloid photo editor";
 "These edits cannot be safely restored here. You can view the current photo. Done and Cancel leave its existing edits and original unchanged." = "These edits cannot be safely restored here. You can view the current photo. Done and Cancel leave its existing edits and original unchanged.";
 "Use Done in Photos to save and reopen these editable filters, stickers and bubbles." = "Use Done in Photos to save and reopen these editable filters, stickers and bubbles.";
+"Use Done in Photos to save and reopen editable filters. Sticker and bubble editing is temporarily unavailable while cross-platform rendering is verified." = "Use Done in Photos to save and reopen editable filters. Sticker and bubble editing is temporarily unavailable while cross-platform rendering is verified.";
+"Sticker and bubble editing is temporarily unavailable in Photos while cross-platform rendering is verified. Existing edits and the original photo are unchanged." = "Sticker and bubble editing is temporarily unavailable in Photos while cross-platform rendering is verified. Existing edits and the original photo are unchanged.";
 "Make Smaller" = "Make Smaller";
 "Make Larger" = "Make Larger";
