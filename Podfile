@@ -14,7 +14,7 @@ target 'Celluloid' do
     shared_pods
 end
 
-target 'CelluloidKit’ do
+target 'CelluloidKit' do
     shared_pods
 end
 
