@@ -637,10 +637,28 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !title.exists && !action.exists }, object: nil)
         try require(XCTWaiter.wait(for: [gone], timeout: 10) == .completed, "Observed welcome did not leave")
         let grid = photos.images.matching(identifier: "PXGGridLayout-Info")
+        let ordered = fixtures.sorted { $0.creationDate < $1.creationDate }
+        var lastObservedLabels: [String] = []
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            grid.allElementsBoundByIndex.filter { $0.exists && $0.isHittable }.count >= 2
+            let visible = grid.allElementsBoundByIndex.filter { $0.exists && $0.isHittable }
+            let labels = visible.map { $0.label }
+            if labels != lastObservedLabels {
+                print("PHOTOS_HOST_GRID_READINESS count=\(visible.count) labels=" + labels.joined(separator: " | "))
+                lastObservedLabels = labels
+            }
+            let latest = Array(visible.suffix(2))
+            guard latest.count == 2, ordered.count == 2 else { return false }
+            for (image, source) in zip(latest, ordered) {
+                let parts = Calendar.current.dateComponents([.month, .day], from: source.creationDate)
+                guard let month = parts.month, let day = parts.day,
+                      image.label.range(of: "\\b\(month)月0?\(day)日", options: .regularExpression) != nil else { return false }
+            }
+            return true
         }, object: nil)
-        try require(XCTWaiter.wait(for: [ready], timeout: 10) == .completed, "Observed Photos grid not ready")
+        //612e proved that stock images can become actionable before either
+        //imported fixture reaches Photos' grid. Wait for the actual bound dates,
+        //not a generic image count; later selection still verifies CURRENT pixels.
+        try require(XCTWaiter.wait(for: [ready], timeout: 30) == .completed, "Actual bound fixture grid entries are not ready")
     }
     private func selectFixture(_ baseline: CaptureFixtureIdentity, verifyCurrentPixels: Bool = true) throws {
         _ = try freshOwnedAsset(baseline)
@@ -940,10 +958,13 @@ final class CelluloidHostAcceptanceTests: XCTestCase {
         let opaque = try NSKeyedArchiver.archivedData(withRootObject: dictionary, requiringSecureCoding: true)
         guard opaque.count < 4 * 1024 * 1024 else { throw captureProbeError("Count-only opaque fixture unexpectedly exceeds byte budget") }
         let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.preferredRange = .standard
+        // Keep the asymmetric hard edges at least40 source pixels from every
+        // fixed nine-point sample.612e hit exact edges and measured interpolation,
+        // not different content. The display tolerance12 and samples stay intact.
         let rendered = UIGraphicsImageRenderer(size: CGSize(width: 640, height: 480), format: format).image { context in
             UIColor.cyan.setFill(); context.fill(CGRect(x: 0, y: 0, width: 640, height: 480))
-            UIColor.magenta.setFill(); context.fill(CGRect(x: 320, y: 0, width: 320, height: 480))
-            UIColor.yellow.setFill(); context.fill(CGRect(x: 0, y: 240, width: 160, height: 240))
+            UIColor.magenta.setFill(); context.fill(CGRect(x: 272, y: 0, width: 368, height: 480))
+            UIColor.yellow.setFill(); context.fill(CGRect(x: 0, y: 320, width: 200, height: 160))
         }
         let jpeg = try XCTUnwrap(rendered.jpegData(compressionQuality: 1))
         let input = try hostInput(baseline, handles: true)
