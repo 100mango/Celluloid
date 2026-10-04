@@ -54,7 +54,11 @@ class EmbeddedWatchTests(unittest.TestCase):
 
     def test_archive_discovery_is_bounded_to_actual_unique_release_producer(self):
         root=self.root/'Derived';a=root/'ArchiveIntermediates/Celluloid/BuildProductsPath/Release-watchos/CelluloidWatch.app';a.mkdir(parents=True)
-        self.assertEqual(discover_archive_producer(root),a)
+        # macOS exposes temporary roots through /var -> /private/var. The
+        # production discovery canonicalizes its root before enumerating it.
+        self.assertEqual(discover_archive_producer(root),a.resolve())
+        alias=self.root/'DerivedAlias';alias.symlink_to(root,target_is_directory=True)
+        self.assertEqual(discover_archive_producer(alias),a.resolve())
         b=root/'Other/Release-watchos/CelluloidWatch.app';b.mkdir(parents=True)
         with self.assertRaises(ValueError):discover_archive_producer(root)
 
