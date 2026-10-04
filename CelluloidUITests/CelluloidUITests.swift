@@ -933,6 +933,7 @@ final class CelluloidCaptureTests: XCTestCase {
         try captureCurrentPhotoRepresentations(hostBaseline, expected: persistedSepia, phase: "after-extension-save")
         let sepiaAfterRepresentationProbe = try visiblePhotoMatches(persistedSepia, label: fixtureLabel, phase: "after-PhotoKit-representation-probe")
         var sepiaDisplayVerified = sepiaAfterRepresentationProbe
+        var libraryReopenPerformed = false
         if !sepiaDisplayVerified {
             hierarchy("saved-preview-not-refreshed")
             // One normal close/reopen distinguishes an in-place Photos preview
@@ -942,11 +943,13 @@ final class CelluloidCaptureTests: XCTestCase {
                 hierarchy("saved-preview-reopen-unavailable")
                 XCTFail("Could not reopen the same newest synthetic photo for preview diagnosis"); return
             }
+            libraryReopenPerformed = true
             sepiaDisplayVerified = try visiblePhotoMatches(persistedSepia, label: fixtureLabel, phase: "after-library-reopen")
             try captureHostIntegrity(hostBaseline, phase: "after-preview-reopen")
         }
         try captureJSON("PHOTOS_HOST_SEPIA_DISPLAY_RESULT", ["immediate_matches": sepiaImmediate,
-            "after_representation_probe_matches": sepiaAfterRepresentationProbe, "final_reopened_matches": sepiaDisplayVerified])
+            "after_representation_probe_matches": sepiaAfterRepresentationProbe,
+            "library_reopen_performed": libraryReopenPerformed, "final_display_matches": sepiaDisplayVerified])
         print("PHOTOS_HOST_SEPIA_DISPLAY_VERIFIED \(sepiaDisplayVerified)")
         guard promptFree() else { return }
         attachHostScreenshot("celluloid-host-saved-sepia")
@@ -1052,26 +1055,44 @@ final class CelluloidCaptureTests: XCTestCase {
             XCTFail("Observed Photos filter tool was unavailable"); return
         }
         hierarchy("native-filter-options")
-        let monochromeLabels = ["单色", "黑白", "银色", "Mono", "Silvertone", "Noir"]
+        let monochromeLabels = ["单色", "黑白", "银色", "Mono", "Silvertone", "Noir", "MONO", "SILVERTONE", "NOIR"]
         let controls = photos.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", monochromeLabels))
-        var nativeFilter: XCUIElement?
-        for attempt in 0..<4 {
-            nativeFilter = controls.allElementsBoundByIndex.first { $0.exists && $0.isEnabled && $0.isHittable }
-            if nativeFilter != nil { break }
-            // Only an observed compact horizontal filter collection may scroll.
-            let strips = photos.collectionViews.allElementsBoundByIndex.filter {
-                $0.exists && $0.isHittable && $0.frame.width > $0.frame.height * 2 && $0.frame.height < 220
+        var selectedNativeFilter: String?
+        if let individual = controls.allElementsBoundByIndex.first(where: { $0.exists && $0.isEnabled && $0.isHittable }) {
+            guard tapReady(individual) else { XCTFail("Observed native filter is not actionable"); return }
+            selectedNativeFilter = individual.label
+        } else {
+            // Actual206 hierarchy exposes this single semantic adjustable strip,
+            // not CollectionView cells. Gesture on that observed control and
+            // inspect its selected value; never guess a thumbnail index/position.
+            let pickers = photos.otherElements.matching(NSPredicate(format: "label == %@", "滤镜选取器"))
+            guard pickers.count == 1, waitReady(pickers.element) else {
+                hierarchy("native-filter-picker-unavailable")
+                XCTFail("Expected the single observed native filter picker"); return
             }
-            guard strips.count == 1 && attempt < 3 else { break }
-            print("NATIVE_PHOTOS_FILTER_STRIP frame=\(strips[0].frame) attempt=\(attempt)")
-            strips[0].swipeLeft()
+            let picker = pickers.element
+            for attempt in 0..<10 {
+                guard promptFree() else { return }
+                let value = picker.value as? String ?? ""
+                print("NATIVE_PHOTOS_FILTER_PICKER_STATE attempt=\(attempt) label=\(picker.label) value=\(value) frame=\(picker.frame)")
+                if monochromeLabels.contains(value) { selectedNativeFilter = value; break }
+                guard attempt < 9, picker.isEnabled, picker.isHittable,
+                      picker.frame.width > picker.frame.height * 2, picker.frame.height < 220,
+                      photos.frame.contains(picker.frame) else { break }
+                picker.swipeLeft()
+                let changed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                    (picker.value as? String) != value
+                }, object: nil)
+                guard XCTWaiter.wait(for: [changed], timeout: 5) == .completed else {
+                    hierarchy("native-filter-picker-no-value-change"); break
+                }
+            }
         }
-        guard let nativeFilter = nativeFilter else {
+        guard let selectedNativeFilter = selectedNativeFilter else {
             hierarchy("native-monochrome-control-not-observed")
-            XCTFail("No observed labeled monochrome Photos filter; no guessed index tap"); return
+            XCTFail("No observed selected monochrome Photos filter after bounded semantic gestures"); return
         }
-        print("NATIVE_PHOTOS_FILTER_SELECTED label=\(nativeFilter.label) frame=\(nativeFilter.frame)")
-        nativeFilter.tap()
+        print("NATIVE_PHOTOS_FILTER_SELECTED value=\(selectedNativeFilter)")
         hierarchy("native-filter-applied")
         guard tapReady(photos.buttons["完成"].firstMatch), waitReady(photos.buttons["编辑"].firstMatch) else {
             hierarchy("native-filter-save-unavailable")
