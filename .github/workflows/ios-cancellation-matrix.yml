@@ -1,13 +1,13 @@
-name: iOS27 frozen cancellation checkpoint matrix
+name: iOS27 integrated adjustment preservation qualification
 'on':
   push:
     branches:
-    - codex/ios-cancellation-matrix
+    - codex/ios-preservation-qualified
   workflow_dispatch: null
 permissions:
   contents: read
 concurrency:
-  group: celluloid-cancellation-matrix-${{ github.ref }}
+  group: celluloid-preservation-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   regression:
@@ -42,27 +42,27 @@ jobs:
         set -euo pipefail
         case "$GITHUB_EVENT_NAME" in push|workflow_dispatch) ;; *) exit 1 ;; esac
         test "$GITHUB_REPOSITORY" = 100mango/Celluloid
-        test "$GITHUB_REF" = refs/heads/codex/ios-cancellation-matrix
+        test "$GITHUB_REF" = refs/heads/codex/ios-preservation-qualified
         test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
         test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
         git diff --exit-code HEAD --
         echo "Tested commit: $(git rev-parse HEAD)"
         echo "Tested tree: $(git rev-parse 'HEAD^{tree}')"
         shasum -a 256 .github/workflows/ios-cancellation-matrix.yml
-    - name: Verify frozen 0f9 shipping files and build settings
+    - name: Verify reviewed shipping files and build settings
       run: |
         python3 - <<'PYFROZEN'
         import hashlib,json,pathlib,subprocess
         paths=subprocess.check_output(['git','ls-files','-z','Celluloid','CelluloidKit','CelluloidPhotoExtension']).split(b'\0')[:-1]
         rows=[[p.decode(),hashlib.sha256(pathlib.Path(p.decode()).read_bytes()).hexdigest()] for p in paths]
         fingerprint=hashlib.sha256(json.dumps(rows,separators=(',',':')).encode()).hexdigest()
-        assert len(rows)==315 and fingerprint=='a8d03b2e2876168fbbc61ec3314f8d8dace013cc6336e94a445fba7ed9ae538a',(len(rows),fingerprint)
-        expected={'Celluloid.xcodeproj/project.pbxproj':'cc596672d529f207e527d0761263bf203eb5d2b0',
+        assert len(rows)==316 and fingerprint=='a8e62778f438088e56e71f4ce6ea2570ecc74d115f810bbc9d36d0be6c0d8afe',(len(rows),fingerprint)
+        expected={'Celluloid.xcodeproj/project.pbxproj':'617e0cdfa11caece10e1215e7609cfbe10e55fda',
                   'Celluloid.xcworkspace/contents.xcworkspacedata':'2c4d8b42a389f25b61fbff8518007e93941987a5',
                   'Celluloid.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved':'db0356f2bd5b65844b78da4e609ff5559b8b2e0a'}
         for path,blob in expected.items():
             assert subprocess.check_output(['git','hash-object',path],text=True).strip()==blob,path
-        print('FROZEN_0F9_SHIPPING_PROOF',len(rows),fingerprint,'project/workspace/package-lock unchanged')
+        print('REVIEWED_PRESERVATION_SHIPPING_PROOF',len(rows),fingerprint,'project/workspace/package-lock unchanged')
         PYFROZEN
     - name: Verify stable Apple environment
       run: |
@@ -79,6 +79,12 @@ jobs:
         python3 Scripts/generate_project.py
         python3 Scripts/validate_release.py
         git diff --exit-code -- Celluloid.xcodeproj Celluloid.xcworkspace
+    - name: Compile Release app framework and Photos extension
+      if: ${{ matrix.key == 'compact-phone' }}
+      timeout-minutes: 12
+      run: |
+        set -euo pipefail
+        python3 Scripts/run_bounded.py --seconds 600 --label Release-shipping-compile xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Release -destination 'generic/platform=iOS Simulator' -derivedDataPath .build-release -jobs 2 build CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO | tee release-build.log
     - name: Verify every device selection branch on runner Bash
       run: /bin/bash Scripts/test_matrix_device_selection.sh
     - name: Select build and boot isolated test simulator
@@ -107,7 +113,7 @@ jobs:
       run: |
         set -euo pipefail
         id=$(cat /tmp/current-celluloid-simulator)
-        python3 Scripts/run_bounded.py --seconds 900 --label "$DEVICE_NAME units" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-units.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests -skip-testing:CelluloidTests/CollageCompositionTests -skip-testing:CelluloidTests/OverlayResizeTests/testPhotosExtensionRestartWithoutAdjustmentClearsDecorationsFilterAndCancellation -skip-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation -skip-testing:CelluloidTests/EditorRegressionTests/testPhotosLibraryBootstrapReadiness -skip-testing:CelluloidTests/EditorRegressionTests/testReconcileSyntheticPhotosAfterImport test-without-building CODE_SIGNING_ALLOWED=NO | tee units.log
+        python3 Scripts/run_bounded.py --seconds 900 --label "$DEVICE_NAME units" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-units.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests -skip-testing:CelluloidTests/AdjustmentPreservationPhotoKitTests -skip-testing:CelluloidTests/AdaptiveInterfaceTests/testFullLocalizedTitlesFitAtNormalAndLargestTextAcrossViewports -skip-testing:CelluloidTests/CollageCompositionTests -skip-testing:CelluloidTests/OverlayResizeTests/testPhotosExtensionRestartWithoutAdjustmentClearsDecorationsFilterAndCancellation -skip-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation -skip-testing:CelluloidTests/EditorRegressionTests/testPhotosLibraryBootstrapReadiness -skip-testing:CelluloidTests/EditorRegressionTests/testReconcileSyntheticPhotosAfterImport test-without-building CODE_SIGNING_ALLOWED=NO | tee units.log
         xcrun xcresulttool get test-results summary --path TestResults-units.xcresult | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Verify PhotoKit readiness and reconcile pristine fixtures
       id: photos
@@ -125,7 +131,7 @@ jobs:
         set -euo pipefail
         test -f /tmp/celluloid-bootstrap-assets-verified
         id=$(cat /tmp/current-celluloid-simulator)
-        python3 Scripts/run_bounded.py --seconds 900 --label "$DEVICE_NAME Photos-integration" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-Photos-integration.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests/CollageCompositionTests -only-testing:CelluloidTests/OverlayResizeTests/testPhotosExtensionRestartWithoutAdjustmentClearsDecorationsFilterAndCancellation -only-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation test-without-building CODE_SIGNING_ALLOWED=NO
+        python3 Scripts/run_bounded.py --seconds 900 --label "$DEVICE_NAME Photos-integration" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-Photos-integration.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests/AdaptiveInterfaceTests/testFullLocalizedTitlesFitAtNormalAndLargestTextAcrossViewports -only-testing:CelluloidTests/CollageCompositionTests -only-testing:CelluloidTests/OverlayResizeTests/testPhotosExtensionRestartWithoutAdjustmentClearsDecorationsFilterAndCancellation -only-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation test-without-building CODE_SIGNING_ALLOWED=NO
         xcrun xcresulttool get test-results summary --path TestResults-Photos-integration.xcresult | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Run real Photos permission transitions
       if: ${{ !cancelled() && steps.prepare.conclusion == 'success' && matrix.key == 'compact-phone' }}
@@ -176,6 +182,27 @@ jobs:
         python3 Scripts/run_bounded.py --seconds 60 --label "$DEVICE_NAME dark-appearance" xcrun simctl ui "$id" appearance dark
         python3 Scripts/run_bounded.py --seconds 900 --label "$DEVICE_NAME dark" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-dark.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests/testSeededPhotoEditingSaveAndReopen -only-testing:CelluloidUITests/CelluloidUITests/testTwoPhotoCollageZoomRotateAndSave test-without-building CODE_SIGNING_ALLOWED=NO | tee dark.log
         xcrun xcresulttool get test-results summary --path TestResults-dark.xcresult | tee -a "$GITHUB_STEP_SUMMARY"
+    - name: Verify actual PhotoKit opaque preservation and output destinations
+      if: ${{ success() && matrix.key == 'compact-phone' }}
+      timeout-minutes: 12
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+        git diff --exit-code HEAD --
+        test -f /tmp/celluloid-bootstrap-assets-verified
+        id=$(cat /tmp/current-celluloid-simulator)
+        # Apple's TEST_RUNNER_ prefix forwards only these two explicit public
+        # prerequisites to this one XCTest invocation, without editing the scheme
+        # or enabling the mutation probe for pre-import units/other devices.
+        # https://developer.apple.com/documentation/xcode/environment-variable-reference
+        TEST_RUNNER_CELLULOID_SYNTHETIC_PROBE=1 TEST_RUNNER_CELLULOID_PROBE_SOURCE_SHA="$GITHUB_SHA" \
+          python3 Scripts/run_bounded.py --seconds 600 --label actual-PhotoKit-preservation xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-preservation.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests/AdjustmentPreservationPhotoKitTests test-without-building CODE_SIGNING_ALLOWED=NO | tee preservation.log
+        xcrun xcresulttool get test-results summary --path TestResults-preservation.xcresult | tee /tmp/preservation-summary.json | tee -a "$GITHUB_STEP_SUMMARY"
+        python3 - <<'PYRESULT'
+        import json
+        result=json.load(open('/tmp/preservation-summary.json'))
+        assert result['totalTestCount']==3 and result['passedTests']==3 and result['failedTests']==0,result
+        PYRESULT
     - name: Export bounded synthetic UI evidence
       if: always()
       timeout-minutes: 3
@@ -220,27 +247,27 @@ jobs:
         set -euo pipefail
         case "$GITHUB_EVENT_NAME" in push|workflow_dispatch) ;; *) exit 1 ;; esac
         test "$GITHUB_REPOSITORY" = 100mango/Celluloid
-        test "$GITHUB_REF" = refs/heads/codex/ios-cancellation-matrix
+        test "$GITHUB_REF" = refs/heads/codex/ios-preservation-qualified
         test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
         test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
         git diff --exit-code HEAD --
         echo "Tested commit: $(git rev-parse HEAD)"
         echo "Tested tree: $(git rev-parse 'HEAD^{tree}')"
         shasum -a 256 .github/workflows/ios-cancellation-matrix.yml
-    - name: Verify frozen 0f9 shipping files and build settings
+    - name: Verify reviewed shipping files and build settings
       run: |
         python3 - <<'PYFROZEN'
         import hashlib,json,pathlib,subprocess
         paths=subprocess.check_output(['git','ls-files','-z','Celluloid','CelluloidKit','CelluloidPhotoExtension']).split(b'\0')[:-1]
         rows=[[p.decode(),hashlib.sha256(pathlib.Path(p.decode()).read_bytes()).hexdigest()] for p in paths]
         fingerprint=hashlib.sha256(json.dumps(rows,separators=(',',':')).encode()).hexdigest()
-        assert len(rows)==315 and fingerprint=='a8d03b2e2876168fbbc61ec3314f8d8dace013cc6336e94a445fba7ed9ae538a',(len(rows),fingerprint)
-        expected={'Celluloid.xcodeproj/project.pbxproj':'cc596672d529f207e527d0761263bf203eb5d2b0',
+        assert len(rows)==316 and fingerprint=='a8e62778f438088e56e71f4ce6ea2570ecc74d115f810bbc9d36d0be6c0d8afe',(len(rows),fingerprint)
+        expected={'Celluloid.xcodeproj/project.pbxproj':'617e0cdfa11caece10e1215e7609cfbe10e55fda',
                   'Celluloid.xcworkspace/contents.xcworkspacedata':'2c4d8b42a389f25b61fbff8518007e93941987a5',
                   'Celluloid.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved':'db0356f2bd5b65844b78da4e609ff5559b8b2e0a'}
         for path,blob in expected.items():
             assert subprocess.check_output(['git','hash-object',path],text=True).strip()==blob,path
-        print('FROZEN_0F9_SHIPPING_PROOF',len(rows),fingerprint,'project/workspace/package-lock unchanged')
+        print('REVIEWED_PRESERVATION_SHIPPING_PROOF',len(rows),fingerprint,'project/workspace/package-lock unchanged')
         PYFROZEN
     - name: Verify stable Apple environment
       run: |

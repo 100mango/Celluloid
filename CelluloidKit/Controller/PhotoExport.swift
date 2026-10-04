@@ -7,7 +7,7 @@ public struct PhotoExport {
     public let adjustmentData: Data
 }
 
-public enum PhotoExportError: Error { case cancelled, missingImage, invalidState, encodingFailed }
+public enum PhotoExportError: Error { case cancelled, missingImage, invalidState, encodingFailed, adjustmentTooComplex }
 
 /// One cancellable snapshot. Cancellation never turns a prior request into a new
 /// editing session's output; each request completes once, on the main queue.

@@ -21,6 +21,42 @@ public protocol EditPhotoToolBarDelegate: AnyObject {
 open class EditPhotoToolBar: UIView {
     
     open weak var delegate: EditPhotoToolBarDelegate?
+
+    private var editingGeneration = UUID()
+    private weak var activePicker: UIViewController?
+    private var activePickerGeneration: UUID?
+
+    /// A picker belongs to the input/session that created it. Dismiss only that
+    /// owned panel; delayed callbacks cannot be rebound to the next input.
+    func invalidateEditingSession() {
+        editingGeneration = UUID()
+        if let panel = activePicker?.navigationController, panel.presentingViewController != nil {
+            panel.dismiss(animated: false)
+        }
+        activePicker = nil
+        activePickerGeneration = nil
+        buttons.forEach { $0.resetState() }
+    }
+    private func register(_ picker: UIViewController) {
+        activePicker = picker
+        activePickerGeneration = editingGeneration
+    }
+    private func consumeSelection(from picker: UIViewController) -> Bool {
+        guard activePicker === picker, activePickerGeneration == editingGeneration else { return false }
+        activePicker = nil
+        activePickerGeneration = nil
+        return true
+    }
+    func makeFilterPicker() -> FilterPickerViewController {
+        let picker = FilterPickerViewController(); picker.delegate = self; register(picker); return picker
+    }
+    func makeBubblePicker() -> BubblePickerViewController {
+        let picker = BubblePickerViewController(); picker.delegate = self; register(picker); return picker
+    }
+    func makeStickerPicker() -> StickerPickerViewController {
+        let picker = StickerPickerViewController(); picker.delegate = self; register(picker); return picker
+    }
+
     
     fileprivate lazy var stackView: UIStackView = {
         let stackView = UIStackView()
@@ -130,8 +166,7 @@ private extension EditPhotoToolBar {
             }
         }
         
-        let filterPicker = FilterPickerViewController()
-        filterPicker.delegate = self
+        let filterPicker = makeFilterPicker()
         presentViewControllerFromSheet(filterPicker)
     }
     
@@ -142,8 +177,7 @@ private extension EditPhotoToolBar {
             }
         }
         
-        let bubblePicker = BubblePickerViewController()
-        bubblePicker.delegate = self
+        let bubblePicker = makeBubblePicker()
         presentViewControllerFromSheet(bubblePicker)
     }
     
@@ -154,8 +188,7 @@ private extension EditPhotoToolBar {
             }
         }
         
-        let stickerPicker = StickerPickerViewController()
-        stickerPicker.delegate = self
+        let stickerPicker = makeStickerPicker()
         presentViewControllerFromSheet(stickerPicker)
     }
     
@@ -171,6 +204,7 @@ private extension EditPhotoToolBar {
 //MARK: BubblePickerViewControllerDelegate
 extension EditPhotoToolBar: BubblePickerViewControllerDelegate {
     public func bubblePickerViewController(_ bubblePickerViewController: BubblePickerViewController, didSelectBubble bubble: BubbleModel) {
+        guard consumeSelection(from: bubblePickerViewController) else { return }
         self.delegate?.editPhotoToolBar(self, didSelectBubble: bubble)
     }
 }
@@ -178,6 +212,7 @@ extension EditPhotoToolBar: BubblePickerViewControllerDelegate {
 //MARK: StickerPickerViewControllerDelegate
 extension EditPhotoToolBar: StickerPickerViewControllerDelegate {
     public func stickerPickerViewController(_ stickerPickerViewController: StickerPickerViewController, didSelectSticker sticker: StickerModel) {
+        guard consumeSelection(from: stickerPickerViewController) else { return }
         self.delegate?.editPhotoToolBar(self, didSelectSticker: sticker)
     }
 }
@@ -185,6 +220,7 @@ extension EditPhotoToolBar: StickerPickerViewControllerDelegate {
 //MARK: FilterPickerViewControllerDelegate
 extension EditPhotoToolBar: FilterPickerViewControllerDelegate {
     public func filterPickerViewController(_ filterPickerViewController: FilterPickerViewController, didSelectFilter filter: FilterType) {
+        guard consumeSelection(from: filterPickerViewController) else { return }
         self.delegate?.editPhotoToolBar(self, didSelectFilter: filter)
     }
 }

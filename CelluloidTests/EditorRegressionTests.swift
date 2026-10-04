@@ -154,12 +154,133 @@ final class EditorRegressionTests: XCTestCase {
         editor.loadViewIfNeeded()
         XCTAssertNil(editor.outputImage)
     }
-    func testExtensionRejectsUnsupportedOrCorruptAdjustments() throws {
+    func testReadOnlyAdjustmentKeepsOpaqueBytesAndCurrentPixelsUntilNewInput() throws {
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let current = UIGraphicsImageRenderer(size: CGSize(width: 120, height: 80), format: format).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 60, height: 80))
+            UIColor.blue.setFill(); context.fill(CGRect(x: 60, y: 0, width: 60, height: 80))
+        }
+        let opaqueBytes = Data([0, 1, 2, 3])
+        let opaque = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: "1.0", data: opaqueBytes)
+        let editor = BaseEditPhotoController(); editor.loadViewIfNeeded()
+        editor.view.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+        editor.sourceImage = current; editor.view.layoutIfNeeded()
+        editor.preserveUnreadableAdjustment(opaque, currentImage: current)
+        XCTAssertTrue(editor.isAdjustmentReadOnly)
+        XCTAssertTrue(editor.preservedAdjustmentData === opaque)
+        XCTAssertEqual(editor.preservedAdjustmentData?.data, opaqueBytes)
+        XCTAssertTrue(editor.preview.image === current)
+        XCTAssertNil(editor.outputImage)
+        var replacement = AdjustmentData(); replacement.filterType = .Sepia
+        editor.restoreFromData(replacement)
+        XCTAssertTrue(editor.preview.image === current, "An old restore call cannot alter a protected current preview")
+        editor.editPhotoToolBar(editor.toolBar, didSelectFilter: .Sepia)
+        editor.editPhotoToolBar(editor.toolBar, didSelectSticker: StickerModel.stickers[0])
+        editor.editPhotoToolBar(editor.toolBar, didSelectBubble: BubbleModel.bubbles[0])
+        XCTAssertTrue(editor.preview.image === current, "Late panel callbacks cannot edit protected state")
+        XCTAssertTrue(editor.adjustmentData.stickers.isEmpty)
+        XCTAssertTrue(editor.adjustmentData.bubbles.isEmpty)
+        XCTAssertEqual(editor.adjustmentData.filterType, .Original)
+        let rejected = expectation(description: "Read-only export fails exactly once without replacement data")
+        rejected.assertForOverFulfill = true
+        editor.exportPhoto { result in
+            if case .failure(.invalidState) = result {} else { XCTFail("Protected opaque state produced an export") }
+            rejected.fulfill()
+        }
+        wait(for: [rejected], timeout: 1)
+        XCTAssertEqual(editor.preservedAdjustmentData?.data, opaqueBytes)
+        editor.input = nil
+        editor.sourceImage = current
+        XCTAssertFalse(editor.isAdjustmentReadOnly)
+        XCTAssertNil(editor.preservedAdjustmentData)
+        XCTAssertNotNil(editor.outputImage, "A separate fresh input is not blocked by prior opaque state")
+    }
+    func testPickerCallbacksRemainBoundToTheirOriginalEditingSession() throws {
+        let editor = BaseEditPhotoController(); editor.loadViewIfNeeded()
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 120, height: 80), format: format).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 120, height: 80))
+        }
+        editor.view.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+        editor.sourceImage = image; editor.view.layoutIfNeeded()
+        let opaque = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: "1.0", data: Data([1,2,3]))
+        for kind in 0..<3 {
+            editor.input = nil; editor.sourceImage = image; editor.view.layoutIfNeeded()
+            let sendOldSelection: () -> Void
+            switch kind {
+            case 0:
+                let picker = editor.toolBar.makeFilterPicker()
+                sendOldSelection = { picker.delegate?.filterPickerViewController(picker, didSelectFilter: .Sepia) }
+            case 1:
+                let picker = editor.toolBar.makeStickerPicker()
+                sendOldSelection = { picker.delegate?.stickerPickerViewController(picker, didSelectSticker: StickerModel.stickers[0]) }
+            default:
+                let picker = editor.toolBar.makeBubblePicker()
+                sendOldSelection = { picker.delegate?.bubblePickerViewController(picker, didSelectBubble: BubbleModel.bubbles[0]) }
+            }
+            editor.preserveUnreadableAdjustment(opaque, currentImage: image)
+            // Reset protection before the retained old callback. Each picker is
+            // independently active at invalidation, rather than already replaced
+            // by registration of another picker during test setup.
+            editor.input = nil; editor.sourceImage = image; editor.view.layoutIfNeeded()
+            sendOldSelection()
+            XCTAssertEqual(editor.adjustmentData.filterType, .Original)
+            XCTAssertTrue(editor.adjustmentData.stickers.isEmpty)
+            XCTAssertTrue(editor.adjustmentData.bubbles.isEmpty)
+            XCTAssertTrue(editor.preview.image === image)
+        }
+        let currentFilter = editor.toolBar.makeFilterPicker()
+        currentFilter.delegate?.filterPickerViewController(currentFilter, didSelectFilter: .Sepia)
+        XCTAssertEqual(editor.adjustmentData.filterType, .Sepia, "Current-session filter still works")
+        currentFilter.delegate?.filterPickerViewController(currentFilter, didSelectFilter: .Original)
+        XCTAssertEqual(editor.adjustmentData.filterType, .Sepia, "One selection cannot be delivered twice")
+        let currentSticker = editor.toolBar.makeStickerPicker()
+        currentSticker.delegate?.stickerPickerViewController(currentSticker, didSelectSticker: StickerModel.stickers[0])
+        XCTAssertEqual(editor.adjustmentData.stickers.count, 1)
+        currentSticker.delegate?.stickerPickerViewController(currentSticker, didSelectSticker: StickerModel.stickers[0])
+        XCTAssertEqual(editor.adjustmentData.stickers.count, 1, "Duplicate sticker selection is consumed")
+        let currentBubble = editor.toolBar.makeBubblePicker()
+        currentBubble.delegate?.bubblePickerViewController(currentBubble, didSelectBubble: BubbleModel.bubbles[0])
+        XCTAssertEqual(editor.adjustmentData.bubbles.count, 1)
+        currentBubble.delegate?.bubblePickerViewController(currentBubble, didSelectBubble: BubbleModel.bubbles[0])
+        XCTAssertEqual(editor.adjustmentData.bubbles.count, 1, "Duplicate bubble selection is consumed")
+        let previous = editor.toolBar.makeFilterPicker()
+        editor.input = nil; editor.sourceImage = image
+        previous.delegate?.filterPickerViewController(previous, didSelectFilter: .Sepia)
+        XCTAssertEqual(editor.adjustmentData.filterType, .Original, "Ordinary new-input reset also invalidates old panels")
+    }
+
+    func testResourceBudgetRejectsSnapshotBeforeDecodeOrRasterWithoutTruncation() throws {
+        final class SnapshotEditor: BaseEditPhotoController {
+            var snapshot = AdjustmentData()
+            override var adjustmentData: AdjustmentData { snapshot }
+        }
+        let editor = SnapshotEditor(); editor.loadViewIfNeeded()
+        var bubble = BubbleModel.bubbles[0]
+        bubble.content = String(repeating: "界", count: AdjustmentData.maximumBubbleTextUTF16Units + 1)
+        editor.snapshot.bubbles = [bubble]
+        // No source image: resource rejection must precede missing-image/decode.
+        let done = expectation(description: "Oversized edit rejected once before expensive export")
+        done.assertForOverFulfill = true
+        let task = editor.exportPhoto { result in
+            if case .failure(.adjustmentTooComplex) = result {} else { XCTFail("Budget was not checked before source loading") }
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 5)
+        XCTAssertEqual(task.storageStatistics.rasterizedCount, 0)
+        XCTAssertEqual(editor.snapshot.bubbles.count, 1)
+        XCTAssertEqual(editor.snapshot.bubbles[0].content, bubble.content)
+        XCTAssertNil(editor.input)
+    }
+
+    func testExtensionNegotiatesKnownFormatWithoutDecodingUnboundData() throws {
         let editor = PhotoEditingViewController()
         let valid = try AdjustmentData().encode()
         XCTAssertTrue(editor.canHandle(PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: "1.0", data: valid)))
         XCTAssertFalse(editor.canHandle(PHAdjustmentData(formatIdentifier: "Other", formatVersion: "1.0", data: valid)))
-        XCTAssertFalse(editor.canHandle(PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: "1.0", data: Data([0,1,2]))))
+        // Malformed known-format data must reach the bound start-input error
+        // path, rather than making Photos silently provide a flattened edit.
+        XCTAssertTrue(editor.canHandle(PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: "1.0", data: Data([0,1,2]))))
     }
     func testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation() throws {
         XCTAssertEqual(PHPhotoLibrary.authorizationStatus(for: .readWrite), .authorized,
@@ -310,7 +431,73 @@ final class EditorRegressionTests: XCTestCase {
         latestTask.consumedRasterObserverForTesting = nil
         wait(for: [earlierFinish], timeout: 0.25)
         XCTAssertEqual(newestCallbacks, 1)
-        print("PHOTOS_EXTENSION_CALLBACK_CONTRACT_PASS success_once cancel_before_finish_silent cancel_during_preparation_silent cancel_after_consumed_strip_silent superseded_session_silent repeated_finish_silent newest_finish_success_once controls_disabled_until_current_finish")
+        func pauseActualOutputWrite() throws -> (PhotosOutputWrite, DispatchSemaphore, XCTestExpectation) {
+            let entered = expectation(description: "Adapter reached actual queued output write")
+            let release = DispatchSemaphore(value: 0)
+            var actualWriter: PhotosOutputWrite?
+            editor.outputWriterPreparedForTesting = { writer in
+                actualWriter = writer
+                writer.beforeWriteForTesting = { entered.fulfill(); _ = release.wait(timeout: .now() + 5) }
+            }
+            let oldCallback = expectation(description: "Abandoned output writer has no Photos callback")
+            oldCallback.isInverted = true
+            editor.finishContentEditing { _ in oldCallback.fulfill() }
+            wait(for: [entered], timeout: 10)
+            editor.outputWriterPreparedForTesting = nil
+            guard let writer = actualWriter else { release.signal(); throw NSError(domain: "Celluloid.WriteProbe", code: 1) }
+            XCTAssertFalse(FileManager.default.fileExists(atPath: writer.destination.path))
+            return (writer, release, oldCallback)
+        }
+        func drainActualOutputWrites() {
+            let drained = expectation(description: "Adapter output cleanup completed")
+            PhotosOutputWrite.afterPendingWorkForTesting { drained.fulfill() }
+            wait(for: [drained], timeout: 5)
+        }
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        let canceledWrite = try pauseActualOutputWrite()
+        editor.cancelContentEditing()
+        canceledWrite.1.signal(); drainActualOutputWrites()
+        wait(for: [canceledWrite.2], timeout: 0.1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: canceledWrite.0.destination.path))
+
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        let replacedWrite = try pauseActualOutputWrite()
+        // Exactly the same PHContentEditingInput identity starts a new session.
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        let replacementWritten = expectation(description: "Replacement output completes once")
+        replacementWritten.assertForOverFulfill = true
+        editor.finishContentEditing { output in
+            XCTAssertNotNil(output)
+            if let output = output { XCTAssertNotNil(UIImage(contentsOfFile: output.renderedContentURL.path)) }
+            replacementWritten.fulfill()
+        }
+        XCTAssertFalse(editor.view.isUserInteractionEnabled)
+        replacedWrite.1.signal()
+        wait(for: [replacementWritten], timeout: 10); drainActualOutputWrites()
+        wait(for: [replacedWrite.2], timeout: 0.1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: replacedWrite.0.destination.path))
+        XCTAssertTrue(editor.view.isUserInteractionEnabled)
+
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        let protectedReplacementWrite = try pauseActualOutputWrite()
+        editor.startContentEditing(with: input, placeholderImage: placeholder)
+        // This directly tests the protected adapter mode. Actual malformed-bound
+        // PhotoKit input and host preservation have separate integration gates.
+        editor.preserveUnreadableAdjustment(PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier,
+            formatVersion: "1.0", data: Data([1,2,3])), currentImage: placeholder)
+        let protectedDone = expectation(description: "Protected replacement yields no-change output")
+        protectedDone.assertForOverFulfill = true
+        editor.finishContentEditing { output in
+            XCTAssertNotNil(output)
+            XCTAssertNil(output?.adjustmentData)
+            if let output = output { XCTAssertFalse(FileManager.default.fileExists(atPath: output.renderedContentURL.path)) }
+            protectedDone.fulfill()
+        }
+        protectedReplacementWrite.1.signal()
+        wait(for: [protectedDone], timeout: 2); drainActualOutputWrites()
+        wait(for: [protectedReplacementWrite.2], timeout: 0.1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: protectedReplacementWrite.0.destination.path))
+        print("PHOTOS_EXTENSION_CALLBACK_CONTRACT_ASSERTIONS_COMPLETED success_cancel_supersession_repeated_finish_and_queued_write use_terminal_test_status")
         // No PHPhotoLibrary.performChanges: the synthetic library asset is never mutated here.
     }
 

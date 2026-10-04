@@ -13,6 +13,7 @@ public enum AdjustmentDataError: Error {
     case invalidArchive
     case missingValue(String)
     case invalidValue(String)
+    case resourceLimit(String)
 }
 
 struct AdjustmentDictionary {
@@ -28,12 +29,16 @@ struct AdjustmentDictionary {
         return string
     }
 
-    func objects(_ key: String) throws -> [[String: Any]] {
+    func objects(_ key: String, maximumCount: Int = AdjustmentData.maximumDecorations) throws -> [[String: Any]] {
         // JSONCodable 3 omitted empty collections in existing Photos archives.
         guard let value = object[key] else { return [] }
-        guard let objects = value as? [[String: Any]] else {
+        // Check the Foundation container before bridging every dictionary. A
+        // tiny keyed archive can repeat one object thousands of times.
+        guard let array = value as? NSArray else {
             throw AdjustmentDataError.invalidValue(key)
         }
+        guard array.count <= maximumCount else { throw AdjustmentDataError.resourceLimit("decoration count") }
+        guard let objects = array as? [[String: Any]] else { throw AdjustmentDataError.invalidValue(key) }
         return objects
     }
 

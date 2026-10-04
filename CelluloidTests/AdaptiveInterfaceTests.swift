@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import Photos
 @testable import Celluloid
 @testable import CelluloidKit
 
@@ -88,6 +89,12 @@ final class AdaptiveInterfaceTests: XCTestCase {
     }
 
     func testFullLocalizedTitlesFitAtNormalAndLargestTextAcrossViewports() throws {
+        let authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        print("PICKER_LAYOUT_AUTHORIZATION_PREREQUISITE raw=\(authorization.rawValue) expected=authorized")
+        guard authorization == .authorized else {
+            throw NSError(domain: "Celluloid.LayoutPrerequisite", code: authorization.rawValue,
+                userInfo: [NSLocalizedDescriptionKey: "Run the actual PhotoPicker layout case only after explicit synthetic Photos grant"])
+        }
         let image = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { _ in }
         let sizes = [CGSize(width: 320, height: 568), CGSize(width: 568, height: 320),
                      CGSize(width: 375, height: 667), CGSize(width: 667, height: 375),

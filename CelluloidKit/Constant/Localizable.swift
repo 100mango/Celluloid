@@ -29,6 +29,10 @@ public enum L10n {
     case saved
     /// Beautify
     case beautify
+    case readOnly
+    case unreadableEditsTitle
+    case unreadableEditsMessage
+    case editTooComplex
 }
 
 extension L10n: CustomStringConvertible {
@@ -56,6 +60,14 @@ extension L10n: CustomStringConvertible {
             return L10n.tr("saved")
         case .beautify:
             return L10n.tr("beautify")
+        case .readOnly:
+            return L10n.tr("read-only")
+        case .unreadableEditsTitle:
+            return L10n.tr("unreadable-edits-title")
+        case .unreadableEditsMessage:
+            return L10n.tr("unreadable-edits-message")
+        case .editTooComplex:
+            return L10n.tr("edit-too-complex")
         }
     }
     

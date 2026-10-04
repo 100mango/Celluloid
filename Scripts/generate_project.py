@@ -37,7 +37,7 @@ for n in names:
 for n in names:
  source=[];resource=[];framework=[];headers=[];phases=[];deps=[];packages=[]
  paths=list((ROOT/n).rglob('*'))
- if n=='CelluloidTests':paths.append(ROOT/'CelluloidPhotoExtension/PhotoEditingViewController.swift')
+ if n=='CelluloidTests':paths.extend([ROOT/'CelluloidPhotoExtension/PhotoEditingViewController.swift',ROOT/'CelluloidPhotoExtension/PhotosOutputWrite.swift'])
  localized={}
  for p in sorted(paths):
   if p.is_dir() and p.suffix!='.xcassets':continue

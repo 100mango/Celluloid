@@ -39,3 +39,8 @@
 "Pixelate Faces" = "人脸像素化";
 
 "Bubble Text" = "气泡文字";
+"read-only" = "只读";
+"unreadable-edits-title" = "已保留之前的编辑";
+"unreadable-edits-message" = "无法安全读取之前的编辑内容。为保留照片和编辑数据，已停用编辑。";
+
+"edit-too-complex" = "当前编辑内容过多，无法保存。请缩短气泡文字或减少装饰后重试。原始照片未被更改。";
