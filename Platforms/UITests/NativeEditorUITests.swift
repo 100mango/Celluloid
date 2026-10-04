@@ -284,6 +284,11 @@ final class NativeEditorUITests: XCTestCase {
         // database modification or blanket system permission acceptance.
         if photos.buttons["Get Started"].waitForExistence(timeout: 5) { photos.buttons["Get Started"].click() }
         print("NATIVE_MAC_PHOTOS_INITIAL_AX " + photos.debugDescription)
+        let emptyLibrary = photos.staticTexts["_NS:99"]
+        XCTAssertTrue(emptyLibrary.waitForExistence(timeout: 10))
+        XCTAssertEqual(emptyLibrary.value as? String, "Welcome to Photos", "Only the observed fresh empty-library state permits synthetic seeding")
+        let ownedAssets = photos.collectionViews["photos_collection_view"].descendants(matching: .any).matching(identifier: "mediaKind_asset")
+        XCTAssertEqual(ownedAssets.count, 0)
         let fileMenu = photos.menuBarItems["File"]
         XCTAssertTrue(fileMenu.waitForExistence(timeout: 15)); fileMenu.click()
         let importMenu = photos.menuItems["_NS:1096"] // Exact Import… identifier observed in Photos27.
@@ -301,6 +306,9 @@ final class NativeEditorUITests: XCTestCase {
         if importAll.waitForExistence(timeout: 3) { importAll.click() }
         let imported = photos.collectionViews["photos_collection_view"].descendants(matching: .any)["mediaKind_asset"].firstMatch
         XCTAssertTrue(imported.waitForExistence(timeout: 20), photos.debugDescription)
+        XCTAssertEqual(ownedAssets.count, 1)
+        let ownedAssetLabel = imported.label
+        XCTAssertFalse(ownedAssetLabel.isEmpty)
         XCTAssertFalse(photos.sheets["open-panel"].exists)
         let seeded = XCTAttachment(screenshot: photos.screenshot()); seeded.name = "native-mac-photos-library-seeded"; seeded.lifetime = .keepAlways; add(seeded)
         print("NATIVE_MAC_PHOTOS_IMPORTED_AX " + photos.debugDescription)
@@ -343,6 +351,18 @@ final class NativeEditorUITests: XCTestCase {
         } }
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "native-mac-real-system-photos-import"; shot.lifetime = .keepAlways; add(shot)
         print("NATIVE_MAC_PHOTOS_E2E normal local-library seed and real system picker import completed")
+        let candidate = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_HOST_SEED_SOURCE_SHA"])
+        let fixtureBytes = try Data(contentsOf: fixture)
+        XCTAssertLessThanOrEqual(fixtureBytes.count, 150_000)
+        let appBytes = try Data(contentsOf: URL(fileURLWithPath: path).appendingPathComponent("Contents/MacOS/CelluloidMac"))
+        func digest(_ value: Data) -> String { SHA256.hash(data: value).map { String(format: "%02x", $0) }.joined() }
+        let receipt: [String: Any] = ["source_sha": candidate, "initial_empty_welcome_verified": true,
+            "initial_count": 0, "imported_count": 1, "asset_label": ownedAssetLabel,
+            "fixture_kind": "native-ui-solid-blue", "filename": fixture.lastPathComponent,
+            "fixture_sha256": digest(fixtureBytes), "fixture_base64": fixtureBytes.base64EncodedString(),
+            "width": 1200, "height": 800, "app_executable_sha256": digest(appBytes),
+            "imported_source_sha256": digest(owned), "imported_pixel_samples_passed": true]
+        print("MAC_HOST_SEED_RECEIPT " + String(decoding: try JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys]), as: UTF8.self))
     }
     @MainActor private func selectObservedSyntheticPhoto(in app: XCUIApplication) throws {
         // Photos27's hosted sheet has real pixels but omits its children from the

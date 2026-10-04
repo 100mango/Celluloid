@@ -61,7 +61,7 @@ jobs:
           if-no-files-found: error
   native-mac:
     outputs:
-      interop_passed: ${{ steps.early_interop.outputs.passed }}
+      continuation_safe: ${{ steps.early_interop.outputs.continuation_safe }}
     needs: build-preflight
     runs-on: xcode-27
     timeout-minutes: 45
@@ -69,10 +69,23 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
       CELLULOID_EVIDENCE_PLATFORM: mac
     steps:
+      - name: Reserve Mac job collection time
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          # Four minutes remain outside this conservative first-step clock for
+          # runner/action setup; final proof/upload gets a separate five minutes.
+          Path(os.environ['RUNNER_TEMP'],'mac-job-clock.json').write_text(json.dumps({
+            'source_sha':os.environ['GITHUB_SHA'], 'started_monotonic':time.monotonic(),
+            'started_unix':time.time(), 'execution_budget_seconds':41*60}))
+          PY
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
+          fetch-depth: 2
       - name: Verify source and stable SDKs
         shell: bash
         run: |
@@ -130,10 +143,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 Scripts/run_early_uikit_interop.py
-          echo "passed=true" >> "$GITHUB_OUTPUT"
+          status=0
+          python3 Scripts/run_early_uikit_interop.py || status=$?
+          python3 Scripts/verify_interop_continuation.py --github-output "$GITHUB_OUTPUT"
+          # Preserve the actual strict-pixel failure after independent proof.
+          exit "$status"
       - name: Native Mac UI launch and editing
-        if: (success() || failure()) && steps.early_interop.outputs.passed == 'true'
+        if: (success() || failure()) && steps.early_interop.outputs.continuation_safe == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -170,13 +186,13 @@ jobs:
           codesign -d --entitlements :- "$CHILD" > "$RUNNER_TEMP/sandbox-extension-entitlements-before.plist"
           python3 -c 'import plistlib,sys; assert plistlib.load(open(sys.argv[1],"rb")) == {"com.apple.security.app-sandbox":True}' "$RUNNER_TEMP/sandbox-extension-entitlements-before.plist"
       - name: External sandbox document UI and container runtime
-        if: (success() || failure()) && steps.early_interop.outputs.passed == 'true' && steps.sandbox_build.outcome == 'success' && steps.sandbox_child.outcome == 'success'
+        if: (success() || failure()) && steps.early_interop.outputs.continuation_safe == 'true' && steps.sandbox_build.outcome == 'success' && steps.sandbox_child.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
           # Only the UI bundle runs externally. No hosted unit bundle is injected.
           status=0
-          xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacUI -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-sandbox" -resultBundlePath "$RUNNER_TEMP/CelluloidSandbox.xcresult" CODE_SIGNING_ALLOWED=NO CELLULOID_EXPECT_SANDBOX=YES test-without-building 2>&1 | tee "$RUNNER_TEMP/sandbox.log" || status=$?
+          TEST_RUNNER_CELLULOID_HOST_SEED_SOURCE_SHA="$GITHUB_SHA" xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacUI -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-sandbox" -resultBundlePath "$RUNNER_TEMP/CelluloidSandbox.xcresult" CODE_SIGNING_ALLOWED=NO CELLULOID_EXPECT_SANDBOX=YES test-without-building 2>&1 | tee "$RUNNER_TEMP/sandbox.log" || status=$?
           APP="$RUNNER_TEMP/celluloid-sandbox/Build/Products/Debug/CelluloidMac.app"
           codesign --verify --strict --deep "$APP"
           codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/sandbox-entitlements-after.plist"
@@ -205,6 +221,25 @@ jobs:
           set -euo pipefail
           xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMac -configuration Release -destination 'generic/platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-release" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$RUNNER_TEMP/mac-release.log"
           python3 Scripts/verify_native_release.py mac "$RUNNER_TEMP/celluloid-release/Build/Products/Release/CelluloidMac.app"
+      - name: Actual Photos host discovery using the qualified sandbox product
+        id: mac_host
+        if: (success() || failure()) && steps.sandbox_child.outcome == 'success'
+        timeout-minutes: 14
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Scripts/test_mac_photos_host_gate.py
+          /bin/bash Scripts/run_mac_photos_host_gate.sh
+      - name: Require exact executed case and same-candidate host receipts
+        if: always() && steps.sandbox_child.outcome == 'success'
+        shell: bash
+        run: |
+          python3 Scripts/mac_photos_host_gate.py accept
+      - name: Bound actual Photos host evidence within the Mac allocation
+        if: always() && steps.sandbox_child.outcome == 'success'
+        shell: bash
+        run: |
+          python3 Scripts/mac_photos_host_gate.py collect
       - name: Verify unchanged combined source
         if: always()
         shell: bash
@@ -228,7 +263,7 @@ jobs:
           if-no-files-found: error
   native-simulator:
     needs: [build-preflight, native-mac]
-    if: always() && needs.build-preflight.result == 'success' && needs.native-mac.outputs.interop_passed == 'true'
+    if: always() && needs.build-preflight.result == 'success' && needs.native-mac.outputs.continuation_safe == 'true'
     runs-on: xcode-27
     timeout-minutes: ${{ matrix.platform == 'watch' && 45 || 30 }}
     strategy:
@@ -385,7 +420,7 @@ jobs:
           if-no-files-found: error
   uikit-regression:
     needs: [build-preflight, native-mac, native-simulator]
-    if: always() && needs.build-preflight.result == 'success' && needs.native-mac.outputs.interop_passed == 'true'
+    if: always() && needs.build-preflight.result == 'success' && needs.native-mac.outputs.continuation_safe == 'true'
     name: iOS27 regression (${{ matrix.key }})
     runs-on: xcode-27
     timeout-minutes: 60
@@ -625,6 +660,8 @@ jobs:
         retention-days: 1
         if-no-files-found: error
   archive:
+    # Frozen pending reviewed replacement renderer/host acceptance contract.
+    if: ${{ false }}
     name: Unsigned archive after four device passes
     needs: [build-preflight, native-mac, native-simulator, uikit-regression]
     runs-on: xcode-27

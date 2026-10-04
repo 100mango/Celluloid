@@ -3,6 +3,7 @@
 import hashlib,json,os,re,subprocess,sys,time,uuid
 from pathlib import Path
 from native_process import run
+from file_open_observation import capture as capture_file_open_observation
 from native_fixture_handoff import layer_from_log,LAYER_FILE
 from verify_required_interoperability import verify,CONSUMER
 
@@ -66,6 +67,17 @@ def main():
             except Exception as error:row['pixel_passed']=False;row['error']=str(error)
             finally:
                 if udid is not None:
+                    try:
+                        if time.monotonic()+40 < deadline and 'staging' in row:
+                            observation=capture_file_open_observation(bounded,udid,source,row['staging']['binary_sha256'])
+                        else:
+                            observation={'source_sha':source,'device_id':udid,'observed_records_available':False,
+                                'classified':False,'acceptance':False,'unavailable_reason':'No qualified staging or active time reserve for optional diagnostic'}
+                        (temp/('early-uikit-'+profile+'-file-open-observation.json')).write_text(json.dumps(observation,indent=2)+'\n')
+                    except Exception as error:
+                        # Optional capture/serialization cannot prevent the owned
+                        # shutdown/delete or replace the primary pixel failure.
+                        row['file_open_observation_error']=type(error).__name__+': '+str(error)
                     for action in ['shutdown','delete']:
                         try:
                             result=run(['xcrun','simctl',action,udid],timeout=45,check=False)

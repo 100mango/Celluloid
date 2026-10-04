@@ -38,7 +38,7 @@ def retain_file(name,path,source):
 # A missing receipt stays an explicit omission; its producing verification step is red.
 required=['combined-source-before.json','combined-source-after.json']
 if PLATFORM=='preflight':required+=['combined-preflight.json','preflight-phone-embedded-watch.json','preflight-phone-embedded-watch-release.json']
-if PLATFORM=='mac':required+=['early-uikit-interop.json','early-uikit-2x-staging.json','early-uikit-3x-staging.json','mac-required-tests.json','sandbox-extension-entitlements-before.plist','sandbox-extension-entitlements.plist']
+if PLATFORM=='mac':required+=['interop-continuation.json','CelluloidEarlyUIKit2x.xcresult.summary.json','CelluloidEarlyUIKit3x.xcresult.summary.json','early-uikit-2x-file-open-observation.json','early-uikit-3x-file-open-observation.json','early-uikit-interop.json','early-uikit-2x-staging.json','early-uikit-3x-staging.json','mac-required-tests.json','sandbox-extension-entitlements-before.plist','sandbox-extension-entitlements.plist']
 if PLATFORM=='phone':required+=['phone-embedded-watch.json','phone-embedded-watch-release.json','phone-required-tests.json']
 if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'}:required+=['uikit-layer-staging.json','uikit-required-tests.json']
 if PLATFORM=='archive':required+=['archive-embedded-watch.json']
@@ -58,6 +58,22 @@ if PLATFORM=='preflight':
                     if len(issues)<8:issues.append(line[:1200].rstrip())
         diagnostics.append({'log':path.name,'issues':issues,'tail':list(tail)})
     if not retain_bytes('preflight-diagnostics.json',(json.dumps(diagnostics,indent=2)+'\n').encode(),'bounded all-stage compiler/copy-operation diagnostics'):raise RuntimeError('Prerequisite diagnostics exceeded reserved allocation')
+# The real host probe shares this Mac row's allocation. Its own1MB subset is
+# admitted before optional tails/screenshots, never uploaded as a second artifact.
+if PLATFORM == 'mac' and (TEMP/'mac-host-evidence').exists():
+    from mac_photos_host_gate import verify_collected
+    folder=TEMP/'mac-host-evidence';index=folder/'manifest.json'
+    record=verify_collected(folder,os.environ['GITHUB_SHA'])
+    # Verify all shared-budget admission before writing any nested host entry.
+    needed=sum(row['bytes'] for row in record['files'])+index.stat().st_size
+    if size+needed>MAX_TOTAL-RESERVE:raise RuntimeError('Required host evidence exceeds shared Mac allocation')
+    for entry in record['files']:
+        name=entry['path'];path=folder/name
+        output=name if name.startswith('mac-host-') else 'mac-host-'+name
+        if (OUT/output).exists():raise RuntimeError('Duplicate host evidence destination')
+        if not retain_file(output,path,'hash-verified actual Photos host '+record['proof_state']):raise RuntimeError('Host evidence admission changed')
+    if not retain_file('mac-host-manifest.json',index,'independently replayed host proof manifest'):raise RuntimeError('Host manifest exceeds shared allocation')
+
 # Preserve complete scoped evidence lines even when later logs exhaust optional space.
 critical=[]
 for path in [TEMP/'early-uikit-2x-interop.log',TEMP/'early-uikit-3x-interop.log',TEMP/'phone-runtime-tests.log',TEMP/'units.log']:
@@ -104,6 +120,22 @@ if PLATFORM=='mac' and (TEMP/'mac.log').is_file():
     except (ValueError,KeyError) as error:
         manifest['omissions'].append({'name':LAYER_FILE,'reason':str(error)})
 
+# Small source/archive-bound text observations precede optional logs/screenshots.
+if PLATFORM=='mac':
+    from text_observation_evidence import collect as collect_text_observations
+    text_observations=collect_text_observations(TEMP,os.environ.get('GITHUB_SHA'))
+    if text_observations is not None and not retain_bytes('text-observations.json',text_observations,'bounded independent public-API typography diagnostics'):
+        raise RuntimeError('Required typography observation packet exceeds shared Mac cap')
+
+# Mandatory source/host/consumer/fixture/text packets above reserve space first.
+# Optional exporter time cannot consume the final two-minute job tail.
+from optional_export_budget import OptionalExportBudget,OptionalExportError
+optional_budget=OptionalExportBudget(TEMP/'mac-job-clock.json',os.environ.get('GITHUB_SHA')) if PLATFORM=='mac' else None
+
+def optional_export(args,timeout):
+    if optional_budget is not None:return optional_budget.run(args,timeout)
+    return subprocess.run(args,capture_output=True,timeout=timeout)
+
 logs=['early-uikit-build.log','early-uikit-2x-interop.log','early-uikit-3x-interop.log','mac-release.log','tv-release.log','watch-release.log','vision-release.log','domain.log','rendering.log','mac.log','mac-ui.log','sandbox-build.log','sandbox-app-build.log','sandbox.log','mac-photos-build.log','vision-build.log','vision-runtime.log','vision-launch.log','vision-runtime-tests.log','tv-build.log','tv-runtime.log','tv-runtime-tests.log','tv-filter-oracle.log','tv-composition-oracle.log','watch-build.log','watch-runtime.log','watch-runtime-tests.log','phone-build.log','phone-runtime.log','phone-runtime-tests.log','phone-output-oracle.log','phone-release.log']
 markers=re.compile(r'(Test Case .* (passed|failed)|Executed \d+ tests|error:|NATIVE_[A-Z_]+|VISION_NATIVE_|VISION_TEXT_|VISION_FILES_|VISION_EXPORT_|VISION_DOCUMENT_|TV_NATIVE_|TV_PHOTOS_|TV_FOCUS_|WATCH_NATIVE_|WATCH_ENDPOINT_|PHONE_COMPANION_|IMAGE_FORMAT_|LEGACY_FILTER_PIXELS|FACE_MASK_CONTROLLED|FACE_DETECTOR_ACTUAL|MAC_LAYER_UIKIT_COMPOSITOR|SHIPPING_COMPANION_[A-Z_]+|REQUIRED_INTEROPERABILITY|COMBINED_SOURCE|MAC_NEW_FILTER_UIKIT_ROUNDTRIP|MAC_FILTER_ONLY_FIXTURE|MAC_BAKED_BASE_|MAC_LEGACY_CANDIDATE)')
 logs += ['uikit-screens.log','uikit-diagnostics.log','archive-inventory.log']
@@ -148,18 +180,21 @@ if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'}:
 for name in bundles:
     bundle=(ROOT if name.startswith('TestResults') else TEMP)/name
     if not bundle.is_dir():continue
-    try:
-        result=subprocess.run(['xcrun','xcresulttool','get','test-results','summary','--path',str(bundle)],capture_output=True,timeout=45)
-        if result.returncode==0:retain_bytes(name+'.summary.json',result.stdout,name+' structured summary')
-        else:manifest['omissions'].append({'name':name,'reason':'summary exporter exit'+str(result.returncode)})
-    except subprocess.TimeoutExpired:manifest['omissions'].append({'name':name,'reason':'summary exporter timeout'})
+    # Early summaries were finalized and verified before runtime continuation;
+    # retain their exact hashes once rather than overwrite them during collection.
+    if not (OUT/(name+'.summary.json')).exists():
+        try:
+            result=optional_export(['xcrun','xcresulttool','get','test-results','summary','--path',str(bundle)],timeout=45)
+            if result.returncode==0:retain_bytes(name+'.summary.json',result.stdout,name+' structured summary')
+            else:manifest['omissions'].append({'name':name,'reason':'summary exporter exit'+str(result.returncode)})
+        except (subprocess.TimeoutExpired,OptionalExportError) as error:manifest['omissions'].append({'name':name,'reason':'summary exporter unavailable; cleanup not assumed: '+str(error)})
     if name=='CelluloidMac.xcresult' or name.startswith('TestResults'):continue
     with tempfile.TemporaryDirectory(prefix='celluloid-attachments-',dir=TEMP) as folder:
         folder=Path(folder)
         try:
-            result=subprocess.run(['xcrun','xcresulttool','export','attachments','--path',str(bundle),'--output-path',str(folder)],capture_output=True,timeout=60)
-        except subprocess.TimeoutExpired:
-            manifest['omissions'].append({'name':name,'reason':'attachment exporter timeout'});continue
+            result=optional_export(['xcrun','xcresulttool','export','attachments','--path',str(bundle),'--output-path',str(folder)],timeout=60)
+        except (subprocess.TimeoutExpired,OptionalExportError) as error:
+            manifest['omissions'].append({'name':name,'reason':'attachment exporter unavailable; cleanup not assumed: '+str(error)});continue
         if result.returncode or not (folder/'manifest.json').is_file():
             manifest['omissions'].append({'name':name,'reason':'attachment exporter unavailable'});continue
         records=json.loads((folder/'manifest.json').read_text())
@@ -191,6 +226,7 @@ for name in bundles:
 for name in [f'native-{platform}-launch.{extension}' for platform in ['vision','tv','watch','phone'] for extension in ['png','jpg']] + [f'watch{suffix}-launch.jpg' for suffix in ['', '-small', '-large']]:
     path=TEMP/name
     if path.is_file():retain_file(path.name,path,'simctl native launch screenshot')
+if optional_budget is not None:manifest['optional_export_budget']=optional_budget.report()
 manifest['retained_bytes_before_manifest']=size
 payload=(json.dumps(manifest,indent=2,ensure_ascii=False)+'\n').encode()
 if len(payload)>RESERVE:raise RuntimeError('Evidence manifest exceeded its reserved budget')

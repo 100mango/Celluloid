@@ -45,6 +45,12 @@ class EarlyUIKitInteropTests(unittest.TestCase):
             self.assertFalse(any('privacy' in a or 'addmedia' in a for a,k in commands))
             self.assertTrue(all(k.get('timeout',180)<=600 for a,k in commands))
             return report
+    def test_optional_file_open_capture_failure_cannot_skip_owned_cleanup(self):
+        with patch.object(early,'capture_file_open_observation',side_effect=RuntimeError('optional read failed')):
+            report=self.exercise(pixels={'2x':False})
+        self.assertTrue(report['cleanup_passed'])
+        self.assertTrue(all('optional read failed' in r['file_open_observation_error'] for r in report['profiles']))
+        self.assertIn('strict pixel',report['profiles'][0]['error'])
     def test_one_build_two_real_displays_and_cleanup_on_success(self):self.exercise()
     def test_first_pixel_failure_still_runs_other_display_and_never_passes(self):
         self.exercise(pixels={'2x':False});self.exercise(statuses={'3x':65})
@@ -62,15 +68,21 @@ class EarlyUIKitInteropTests(unittest.TestCase):
         self.assertLessEqual(early.ACTIVE_SECONDS,18*60)
     def test_current_original_production_fingerprint_is_frozen(self):
         self.assertEqual(early.frozen_uikit_fingerprint(),early.FROZEN_UIKIT_FINGERPRINT)
-    def test_every_later_runtime_requires_pixel_gate_but_release_builds_continue(self):
+    def test_later_runtime_requires_verified_continuation_but_final_archive_frozen(self):
         source=(early.ROOT/'.github/workflows/apple-platforms.yml').read_text()
         for name in ['Native Mac UI launch and editing','External sandbox document UI and container runtime']:
-            block=source.split('- name: '+name,1)[1].split('- name:',1)[0];self.assertIn("steps.early_interop.outputs.passed == 'true'",block)
-        self.assertEqual(source.count("needs.native-mac.outputs.interop_passed == 'true'"),2)
+            block=source.split('- name: '+name,1)[1].split('- name:',1)[0];self.assertIn("steps.early_interop.outputs.continuation_safe == 'true'",block)
+        self.assertEqual(source.count("needs.native-mac.outputs.continuation_safe == 'true'"),2)
         for name in ['Isolated native Mac Photos extension build','Unsigned native Mac Release packaging']:
             block=source.split('- name: '+name,1)[1].split('- name:',1)[0];self.assertNotIn('early_interop',block)
-        self.assertIn('interop_passed: ${{ steps.early_interop.outputs.passed }}',source)
+        self.assertIn('continuation_safe: ${{ steps.early_interop.outputs.continuation_safe }}',source)
         self.assertEqual(source.count('max-parallel: 1'),2)
+        step=source.split('id: early_interop',1)[1].split('- name:',1)[0]
+        self.assertIn('python3 Scripts/run_early_uikit_interop.py || status=$?',step)
+        self.assertIn('verify_interop_continuation.py --github-output',step)
+        self.assertIn('exit "$status"',step)
+        self.assertNotIn('continue-on-error',source)
+        self.assertIn('if: ${{ false }}',source.split('  archive:',1)[1])
         self.assertIn('timeout-minutes: 20',source);self.assertIn('timeout-minutes: 45',source)
 
 if __name__=='__main__':unittest.main()

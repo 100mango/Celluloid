@@ -58,6 +58,7 @@ import CryptoKit
         let view = BubbleView(bubbleModel: bubble); view.layoutIfNeeded()
         let label = view.bubbleLabel, image = try XCTUnwrap(view.imageView.image)
         print("MAC_LAYER_UIKIT_COMPOSITOR_UIKIT_LAYOUT asset=\(image.cgImage?.width ?? 0)x\(image.cgImage?.height ?? 0) imageScale=\(image.scale) textRect=\(label.frame) font=\(label.font.fontName) fontSize=\(label.font.pointSize) lineHeight=\(label.font.lineHeight) ascender=\(label.font.ascender) descender=\(label.font.descender) leading=\(label.font.leading) textRectForBounds=\(label.textRect(forBounds: label.bounds, limitedToNumberOfLines: 0)) sizeThatFits=\(label.sizeThatFits(CGSize(width: label.bounds.width, height: CGFloat.greatestFiniteMagnitude))) contentsScale=\(label.layer.contentsScale) referenceCanvas=\(editor.adjustmentData.referenceCanvasSize.debugDescription)")
+        try diagnoseUIKitText(label, archiveHash: fixture.sha256)
         if let components = fixture.components {
             XCTAssertEqual(components.count, 4)
             XCTAssertEqual(Set(components.map(\.name)), ["filtered-base", "bubble-artwork", "sticker-artwork", "all-artwork"])
@@ -118,4 +119,70 @@ import CryptoKit
         bitmap.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
         return Array(UnsafeBufferPointer(start: bitmap.data!.assumingMemoryBound(to: UInt8.self), count: bitmap.bytesPerRow * bitmap.height))
     }
+    /// This separate BubbleLabel has the same public configuration, but is not
+    /// the already-discarded temporary label inside the shipping compositor.
+    /// No private KVC, layer internals or inferred backing dimensions are used.
+    private func diagnoseUIKitText(_ label: UILabel, archiveHash: String) throws {
+        func backing(_ phase: String) throws -> [String: Any] {
+            var row: [String: Any] = ["phase": phase, "contentsScale": label.layer.contentsScale,
+                "contentsRect": NSStringFromCGRect(label.layer.contentsRect),
+                "contentsGravity": label.layer.contentsGravity.rawValue,
+                "bounds": NSStringFromCGRect(label.bounds), "position": NSStringFromCGPoint(label.layer.position),
+                "scope": "Public CALayer.contents of separate diagnostic BubbleLabel only"]
+            row["availableCGImage"] = false
+            row["reason"] = "Public contents does not expose a CGImage; dimensions unavailable"
+            if let contents = label.layer.contents,
+               CFGetTypeID(contents as CFTypeRef) == CGImageGetTypeID() {
+                // Core Foundation downcasts require a type-ID check; an `as?`
+                // cast alone is not a reliable check for a CF-backed object.
+                let image = contents as! CGImage
+                if let png = UIImage(cgImage: image).pngData() {
+                    row["availableCGImage"] = true; row.removeValue(forKey: "reason")
+                    row["width"] = image.width; row["height"] = image.height
+                    row["pngSHA256"] = SHA256.hash(data: png).map { String(format: "%02x", $0) }.joined()
+                    row["pngBase64"] = png.base64EncodedString()
+                } else { row["reason"] = "Public CGImage exists but PNG encoding was unavailable" }
+            }
+            return row
+        }
+        let initialBacking = try backing("before any explicit diagnostic rendering")
+        let first = UILayoutGuide(), last = UILayoutGuide()
+        label.addLayoutGuide(first); label.addLayoutGuide(last)
+        let constraints = [first.topAnchor.constraint(equalTo: label.firstBaselineAnchor),
+            last.topAnchor.constraint(equalTo: label.lastBaselineAnchor),
+            first.leadingAnchor.constraint(equalTo: label.leadingAnchor), last.leadingAnchor.constraint(equalTo: label.leadingAnchor),
+            first.widthAnchor.constraint(equalToConstant: 0), first.heightAnchor.constraint(equalToConstant: 0),
+            last.widthAnchor.constraint(equalToConstant: 0), last.heightAnchor.constraint(equalToConstant: 0)]
+        NSLayoutConstraint.activate(constraints); label.layoutIfNeeded()
+        let baselines: [String: Any] = ["first": first.layoutFrame.minY, "last": last.layoutFrame.minY,
+            "space": "Diagnostic UILabel logical bounds; public Auto Layout baseline anchors",
+            "observedPositiveOrderedAnchors": first.layoutFrame.minY > 0 && last.layoutFrame.minY > first.layoutFrame.minY,
+            "availabilityNote": "Zero or unordered anchors are inconclusive; never substitute font-derived baseline estimates",
+            "internalLineSpans": "unavailable from public UILabel API; not inferred from raster"]
+        NSLayoutConstraint.deactivate(constraints); label.removeLayoutGuide(first); label.removeLayoutGuide(last)
+        for padding: CGFloat in [0, 8] {
+            let format = UIGraphicsImageRendererFormat(); format.scale = UIScreen.main.scale
+            format.opaque = false; format.preferredRange = .standard
+            let size = CGSize(width: label.bounds.width + 2 * padding, height: label.bounds.height + 2 * padding)
+            let image = UIGraphicsImageRenderer(size: size, format: format).image { output in
+                output.cgContext.translateBy(x: padding, y: padding)
+                if padding == 0 { label.layer.render(in: output.cgContext) }
+                else { label.drawText(in: label.bounds) }
+            }
+            let png = try XCTUnwrap(image.pngData()), cg = try XCTUnwrap(image.cgImage)
+            let record: [String: Any] = ["schema": "Celluloid.TextObservation.1", "kind": "separate-uikit-label-diagnostic",
+                "archiveSHA256": archiveHash, "text": label.text ?? "", "utf16": Array((label.text ?? "").utf16).map(Int.init),
+                "font": label.font.fontName, "fontSize": label.font.pointSize, "lineHeight": label.font.lineHeight,
+                "bounds": NSStringFromCGRect(label.bounds), "textRect": NSStringFromCGRect(label.textRect(forBounds: label.bounds, limitedToNumberOfLines: 0)),
+                "baselines": baselines, "initialPublicBacking": initialBacking,
+                "afterDiagnosticPublicBacking": try backing("after explicitly labeled diagnostic rendering"),
+                "drawingMethod": padding == 0 ? "CALayer.render" : "UILabel.drawText with padded destination; not a clipping proof by itself",
+                "clippingLimit": "The padded and unpadded observations use different public drawing methods; their difference alone cannot prove clipping",
+                "scale": format.scale, "padding": padding, "width": cg.width, "height": cg.height,
+                "pngSHA256": SHA256.hash(data: png).map { String(format: "%02x", $0) }.joined(), "pngBase64": png.base64EncodedString(),
+                "scope": "New diagnostic raster; original shipping full compositor output and pixel assertions unchanged"]
+            print("CELLULOID_TEXT_OBSERVATION " + String(decoding: try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]), as: UTF8.self))
+        }
+    }
+
 }

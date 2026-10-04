@@ -2,7 +2,7 @@
   "schema": "Celluloid.CombinedSource.1",
   "native_base": "59fca5a8dda30d497715b592966c02310606d743",
   "uikit_base": "c5875ee7586611c28879b5030e5e575a9f33fcbd",
-  "reviewed_source_tree": "6ed281c7a1c3a4b57c368fa82ddc52c738443b8e",
+  "reviewed_source_tree": "6dbf77c1b700e01f68cdbf7b6558345b5d390baf",
   "roots": [
     "Celluloid",
     "CelluloidKit",
@@ -945,7 +945,7 @@
       "313a087fc274bb74e1728a0dcf389774743867b21e8883bd1ce2714bc9d93bea"
     ],
     [
-      "CelluloidKit/CelluloidKit.xcassets/filter/CrystalFilter.imageset/碎片 - Assistor.jpg",
+      "CelluloidKit/CelluloidKit.xcassets/filter/CrystalFilter.imageset/\u788e\u7247 - Assistor.jpg",
       "24791b56942407456210d34fb9d4f1c9a94a3315423b4160cd7f2557cb7e4d6b"
     ],
     [
@@ -957,7 +957,7 @@
       "d6434d70b7496f3af8829fc3d9911112503638da00d3856ad8d61ff4b2470999"
     ],
     [
-      "CelluloidKit/CelluloidKit.xcassets/filter/OldPictureFilter.imageset/老照片 - Assistor.jpg",
+      "CelluloidKit/CelluloidKit.xcassets/filter/OldPictureFilter.imageset/\u8001\u7167\u7247 - Assistor.jpg",
       "b75e80ea5b089e1ce7e9b6f86e133c0f0e59a2d110b41718c13b163fcdd4d3f3"
     ],
     [
@@ -969,7 +969,7 @@
       "378e569e25716ffc36c3e7622708ae1fab41ce99c870ae02f5874bb8aec45bfb"
     ],
     [
-      "CelluloidKit/CelluloidKit.xcassets/filter/OriginalFilter.imageset/原图 - Assistor.jpg",
+      "CelluloidKit/CelluloidKit.xcassets/filter/OriginalFilter.imageset/\u539f\u56fe - Assistor.jpg",
       "905e2e71569a1ce533111057b98e160392dad6f867af52ead735c87b6a70e244"
     ],
     [
@@ -981,7 +981,7 @@
       "9b028d2fcc79b18fec01265cce0c9bfd0f921287d51f5abf6867018e521d1c32"
     ],
     [
-      "CelluloidKit/CelluloidKit.xcassets/filter/PixellateFaceFilter.imageset/人脸马赛克 - Assistor.jpg",
+      "CelluloidKit/CelluloidKit.xcassets/filter/PixellateFaceFilter.imageset/\u4eba\u8138\u9a6c\u8d5b\u514b - Assistor.jpg",
       "55180004fea90a19c4ceb689fdd609272b1567b23e651dd9ceaebd86f8f954ab"
     ],
     [
@@ -993,7 +993,7 @@
       "8a3cdae2df10e823c08ce23ba855b9348bf277adc52aa4559def5cd86c4948cf"
     ],
     [
-      "CelluloidKit/CelluloidKit.xcassets/filter/PosterizeFilter.imageset/色调分离 - Assistor.jpg",
+      "CelluloidKit/CelluloidKit.xcassets/filter/PosterizeFilter.imageset/\u8272\u8c03\u5206\u79bb - Assistor.jpg",
       "3d6c2f75f81bf64ecd58bfc8251891e49879ad44d025100b33f112d3a8cd7560"
     ],
     [
@@ -1294,7 +1294,7 @@
     ],
     [
       "CelluloidNative.xcodeproj/project.pbxproj",
-      "5a51118ab85b8deaad74fcf39b02aa7126aa36a2c2be29ddd843de10ea378999"
+      "71793814241faba97c5a9278b8f40c883443f9545110b4fa940ec7dc40f1e592"
     ],
     [
       "CelluloidNative.xcodeproj/xcshareddata/xcschemes/CelluloidMac.xcscheme",
@@ -1378,7 +1378,7 @@
     ],
     [
       "CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift",
-      "bcb3094f8cf73472c0179ecbeece489ebdfc5a8b3b953b523d21d996dd685c51"
+      "f5a4e0913c70272ea6a2f16479cd91533763a0a02ff9e06601a483575658f0b2"
     ],
     [
       "CelluloidTests/OverlayResizeTests.swift",
@@ -1770,7 +1770,7 @@
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift",
-      "ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034"
+      "ec958689efb21d9c6b2a3fc722b1cce8a2208d67f3a761790eb0dae70d255950"
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoHostLifecycleTests.swift",
@@ -1901,12 +1901,8 @@
       "675c90be61d1f09243a94184c888e80f7af7cd172cbe865b191d151617441bbe"
     ],
     [
-      "Platforms/UITests/MacPhotosHostUITests.swift",
-      "3e6b88664eb7b1dd798d3f8758f2f56aa0531903e5e9cc03eb3909b5abae7ab9"
-    ],
-    [
       "Platforms/UITests/NativeEditorUITests.swift",
-      "cbc809bdb920f9ac09074fe0bbcda2e5b16a26d1f7c2cc5284d90ceb927c4491"
+      "061a4e08da2a61c13d3c71f0d5d02888d417cf7d73d4408fe2eac284166a0f13"
     ],
     [
       "Platforms/VALIDATION.md",
@@ -2197,7 +2193,7 @@
       "f7603c1c1175e32b5146b43d9e1f03bd6e839416510109795eb942cf7223579a"
     ]
   ],
-  "fingerprint": "dcb363d9670d42ee039381860994448da5b18b90e079df360f2be281eed9e487",
+  "fingerprint": "2ad09d95b134e472cfdc527d84468116b347aef28bbbadafbdc6880897fe37db",
   "appearance_cancel_patch_sha256": "a3f6810452a5d2d3475a4bf0a921cda863f431c0660c7d8b7616f484e019f15f",
   "expected_UIKit_executions": {
     "original_qualified": 400,
