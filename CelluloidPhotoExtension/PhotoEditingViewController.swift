@@ -48,21 +48,37 @@ extension PhotoEditingViewController: PHContentEditingController {
             // renderedJPEGData.writeToURL(output.renderedContentURL, atomically: true)
             
             output.adjustmentData = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier, formatVersion: AdjustmentData.formatVersion, data: self.adjustmentData.encode())
-            
-            
-            
-            
-            
-            
-            let renderedJPEGData: Data
-            if let outputImage = self.outputImage {
-                renderedJPEGData = UIImageJPEGRepresentation(outputImage, 1.0)!
-            }else{
-                guard let url = self.input.fullSizeImageURL
-                    else { fatalError("missing input image url") }
-                renderedJPEGData = try! Data(contentsOf: url)
+
+            let completeWithoutEdit = {
+                output.adjustmentData = nil
+                completionHandler(output)
             }
-            try! renderedJPEGData.write(to: output.renderedContentURL)
+            
+            
+            
+            
+            
+            
+            do {
+                let renderedJPEGData: Data
+                if let outputImage = self.outputImage {
+                    guard let jpegData = UIImageJPEGRepresentation(outputImage, 1.0) else {
+                        completeWithoutEdit()
+                        return
+                    }
+                    renderedJPEGData = jpegData
+                } else {
+                    guard let url = self.input.fullSizeImageURL else {
+                        completeWithoutEdit()
+                        return
+                    }
+                    renderedJPEGData = try Data(contentsOf: url)
+                }
+                try renderedJPEGData.write(to: output.renderedContentURL, options: .atomic)
+            } catch {
+                completeWithoutEdit()
+                return
+            }
             
             
             // Call completion handler to commit edit to Photos.
