@@ -83,7 +83,9 @@ final class MacPhotoRenderer {
                       height: rect.height * (area[1] - area[0]) / 100)
     }
     private static func draw(_ layer: MacPhotoLayer, in canvas: CGContext) throws {
-        let image = try NativeResources.image(named: layer.asset)
+        let image: CGImage
+        if layer.kind == .bubble { image = try NativeResources.legacyPhotosBubbleImage(named: layer.asset) }
+        else { image = try NativeResources.image(named: layer.asset) }
         guard let rect = artworkRect(bounds: layer.bounds, imageWidth: image.width, imageHeight: image.height) else { return }
         canvas.saveGState(); defer { canvas.restoreGState() }
         canvas.translateBy(x: layer.center.x, y: layer.center.y)
@@ -98,10 +100,14 @@ final class MacPhotoRenderer {
             guard let textRect = bubbleTextRect(bounds: layer.bounds, imageWidth: image.width,
                                                imageHeight: image.height, area: area) else { throw RecipeError.invalidGeometry }
             let layout = try MacPhotoTextLayout.make(layer.text, rect: textRect)
+            let text = try MacPhotoTextRaster.make(layout, bounds: textRect.size)
             canvas.saveGState(); defer { canvas.restoreGState() }
-            canvas.translateBy(x: textRect.minX, y: textRect.midY + layout.height / 2)
-            canvas.scaleBy(x: 1, y: -1); canvas.textMatrix = .identity
-            CTFrameDraw(layout.frame, canvas)
+            // UILabel has a 2x backing raster before the containing BubbleView
+            // affine is applied. Drawing glyph outlines after that affine gives
+            // different coverage, particularly for rotated/skewed small text.
+            canvas.translateBy(x: textRect.minX, y: textRect.maxY)
+            canvas.scaleBy(x: 1, y: -1)
+            canvas.draw(text, in: CGRect(origin: .zero, size: textRect.size))
         }
     }
 }
@@ -119,19 +125,26 @@ struct MacPhotoTextLayout {
     let frame: CTFrame
     let height: CGFloat
     let fontSize: CGFloat
+    let font: CTFont
     static func make(_ text: String, rect: CGRect) throws -> Self {
         guard text.utf8.count <= 16_384, rect.width > 0, rect.height > 0 else { throw RenderError.textDoesNotFit }
         for size in stride(from: 16, through: 2, by: -1) {
             try Task.checkCancellation()
             let font = CTFontCreateUIFontForLanguage(.system, CGFloat(size), nil) ?? CTFontCreateWithName("Helvetica" as CFString, CGFloat(size), nil)
+            let lineHeight = CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font)
             func setter(centered: Bool) -> CTFramesetter {
                 var wrap = CTLineBreakMode.byCharWrapping
                 var alignment: CTTextAlignment = centered ? .center : .left
+                var fixedLineHeight = lineHeight
                 let paragraph = withUnsafePointer(to: &wrap) { wrapPointer in
                     withUnsafePointer(to: &alignment) { alignmentPointer in
-                        let settings = [CTParagraphStyleSetting(spec: .lineBreakMode, valueSize: MemoryLayout<CTLineBreakMode>.size, value: wrapPointer),
-                                        CTParagraphStyleSetting(spec: .alignment, valueSize: MemoryLayout<CTTextAlignment>.size, value: alignmentPointer)]
-                        return CTParagraphStyleCreate(settings, settings.count)
+                        withUnsafePointer(to: &fixedLineHeight) { heightPointer in
+                            let settings = [CTParagraphStyleSetting(spec: .lineBreakMode, valueSize: MemoryLayout<CTLineBreakMode>.size, value: wrapPointer),
+                                            CTParagraphStyleSetting(spec: .alignment, valueSize: MemoryLayout<CTTextAlignment>.size, value: alignmentPointer),
+                                            CTParagraphStyleSetting(spec: .minimumLineHeight, valueSize: MemoryLayout<CGFloat>.size, value: heightPointer),
+                                            CTParagraphStyleSetting(spec: .maximumLineHeight, valueSize: MemoryLayout<CGFloat>.size, value: heightPointer)]
+                            return CTParagraphStyleCreate(settings, settings.count)
+                        }
                     }
                 }
                 let string = NSAttributedString(string: text, attributes: [
@@ -146,12 +159,29 @@ struct MacPhotoTextLayout {
             guard measured.height < rect.height || size == 2 else { continue }
             let height = ceil(measured.height)
             guard height > 0, height <= rect.height else { throw RenderError.textDoesNotFit }
-            let lineHeight = CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font)
             if floor(measured.height / lineHeight) == 1 { framesetter = setter(centered: true) }
             let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), CGPath(rect: CGRect(x: 0, y: 0, width: rect.width, height: height), transform: nil), nil)
             guard CTFrameGetVisibleStringRange(frame).length == (text as NSString).length else { throw RenderError.textDoesNotFit }
-            return Self(frame: frame, height: height, fontSize: CGFloat(size))
+            return Self(frame: frame, height: height, fontSize: CGFloat(size), font: font)
         }
         throw RenderError.textDoesNotFit
+    }
+}
+
+enum MacPhotoTextRaster {
+    static let scale: CGFloat = 2
+    static func make(_ layout: MacPhotoTextLayout, bounds: CGSize) throws -> CGImage {
+        let width = ceil(bounds.width * scale), height = ceil(bounds.height * scale)
+        guard width.isFinite, height.isFinite, width > 0, height > 0,
+              width <= 4096, height <= 4096, width * height <= 4_194_304 else { throw RecipeError.resourceLimit }
+        let bitmap = try RasterCodec.bitmap(width: Int(width), height: Int(height))
+        bitmap.scaleBy(x: scale, y: scale)
+        // Keep the label's logical bounds separate from its outward-rounded
+        // pixel backing. UIKit centers the text in the logical label rectangle.
+        bitmap.translateBy(x: 0, y: height / scale - (bounds.height + layout.height) / 2)
+        bitmap.textMatrix = .identity
+        CTFrameDraw(layout.frame, bitmap)
+        guard let image = bitmap.makeImage() else { throw RenderError.renderFailed }
+        return image
     }
 }

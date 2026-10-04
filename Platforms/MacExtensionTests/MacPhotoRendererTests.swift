@@ -63,6 +63,13 @@ final class MacPhotoRendererTests: XCTestCase {
         XCTAssertEqual(output.width, 240); XCTAssertEqual(output.height, 320)
         let preview = try MacPhotoRenderer().render(adjustment, source: source, bytes: bytes, maximumDimension: 160)
         XCTAssertEqual(preview.width, 120); XCTAssertEqual(preview.height, 160)
+        for asset in BubbleAsset.allCases {
+            let legacy = try NativeResources.legacyPhotosBubbleImage(named: asset.rawValue)
+            let canonical = try NativeResources.image(named: asset.rawValue)
+            XCTAssertGreaterThan(legacy.width, 0); XCTAssertGreaterThan(legacy.height, 0)
+            XCTAssertLessThan(legacy.width, canonical.width)
+            XCTAssertLessThan(legacy.height, canonical.height)
+        }
     }
     func testBubbleTextAreaUsesOriginalUIKitRoundedImageRectBeforeInsets() throws {
         let rect = try XCTUnwrap(MacPhotoRenderer.bubbleTextRect(bounds: CGRect(x: 0, y: 0, width: 180, height: 96),
@@ -117,6 +124,10 @@ final class MacPhotoRendererTests: XCTestCase {
         let layout = try MacPhotoTextLayout.make("Hello", rect: CGRect(x: 0, y: 0, width: 160, height: 50))
         XCTAssertEqual(layout.fontSize, 16)
         XCTAssertThrowsError(try MacPhotoTextLayout.make(String(repeating: "Long multiline text 你好 ", count: 300), rect: CGRect(x: 0, y: 0, width: 1, height: 1)))
+        let raster = try MacPhotoTextRaster.make(layout, bounds: CGSize(width: 27.875, height: 43.52))
+        XCTAssertEqual(raster.width, 56); XCTAssertEqual(raster.height, 88)
+        XCTAssertThrowsError(try MacPhotoTextRaster.make(layout, bounds: CGSize(width: .infinity, height: 20)))
+        XCTAssertThrowsError(try MacPhotoTextRaster.make(layout, bounds: CGSize(width: 1_000_000, height: 1_000_000)))
     }
     @MainActor func testPrincipalControllerHostsRealEditorAndPureFormatNegotiation() throws {
         let controller = MacPhotoEditingController()

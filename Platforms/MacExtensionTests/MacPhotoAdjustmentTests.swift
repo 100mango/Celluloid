@@ -1,6 +1,7 @@
 import XCTest
 import CryptoKit
 import CoreGraphics
+import CoreText
 import CelluloidDomain
 import CelluloidRendering
 
@@ -69,11 +70,26 @@ final class MacPhotoAdjustmentTests: XCTestCase {
             let png = try RasterCodec.encode(image, as: .png)
             return ["name": name, "sha256": digest(png), "base64": png.base64EncodedString()]
         }
-        let asset = try NativeResources.image(named: bubble.asset)
+        let asset = try NativeResources.legacyPhotosBubbleImage(named: bubble.asset)
         let textRect = try XCTUnwrap(MacPhotoRenderer.bubbleTextRect(bounds: bubble.bounds, imageWidth: asset.width,
             imageHeight: asset.height, area: NativeResources.bubbleArea(named: bubble.asset)))
         let layout = try MacPhotoTextLayout.make(bubble.text, rect: textRect)
-        print("MAC_LAYER_UIKIT_COMPOSITOR_NATIVE_LAYOUT asset=\(asset.width)x\(asset.height) textRect=\(textRect) fontSize=\(layout.fontSize) height=\(layout.height)")
+        let textRaster = try MacPhotoTextRaster.make(layout, bounds: textRect.size)
+        print("MAC_LAYER_UIKIT_COMPOSITOR_NATIVE_LAYOUT asset=\(asset.width)x\(asset.height) textRect=\(textRect) fontSize=\(layout.fontSize) height=\(layout.height) font=\(CTFontCopyPostScriptName(layout.font)) ascent=\(CTFontGetAscent(layout.font)) descent=\(CTFontGetDescent(layout.font)) leading=\(CTFontGetLeading(layout.font)) backing=\(textRaster.width)x\(textRaster.height) backingScale=\(MacPhotoTextRaster.scale)")
+        let lines = CTFrameGetLines(layout.frame) as! [CTLine]
+        var origins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(layout.frame, CFRange(location: 0, length: 0), &origins)
+        for (index, line) in lines.enumerated() {
+            let runs = CTLineGetGlyphRuns(line) as! [CTRun]
+            let fonts = runs.map { run -> String in
+                let font = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
+                return "\(CTFontCopyPostScriptName(font)):size=\(CTFontGetSize(font)):ascent=\(CTFontGetAscent(font)):descent=\(CTFontGetDescent(font))"
+            }
+            print("MAC_LAYER_UIKIT_COMPOSITOR_NATIVE_LINE index=\(index) origin=\(origins[index]) range=\(CTLineGetStringRange(line)) width=\(CTLineGetTypographicBounds(line, nil, nil, nil)) runFonts=\(fonts)")
+        }
+        let backingAttachment = XCTAttachment(data: try RasterCodec.encode(textRaster, as: .png), uniformTypeIdentifier: "public.png")
+        backingAttachment.name = "native-mac-layer-text-backing-2x"; backingAttachment.lifetime = .keepAlways
+        add(backingAttachment)
         let record: [String: Any] = ["identifier": MacPhotoAdjustment.identifier, "version": MacPhotoAdjustment.version,
             "name": "manufactured-affine", "sha256": digest(bytes), "base64": bytes.base64EncodedString(),
             "sourceSHA256": digest(sourceBytes), "sourceBase64": sourceBytes.base64EncodedString(),

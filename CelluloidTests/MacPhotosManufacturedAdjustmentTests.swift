@@ -17,6 +17,7 @@ import CryptoKit
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw XCTSkip("Requires the exact source-bound MAC_LAYER_ADJUSTMENT_FIXTURE from an admitted Mac run; interoperability and text pixel parity are not yet proved")
         }
+        print("MAC_LAYER_UIKIT_COMPOSITOR_DISPLAY scale=\(UIScreen.main.scale)")
         let contents = try Data(contentsOf: url)
         XCTAssertLessThanOrEqual(contents.count, 500_000)
         let fixture = try JSONDecoder().decode(Fixture.self, from: contents)
@@ -56,7 +57,7 @@ import CryptoKit
         diagnose(name: "full", actual: actual, oracle: oracle, expected: expected)
         let view = BubbleView(bubbleModel: bubble); view.layoutIfNeeded()
         let label = view.bubbleLabel, image = try XCTUnwrap(view.imageView.image)
-        print("MAC_LAYER_UIKIT_COMPOSITOR_UIKIT_LAYOUT asset=\(image.cgImage?.width ?? 0)x\(image.cgImage?.height ?? 0) imageScale=\(image.scale) textRect=\(label.frame) font=\(label.font.fontName) fontSize=\(label.font.pointSize) lineHeight=\(label.font.lineHeight) contentsScale=\(label.layer.contentsScale) referenceCanvas=\(editor.adjustmentData.referenceCanvasSize.debugDescription)")
+        print("MAC_LAYER_UIKIT_COMPOSITOR_UIKIT_LAYOUT asset=\(image.cgImage?.width ?? 0)x\(image.cgImage?.height ?? 0) imageScale=\(image.scale) textRect=\(label.frame) font=\(label.font.fontName) fontSize=\(label.font.pointSize) lineHeight=\(label.font.lineHeight) ascender=\(label.font.ascender) descender=\(label.font.descender) leading=\(label.font.leading) textRectForBounds=\(label.textRect(forBounds: label.bounds, limitedToNumberOfLines: 0)) sizeThatFits=\(label.sizeThatFits(CGSize(width: label.bounds.width, height: CGFloat.greatestFiniteMagnitude))) contentsScale=\(label.layer.contentsScale) referenceCanvas=\(editor.adjustmentData.referenceCanvasSize.debugDescription)")
         if let components = fixture.components {
             XCTAssertEqual(components.count, 4)
             XCTAssertEqual(Set(components.map(\.name)), ["filtered-base", "bubble-artwork", "sticker-artwork", "all-artwork"])

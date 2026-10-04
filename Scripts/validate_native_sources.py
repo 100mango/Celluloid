@@ -10,6 +10,13 @@ for entry in manifest:
     original=(root/entry['source']).read_bytes()
     copied=(resources/(entry['asset']+'.png')).read_bytes()
     assert original==copied and hashlib.sha256(original).hexdigest()==entry['sha256']
+legacy=json.loads((resources/'legacy-bubble-resource-provenance.json').read_text())
+assert {entry['asset'] for entry in legacy}=={name+'@2x' for name in ['aside1','call1','call2','call3','say1','say2','say3','think1','think2','think3']}
+assert len(legacy)==10
+for entry in legacy:
+    original=(root/entry['source']).read_bytes()
+    copied=(resources/(entry['asset']+'.png')).read_bytes()
+    assert original==copied and hashlib.sha256(original).hexdigest()==entry['sha256']
 assert (root/'LICENSE.txt').read_bytes()==(resources/'LICENSE.txt').read_bytes()
 assert (root/'Celluloid/collage.json').read_bytes()==(resources/'collage.json').read_bytes()
 assert (root/'CelluloidKit/bubble.json').read_bytes()==(resources/'bubble.json').read_bytes()
@@ -31,4 +38,4 @@ with tempfile.TemporaryDirectory(prefix='celluloid-project-') as temp:
         assert path.read_bytes()==(other/path.relative_to(root)).read_bytes(),path
 
 assert not subprocess.check_output(['git','diff','--name-only','--','Celluloid','CelluloidKit','CelluloidPhotoExtension','Celluloid.xcodeproj','CelluloidTests','CelluloidUITests'],cwd=root).strip()
-print(json.dumps({'status':'passed','checks':['33 copied artwork files byte-identical','25 original collage templates retained','original bubble text areas retained','license byte-identical','generated plists and schemes parse','project generator deterministic across checkout roots','existing iOS production and tests unchanged'],'swift_compilation':'not_run','apple_runtime':'not_run'},indent=2))
+print(json.dumps({'status':'passed','checks':['33 canonical and 10 legacy2x artwork files byte-identical','25 original collage templates retained','original bubble text areas retained','license byte-identical','generated plists and schemes parse','project generator deterministic across checkout roots','existing iOS production and tests unchanged'],'swift_compilation':'not_run','apple_runtime':'not_run'},indent=2))

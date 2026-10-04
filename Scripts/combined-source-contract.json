@@ -2,7 +2,7 @@
   "schema": "Celluloid.CombinedSource.1",
   "native_base": "59fca5a8dda30d497715b592966c02310606d743",
   "uikit_base": "c5875ee7586611c28879b5030e5e575a9f33fcbd",
-  "reviewed_source_tree": "ffb2f5acaf7110dd66be6f8e093e6a0988abb759",
+  "reviewed_source_tree": "9581ee487b915ff7b7238bcf0c67f57e2a9506a6",
   "roots": [
     "Celluloid",
     "CelluloidKit",
@@ -1378,7 +1378,7 @@
     ],
     [
       "CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift",
-      "7c466331619e6d26746bfd1474a66b3249622c1c56301b272978386f8f75ac9a"
+      "f5a4e0913c70272ea6a2f16479cd91533763a0a02ff9e06601a483575658f0b2"
     ],
     [
       "CelluloidTests/OverlayResizeTests.swift",
@@ -1498,7 +1498,7 @@
     ],
     [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Renderer.swift",
-      "c11a8c6c86fc415ac6e36b042161e7973d8a873b43e1c58df1ad772ad777c061"
+      "f307e2fbf3f98792d70ebee713f7e44310e6cf82735d2099b72b8cd61c6618ae"
     ],
     [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/32.png",
@@ -1601,6 +1601,10 @@
       "8ceeffb4b0090d3657a454c7d1ab35f27f1fcb5d9229bd112bcd5d61b265123f"
     ],
     [
+      "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/aside1@2x.png",
+      "6561ea4d8fa18259cd5e1437c0ad9c3ed8d409d75eb9d6f8b90bfe5eca533420"
+    ],
+    [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/bubble.json",
       "52df89507111bbef1ea630e38195761145a3904d96d1a24c8f5a2beabd51e390"
     ],
@@ -1609,12 +1613,24 @@
       "a8b0d1d0fcd542df05d5b0595927fccb61cb4fdbea82056fc927ea3992b4a5b4"
     ],
     [
+      "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call1@2x.png",
+      "db627b01b22324e46a5d39242f2725a7a9116424593ab5d2e2a0c709d7df9b67"
+    ],
+    [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call2.png",
       "51ef29c6562415d2b81510373c12cd14fc9ba437ce1aa516b659faaaea889530"
     ],
     [
+      "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call2@2x.png",
+      "84171e93e8b942096d2431031ee9444e004ebf847189986794ec08b13f49b185"
+    ],
+    [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call3.png",
       "4e4d12637546c339f6c5abd44cd44571926b23ec4194720b17ee1ff7f8817e41"
+    ],
+    [
+      "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call3@2x.png",
+      "ea2cad62e1d82c41543daf10ccb8940b746f914ef83609a001f586ab8f0872d0"
     ],
     [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/collage.json",
@@ -1625,6 +1641,10 @@
       "7b5a6b2609187fc05c6529e7c8b7e9aaa7ab9c8cbaeb55b044e49d715e2da027"
     ],
     [
+      "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/legacy-bubble-resource-provenance.json",
+      "2b2d43b59baf3057f310a286fa6130082ff4c0a87a67d632a060ca4fbabe1b46"
+    ],
+    [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/resource-provenance.json",
       "cde6042a08728c3d01076d77dc3d5e8bc853b9f29cd1d1111f719aa418cdc672"
     ],
@@ -1633,24 +1653,48 @@
       "d0f0514d1e2c369e3cd0a29a65f341803158539df768706df4a16240a98bb1f2"
     ],
     [
+      "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say1@2x.png",
+      "aeff383dd03627a38282995eef052dadcaf34ae9730acd77cb19af824f7d6398"
+    ],
+    [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say2.png",
       "bb7e291808deec7171d32e768d282d25fab82ed1dc8dd715ab2f8a22945e8ec2"
+    ],
+    [
+      "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say2@2x.png",
+      "114aeb3a36575ba3f4dc1ce6742c7f307b4d296df52f3890ce643f06a54de2df"
     ],
     [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say3.png",
       "f531f327a5e8c8890ae6ce206e2d69a9b0df9807518c2921e0b30d361d14bba0"
     ],
     [
+      "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say3@2x.png",
+      "6cb31befdd02a6a932df0d5226964c2d4b6cc9fa6fcd7c51dcd79e5953ca0b23"
+    ],
+    [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think1.png",
       "6d581a36d75d77d7b8aed78ea616eca1688a073cced97d970880fd60da32ef06"
+    ],
+    [
+      "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think1@2x.png",
+      "813d0522593e2812b4d3fd3097cdb0511bfef756d6bd2dbf7fd987e3ae8dd7a4"
     ],
     [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think2.png",
       "3bc180e8e1427ac17c7b718653a788edf44bdb2e937f4051af06c7e4783f27e6"
     ],
     [
+      "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think2@2x.png",
+      "6b3a9faae75c9accf51b3de8d9dd9b7b993ec786363ac2aab29ce54aaa0c21dc"
+    ],
+    [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think3.png",
       "81cb7d3514416ae3ed1f0e67a8e1d77996781f373d50cbc820a52dcf18a5706f"
+    ],
+    [
+      "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think3@2x.png",
+      "fa0d53b0bb294854af02567d46874be2133558dadead4598203157a36a1a299a"
     ],
     [
       "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/zh-Hans.lproj/Localizable.strings",
@@ -1722,11 +1766,11 @@
     ],
     [
       "Platforms/MacExtensionTests/Fixtures/PROVENANCE.md",
-      "5819da0e7a415d961ad1a2d3026a74fd892fa1a784f75fef98d98fc8822c50f2"
+      "96756709d9c14ed8bb59775977f7835341677d035569aaebd721e314f49a0444"
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift",
-      "3671c8759743c3a05d7a36977f4da2859e7350d70d8ad3e147dcedf5c53eef6b"
+      "ec958689efb21d9c6b2a3fc722b1cce8a2208d67f3a761790eb0dae70d255950"
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoHostLifecycleTests.swift",
@@ -1734,7 +1778,7 @@
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoRendererTests.swift",
-      "a3107daf09fda71320082ab44475252bba75fad5e1f14150c00acd9577f27940"
+      "8dff83ede5528424a87b20de8b5ba8ed952217634b3b8a61cd78993dec14dc05"
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoSessionTests.swift",
@@ -1970,7 +2014,7 @@
     ],
     [
       "Platforms/macOSExtension/ACCEPTANCE.md",
-      "d458f54e42bbc6d6a0a097d7ea26eeb9595fcd52aa04c79413985f69bafcadba"
+      "36f618e85df20c00386257bf506e02b2535dbab886e1d36c68495cb814e9f0a9"
     ],
     [
       "Platforms/macOSExtension/CelluloidMacPhotosExtension.entitlements",
@@ -1994,7 +2038,7 @@
     ],
     [
       "Platforms/macOSExtension/MacPhotoRenderer.swift",
-      "14391fa396cb7f069705bb56e11073f5b47a5bd4f2bd537f96f7724fb2cd2f7f"
+      "d3d2265e53c3e245f7bbe87d1960986ee80757f58d1e8289a7e6aba2ea929038"
     ],
     [
       "Platforms/macOSExtension/MacPhotoSession.swift",
@@ -2149,7 +2193,7 @@
       "f7603c1c1175e32b5146b43d9e1f03bd6e839416510109795eb942cf7223579a"
     ]
   ],
-  "fingerprint": "112452572b4e67be2e6d74c716a84ff70856793ecab0043537e92c463f8ab0b7",
+  "fingerprint": "ab2418daf1c0a734110e2bdc6c700b8905b4984d21ba7655e461bf18cd59f706",
   "appearance_cancel_patch_sha256": "a3f6810452a5d2d3475a4bf0a921cda863f431c0660c7d8b7616f484e019f15f",
   "expected_UIKit_executions": {
     "original_qualified": 400,

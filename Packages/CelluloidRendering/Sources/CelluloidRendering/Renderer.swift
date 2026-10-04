@@ -106,6 +106,16 @@ public enum RasterCodec {
 }
 
 public enum NativeResources {
+    /// The legacy Photos compositor selects UIKit's 2x bubble rendition on
+    /// 2x displays. Keep those original bytes separate from the canonical 3x
+    /// document artwork; do not resample one rendition into another.
+    public static func legacyPhotosBubbleImage(named name: String) throws -> CGImage {
+        guard BubbleAsset(rawValue: name) != nil,
+              let url = Bundle.module.url(forResource: name + "@2x", withExtension: "png"),
+              let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw RenderError.missingAsset(name + "@2x") }
+        return image
+    }
     public static func templates(count: Int) throws -> [CollageTemplate] {
         guard let url = Bundle.module.url(forResource: "collage", withExtension: "json") else {
             throw RenderError.missingAsset("collage.json")

@@ -12,6 +12,10 @@ Until the strict cross-platform pixel gate passes, production Photos sessions pr
 
 The current source correction matches BubbleLabel's independently rounded text-area rectangle. Native/@2x artwork selection, platform fonts, UILabel rasterization and text vertical metrics still need real runtime evidence. Linux checks cannot establish Apple raster equivalence or actual Photos-host no-change consumption.
 
+The subsequent source-bound `d9a9fe00` 2x UIKit consumer isolated the remaining differences: filtered base **0**, sticker artwork **0**, bubble/all artwork **38** across 46 pixels, full output/text contribution **237** across 1,071 full-output pixels. Both text paths chose 10pt and matching logical text areas; native Core Text used a 37pt frame while UIKit reported a 2x backing and 11.93359375pt system-font line height. Thus source/filter/orientation and sticker affine handling passed for that fixture, but bubble artwork and text did not.
+
+The next Mac-only candidate uses exact legacy 2x bubble resource bytes (all ten assets, separately provenance-checked), a bounded 2x text backing raster before the layer affine, and paragraph line-height limits derived from the selected system font. The line-height choice is a runtime hypothesis, not an observed parity result. Canonical 3x document resources and UIKit production behavior are unchanged. Actual 2x and 3x UIKit runs must both retain the original ≤2 oracle; a 2x candidate pass cannot qualify a device-independent renderer. Native diagnostics now include base/fallback font names, metrics, line ranges/origins and the intermediate text raster. Do not remove the production safety restriction without complete proof.
+
 ## Required deterministic gates
 
 Run the native Mac or extension scheme's `CelluloidMacPhotosExtensionTests` on the admitted standard Mac runner. It compiles the same production adapter sources and reviewed `PhotosOutputWriteTests.swift`. The suite covers:
