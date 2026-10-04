@@ -85,7 +85,20 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
-          fetch-depth: 3
+          fetch-depth: 1
+      - name: Fetch and verify immutable Photos host source base
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess, sys
+          sys.path.insert(0, 'Scripts')
+          from native_process import run
+          base='9c9e7fc9c12df342c883e8a1e4462f796469842c'
+          tree='f53aa262fb56d31cd0b2f03f3836147c26ff2858'
+          run(['git','fetch','--no-tags','--depth=1','origin',base],timeout=60)
+          assert subprocess.check_output(['git','rev-parse',base+'^{commit}'],text=True,timeout=10).strip()==base
+          assert subprocess.check_output(['git','rev-parse',base+'^{tree}'],text=True,timeout=10).strip()==tree
+          PY
       - name: Verify source and stable SDKs
         shell: bash
         run: |

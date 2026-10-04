@@ -61,27 +61,33 @@ class MacPhotosHostGateTests(unittest.TestCase):
         self.assertNotIn('early_interop',host)
         self.assertIn('  cancel-in-progress: false',self.workflow)
         self.assertEqual(self.workflow.count('max-parallel: 1'),2)
-    def test_mac_checkout_depth_three_retains_pinned_grandparent_base(self):
+    def test_mac_checkout_fetches_immutable_base_without_deepening_current_head(self):
         mac=self.workflow.split('  native-mac:',1)[1].split('  native-simulator:',1)[0]
-        self.assertEqual(mac.count('fetch-depth: 3'),1)
-        self.assertEqual(gate.BASE,'9c9e7fc9c12df342c883e8a1e4462f796469842c')
-        # Reproduce the exact ancestry depth with tiny local fixtures. Public
-        #23d is independently verified to have9c as its sole parent.
+        self.assertEqual(mac.count('fetch-depth: 1'),1)
+        fetch=mac.split('- name: Fetch and verify immutable Photos host source base',1)[1].split('- name:',1)[0]
+        self.assertIn("base='"+gate.BASE+"'",fetch);self.assertIn("tree='"+gate.BASE_TREE+"'",fetch)
+        self.assertIn("run(['git','fetch','--no-tags','--depth=1','origin',base],timeout=60)",fetch)
+        self.assertIn("base+'^{commit}'],text=True,timeout=10).strip()==base",fetch)
+        self.assertIn("base+'^{tree}'],text=True,timeout=10).strip()==tree",fetch)
+        self.assertIn('from native_process import run',fetch)
+        for forbidden in ['token','credential','git config','--unshallow']:self.assertNotIn(forbidden,fetch)
+        # Fetch one immutable object in a tiny local shallow clone. The checked
+        #out head remains unchanged and shallow regardless of ancestor distance.
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder).resolve();seed=root/'seed';seed.mkdir()
-            def git(*args):return subprocess.check_output(['git',*map(str,args)],text=True,stderr=subprocess.STDOUT)
-            git('init','--quiet',seed)
-            commits=[]
-            for content in ['pinned-base','published-parent','test-fix-successor']:
-                (seed/'fixture.txt').write_text(content)
-                git('-C',seed,'add','fixture.txt')
+            def git(*args):return subprocess.check_output(['git',*map(str,args)],text=True,stderr=subprocess.STDOUT,timeout=10)
+            git('init','--quiet',seed);commits=[]
+            for content in ['pinned-base','intermediate','published-parent','test-fix-successor']:
+                (seed/'fixture.txt').write_text(content);git('-C',seed,'add','fixture.txt')
                 git('-C',seed,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--quiet','-m',content)
                 commits.append(git('-C',seed,'rev-parse','HEAD').strip())
-            for depth in [2,3]:
-                clone=root/('depth-'+str(depth));git('clone','--quiet','--depth',depth,seed.as_uri(),clone)
-                check=subprocess.run(['git','-C',str(clone),'cat-file','-e',commits[0]+'^{commit}'],capture_output=True,text=True)
-                self.assertEqual(check.returncode==0,depth==3)
-                self.assertEqual(git('-C',clone,'rev-parse','HEAD').strip(),commits[2])
+            clone=root/'shallow';git('clone','--quiet','--depth','1',seed.as_uri(),clone)
+            absent=subprocess.run(['git','-C',str(clone),'cat-file','-e',commits[0]+'^{commit}'],capture_output=True,text=True,timeout=10)
+            self.assertNotEqual(absent.returncode,0)
+            git('-C',clone,'fetch','--no-tags','--depth=1','origin',commits[0])
+            self.assertEqual(git('-C',clone,'rev-parse',commits[0]+'^{commit}').strip(),commits[0])
+            self.assertEqual(git('-C',clone,'rev-parse',commits[0]+'^{tree}'),git('-C',seed,'rev-parse',commits[0]+'^{tree}'))
+            self.assertEqual(git('-C',clone,'rev-parse','HEAD').strip(),commits[-1]);self.assertEqual(git('-C',clone,'rev-list','--count','HEAD').strip(),'1')
 
     def test_existing_runtime_and_caps_reuse_compiled_product(self):
         self.assertIn('    timeout-minutes: 45',self.workflow)

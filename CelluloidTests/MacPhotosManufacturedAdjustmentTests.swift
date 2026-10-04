@@ -125,14 +125,14 @@ import CryptoKit
     private func diagnoseUIKitText(_ label: UILabel, archiveHash: String) throws {
         func backing(_ phase: String) throws -> [String: Any] {
             var row: [String: Any] = ["phase": phase, "contentsScale": label.layer.contentsScale,
-                "contentsRect": NSStringFromCGRect(label.layer.contentsRect),
+                "contentsRect": NSCoder.string(for: label.layer.contentsRect),
                 "contentsGravity": label.layer.contentsGravity.rawValue,
-                "bounds": NSStringFromCGRect(label.bounds), "position": NSStringFromCGPoint(label.layer.position),
+                "bounds": NSCoder.string(for: label.bounds), "position": NSCoder.string(for: label.layer.position),
                 "scope": "Public CALayer.contents of separate diagnostic BubbleLabel only"]
             row["availableCGImage"] = false
             row["reason"] = "Public contents does not expose a CGImage; dimensions unavailable"
             if let contents = label.layer.contents,
-               CFGetTypeID(contents as CFTypeRef) == CGImageGetTypeID() {
+               CFGetTypeID(contents as CFTypeRef) == CGImage.typeID {
                 // Core Foundation downcasts require a type-ID check; an `as?`
                 // cast alone is not a reliable check for a CF-backed object.
                 let image = contents as! CGImage
@@ -173,7 +173,7 @@ import CryptoKit
             let record: [String: Any] = ["schema": "Celluloid.TextObservation.1", "kind": "separate-uikit-label-diagnostic",
                 "archiveSHA256": archiveHash, "text": label.text ?? "", "utf16": Array((label.text ?? "").utf16).map(Int.init),
                 "font": label.font.fontName, "fontSize": label.font.pointSize, "lineHeight": label.font.lineHeight,
-                "bounds": NSStringFromCGRect(label.bounds), "textRect": NSStringFromCGRect(label.textRect(forBounds: label.bounds, limitedToNumberOfLines: 0)),
+                "bounds": NSCoder.string(for: label.bounds), "textRect": NSCoder.string(for: label.textRect(forBounds: label.bounds, limitedToNumberOfLines: 0)),
                 "baselines": baselines, "initialPublicBacking": initialBacking,
                 "afterDiagnosticPublicBacking": try backing("after explicitly labeled diagnostic rendering"),
                 "drawingMethod": padding == 0 ? "CALayer.render" : "UILabel.drawText with padded destination; not a clipping proof by itself",

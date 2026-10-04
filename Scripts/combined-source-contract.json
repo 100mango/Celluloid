@@ -1378,7 +1378,7 @@
     ],
     [
       "CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift",
-      "bcb3094f8cf73472c0179ecbeece489ebdfc5a8b3b953b523d21d996dd685c51"
+      "54357d35157e7b792c04cda3e3cb3d778419a9dedf279210b66540cf243ed4c8"
     ],
     [
       "CelluloidTests/OverlayResizeTests.swift",
@@ -2197,7 +2197,7 @@
       "f7603c1c1175e32b5146b43d9e1f03bd6e839416510109795eb942cf7223579a"
     ]
   ],
-  "fingerprint": "dcb363d9670d42ee039381860994448da5b18b90e079df360f2be281eed9e487",
+  "fingerprint": "50a722a3b0cc6f4d0e5d619f6d67ac93d0f693ad446bc9466204f675e1ff7fd5",
   "appearance_cancel_patch_sha256": "a3f6810452a5d2d3475a4bf0a921cda863f431c0660c7d8b7616f484e019f15f",
   "expected_UIKit_executions": {
     "original_qualified": 400,

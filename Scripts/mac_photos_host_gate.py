@@ -60,7 +60,7 @@ ALLOWED = {
 
 CAP = 1_000_000
 BASE_FILE_COUNT = 544
-REVIEWED_TEST_FILES = {'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': 'bcb3094f8cf73472c0179ecbeece489ebdfc5a8b3b953b523d21d996dd685c51', 'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift': 'ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034'}
+REVIEWED_TEST_FILES = {'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': '54357d35157e7b792c04cda3e3cb3d778419a9dedf279210b66540cf243ed4c8', 'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift': 'ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034'}
 UNCHANGED_BASE_FILES = BASE_FILE_COUNT - 2 - len(REVIEWED_TEST_FILES)
 
 def run(*args):

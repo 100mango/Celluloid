@@ -14,7 +14,7 @@ from run_early_uikit_interop import (ROOT, PROFILES, FROZEN_UIKIT_SHA,
 from verify_required_interoperability import CONSUMER, PIXELS, verify as verify_required
 
 TEST_SOURCE='CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift'
-TEST_SOURCE_SHA='bcb3094f8cf73472c0179ecbeece489ebdfc5a8b3b953b523d21d996dd685c51'
+TEST_SOURCE_SHA='54357d35157e7b792c04cda3e3cb3d778419a9dedf279210b66540cf243ed4c8'
 OWNER,METHOD=CONSUMER.split('.')
 CASE=re.compile(r"^Test Case '-\[([\w.]+) (test\w+)\]' (started|passed|failed|skipped)\b",re.M)
 COMPONENT=re.compile(r'^MAC_LAYER_UIKIT_COMPOSITOR_COMPONENT name=([\w-]+) nativeSHA256=([0-9a-f]{64}) maximumChannelDifference=(\d+)$',re.M)

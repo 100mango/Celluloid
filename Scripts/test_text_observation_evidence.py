@@ -62,7 +62,10 @@ class TextObservationTests(unittest.TestCase):
             self.assertNotIn(forbidden,uikit+control)
         self.assertIn('Public contents does not expose a CGImage; dimensions unavailable',uikit)
         self.assertIn('firstBaselineAnchor',uikit);self.assertIn('lastBaselineAnchor',uikit)
-        self.assertIn('CGImageGetTypeID()',uikit);self.assertIn('observedPositiveOrderedAnchors',uikit)
+        self.assertIn('CGImage.typeID',uikit);self.assertIn('NSCoder.string(for:',uikit)
+        for obsolete in ['CGImageGetTypeID()', 'NSStringFromCGRect(', 'NSStringFromCGPoint(']:
+            self.assertNotIn(obsolete,uikit)
+        self.assertIn('observedPositiveOrderedAnchors',uikit)
         self.assertIn('boundingRect(forCGGlyph:',control);self.assertIn('contextCTM',control)
         self.assertIn('Fixed 10pt system-font observation',control)
         self.assertIn('XCTAssertLessThanOrEqual(maximum, 2,',uikit);self.assertIn('XCTAssertLessThanOrEqual(difference, 2,',uikit)
