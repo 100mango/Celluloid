@@ -115,18 +115,22 @@ private extension EditPhotoViewController {
                 request.contentEditingOutput = output
                 
             }, completionHandler: { success, error in
-                print("Finished updating asset. %@", (success ? "Success." : error!))
+                DispatchQueue.main.async {
+                    self.activityIndicator.stopAnimating()
+                    UIApplication.shared.endIgnoringInteractionEvents()
+
+                    if success {
+                        if let nav = self.navigationController, let shareImage = shareImage {
+                            nav.pushViewController(SharePhotoViewController(image: shareImage), animated: true)
+                        }
+                    } else {
+                        let message = error?.localizedDescription ?? "The photo could not be saved."
+                        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+                        alert.addAction(UIAlertAction(title: tr(.done), style: .default, handler: nil))
+                        self.present(alert, animated: true, completion: nil)
+                    }
+                }
             })
-            
-            
-            
-        }.main {
-            self.activityIndicator.stopAnimating()
-            UIApplication.shared.endIgnoringInteractionEvents()
-            if let nav = self.navigationController,let shareImage = shareImage {
-                nav.pushViewController(SharePhotoViewController(image: shareImage), animated: true)
-            }
         }
-        
     }
 }

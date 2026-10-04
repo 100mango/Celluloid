@@ -201,7 +201,7 @@ private extension CollageViewController {
     }
     
     @objc func done() {
-        
+        rightButtonItem.isEnabled = false
         let holder = UIView(frame: CGRect(x: 0, y: 0, width: 800, height: 800))
         let collageView = CollageView(frame: CGRect(x: 0, y: 0, width: 800, height: 800))
         holder.addSubview(collageView)
@@ -211,11 +211,20 @@ private extension CollageViewController {
         PHPhotoLibrary.shared().performChanges({ 
             let newRequest = PHAssetChangeRequest.creationRequestForAsset(from: image)
             newRequest.creationDate = Date()
-            }) { success, error in
-        }
-        
-        if let nav = self.navigationController {
-            nav.pushViewController(SharePhotoViewController(image: image), animated: true)
+        }) { success, error in
+            DispatchQueue.main.async {
+                if success {
+                    if let nav = self.navigationController {
+                        nav.pushViewController(SharePhotoViewController(image: image), animated: true)
+                    }
+                } else {
+                    self.rightButtonItem.isEnabled = true
+                    let message = error?.localizedDescription ?? "The collage could not be saved."
+                    let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: tr(.done), style: .default, handler: nil))
+                    self.present(alert, animated: true, completion: nil)
+                }
+            }
         }
     }
 }
