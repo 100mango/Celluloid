@@ -40,7 +40,7 @@ def fixture(context=None,photos=None,ownership=None,context_hash='f'*64):
         'context_sha256':context_hash,'test_source_sha256':context['test_source_sha256'],'verifier_sha256':context['script_sha256'],
         'photos_pid':photos['pid'],'fixture_sha256':ownership['fixture_sha256'],'asset_label':ownership['asset_label'],
         'complete':True,'dirty_cancel_tested':False,'deadline_seconds':600,'control_columns':gate.COLUMNS,'control_catalog':[],
-        'phases':[],'images':{},'raw_exports':{},'srgb_icc_reference':None}
+        'phases':[],'images':{},'raw_exports':{},'srgb_icc_reference':None,'single_photo_topologies':['collection-absent']}
     def phase(name,details,controls=()):
         ids=[]
         for row in controls:
@@ -79,6 +79,14 @@ class LifecycleReplayTests(unittest.TestCase):
     def test_positive_recomputes_every_actual_png_and_keeps_limited_claim(self):
         result=self.validate(self.packet());self.assertTrue(result['filter_lifecycle_accepted']);self.assertFalse(result['dirty_cancel_tested']);self.assertFalse(result['complete_host_e2e'])
         self.assertEqual(result['phase_count'],8);self.assertEqual(len(result['editing_generations']),3)
+        self.assertEqual(result['single_photo_topologies'],['collection-absent'])
+    def test_both_observed_single_photo_topologies_are_strict_and_bounded(self):
+        for values in [['collection-present'],['collection-absent'],list(gate.SINGLE_PHOTO_TOPOLOGIES),list(reversed(gate.SINGLE_PHOTO_TOPOLOGIES))]:
+            args=self.packet();args[0]['single_photo_topologies']=values
+            self.assertEqual(self.validate(args)['single_photo_topologies'],values)
+        for values in [None,{},'collection-absent',[],[True],[1],[{}],['unknown'],['collection-absent']*2,list(gate.SINGLE_PHOTO_TOPOLOGIES)+['collection-absent']]:
+            self.reject(lambda a:a[0].update(single_photo_topologies=values))
+        self.reject(lambda a:a[0].pop('single_photo_topologies'))
     def test_missing_duplicate_out_of_order_or_late_phases_reject(self):
         for mutate in [lambda r:r.pop(),lambda r:r.append(r[-1]),lambda r:r.reverse(),lambda r:r[2].update(index=True),
                        lambda r:r[3].update(elapsed_ms=600000),lambda r:r[4].update(elapsed_ms=1),lambda r:r[1].update(extra=0)]:

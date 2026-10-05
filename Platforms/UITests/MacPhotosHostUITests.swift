@@ -29,6 +29,7 @@ final class MacPhotosHostUITests: XCTestCase {
     private var testStarted: TimeInterval = 0
     private var lifecyclePhotosPID: pid_t = 0
     private var lifecycleAssetLabel = ""
+    private var singlePhotoTopologies: [String] = []
     private var lifecycleComplete = false
     private var lifecycleRows: [[String: Any]] = []
     private var lifecycleControls: [Int] = []
@@ -494,7 +495,8 @@ final class MacPhotosHostUITests: XCTestCase {
             "source_sha": try value("source_sha"), "context_sha256": contextHash,
             "test_source_sha256": try value("test_source_sha256"), "verifier_sha256": try value("script_sha256"),
             "photos_pid": photosPID, "fixture_sha256": retainedSource.map { digest($0.bytes) } ?? "",
-            "asset_label": lifecycleAssetLabel, "complete": lifecycleComplete, "dirty_cancel_tested": false,
+            "asset_label": lifecycleAssetLabel, "single_photo_topologies": singlePhotoTopologies,
+            "complete": lifecycleComplete, "dirty_cancel_tested": false,
             "deadline_seconds": 600, "control_columns": ["scope", "role", "identifier", "title", "label", "value", "count", "enabled", "hittable"],
             "control_catalog": lifecycleControlCatalog, "phases": lifecycleRows, "images": lifecycleImages, "raw_exports": lifecycleExports,
             "srgb_icc_reference": lifecycleICC.map { $0 as Any } ?? NSNull()]
@@ -522,13 +524,71 @@ final class MacPhotosHostUITests: XCTestCase {
         }
     }
     @MainActor private func soleAsset(in photos: XCUIApplication, assetLabel: String) throws {
-        let assets = photos.collectionViews["photos_collection_view"].descendants(matching: .any).matching(identifier: "mediaKind_asset")
-        let count = assets.count
-        let canvas = photos.descendants(matching: .group).matching(identifier: "IPXCanvasItemView")
-        guard count == 1, assets.element(boundBy: 0).label == assetLabel, canvas.count == 1,
-              canvas.element(boundBy: 0).images.matching(NSPredicate(format: "label == %@", assetLabel)).count == 1,
-              photos.windows["MainWindow"].toolbars.staticTexts["_NS:10"].value as? String == "1 of 1",
-              editorMatches(in: photos).count == 0 else { throw block("Sole owned asset label/count/canvas changed") }
+        // Photos may remove its background collection after Done while retaining
+        // the same single-photo canvas. Both require the exact owned image label.
+        // Recorded topology is UI shape, not a persistent PHAsset identifier.
+        // Sample each count once; an observed contradiction cannot be resampled away.
+        let windows = photos.windows.matching(identifier: "MainWindow")
+        let windowCount = windows.count
+        let alertCount = photos.alerts.count
+        let sheetCount = photos.sheets.count
+        let dialogCount = photos.dialogs.count
+        let editorCount = editorMatches(in: photos).count
+        let identityCount = photos.descendants(matching: .any).matching(identifier: "photos-extension.self-identity").count
+        var observed: [String: Any] = ["window_count": windowCount, "alert_count": alertCount,
+            "sheet_count": sheetCount, "dialog_count": dialogCount, "editor_count": editorCount,
+            "identity_count": identityCount]
+        guard windowCount == 1, alertCount == 0, sheetCount == 0, dialogCount == 0,
+              editorCount == 0, identityCount == 0, !assetLabel.isEmpty else {
+            throw block("Owned single-photo parent or dismissal state changed", operation: observed)
+        }
+        let window = windows.element(boundBy: 0)
+        let toolbars = window.toolbars
+        let toolbarCount = toolbars.count
+        let collections = window.collectionViews.matching(identifier: "photos_collection_view")
+        let collectionCount = collections.count
+        let canvases = window.descendants(matching: .group).matching(identifier: "IPXCanvasItemView")
+        let canvasCount = canvases.count
+        observed["toolbar_count"] = toolbarCount; observed["collection_count"] = collectionCount
+        observed["canvas_count"] = canvasCount
+        guard toolbarCount == 1, canvasCount == 1, collectionCount == 0 || collectionCount == 1 else {
+            throw block("Owned single-photo topology changed", operation: observed)
+        }
+        let toolbar = toolbars.element(boundBy: 0)
+        let images = canvases.element(boundBy: 0).images
+        let imageCount = images.count
+        let imageLabel = imageCount == 1 ? images.element(boundBy: 0).label : ""
+        let counters = toolbar.staticTexts.matching(identifier: "_NS:10")
+        let counterCount = counters.count
+        let counterValue = counterCount == 1 ? (counters.element(boundBy: 0).value as? String) ?? "" : ""
+        let edits = toolbar.children(matching: .button).matching(identifier: "IPXToolbarItemIDToggleEdit")
+        let editCount = edits.count
+        let editLabel = editCount == 1 ? edits.element(boundBy: 0).label : ""
+        let editEnabled = editCount == 1 && edits.element(boundBy: 0).isEnabled
+        let editHittable = editCount == 1 && edits.element(boundBy: 0).isHittable
+        let doneCount = toolbar.children(matching: .button).matching(identifier: "IPXToolbarItemIDToggleDoneEdit").count
+        observed["image_count"] = imageCount; observed["image_label"] = String(imageLabel.prefix(256))
+        observed["counter_count"] = counterCount; observed["counter_value"] = String(counterValue.prefix(256))
+        observed["edit_count"] = editCount; observed["edit_label"] = String(editLabel.prefix(256))
+        observed["edit_enabled"] = editEnabled; observed["edit_hittable"] = editHittable; observed["done_count"] = doneCount
+        guard imageCount == 1, imageLabel == assetLabel, counterCount == 1, counterValue == "1 of 1",
+              editCount == 1, editLabel == "Edit", editEnabled, editHittable, doneCount == 0 else {
+            throw block("Owned single-photo image or normal controls changed", operation: observed)
+        }
+        if collectionCount == 1 {
+            let assets = collections.element(boundBy: 0).descendants(matching: .any).matching(identifier: "mediaKind_asset")
+            let assetCount = assets.count
+            let observedAssetLabel = assetCount == 1 ? assets.element(boundBy: 0).label : ""
+            observed["asset_count"] = assetCount; observed["asset_label"] = String(observedAssetLabel.prefix(256))
+            guard assetCount == 1, observedAssetLabel == assetLabel else {
+                throw block("Owned collection asset changed", operation: observed)
+            }
+        }
+        let topology = collectionCount == 1 ? "collection-present" : "collection-absent"
+        if !singlePhotoTopologies.contains(topology) {
+            guard singlePhotoTopologies.count < 2 else { throw block("Excessive single-photo topologies") }
+            singlePhotoTopologies.append(topology)
+        }
     }
     @MainActor private func lifecycleControl(_ query: XCUIElementQuery, scope: String, role: String,
         click: Bool = true) throws -> XCUIElement {

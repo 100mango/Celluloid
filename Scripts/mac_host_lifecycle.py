@@ -9,7 +9,8 @@ SCHEMA='Celluloid.PhotosFilterLifecycle.1'
 PHASES=('source-retained','fade-ready','saved-export','reopened-fade','cancelled-export','reverted-export','unmodified-original','reopened-original')
 COLUMNS=['scope','role','identifier','title','label','value','count','enabled','hittable']
 META={'bytes','sha256','rgba_sha256','format','width','height','bit_depth','color_type','interlace','orientation','profile','profile_encoding','alpha'}
-FIELDS={'schema','host_entry_contract','source_sha','context_sha256','test_source_sha256','verifier_sha256','photos_pid','fixture_sha256','asset_label','complete','dirty_cancel_tested','deadline_seconds','control_columns','control_catalog','phases','images','raw_exports','srgb_icc_reference'}
+FIELDS={'schema','host_entry_contract','source_sha','context_sha256','test_source_sha256','verifier_sha256','photos_pid','fixture_sha256','asset_label','single_photo_topologies','complete','dirty_cancel_tested','deadline_seconds','control_columns','control_catalog','phases','images','raw_exports','srgb_icc_reference'}
+SINGLE_PHOTO_TOPOLOGIES=('collection-present','collection-absent')
 FILENAME='Celluloid-Owned-Host.png'
 
 def require(ok,message):
@@ -37,6 +38,10 @@ def validate(row,context,photos,ownership,baseline,images,context_hash):
         require(row[key]==expected,'Wrong lifecycle binding: '+key)
     require(type(row['photos_pid']) is int and row['photos_pid']==photos['pid']>0,'Wrong lifecycle Photos PID')
     require(row['complete'] is True and row['dirty_cancel_tested'] is False and type(row['deadline_seconds']) is int and row['deadline_seconds']==600,'Incomplete/overclaimed lifecycle')
+    topologies=row['single_photo_topologies']
+    require(type(topologies) is list and 1<=len(topologies)<=2 and
+            all(type(value) is str and value in SINGLE_PHOTO_TOPOLOGIES for value in topologies) and
+            len(set(topologies))==len(topologies),'Missing/duplicate/unknown single-photo topology')
     require(row['control_columns']==COLUMNS,'Wrong lifecycle control columns')
     phases=row['phases'];require(type(phases) is list and len(phases)==len(PHASES),'Missing/duplicate lifecycle phases')
     last=-1;details={}
@@ -87,6 +92,7 @@ def validate(row,context,photos,ownership,baseline,images,context_hash):
     d=details['unmodified-original'];expected={'bytes_equal_source':True,'sha256_equal_source':True,'sole_asset_count':1};exact(d,expected,'Malformed original equality')
     require(d==expected and type(d['sole_asset_count']) is int and d['bytes_equal_source'] is True and d['sha256_equal_source'] is True,'Original export preservation unproved')
     return {'schema':SCHEMA,'filter_lifecycle_accepted':True,'dirty_cancel_tested':False,'complete_host_e2e':False,
+        'single_photo_topologies':list(topologies),
         'phase_count':len(phases),'editing_generations':sorted(generations),'saved_comparison':saved,
         'images':{name:{key:d[key] for key in ['bytes','png_sha256','rgba_sha256','profile','profile_sha256','rendering_intent']} for name,d in decoded.items()}}
 

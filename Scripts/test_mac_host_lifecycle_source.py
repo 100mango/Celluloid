@@ -1,7 +1,86 @@
 """Source-tied safety/independence checks; no native UI success is inferred."""
-import re,unittest
+import ast,json,re,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
+
+def replay_single_photo_guard(swift, sample, seen=()):
+    """Execute the source guard expressions over synthetic AX observations.
+
+    This restricted expression replay is neither Swift compilation nor a native
+    Photos result. Counts/labels are inputs, and absent-parent children are never
+    observed. Source ties also require the exact scoped, single-read bindings.
+    """
+    body=swift.split('@MainActor private func soleAsset(',1)[1].split('@MainActor private func lifecycleControl(',1)[0]
+    bindings={
+        'windowCount':'windows.count', 'alertCount':'photos.alerts.count',
+        'sheetCount':'photos.sheets.count', 'dialogCount':'photos.dialogs.count',
+        'editorCount':'editorMatches(in: photos).count',
+        'identityCount':'photos.descendants(matching: .any).matching(identifier: "photos-extension.self-identity").count',
+        'toolbarCount':'toolbars.count', 'collectionCount':'collections.count',
+        'canvasCount':'canvases.count', 'imageCount':'images.count',
+        'counterCount':'counters.count', 'editCount':'edits.count',
+        'doneCount':'toolbar.children(matching: .button).matching(identifier: "IPXToolbarItemIDToggleDoneEdit").count',
+        'assetCount':'assets.count'}
+    for name,expression in bindings.items():
+        if not (body.count(expression) == 1): raise AssertionError('Dynamic count is not sampled exactly once: ' + name)
+        if not ('let ' + name + ' = ' + expression in body): raise AssertionError('Changed count binding: ' + name)
+    required=[
+        'let windows = photos.windows.matching(identifier: "MainWindow")',
+        'let window = windows.element(boundBy: 0)', 'let toolbars = window.toolbars',
+        'let collections = window.collectionViews.matching(identifier: "photos_collection_view")',
+        'let canvases = window.descendants(matching: .group).matching(identifier: "IPXCanvasItemView")',
+        'let toolbar = toolbars.element(boundBy: 0)', 'let images = canvases.element(boundBy: 0).images',
+        'let imageLabel = imageCount == 1 ? images.element(boundBy: 0).label : ""',
+        'let counters = toolbar.staticTexts.matching(identifier: "_NS:10")',
+        'let counterValue = counterCount == 1 ? (counters.element(boundBy: 0).value as? String) ?? "" : ""',
+        'let edits = toolbar.children(matching: .button).matching(identifier: "IPXToolbarItemIDToggleEdit")',
+        'let editLabel = editCount == 1 ? edits.element(boundBy: 0).label : ""',
+        'let editEnabled = editCount == 1 && edits.element(boundBy: 0).isEnabled',
+        'let editHittable = editCount == 1 && edits.element(boundBy: 0).isHittable',
+        'if collectionCount == 1 {',
+        'let assets = collections.element(boundBy: 0).descendants(matching: .any).matching(identifier: "mediaKind_asset")',
+        'let observedAssetLabel = assetCount == 1 ? assets.element(boundBy: 0).label : ""',
+        'let topology = collectionCount == 1 ? "collection-present" : "collection-absent"',
+        'if !singlePhotoTopologies.contains(topology)', 'singlePhotoTopologies.count < 2',
+        'singlePhotoTopologies.append(topology)']
+    if not (all((value in body for value in required))): raise AssertionError('Changed AX scope, property binding, or topology recording')
+    guards=re.findall(r'guard\s+([^{}]+?)\s+else \{\s*throw block\("([^"]+)"',body)
+    expected=[
+        'windowCount == 1, alertCount == 0, sheetCount == 0, dialogCount == 0, editorCount == 0, identityCount == 0, !assetLabel.isEmpty',
+        'toolbarCount == 1, canvasCount == 1, collectionCount == 0 || collectionCount == 1',
+        'imageCount == 1, imageLabel == assetLabel, counterCount == 1, counterValue == "1 of 1", editCount == 1, editLabel == "Edit", editEnabled, editHittable, doneCount == 0',
+        'assetCount == 1, observedAssetLabel == assetLabel', 'singlePhotoTopologies.count < 2']
+    if not ([' '.join(value.split()) for value, _ in guards] == expected): raise AssertionError('Source ownership guard changed')
+    allowed=(ast.Expression,ast.BoolOp,ast.And,ast.Or,ast.Compare,ast.Eq,ast.NotEq,ast.Constant,ast.Name,ast.Load)
+    def accepts(expression):
+        # Parenthesize every Swift comma clause before combining it with AND;
+        # the collection OR must not bypass earlier required parent predicates.
+        expression=expression.replace('!assetLabel.isEmpty', 'assetLabel != ""').replace('||','or')
+        expression=' and '.join('('+clause.strip()+')' for clause in expression.split(','))
+        parsed=ast.parse(expression,mode='eval')
+        if not (all((isinstance(node, allowed) for node in ast.walk(parsed)))): raise AssertionError('Unmodeled Swift predicate')
+        return eval(compile(parsed,'single-photo-source-guard','eval'),{'__builtins__':{}},sample)
+    trace={'accepted':False,'topologies':list(seen),'asset_observed':False,'failure':None}
+    for expression,reason in guards[:3]:
+        if not accepts(expression):trace['failure']=reason;return trace
+    if sample['collectionCount']==1:
+        trace['asset_observed']=True
+        if not accepts(guards[3][0]):trace['failure']=guards[3][1];return trace
+    topology='collection-present' if sample['collectionCount']==1 else 'collection-absent'
+    if topology not in trace['topologies']:
+        if len(trace['topologies'])>=2:trace['failure']='Excessive single-photo topologies';return trace
+        trace['topologies'].append(topology)
+    trace['accepted']=True
+    return trace
+
+def single_photo_sample(collection=True):
+    """Synthetic shapes matching the retained pre/post-Done observations."""
+    row={'windowCount':1,'alertCount':0,'sheetCount':0,'dialogCount':0,'editorCount':0,'identityCount':0,
+         'assetLabel':'Oct 5, 2026 at 7:38\u202fPM','toolbarCount':1,'collectionCount':int(collection),'canvasCount':1,
+         'imageCount':1,'imageLabel':'Oct 5, 2026 at 7:38\u202fPM','counterCount':1,'counterValue':'1 of 1',
+         'editCount':1,'editLabel':'Edit','editEnabled':True,'editHittable':True,'doneCount':0}
+    if collection:row.update(assetCount=1,observedAssetLabel=row['assetLabel'])
+    return row
 
 class LifecycleSourceTests(unittest.TestCase):
     @classmethod
@@ -74,5 +153,55 @@ class LifecycleSourceTests(unittest.TestCase):
         for part in ['128 * 1024','640 * 1024','lifecycleImages[name] == nil','"celluloid-host-lifecycle-" + name','"public.png"']:
             self.assertIn(part,body)
         self.assertNotIn('Process()',self.swift)
+    def test_single_photo_topologies_keep_exact_owned_image_and_deduplicate_observation(self):
+        seen=[]
+        for present in [True,False,False,True]:
+            result=replay_single_photo_guard(self.swift,single_photo_sample(present),seen)
+            self.assertTrue(result['accepted']);self.assertEqual(result['asset_observed'],present)
+            seen=result['topologies']
+        self.assertEqual(seen,['collection-present','collection-absent'])
+        # A canvas container's descriptive label is deliberately not asset identity.
+        for label in ['canvas','canvas Oct 5, 2026 at 7:38\u202fPM']:
+            row=single_photo_sample(False);row['canvasContainerLabel']=label
+            self.assertTrue(replay_single_photo_guard(self.swift,row)['accepted'])
+    def test_single_photo_wrong_asset_missing_duplicate_and_stale_state_reject(self):
+        for present in [True,False]:
+            sample=single_photo_sample(present)
+            mutations={name:[0,2] for name in ['windowCount','toolbarCount','canvasCount','imageCount','counterCount','editCount']}
+            mutations.update({name:[1,2] for name in ['alertCount','sheetCount','dialogCount','editorCount','identityCount','doneCount']})
+            mutations.update(collectionCount=[2],assetLabel=[''],imageLabel=['other',''],counterValue=['1 of 2','2 of 2',''],
+                             editLabel=['other',''],editEnabled=[False],editHittable=[False])
+            if present:mutations.update(assetCount=[0,2],observedAssetLabel=['other',''])
+            for name,values in mutations.items():
+                for value in values:
+                    with self.subTest(collection=present,field=name,value=value):
+                        row=dict(sample);row[name]=value
+                        result=replay_single_photo_guard(self.swift,row)
+                        self.assertFalse(result['accepted']);self.assertEqual(result['topologies'],[])
+    def test_single_photo_source_binding_rejects_weakened_or_resampled_predicates(self):
+        for old,new in [('imageLabel == assetLabel','imageLabel != assetLabel'),('imageCount == 1,','imageCount >= 1,'),
+                        ('canvasCount == 1,','canvasCount == 0,'),('editorCount == 0,','editorCount >= 0,'),
+                        ('observedAssetLabel == assetLabel','observedAssetLabel != assetLabel'),
+                        ('let imageCount = images.count','let imageCount = images.count\n        _ = images.count'),
+                        ('let toolbars = window.toolbars','let toolbars = photos.toolbars')]:
+            with self.subTest(mutation=old),self.assertRaises(AssertionError):
+                replay_single_photo_guard(self.swift.replace(old,new),single_photo_sample())
+    def test_topology_observation_keeps_identity_checks_and_existing_receipt_caps(self):
+        body=self.section('@MainActor private func lifecycleGuard(', '@MainActor private func rejectLifecycleAlert(')
+        for value in ['hostObservation(expectedPID: photosPID','"app_executable_sha256"','"extension_executable_sha256"',
+                      '"extension_debug_dylib_sha256"','"test_source_sha256"','"script_sha256"',
+                      'digest(try readBoundedOwnedFile(retainedFixtureURL)) == digest(retainedSource.bytes)',
+                      'digest(retainedSource.bytes) == fixtureHash','if normal { try soleAsset(in: photos, assetLabel: assetLabel) }']:
+            self.assertIn(value,body)
+        self.assertIn('"single_photo_topologies": singlePhotoTopologies',self.swift)
+        self.assertIn('bytes.count <= limit',self.swift);self.assertIn('? 120_000 : 16_000',self.swift)
+        self.assertIn('lifecycleReceipt(photosPID: photosPID), options: [.sortedKeys]).count <= 16_000',self.swift)
+        from test_mac_host_lifecycle import fixture
+        full=fixture()[0];full['single_photo_topologies']=['collection-present','collection-absent']
+        self.assertLess(len(json.dumps(full,separators=(',',':'),ensure_ascii=False).encode()),16_000)
+        # Partial receipts preserve only successful topologies; they never imply completion.
+        for count in range(len(full['phases'])+1):
+            partial=dict(full,complete=False,phases=full['phases'][:count])
+            self.assertLess(len(json.dumps(partial,separators=(',',':'),ensure_ascii=False).encode()),16_000)
 
 if __name__=='__main__':unittest.main()
