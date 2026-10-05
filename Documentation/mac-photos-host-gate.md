@@ -669,3 +669,27 @@ reported Full Size, File Name Use File Name, and Subfolder Format None; their
 selectors and values are unchanged. This is a UI wording correction. The actual
 PNG profile, complete ICC byte equivalence and <=2 pixel checks remain unchanged
 and authoritative; the menu label alone does not prove exported color correctness.
+
+Run 37387099068 verified all normal export option values and reached the actual
+folder picker. Command-Shift-G opened its direct `GoToWindow` child, with the
+`PathTextField` text field, but there is no Go button in that observed UI. The
+surrounding `open-panel` exposes `where popup` / `Where:` and `OKButton` / `Export`.
+The corrected navigation binds those observed parents and controls, clicks the
+exact text field, types only the freshly generated owned destination, and
+records a fresh exact value readback before sending Return to that field.
+Suggestions never supply a destination and are not an additional required shape.
+After Return, the child must close and the same uniquely scoped folder picker
+must show the intended owned phase directory before Export is invoked. The
+unchanged file reader still opens only the original trusted URL plus fixed
+filename, never a reported UI path; empty-directory/no-overwrite and containment
+checks remain mandatory.
+
+Apple documents [Go to Folder pathname and Return](https://support.apple.com/en-euro/guide/mac-help/mchlp1236/mac),
+[element-scoped text input](https://developer.apple.com/documentation/xcuiautomation/xcuielement/typetext(_:))
+and the public [Return key constant](https://developer.apple.com/documentation/xcuiautomation/xcuikeyboardkey/return).
+`typeText` requires keyboard focus or reports an error. The test uses the public
+click/text/key APIs and exact value/dismissal/destination postconditions; it does
+not claim a separately sampled macOS focus attribute or parse debug descriptions
+for acceptance. Missing/ambiguous controls, input errors, stale or wrong path
+readback, unexpected sheets and wrong destination still fail. Actual persisted
+PNG/profile/pixel and reopen/Cancel/Revert proof remain required and unqualified.

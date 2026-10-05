@@ -449,4 +449,117 @@ class BinaryScalarSourceTests(unittest.TestCase):
             ('fresh.scalar.state == initial.scalar.state','true'),('if let observationFailure { throw observationFailure }','if let observationFailure { print(observationFailure) }')]:
             with self.subTest(old=old),self.assertRaises(AssertionError):replay_binary_transition(self.swift.replace(old,new),[binary_sample(1)]*2)
 
+def replay_owned_destination(swift, snapshots, trusted_path, input_error=False):
+    """Source-tied direct-parent/input/postcondition model, not a focus-property API."""
+    parent=swift.split('@MainActor private func destinationPanel(',1)[1].split('@MainActor private func destinationPathField(',1)[0]
+    field=swift.split('@MainActor private func destinationPathField(',1)[1].split('@MainActor private func chooseOwnedExportDirectory(',1)[0]
+    choose=swift.split('@MainActor private func chooseOwnedExportDirectory(',1)[1].split('private func ownedExportDirectory(',1)[0]
+    required_parent=['windowCount == 1, dialogCount == 0','windows.element(boundBy: 0).children(matching: .sheet)',
+        'guard panelCount == 1','panel.identifier == "open-panel"','panel.children(matching: .sheet)',
+        'childCount <= 1, totalSheetCount == 1 + childCount','go.identifier == "GoToWindow"']
+    required_field=['go.children(matching: .textField)','let count = fields.count','guard count == 1',
+        'identifier == "PathTextField", enabled, hittable','let value = input.value as? String',
+        'expected == nil || value == expected','"ExportSavePanel/GoToWindow", "TextField"']
+    required_choose=['directory == root.appendingPathComponent(directory.lastPathComponent, isDirectory: true)',
+        'guard initial.go == nil','"OKButton", finalTitle','catch { failure = error; return true }','if let failure { throw failure }',
+        'try deadlineClick(input.element)','try deadlineText(input.element, directory.path)',
+        'let entered = try destinationPathField(in: photos, panelLabel: panelLabel, expected: directory.path)',
+        'let ready = try destinationPathField(in: photos, panelLabel: panelLabel, expected: directory.path)',
+        'try deadlineKey(ready.element, XCUIKeyboardKey.return, modifierFlags: [])','try waitForChild(false)',
+        'selected.go == nil, selected.panel.label == panelLabel','"where popup", "Where:"',
+        'location.value as? String == directory.lastPathComponent']
+    if not all(p in parent for p in required_parent) or not all(p in field for p in required_field) or not all(p in choose for p in required_choose):
+        raise AssertionError('Destination source no longer matches exact scoped path model')
+    if any(p in parent+field+choose for p in ['hasKeyboardFocus','hasFocus','debugDescription','publicLabel("Go"','allElementsBoundByIndex','suggestion']):
+        raise AssertionError('Unadmitted focus/suggestion/fallback access')
+    pending=copy.deepcopy(snapshots);trace={'return_count':0,'export_count':0,'typed':None,'accepted':False,'failure':None}
+    def need(value):
+        if not value:raise ValueError('Invalid destination scope/path/input/postcondition')
+    def read(child=None):
+        need(bool(pending));r=pending.pop(0)
+        need(r['windows']==1 and r['dialogs']==0 and r['alerts']==0 and r['panels']==1 and r['panel']=='open-panel'
+             and r['panel_scope']=='MainWindow/directSheet' and r['label']=='export…'
+             and r['children'] in (0,1) and r['sheets']==1+r['children'])
+        if r['children']:need(r['child']=='GoToWindow' and r['child_scope']=='open-panel/directSheet')
+        if child is not None:need(r['children']==child)
+        return r
+    def input_field(expected=None):
+        r=read(1);need(r['fields']==1 and r['field']=='PathTextField' and r['field_scope']=='GoToWindow/directTextField'
+                       and r['enabled'] and r['hittable'] and type(r['value']) is str)
+        if expected is not None:need(r['value']==expected)
+        return r
+    try:
+        first=read(0);need(first['ok']=='OKButton' and first['ok_title']=='Export')
+        while read()['children']==0:pass
+        input_field()
+        # Element-scoped typeText has a public keyboard-focus precondition. An
+        # input failure aborts rather than producing an invented focus Boolean.
+        need(not input_error);trace['typed']=trusted_path
+        entered=input_field(trusted_path);ready=input_field(trusted_path);need(entered['value']==ready['value'])
+        trace['return_count']+=1
+        while read()['children']==1:pass
+        final=read(0)
+        need(final['where']=='where popup' and final['where_title']=='Where:' and final['where_value']==trusted_path.rsplit('/',1)[1]
+             and final['ok']=='OKButton' and final['ok_title']=='Export' and final['owned_tree_valid'])
+        trace['export_count']+=1;trace['accepted']=True
+    except ValueError as error:trace['failure']=str(error)
+    trace['unobserved']=pending
+    return trace
+
+def destination_sample(child=0,value='prior path'):
+    return dict(windows=1,dialogs=0,alerts=0,panels=1,panel='open-panel',panel_scope='MainWindow/directSheet',label='export…',
+        children=child,sheets=1+child,child='GoToWindow',child_scope='open-panel/directSheet',fields=1,field='PathTextField',
+        field_scope='GoToWindow/directTextField',enabled=True,hittable=True,value=value,ok='OKButton',ok_title='Export',
+        where='where popup',where_title='Where:',where_value='saved',owned_tree_valid=True)
+
+class DestinationSourceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):cls.swift=(ROOT/'Platforms/UITests/MacPhotosHostUITests.swift').read_text()
+    path='/owned/tmp/CelluloidPhotosLifecycle-12345678-1234-4321-8123-123456789ABC/saved'
+    def samples(self):return [destination_sample(),destination_sample(1),destination_sample(1),destination_sample(1,self.path),destination_sample(1,self.path),destination_sample(),destination_sample()]
+    def test_exact_path_then_return_and_outcome_without_suggestion_dependency(self):
+        result=replay_owned_destination(self.swift,self.samples(),self.path)
+        self.assertTrue(result['accepted']);self.assertEqual(result['typed'],self.path)
+        self.assertEqual(result['return_count'],1);self.assertEqual(result['export_count'],1)
+        rows=self.samples();rows[3]['suggested_path']='/other/path';rows[4]['suggested_path']='/wrong/path'
+        self.assertTrue(replay_owned_destination(self.swift,rows,self.path)['accepted'])
+    def test_wrong_scope_duplicates_unusable_field_and_type_input_failure_stop_before_return(self):
+        for changes in [dict(windows=2),dict(panels=2),dict(dialogs=1),dict(alerts=1),dict(panel='other'),
+            dict(panel_scope='OtherWindow/directSheet'),dict(children=2,sheets=3),dict(child='unknown'),
+            dict(child_scope='otherParent'),dict(fields=2),dict(field='other'),dict(field_scope='GoToWindow/nestedGroup/TextField'),
+            dict(enabled=False),dict(hittable=False)]:
+            rows=self.samples();rows[2].update(changes)
+            result=replay_owned_destination(self.swift,rows,self.path)
+            self.assertFalse(result['accepted']);self.assertEqual(result['return_count'],0)
+        result=replay_owned_destination(self.swift,self.samples(),self.path,input_error=True)
+        self.assertFalse(result['accepted']);self.assertEqual(result['return_count'],0);self.assertIsNone(result['typed'])
+    def test_typed_or_fresh_path_mismatch_never_uses_a_suggestion(self):
+        for index in [3,4]:
+            rows=self.samples();rows[index].update(value='/other/saved',suggested_path=self.path)
+            result=replay_owned_destination(self.swift,rows,self.path)
+            self.assertFalse(result['accepted']);self.assertEqual(result['return_count'],0)
+    def test_unexpected_child_is_latched_and_wrong_destination_blocks_export(self):
+        rows=self.samples();rows.insert(1,destination_sample(1));rows[1]['child']='unrelated'
+        result=replay_owned_destination(self.swift,rows,self.path)
+        self.assertFalse(result['accepted']);self.assertEqual(result['return_count'],0);self.assertGreater(len(result['unobserved']),0)
+        for changes in [dict(children=1,sheets=2),dict(label='replacement'),dict(where='other'),dict(where_title='Other:'),
+                        dict(where_value='Desktop'),dict(ok='other'),dict(ok_title='Save'),dict(owned_tree_valid=False)]:
+            rows=self.samples();rows[-1].update(changes)
+            result=replay_owned_destination(self.swift,rows,self.path)
+            self.assertFalse(result['accepted']);self.assertEqual(result['return_count'],1);self.assertEqual(result['export_count'],0)
+    def test_source_ties_and_fixed_owned_file_proof_are_preserved(self):
+        for old,new in [('go.children(matching: .textField)','photos.descendants(matching: .textField)'),
+            ('totalSheetCount == 1 + childCount','true'),('expected == nil || value == expected','true'),
+            ('try deadlineKey(ready.element, XCUIKeyboardKey.return, modifierFlags: [])','try deadlineKey(photos, "\\n", modifierFlags: [])'),
+            ('if let failure { throw failure }','if let failure { print(failure) }')]:
+            with self.subTest(old=old),self.assertRaises(AssertionError):replay_owned_destination(self.swift.replace(old,new),self.samples(),self.path)
+        self.assertIn('continueAfterFailure = false',self.swift)
+        export=self.swift.split('@MainActor private func exportRaster(',1)[1].split('private func readBoundedOwnedFile(',1)[0]
+        for value in ['let directory = try ownedExportDirectory(name)','let file = directory.appendingPathComponent(Self.fixtureFilename)',
+            'guard !FileManager.default.fileExists(atPath: file.path)','try chooseOwnedExportDirectory(directory, in: photos, original: original)',
+            'try readBoundedOwnedFile(file, maximumBytes: rawAllowance)']:
+            self.assertIn(value,export)
+        parser=(ROOT/'Scripts/mac_host_lifecycle.py').read_text().split('path=PurePosixPath(entered[5])',1)[1].split("take('ExportSavePanel','PopUpButton'",1)[0]
+        for forbidden in ['.open(','.read_bytes(','.read_text(','.resolve(']:self.assertNotIn(forbidden,parser)
+
 if __name__=='__main__':unittest.main()

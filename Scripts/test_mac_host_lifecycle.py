@@ -20,9 +20,10 @@ def export_controls(phase,original=False):
         for title,value in [('Color Profile','sRGB'),('Size','Full Size')]:rows.append(control('ExportOptions/'+title,'PopUpButton','synthetic_'+title,label=title,value=value))
     for title,identifier,value in [('File Name','popup_useFileName','Use File Name'),('Subfolder Format','popup_subfolderFormat','None')]:rows.append(control('ExportOptions/'+title,'PopUpButton',identifier,value=value))
     final='Export Originals' if original else 'Export'
-    rows.extend([control('ExportOptions','Button','button_export',title='Export'),control('ExportSavePanel','Button',label=final),
-        control('ExportSavePanel/GoToFolder','ComboBox'),control('ExportSavePanel/GoToFolder','Button',label='Go'),
-        control('ExportSavePanel','PopUpButton',label='Where',value=phase),control('ExportSavePanel','Button',label=final)])
+    destination='/owned/tmp/CelluloidPhotosLifecycle-12345678-1234-4321-8123-123456789ABC/'+phase
+    path=control('ExportSavePanel/GoToWindow','TextField','PathTextField',value=destination)
+    rows.extend([control('ExportOptions','Button','button_export',title='Export'),control('ExportSavePanel','Button','OKButton',title=final),
+        path,path,control('ExportSavePanel','PopUpButton','where popup',title='Where:',value=phase),control('ExportSavePanel','Button','OKButton',title=final)])
     return rows
 
 @lru_cache(maxsize=1)
@@ -224,5 +225,39 @@ class LifecycleReplayTests(unittest.TestCase):
             positions=[i for i,index in enumerate(indices) if catalog[index][:2]==['ExportOptions','CheckBox']]
             indices.pop(positions[1])
         self.reject(omit_sidecar_final)
+    def test_owned_destination_requires_exact_scoped_fields_ids_and_phase_path(self):
+        for column,value in [(0,'ExportSavePanel/GoToFolder'),(1,'ComboBox'),(1,'Button'),(2,'other'),
+            (5,'saved'),(5,'/tmp/saved'),(5,'/owned/tmp/CelluloidPhotosLifecycle-12345678-1234-4321-8123-123456789ABC/cancelled'),
+            (5,'/owned/tmp/CelluloidPhotosLifecycle-00000000-0000-0000-0000-000000000000/saved'),
+            (5,'/owned/tmp/CelluloidPhotosLifecycle-invalid/saved'),
+            (5,'/owned/tmp/../CelluloidPhotosLifecycle-12345678-1234-4321-8123-123456789ABC/saved'),
+            (5,'/owned//tmp/CelluloidPhotosLifecycle-12345678-1234-4321-8123-123456789ABC/saved'),
+            (5,'//owned/tmp/CelluloidPhotosLifecycle-12345678-1234-4321-8123-123456789ABC/saved'),
+            (5,'/owned/'+('é'*250)+'/CelluloidPhotosLifecycle-12345678-1234-4321-8123-123456789ABC/saved'),
+            (5,'/owned/\x00tmp/CelluloidPhotosLifecycle-12345678-1234-4321-8123-123456789ABC/saved'),
+            (6,2),(7,False),(8,False)]:
+            def mutate(a):
+                row=next(r for r in a[0]['control_catalog'] if r[0]=='ExportSavePanel/GoToWindow' and r[5].endswith('/saved'))
+                row[column]=value
+            with self.subTest(column=column,value=value):self.reject(mutate)
+        for scope,role,column,value in [('ExportSavePanel','PopUpButton',2,'other'),('ExportSavePanel','PopUpButton',3,'Where'),
+                                       ('ExportSavePanel','PopUpButton',5,'Desktop'),('ExportSavePanel','Button',2,'other')]:
+            self.reject(lambda a:next(r for r in a[0]['control_catalog'] if r[:2]==[scope,role]).__setitem__(column,value))
+    def test_fresh_path_readback_and_one_generated_root_are_required(self):
+        def changed_readback(a):
+            row=a[0];phase=row['phases'][2];catalog=row['control_catalog']
+            positions=[i for i,index in enumerate(phase['controls']) if catalog[index][0]=='ExportSavePanel/GoToWindow']
+            changed=copy.deepcopy(catalog[phase['controls'][positions[1]]]);changed[5]+='-different'
+            phase['controls'][positions[1]]=len(catalog);catalog.append(changed)
+        self.reject(changed_readback)
+        def omit_readback(a):
+            phase=a[0]['phases'][2];catalog=a[0]['control_catalog']
+            position=next(i for i,index in enumerate(phase['controls']) if catalog[index][0]=='ExportSavePanel/GoToWindow')
+            phase['controls'].pop(position)
+        self.reject(omit_readback)
+        def changed_root(a):
+            row=next(r for r in a[0]['control_catalog'] if r[0]=='ExportSavePanel/GoToWindow' and r[5].endswith('/original'))
+            row[5]=row[5].replace('12345678-1234-4321-8123-123456789ABC','22345678-1234-4321-8123-123456789ABC')
+        self.reject(changed_root)
 
 if __name__=='__main__':unittest.main()

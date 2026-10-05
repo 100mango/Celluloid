@@ -1063,35 +1063,86 @@ final class MacPhotosHostUITests: XCTestCase {
         }
         return signature
     }
-    @MainActor private func chooseOwnedExportDirectory(_ directory: URL, in photos: XCUIApplication, original: Bool) throws {
-        let panel = try exportSheet(in: photos)
-        let finalTitle = original ? "Export Originals" : "Export"
-        _ = try lifecycleControl(publicLabel(finalTitle, role: .button, in: panel), scope: "ExportSavePanel", role: "Button", click: false)
+    @MainActor private func destinationPanel(in photos: XCUIApplication) throws -> (panel: XCUIElement, go: XCUIElement?) {
         _ = try remainingTime(1)
-        try deadlineKey(photos, "g", modifierFlags: [.command, .shift])
-        try lifecycleWait(photos, seconds: 10, description: "Normal Go to Folder sheet absent") {
-            photos.sheets.allElementsBoundByIndex.filter { self.publicLabel("Go", role: .button, in: $0).count == 1 }.count == 1
-        }
-        let candidates = photos.sheets.allElementsBoundByIndex.filter { publicLabel("Go", role: .button, in: $0).count == 1 }
-        guard candidates.count == 1 else { throw block("Ambiguous Go to Folder parent") }
-        let go = candidates[0]
-        let combos = go.descendants(matching: .comboBox), fields = go.descendants(matching: .textField)
-        let input: XCUIElement
-        if combos.count == 1 {
-            input = try lifecycleControl(combos, scope: "ExportSavePanel/GoToFolder", role: "ComboBox")
-        } else {
-            guard combos.count == 0 else { throw block("Ambiguous Go to Folder input") }
-            input = try lifecycleControl(fields, scope: "ExportSavePanel/GoToFolder", role: "TextField")
-        }
-        try deadlineKey(input, "a", modifierFlags: .command); try deadlineText(input, directory.path)
-        guard input.value as? String == directory.path else { throw block("Go to Folder did not retain exact owned directory") }
-        _ = try lifecycleControl(publicLabel("Go", role: .button, in: go), scope: "ExportSavePanel/GoToFolder", role: "Button")
-        try lifecycleWait(photos, seconds: 10, description: "Go to Folder did not close") { !go.exists }
-        let selected = try exportSheet(in: photos)
-        let location = try lifecycleControl(publicLabel("Where", role: .popUpButton, in: selected), scope: "ExportSavePanel", role: "PopUpButton", click: false)
-        guard location.value as? String == directory.lastPathComponent else { throw block("Save panel location does not show the owned export directory") }
         try rejectLifecycleAlert(photos)
-        _ = try lifecycleControl(publicLabel(finalTitle, role: .button, in: selected), scope: "ExportSavePanel", role: "Button")
+        let windows = photos.windows.matching(identifier: "MainWindow")
+        let windowCount = windows.count, dialogCount = photos.dialogs.count
+        guard windowCount == 1, dialogCount == 0 else { throw block("Unknown export destination window/dialog") }
+        let panels = windows.element(boundBy: 0).children(matching: .sheet)
+        let panelCount = panels.count
+        guard panelCount == 1 else { throw block("Missing/ambiguous direct export destination panel") }
+        let panel = panels.element(boundBy: 0)
+        guard panel.identifier == "open-panel" else { throw block("Unexpected export destination panel") }
+        let children = panel.children(matching: .sheet)
+        let childCount = children.count, totalSheetCount = photos.sheets.count
+        guard childCount <= 1, totalSheetCount == 1 + childCount else { throw block("Unexpected export destination child/sheet") }
+        guard childCount == 1 else { return (panel, nil) }
+        let go = children.element(boundBy: 0)
+        guard go.identifier == "GoToWindow" else { throw block("Unexpected export destination child identity") }
+        return (panel, go)
+    }
+    @MainActor private func destinationPathField(in photos: XCUIApplication, panelLabel: String, expected: String? = nil) throws -> (element: XCUIElement, row: [Any]) {
+        let parent = try destinationPanel(in: photos)
+        guard parent.panel.label == panelLabel, let go = parent.go else { throw block("Go to Folder parent changed") }
+        let fields = go.children(matching: .textField)
+        let count = fields.count
+        guard count == 1 else { throw block("Missing/ambiguous direct Go to Folder path field") }
+        let input = fields.element(boundBy: 0)
+        let identifier = input.identifier, enabled = input.isEnabled, hittable = input.isHittable
+        guard identifier == "PathTextField", enabled, hittable else { throw block("Unusable observed Go to Folder field") }
+        guard let value = input.value as? String, value.utf8.count <= 512,
+              expected == nil || value == expected else { throw block("Go to Folder path differs from the trusted owned directory") }
+        return (input, ["ExportSavePanel/GoToWindow", "TextField", identifier, input.title, input.label, value, count, enabled, hittable])
+    }
+    @MainActor private func chooseOwnedExportDirectory(_ directory: URL, in photos: XCUIApplication, original: Bool) throws {
+        let root = try XCTUnwrap(lifecycleRoot)
+        guard ["saved", "cancelled", "reverted", "original"].contains(directory.lastPathComponent),
+              directory == root.appendingPathComponent(directory.lastPathComponent, isDirectory: true),
+              original == (directory.lastPathComponent == "original"), directory.path.utf8.count <= 512 else { throw block("Unowned export destination URL") }
+        try verifyOwnedExportTree()
+        let initial = try destinationPanel(in: photos), finalTitle = original ? "Export Originals" : "Export"
+        guard initial.go == nil else { throw block("Unexpected preexisting Go to Folder child") }
+        let panelLabel = initial.panel.label
+        func confirmButton(_ panel: XCUIElement) -> XCUIElementQuery {
+            panel.descendants(matching: .button).matching(NSPredicate(format: "identifier == %@ AND title == %@", "OKButton", finalTitle))
+        }
+        _ = try lifecycleControl(confirmButton(initial.panel), scope: "ExportSavePanel", role: "Button", click: false)
+        func waitForChild(_ present: Bool) throws {
+            var failure: Error?
+            try lifecycleWait(photos, seconds: 10, description: present ? "Observed Go to Folder child absent" : "Go to Folder child did not dismiss") {
+                do {
+                    let observed = try self.destinationPanel(in: photos)
+                    guard observed.panel.label == panelLabel else { throw self.block("Export destination panel changed while waiting") }
+                    return (observed.go != nil) == present
+                } catch { failure = error; return true }
+            }
+            if let failure { throw failure }
+        }
+        try deadlineKey(photos, "g", modifierFlags: [.command, .shift])
+        try waitForChild(true)
+        let input = try destinationPathField(in: photos, panelLabel: panelLabel)
+        // Click the exact field. typeText requires keyboard focus and fails if
+        // it cannot type; no separate undocumented focus Boolean is sampled.
+        try deadlineClick(input.element)
+        try deadlineKey(input.element, "a", modifierFlags: .command)
+        try deadlineText(input.element, directory.path)
+        let entered = try destinationPathField(in: photos, panelLabel: panelLabel, expected: directory.path)
+        _ = try retainLifecycleControl(entered.row)
+        let ready = try destinationPathField(in: photos, panelLabel: panelLabel, expected: directory.path)
+        _ = try retainLifecycleControl(ready.row)
+        guard try JSONSerialization.data(withJSONObject: entered.row) == JSONSerialization.data(withJSONObject: ready.row),
+              try JSONSerialization.data(withJSONObject: lifecycleReceipt(photosPID: lifecyclePhotosPID)).count <= 16_000 else { throw block("Go to Folder readback changed or exceeded proof budget") }
+        try deadlineKey(ready.element, XCUIKeyboardKey.return, modifierFlags: [])
+        try waitForChild(false)
+        let selected = try destinationPanel(in: photos)
+        guard selected.go == nil, selected.panel.label == panelLabel else { throw block("Export destination panel changed after Return") }
+        let location = try lifecycleControl(selected.panel.descendants(matching: .popUpButton)
+            .matching(NSPredicate(format: "identifier == %@ AND title == %@", "where popup", "Where:")), scope: "ExportSavePanel", role: "PopUpButton", click: false)
+        guard location.value as? String == directory.lastPathComponent else { throw block("Save panel location does not show the owned export directory") }
+        try verifyOwnedExportTree()
+        try rejectLifecycleAlert(photos)
+        _ = try lifecycleControl(confirmButton(selected.panel), scope: "ExportSavePanel", role: "Button")
     }
     private func ownedExportDirectory(_ name: String) throws -> URL {
         guard ["saved", "cancelled", "reverted", "original"].contains(name), lifecycleExports[name] == nil else { throw block("Unexpected/repeated export phase") }

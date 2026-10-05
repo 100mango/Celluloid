@@ -1,6 +1,7 @@
 """Strict replay of the bounded, owned real Photos filter lifecycle receipt."""
 import base64,hashlib,json,math,re
-from pathlib import Path
+from pathlib import Path,PurePosixPath
+from uuid import UUID
 from mac_host_self_identity import validate as self_identity,RECEIPT,IDENTIFIER
 from mac_host_transport import HOST_CONTRACT
 from mac_host_lifecycle_pixels import decode,compare,checked_icc,NAMES,PNG_LIMIT,ICC_LIMIT
@@ -167,7 +168,7 @@ def validate_controls(catalog,phases):
         require(type(row[6]) is int and row[6]==1 and row[7] is True and row[8] is True,'Unusable lifecycle control')
         serial.append(json.dumps(row,separators=(',',':')))
     require(len(serial)==len(set(serial)),'Duplicate lifecycle control catalog row')
-    used=set()
+    used=set();destination_root=None
     for phase in phases:
         indices=phase['controls'];require(type(indices) is list and len(indices)<=40 and all(integer(i,0,len(catalog)-1) for i in indices),'Invalid lifecycle control occurrence')
         used.update(indices);rows=[catalog[i] for i in indices];name=phase['name'];position=0
@@ -195,6 +196,7 @@ def validate_controls(catalog,phases):
             final=take('ExportOptions',role,identifier=identifier,label=label,public=public,value=wanted)
             require(final[:5]==first[:5],'Binary identity changed after transition')
         def export(phase,original=False):
+            nonlocal destination_root
             take('Photos/MenuBar','MenuBarItem',title='File')
             take('File/Menu','MenuItem',identifier='_NS:1604',title='Export')
             take('File/Export/Menu','MenuItem',identifier='_NS:635' if original else '_NS:630',title='Export Unmodified Original For 1 Photo' if original else 'Export 1 Photo')
@@ -207,12 +209,21 @@ def validate_controls(catalog,phases):
             popup('File Name','Use File Name');popup('Subfolder Format','None')
             take('ExportOptions','Button',identifier='button_export',title='Export')
             title='Export Originals' if original else 'Export'
-            take('ExportSavePanel','Button',public=title)
-            require(position<len(rows) and rows[position][1] in ('ComboBox','TextField'),'Missing owned destination input')
-            take('ExportSavePanel/GoToFolder',rows[position][1])
-            take('ExportSavePanel/GoToFolder','Button',public='Go')
-            take('ExportSavePanel','PopUpButton',public='Where',value=phase)
-            take('ExportSavePanel','Button',public=title)
+            take('ExportSavePanel','Button',identifier='OKButton',title=title)
+            entered=take('ExportSavePanel/GoToWindow','TextField',identifier='PathTextField')
+            ready=take('ExportSavePanel/GoToWindow','TextField',identifier='PathTextField',value=entered[5])
+            require(ready==entered,'Typed destination changed before Return')
+            path=PurePosixPath(entered[5]);root=path.parent;prefix='CelluloidPhotosLifecycle-'
+            require(len(entered[5].encode('utf8'))<=512 and path.is_absolute() and not entered[5].startswith('//') and str(path)==entered[5] and all(part not in ('.','..') for part in path.parts)
+                    and all(ord(c)>=32 and ord(c)!=127 for c in entered[5]) and path.name==phase
+                    and root.name.startswith(prefix),'Wrong phase-specific owned destination path')
+            suffix=root.name[len(prefix):]
+            require(re.fullmatch('[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}',suffix) is not None
+                    and UUID(suffix).int!=0,'Invalid generated owned destination root')
+            if destination_root is None:destination_root=str(root)
+            require(str(root)==destination_root,'Export phases changed their generated owned root')
+            take('ExportSavePanel','PopUpButton',identifier='where popup',title='Where:',value=phase)
+            take('ExportSavePanel','Button',identifier='OKButton',title=title)
         if name=='source-retained':pass
         elif name=='fade-ready':
             take('Celluloid photo editor','PopUpButton',identifier='photos-extension.filter',label='Filter',value='Original')
