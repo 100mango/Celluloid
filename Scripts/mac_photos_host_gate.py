@@ -20,6 +20,7 @@ import tempfile
 import time
 import math
 from mac_host_transport import load_json,HOST_CONTRACT
+from validation_route import current_route,validate_route
 
 # Mandatory acceptance/source/product assertions must never be optimized away.
 # Reject before parsing an action, reading receipts, or creating any evidence.
@@ -34,6 +35,7 @@ APP_ID = 'Mango.Celluloid'
 EXT_ID = APP_ID + '.CelluloidPhotoExtension'
 ALLOWED = {
     '.github/workflows/apple-platforms.yml',
+    '.github/workflows/mac-repair.yml',
     'CelluloidNative.xcodeproj/project.pbxproj',
     'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift',
     'Documentation/interop-continuation.md',
@@ -89,12 +91,15 @@ ALLOWED = {
     'Scripts/verify_interop_continuation.py',
     'Scripts/verify_native_release.py',
     'Scripts/verify_required_interoperability.py',
+    'Scripts/validation_route.py',
+    'Scripts/test_validation_route.py',
+    'Scripts/verify_combined_source.py',
 }
 
 CAP = 1_000_000
 BASE_FILE_COUNT = 544
 REVIEWED_TEST_FILES = {'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': 'f4c7a7a16bf5414e6c2a2716bc146bdc216f7ea966a80207acce8a7667584890', 'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift': 'ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034'}
-REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': '99fbf99d389a99a0d571693fe2b3324077b7e2024d90102d5870d2873cfdaf90', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': '00eb3f54e9e7ff03c76ad77c346745619ab03144c65cd67da0e0204eedfc0868', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
+REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': '728e3d1c7ffec0a572eb3029565f4d6306cfc35daa08868da2764a61ba859459', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': '8eda901aae6ee995af0cfe51b1e1c480a71b470d6dd4d9438cefeabef888c852', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
 UNCHANGED_BASE_FILES = BASE_FILE_COUNT - 2 - len(REVIEWED_TEST_FILES) - len(REVIEWED_CANDIDATE_FILES)
 
 def run(*args):
@@ -115,7 +120,7 @@ def require_runner():
     assert sys.platform == 'darwin'
     assert os.environ.get('GITHUB_ACTIONS') == 'true'
     assert os.environ['GITHUB_REPOSITORY'] == '100mango/Celluloid'
-    assert os.environ['GITHUB_REF'] == 'refs/heads/' + BRANCH
+    current_route()
     assert os.environ['GITHUB_EVENT_NAME'] == 'push'
     assert os.environ['DEVELOPER_DIR'] == '/Applications/Xcode_27.app/Contents/Developer'
 
@@ -141,9 +146,10 @@ def verify_source(phase):
             continue
         assert sha(ROOT / path) == digest, 'Base source changed: ' + path
         checked.append([path, digest])
-    report = {'phase': phase, 'source_sha': expected, 'tree': run('git', 'rev-parse', 'HEAD^{tree}'),
+    route=current_route()
+    report = {'validation_route':route, 'phase': phase, 'source_sha': expected, 'tree': run('git', 'rev-parse', 'HEAD^{tree}'),
               'base_sha': BASE, 'base_tree': BASE_TREE, 'unchanged_bound_files': len(checked), 'reviewed_diagnostic_test_files': REVIEWED_TEST_FILES, 'reviewed_candidate_files': REVIEWED_CANDIDATE_FILES,
-              'allowed_changed_paths': sorted(changed), 'workflow_sha256': sha(ROOT / '.github/workflows/apple-platforms.yml'),
+              'allowed_changed_paths': sorted(changed), 'workflow_sha256': sha(ROOT / route['workflow_path']),
               'complete_host_e2e': False}
     write(temp() / ('mac-host-source-' + phase + '.json'), report)
     print(json.dumps(report, sort_keys=True))
@@ -212,7 +218,8 @@ def prepare():
         assert entitlement(bundle) == permissions
     evidence = temp() / 'mac-host-observed'
     evidence.mkdir(exist_ok=False)
-    context = {'host_entry_contract':HOST_CONTRACT, 'source_sha': os.environ['GITHUB_SHA'], 'base_sha': BASE, 'app_path': str(installed),
+    route=current_route()
+    context = {'validation_route':route, 'host_entry_contract':HOST_CONTRACT, 'source_sha': os.environ['GITHUB_SHA'], 'base_sha': BASE, 'app_path': str(installed),
                'extension_path': str(embedded), 'app_executable': str(installed / 'Contents/MacOS/CelluloidMac'),
                'extension_executable': str(embedded / 'Contents/MacOS/CelluloidMacPhotosExtension'),
                'app_id': APP_ID, 'extension_id': EXT_ID, 'evidence_path': str(evidence),
@@ -224,6 +231,8 @@ def prepare():
                'installation_method': 'reuse exact same-job sandbox product without copy or re-sign',
                'runner_environment': {key: os.environ[key] for key in ['RUNNER_TEMP', 'GITHUB_SHA', 'GITHUB_WORKFLOW_SHA',
                    'GITHUB_ACTIONS', 'GITHUB_REPOSITORY', 'GITHUB_REF', 'GITHUB_EVENT_NAME', 'DEVELOPER_DIR']}}
+    if route['diagnostic_only']:
+        context['runner_environment'].update({key:os.environ[key] for key in ['GITHUB_WORKFLOW_REF','CELLULOID_VALIDATION_SCOPE']})
     context['app_executable_sha256'] = sha(context['app_executable'])
     context['seed'] = seed_receipt(temp() / 'sandbox.log', context['source_sha'], context['app_executable_sha256'])
     context['extension_executable_sha256'] = sha(context['extension_executable'])
@@ -234,6 +243,7 @@ def context():
     p = temp() / 'mac-host-context.json'
     c = load_json(p.read_text())
     assert c['host_entry_contract']==HOST_CONTRACT
+    assert validate_route(c['validation_route'])==current_route()
     assert c['source_sha'] == os.environ['GITHUB_SHA']
     assert c['app_id'] == APP_ID and c['extension_id'] == EXT_ID
     assert c['script_sha256'] == sha(__file__)
@@ -419,6 +429,9 @@ def verify_acceptance(root, source_sha):
     assert c['source_sha'] == source_sha and c['base_sha'] == BASE
     assert c['app_id'] == APP_ID and c['extension_id'] == EXT_ID
     assert c['complete_host_e2e'] is False
+    route=validate_route(c['validation_route'])
+    assert current_route(c['runner_environment'])==route
+    if route['diagnostic_only']:assert c['runner_environment']['GITHUB_SHA']==source_sha, 'Focused runner source differs from context'
     assert c['script_sha256'] == sha(__file__), 'Wrong verifier/product context'
     records=transport_records(root,c,complete=True)
     assert read_receipt(root/'mac-host-transport-replay.json')==transport_report(root,c,records), 'Transport replay receipt changed'
@@ -521,13 +534,16 @@ def verify_acceptance(root, source_sha):
     after = read_receipt(root / 'mac-host-source-after.json')
     for phase, receipt in [('before', before), ('after', after)]:
         assert receipt['source_sha'] == source_sha and receipt['phase'] == phase
+        assert validate_route(receipt['validation_route'])==route
         assert receipt['base_sha'] == BASE and receipt['base_tree'] == BASE_TREE
         assert receipt['unchanged_bound_files'] == UNCHANGED_BASE_FILES and receipt['reviewed_diagnostic_test_files']==REVIEWED_TEST_FILES and receipt['reviewed_candidate_files']==REVIEWED_CANDIDATE_FILES and receipt['complete_host_e2e'] is False
     assert before['tree'] == after['tree'] and before['workflow_sha256'] == after['workflow_sha256']
+    assert before['workflow_sha256']==sha(ROOT/route['workflow_path'])
     contract=load_json((ROOT/'Scripts/combined-source-contract.json').read_text())
     for phase in ['before','after']:
         combined=read_receipt(root/('combined-source-'+phase+'.json'))
         assert combined['source_sha']==source_sha and combined['phase']==phase
+        assert validate_route(combined['validation_route'])==route
         assert combined['tree']==before['tree'] and combined['workflow_sha256']==before['workflow_sha256']
         assert type(combined['file_count']) is int and combined['file_count']==len(contract['files'])
         assert combined['source_fingerprint']==contract['fingerprint']
@@ -535,7 +551,7 @@ def verify_acceptance(root, source_sha):
                 'mac-host-product-after.json', 'mac-host-source-before.json', 'mac-host-source-after.json', 'mac-host-transport-replay.json']]
     receipts += [observed / name for name in ['prerequisite.json', 'outcome.json', 'host-selection.json', 'host-editor-before-process.json', 'host-editor-after-process.json', 'extension-process.json', 'fixture-ownership.json', 'fixture.json']]
     receipts += [observed/name for name in ['transport.json','containing-process.json','photos-process.json']]
-    return {'host_entry_contract':HOST_CONTRACT,'source_sha': source_sha, 'prerequisite_accepted': True, 'complete_host_e2e': False,
+    return {'validation_route':route,'host_entry_contract':HOST_CONTRACT,'source_sha': source_sha, 'prerequisite_accepted': True, 'complete_host_e2e': False,
             'proof_claim':'Real Photos UI entry with contemporaneously observed exact extension executable; registry inventory, audit-token view attribution, exact delivered-byte equality and full lifecycle are not claimed',
             'expected_testcase': '/'.join(EXPECTED_CASE), 'exactly_one_passed_zero_skipped': True,
             'last_stage': outcome['last_stage'], 'extension_executable': expected_executable,
@@ -599,7 +615,7 @@ def accept():
     try:
         result = verify_acceptance(temp(), os.environ['GITHUB_SHA'])
     except Exception as error:
-        result = {'host_entry_contract':HOST_CONTRACT,'source_sha': os.environ.get('GITHUB_SHA'), 'prerequisite_accepted': False,
+        result = {'validation_route':current_route(),'host_entry_contract':HOST_CONTRACT,'source_sha': os.environ.get('GITHUB_SHA'), 'prerequisite_accepted': False,
                   'complete_host_e2e': False, 'error': type(error).__name__ + ': ' + str(error)}
     write(temp() / 'mac-host-acceptance.json', result)
     print('MAC_HOST_ACCEPTANCE ' + json.dumps(result, sort_keys=True))
@@ -631,6 +647,7 @@ def verify_collected(folder, source_sha):
     assert manifest['source_sha']==source_sha and manifest['cap_bytes']==CAP and manifest['retention_days']==1
     assert manifest['host_entry_contract']==HOST_CONTRACT
     assert manifest['complete_host_e2e'] is False
+    route=validate_route(manifest['validation_route'])
     assert type(manifest['prerequisite_accepted']) is bool
     names=set(); sources={}; total=index.stat().st_size
     for row in manifest['files']:
@@ -651,6 +668,7 @@ def verify_collected(folder, source_sha):
     assert status['host_entry_contract']==HOST_CONTRACT
     assert status['source_sha']==source_sha and status['complete_host_e2e'] is False
     assert status['prerequisite_accepted'] is manifest['prerequisite_accepted']
+    assert validate_route(status['validation_route'])==route
     missing=sorted(set(PROOF_LIMITS)-set(sources))
     assert manifest['missing_required_proof']==missing
     if manifest['prerequisite_accepted']:
@@ -675,6 +693,7 @@ def collect():
     assert status['host_entry_contract']==HOST_CONTRACT
     assert status['source_sha']==source_sha and status['complete_host_e2e'] is False
     assert type(status['prerequisite_accepted']) is bool
+    route=validate_route(status['validation_route'])
     accepted=status['prerequisite_accepted']
     if accepted:assert verify_acceptance(root,source_sha)==status
     else:assert isinstance(status.get('error'),str) and status['error'].strip()
@@ -714,7 +733,7 @@ def collect():
         assert not (destination/path.name).exists(), 'Optional diagnostic collides with required proof'
         shutil.copyfile(path,destination/path.name);used+=count
         entries.append({'path':path.name,'source_relative':str(path.relative_to(root)), 'kind':'optional-diagnostic','bytes':count,'sha256':sha(path)})
-    write(destination/'manifest.json',{'host_entry_contract':HOST_CONTRACT,'source_sha':source_sha,'cap_bytes':CAP,'retention_days':1,'files':entries,
+    write(destination/'manifest.json',{'validation_route':route,'host_entry_contract':HOST_CONTRACT,'source_sha':source_sha,'cap_bytes':CAP,'retention_days':1,'files':entries,
           'omitted':omitted,'missing_required_proof':missing,'prerequisite_accepted':accepted,
           'proof_state':'complete-accepted-prerequisite' if accepted else 'diagnostic-only-incomplete',
           'complete_host_e2e':False})

@@ -116,7 +116,7 @@ final class MacPhotoRenderer {
             let content = layer.text
             #endif
             let layout = try MacPhotoTextLayout.make(content, rect: textRect)
-            let text = try MacPhotoTextRaster.make(layout, bounds: textRect.size)
+            let text = try MacPhotoTextRaster.makeBacking(layout, bounds: textRect.size)
             let intrinsic = MacPhotoTextRaster.destinationRect(for: text, origin: textRect.origin)
             #if DEBUG
             let destination = textRenderProbe?.destination?(intrinsic, textRect) ?? intrinsic
@@ -133,7 +133,7 @@ final class MacPhotoRenderer {
             // The layout was already centered in its logical text rectangle.
             canvas.translateBy(x: destination.minX, y: destination.maxY)
             canvas.scaleBy(x: 1, y: -1)
-            canvas.draw(text, in: CGRect(origin: .zero, size: destination.size))
+            canvas.draw(text.image, in: CGRect(origin: .zero, size: destination.size))
         }
     }
 }
@@ -208,11 +208,88 @@ struct MacPhotoTextLayout {
 
 enum MacPhotoTextRaster {
     static let scale: CGFloat = 2
-    static func destinationRect(for image: CGImage, origin: CGPoint) -> CGRect {
-        CGRect(origin: origin, size: CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale))
+    struct Backing {
+        let image: CGImage
+        /// Top-left of the retained pixels in the original logical label space.
+        /// A negative value is allocation compensation, never a baseline offset.
+        let origin: CGPoint
     }
-    /// Optional padding exercises the identical drawing path to expose any ink
-    /// outside the normal backing. The shipping compositor always uses zero.
+
+    static func destinationRect(for backing: Backing, origin: CGPoint) -> CGRect {
+        CGRect(x: origin.x + backing.origin.x, y: origin.y + backing.origin.y,
+               width: CGFloat(backing.image.width) / scale, height: CGFloat(backing.image.height) / scale)
+    }
+
+    /// Retain the logical backing plus every painted pixel. Measure using the
+    /// identical glyph path on a bounded, pixel-aligned guard surface, then crop
+    /// without resampling. No font fitting, shaping, positions or baselines change.
+    static func makeBacking(_ layout: MacPhotoTextLayout, bounds: CGSize) throws -> Backing {
+        let padding = try backingPadding(layout, bounds: bounds)
+        return try autoreleasepool {
+            let expanded = try make(layout, bounds: bounds, padding: padding)
+            let ink = try inkPixelBounds(expanded)
+            let full = CGRect(x: 0, y: 0, width: expanded.width, height: expanded.height)
+            // Public metrics are a conservative probe envelope, not a claim that
+            // outline bounds equal raster coverage (especially for color fonts).
+            // Fail closed if the probe itself shows any possible edge clipping.
+            guard ink.isNull || full.insetBy(dx: 1, dy: 1).contains(ink) else { throw RecipeError.resourceLimit }
+            let logical = CGRect(x: padding * scale, y: padding * scale,
+                                 width: ceil(bounds.width * scale), height: ceil(bounds.height * scale))
+            // Keep one fully transparent edge pixel around measured ink so
+            // transformed image interpolation cannot clamp a nonzero edge.
+            let retained = logical.union(ink.isNull ? ink : ink.insetBy(dx: -1, dy: -1))
+            guard let image = expanded.cropping(to: retained) else { throw RenderError.renderFailed }
+            return Backing(image: image, origin: CGPoint(x: (retained.minX - logical.minX) / scale,
+                                                        y: (retained.minY - logical.minY) / scale))
+        }
+    }
+
+    /// Bound the probe with the actual run fonts and glyphs, including the whole
+    /// font box for non-outline/color glyphs. Two extra pixels cover raster edges;
+    /// only measured nonzero alpha, not this conservative box, expands the result.
+    static func backingPadding(_ layout: MacPhotoTextLayout, bounds: CGSize) throws -> CGFloat {
+        guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0,
+              bounds.width * scale <= 4096, bounds.height * scale <= 4096,
+              ceil(bounds.width * scale) * ceil(bounds.height * scale) <= 4_194_304 else { throw RecipeError.resourceLimit }
+        let logical = CGRect(x: 0, y: 0, width: ceil(bounds.width * scale) / scale,
+                             height: ceil(bounds.height * scale) / scale)
+        var envelope = logical
+        for run in try glyphRuns(layout, bounds: bounds, padding: 0) {
+            try Task.checkCancellation()
+            for (glyph, position) in zip(run.glyphs, run.positions) {
+                let box = run.font.boundingRectForFont.union(run.font.boundingRect(forCGGlyph: glyph))
+                    .applying(run.textMatrix).offsetBy(dx: position.x, dy: position.y)
+                guard !box.isNull, !box.isInfinite,
+                      [box.minX, box.minY, box.maxX, box.maxY].allSatisfy(\.isFinite) else { throw RecipeError.resourceLimit }
+                envelope = envelope.union(box)
+            }
+        }
+        let overhang = [CGFloat(0), -envelope.minX, -envelope.minY,
+                        envelope.maxX - logical.maxX, envelope.maxY - logical.maxY].max() ?? 0
+        let padding = ceil(overhang * scale + 2) / scale
+        guard padding.isFinite, padding <= 64 else { throw RecipeError.resourceLimit }
+        return padding
+    }
+
+    /// The owned bitmap is 8-bit premultiplied RGBA. Read its image rows directly
+    /// so the returned integral rectangle uses CGImage cropping coordinates.
+    static func inkPixelBounds(_ image: CGImage) throws -> CGRect {
+        guard image.bitsPerComponent == 8, image.bitsPerPixel == 32, image.alphaInfo == .premultipliedLast,
+              let data = image.dataProvider?.data, let bytes = CFDataGetBytePtr(data),
+              CFDataGetLength(data) >= image.bytesPerRow * image.height else { throw RenderError.renderFailed }
+        var left = image.width, top = image.height, right = 0, bottom = 0
+        for row in 0..<image.height {
+            try Task.checkCancellation()
+            for column in 0..<image.width where bytes[row * image.bytesPerRow + column * 4 + 3] != 0 {
+                left = min(left, column); top = min(top, row)
+                right = max(right, column + 1); bottom = max(bottom, row + 1)
+            }
+        }
+        return right > left && bottom > top ? CGRect(x: left, y: top, width: right - left, height: bottom - top) : .null
+    }
+
+    /// Raw same-path surface for the coverage probe and native diagnostics.
+    /// Compositing must use makeBacking so retained overhang carries its origin.
     static func make(_ layout: MacPhotoTextLayout, bounds: CGSize, padding: CGFloat = 0) throws -> CGImage {
         guard padding.isFinite, padding >= 0, padding <= 64,
               bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else { throw RecipeError.resourceLimit }

@@ -275,5 +275,44 @@ class AppKitShapedRunSourceTests(unittest.TestCase):
                       'padding: 65']:
             self.assertIn(token,swift)
 
+    def test_backing_repair_preserves_fitting_shaping_and_raw_draw_bytes(self):
+        source,_=self.source()
+        slices=[('struct MacPhotoTextLayout {','enum MacPhotoTextRaster {','6d169c8f788a4713168bd40749a2429602988f8cbf45a8a58e98198913aca2bf'),
+                ('    static func make(_ layout:','    struct GlyphRun {','bd473229a0c5ffcf4833f2ab592062508f865c249cb6b3cfc975faf34dd5aa5c'),
+                ('    static func glyphRuns(',None,'f7e25db901dcc84084b9506528518170f9369330a3afab98ba21e5202843db0f')]
+        for start,end,digest in slices:
+            body=source[source.index(start):source.index(end,source.index(start))] if end else source[source.index(start):]
+            self.assertEqual(hashlib.sha256(body.encode()).hexdigest(),digest)
+
+    def test_backing_expansion_is_ink_based_pixel_aligned_and_origin_compensated(self):
+        source,swift=self.source()
+        backing=source[source.index('    struct Backing {'):source.index('    static func make(_ layout:')]
+        for token in ['font.boundingRectForFont','font.boundingRect(forCGGlyph: glyph)',
+                      'ceil(overhang * scale + 2) / scale','padding <= 64','<= 4_194_304',
+                      'let ink = try inkPixelBounds(expanded)','full.insetBy(dx: 1, dy: 1).contains(ink)',
+                      'logical.union(ink.isNull ? ink : ink.insetBy(dx: -1, dy: -1))',
+                      'expanded.cropping(to: retained)','(retained.minX - logical.minX) / scale',
+                      '(retained.minY - logical.minY) / scale','origin.x + backing.origin.x',
+                      'origin.y + backing.origin.y','column * 4 + 3] != 0']:
+            self.assertIn(token,backing)
+        for token in ['scaleBy(', 'CTFramesetter', 'fontSize:', 'substring', 'drawGlyphs(']:
+            self.assertNotIn(token,backing)
+        self.assertIn('let text = try MacPhotoTextRaster.makeBacking(layout, bounds: textRect.size)',source)
+        for token in ['assertInkBoundsUseTopLeftPixelCoordinatesAndRetainFaintEdgeInk',
+                      'Expansion must preserve every original interior pixel',
+                      'Backing must contain all padded-path glyph ink',
+                      'Keep one transparent edge pixel for transformed sampling']:
+            self.assertIn(token,swift)
+
+    def test_only_crlf_control_interiors_relax_line_boundary_assertions(self):
+        _,swift=self.source()
+        helper=swift[swift.index('    private func isCRLFControlBoundary('):swift.index('    private func permitsLineBoundary(')]
+        self.assertIn('offset > 0 && offset < units.count && units[offset - 1] == 0x000D && units[offset] == 0x000A',helper)
+        for token in ['[2, 4, 7]', 'Allowed controls must paint no pixels',
+                      'Painting cluster must stay indivisible','boundaries.contains(offset) || controlBoundary',
+                      'XCTAssertEqual(replay, text, diagnostic)', 'utf16=\\(units) ranges=\\(ranges)',
+                      '"a\\u{0301}"', '"🎬"', '"👩🏽‍💻"', '"👨‍👩‍👧‍👦"', '"✈️"', '"🇯🇵"']:
+            self.assertIn(token,swift)
+
 
 if __name__=='__main__':unittest.main()

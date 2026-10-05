@@ -137,6 +137,8 @@ final class MacPhotoRendererTests: XCTestCase {
         XCTAssertThrowsError(try MacPhotoTextRaster.make(layout, bounds: CGSize(width: 80, height: 40), padding: -1))
         XCTAssertThrowsError(try MacPhotoTextRaster.make(layout, bounds: CGSize(width: 80, height: 40), padding: CGFloat.infinity))
         XCTAssertThrowsError(try MacPhotoTextRaster.make(layout, bounds: CGSize(width: 80, height: 40), padding: 65))
+        XCTAssertThrowsError(try MacPhotoTextRaster.makeBacking(layout, bounds: CGSize(width: CGFloat.infinity, height: 20)))
+        XCTAssertThrowsError(try MacPhotoTextRaster.makeBacking(layout, bounds: CGSize(width: 1_000_000, height: 1_000_000)))
     }
 
     private let qualifiedText = "Hello, 世界 🎬"
@@ -159,11 +161,11 @@ final class MacPhotoRendererTests: XCTestCase {
 
     private func geometry(_ layout: MacPhotoTextLayout, text: String, rect: CGRect) throws -> QualifiedGeometry {
         let (ranges, origins) = frameLines(layout)
-        let image = try MacPhotoTextRaster.make(layout, bounds: rect.size)
+        let image = try MacPhotoTextRaster.makeBacking(layout, bounds: rect.size)
         let destination = MacPhotoTextRaster.destinationRect(for: image, origin: rect.origin)
         // Convert CT bottom-left frame baselines into the logical label. No
         // backing-size fit or inferred UIKit baseline anchor enters this math.
-        let baselines = origins.map { destination.minY + (rect.height - layout.typographicHeight) / 2 + layout.height - $0.y }
+        let baselines = origins.map { rect.minY + (rect.height - layout.typographicHeight) / 2 + layout.height - $0.y }
         return QualifiedGeometry(text: text, ranges: ranges, baselines: baselines, destination: destination, fontSize: layout.fontSize)
     }
 
@@ -205,12 +207,13 @@ final class MacPhotoRendererTests: XCTestCase {
 
     func testTextBackingUsesIntrinsicPointSizeAndOneLogicalOrigin() async throws {
         let layout = try MacPhotoTextLayout.make(qualifiedText, rect: qualifiedRect)
-        let image = try MacPhotoTextRaster.make(layout, bounds: qualifiedRect.size)
-        XCTAssertEqual(image.width, 56); XCTAssertEqual(image.height, 88)
+        let image = try MacPhotoTextRaster.makeBacking(layout, bounds: qualifiedRect.size)
+        XCTAssertEqual(image.origin, .zero)
+        XCTAssertEqual(image.image.width, 56); XCTAssertEqual(image.image.height, 88)
         let actual = MacPhotoTextRaster.destinationRect(for: image, origin: qualifiedRect.origin)
         XCTAssertEqual(actual, CGRect(x: 77.231, y: 26.24, width: 28, height: 44))
-        XCTAssertEqual(actual.width / CGFloat(image.width), 0.5)
-        XCTAssertEqual(actual.height / CGFloat(image.height), 0.5)
+        XCTAssertEqual(actual.width / CGFloat(image.image.width), 0.5)
+        XCTAssertEqual(actual.height / CGFloat(image.image.height), 0.5)
         XCTAssertNotEqual(actual.size, qualifiedRect.size, "Fractional logical bounds must not squeeze the rounded backing")
         let moved = MacPhotoTextRaster.destinationRect(for: image, origin: CGPoint(x: -7.125, y: 4.75))
         XCTAssertEqual(moved, CGRect(x: -7.125, y: 4.75, width: 28, height: 44))
@@ -242,9 +245,9 @@ final class MacPhotoRendererTests: XCTestCase {
             guard NSGraphicsContext.current === sentinel else { throw NSError(domain: "RasterContextRestore", code: 1) }
             if cancel { withUnsafeCurrentTask { $0?.cancel() } }
             do {
-                let image = try MacPhotoTextRaster.make(layout, bounds: bounds)
+                let image = try MacPhotoTextRaster.makeBacking(layout, bounds: bounds)
                 guard NSGraphicsContext.current === sentinel else { throw NSError(domain: "RasterContextRestore", code: 2) }
-                return try RasterCodec.encode(image, as: .png)
+                return try RasterCodec.encode(image.image, as: .png)
             } catch {
                 guard NSGraphicsContext.current === sentinel else { throw NSError(domain: "RasterContextRestore", code: 3) }
                 throw error
@@ -284,16 +287,55 @@ final class MacPhotoRendererTests: XCTestCase {
     }
 
     func testSamePathPaddingDoesNotClipQualifiedTextCases() throws {
+        try assertInkBoundsUseTopLeftPixelCoordinatesAndRetainFaintEdgeInk()
         for (text, bounds) in fittingCases {
             let layout = try MacPhotoTextLayout.make(text, rect: CGRect(origin: .zero, size: bounds))
-            let normal = try MacPhotoTextRaster.make(layout, bounds: bounds)
-            let padded = try MacPhotoTextRaster.make(layout, bounds: bounds, padding: 8)
-            let offset = Int(8 * MacPhotoTextRaster.scale)
-            let crop = try XCTUnwrap(padded.cropping(to: CGRect(x: offset, y: offset, width: normal.width, height: normal.height)))
-            XCTAssertEqual(try pixels(normal), try pixels(crop), "Same draw path must retain identical interior pixels: \(text)")
-            let outsideAlpha = try alphaOutside(padded, x: offset, y: offset, width: normal.width, height: normal.height)
-            XCTAssertEqual(outsideAlpha, 0, "Padding must not reveal clipped glyph ink: \(text)")
+            let normal = try MacPhotoTextRaster.makeBacking(layout, bounds: bounds)
+            // Independently enlarge the probe beyond the production font envelope.
+            let padding = try MacPhotoTextRaster.backingPadding(layout, bounds: bounds) + 8
+            let padded = try MacPhotoTextRaster.make(layout, bounds: bounds, padding: padding)
+            let x = Int((padding + normal.origin.x) * MacPhotoTextRaster.scale)
+            let y = Int((padding + normal.origin.y) * MacPhotoTextRaster.scale)
+            let crop = try XCTUnwrap(padded.cropping(to: CGRect(x: x, y: y, width: normal.image.width, height: normal.image.height)))
+            let detail = "text=\(String(reflecting: text)) utf16=\(Array(text.utf16)) origin=\(normal.origin) pixels=\(normal.image.width)x\(normal.image.height) probePadding=\(padding)"
+            XCTAssertEqual(try pixels(normal.image), try pixels(crop), "Same draw path must retain identical interior pixels: \(detail)")
+            let original = try MacPhotoTextRaster.make(layout, bounds: bounds)
+            let originalCrop = try XCTUnwrap(normal.image.cropping(to: CGRect(x: -normal.origin.x * 2, y: -normal.origin.y * 2,
+                                                                            width: original.width, height: original.height)))
+            XCTAssertEqual(try pixels(original), try pixels(originalCrop), "Expansion must preserve every original interior pixel: \(detail)")
+            let outsideAlpha = try alphaOutside(padded, x: x, y: y, width: normal.image.width, height: normal.image.height)
+            XCTAssertEqual(outsideAlpha, 0, "Backing must contain all padded-path glyph ink: \(detail)")
+            let destination = MacPhotoTextRaster.destinationRect(for: normal, origin: CGPoint(x: 11.125, y: -4.75))
+            XCTAssertEqual(destination.minX - normal.origin.x, 11.125, accuracy: 1e-9, detail)
+            XCTAssertEqual(destination.minY - normal.origin.y, -4.75, accuracy: 1e-9, detail)
+            XCTAssertEqual(destination.width / CGFloat(normal.image.width), 0.5, detail)
+            XCTAssertEqual(destination.height / CGFloat(normal.image.height), 0.5, detail)
+            // No shrink-to-fit, recentering, or loss of the original logical box.
+            let retained = CGRect(origin: normal.origin, size: destination.size)
+            let logical = CGRect(x: 0, y: 0, width: ceil(bounds.width * 2) / 2, height: ceil(bounds.height * 2) / 2)
+            XCTAssertTrue(retained.contains(logical), detail)
+            let ink = try MacPhotoTextRaster.inkPixelBounds(normal.image)
+            let full = CGRect(x: 0, y: 0, width: normal.image.width, height: normal.image.height)
+            XCTAssertTrue(ink.isNull || full.insetBy(dx: 1, dy: 1).contains(ink),
+                          "Keep one transparent edge pixel for transformed sampling: \(detail)")
         }
+    }
+
+    private func assertInkBoundsUseTopLeftPixelCoordinatesAndRetainFaintEdgeInk() throws {
+        let bitmap = try RasterCodec.bitmap(width: 11, height: 13)
+        bitmap.translateBy(x: 0, y: 13); bitmap.scaleBy(x: 1, y: -1)
+        bitmap.setFillColor(CGColor(gray: 0, alpha: 1)); bitmap.fill(CGRect(x: 2, y: 3, width: 4, height: 2))
+        bitmap.setFillColor(CGColor(gray: 0, alpha: 1.0 / 255)); bitmap.fill(CGRect(x: 9, y: 10, width: 1, height: 1))
+        let image = try XCTUnwrap(bitmap.makeImage())
+        let ink = try MacPhotoTextRaster.inkPixelBounds(image)
+        XCTAssertEqual(ink, CGRect(x: 2, y: 3, width: 8, height: 8))
+        let crop = try XCTUnwrap(image.cropping(to: ink))
+        XCTAssertEqual(try MacPhotoTextRaster.inkPixelBounds(crop), CGRect(x: 0, y: 0, width: 8, height: 8))
+        let backed = MacPhotoTextRaster.Backing(image: image, origin: CGPoint(x: -1.5, y: -2))
+        XCTAssertEqual(MacPhotoTextRaster.destinationRect(for: backed, origin: CGPoint(x: 11.125, y: -4.75)),
+                       CGRect(x: 9.625, y: -6.75, width: 5.5, height: 6.5))
+        let empty = try RasterCodec.bitmap(width: 2, height: 3)
+        XCTAssertTrue(try MacPhotoTextRaster.inkPixelBounds(XCTUnwrap(empty.makeImage())).isNull)
     }
 
     private func assertUnchangedShapedRuns(_ layout: MacPhotoTextLayout, bounds: CGSize, padding: CGFloat) throws {
@@ -333,7 +375,44 @@ final class MacPhotoRendererTests: XCTestCase {
         XCTAssertEqual(index, planned.count, "No extra, missing, reordered or reshaped runs")
     }
 
+    private func characterBoundaries(_ text: String) -> Set<Int> {
+        var boundaries: Set<Int> = [0], count = 0
+        for character in text { count += String(character).utf16.count; boundaries.insert(count) }
+        return boundaries
+    }
+
+    private func isCRLFControlBoundary(_ offset: Int, in units: [UInt16]) -> Bool {
+        offset > 0 && offset < units.count && units[offset - 1] == 0x000D && units[offset] == 0x000A
+    }
+
+    private func permitsLineBoundary(_ offset: Int, text: String) -> Bool {
+        characterBoundaries(text).contains(offset) || isCRLFControlBoundary(offset, in: Array(text.utf16))
+    }
+
+    private func assertLineBoundaryExceptionIsOnlyTheInteriorOfCRLFControls() throws {
+        let text = "A\r\n\r\nB\r\n"
+        XCTAssertEqual(characterBoundaries(text), [0, 1, 3, 5, 6, 8])
+        XCTAssertEqual((0...text.utf16.count).filter { isCRLFControlBoundary($0, in: Array(text.utf16)) }, [2, 4, 7])
+        for offset in [2, 4, 7] { XCTAssertTrue(permitsLineBoundary(offset, text: text)) }
+        for text in ["a\u{0301}", "🎬", "👩🏽‍💻", "👨‍👩‍👧‍👦", "✈️", "🇯🇵"] {
+            for offset in 1..<text.utf16.count {
+                XCTAssertFalse(permitsLineBoundary(offset, text: text), "Painting cluster must stay indivisible: \(String(reflecting: text)) utf16=\(Array(text.utf16)) offset=\(offset)")
+            }
+        }
+        for control in ["\r", "\n", "\r\n", "\r\n\r\n"] {
+            let bounds = CGSize(width: 120.25, height: 150.5)
+            let layout = try MacPhotoTextLayout.make(control, rect: CGRect(origin: .zero, size: bounds))
+            let image = try MacPhotoTextRaster.make(layout, bounds: bounds, padding: 8)
+            XCTAssertTrue(try MacPhotoTextRaster.inkPixelBounds(image).isNull,
+                          "Allowed controls must paint no pixels: utf16=\(Array(control.utf16))")
+        }
+        XCTAssertFalse(permitsLineBoundary(-1, text: "\r\n"))
+        XCTAssertFalse(permitsLineBoundary(3, text: "\r\n"))
+        XCTAssertFalse(isCRLFControlBoundary(1, in: Array("\n\r".utf16)))
+    }
+
     func testUnicodeCoveragePreservesClustersWhitespaceAndRejectsOverflow() throws {
+        try assertLineBoundaryExceptionIsOnlyTheInteriorOfCRLFControls()
         for (text, bounds) in fittingCases {
             let layout = try MacPhotoTextLayout.make(text, rect: CGRect(origin: .zero, size: bounds))
             try assertUnchangedShapedRuns(layout, bounds: bounds, padding: 0)
@@ -342,15 +421,23 @@ final class MacPhotoRendererTests: XCTestCase {
             let (ranges, _) = frameLines(layout)
             XCTAssertEqual(layout.typographicHeight, CGFloat(ranges.count) * layout.lineHeight)
             XCTAssertLessThanOrEqual(layout.typographicHeight, bounds.height)
-            var boundaries: Set<Int> = [0], count = 0
-            for character in text { count += String(character).utf16.count; boundaries.insert(count) }
+            let units = Array(text.utf16), boundaries = characterBoundaries(text)
+            let diagnostic = "text=\(String(reflecting: text)) utf16=\(units) ranges=\(ranges) characterBoundaries=\(boundaries.sorted())"
             var next = 0, replay = ""
             for range in ranges {
-                XCTAssertEqual(range.location, next)
-                XCTAssertTrue(boundaries.contains(range.location)); XCTAssertTrue(boundaries.contains(NSMaxRange(range)), "A line must not split a combining/emoji/ZWJ cluster")
+                let detail = "\(diagnostic) range=\(range)"
+                XCTAssertEqual(range.location, next, detail)
+                for offset in [range.location, NSMaxRange(range)] {
+                    // Swift treats CRLF as one Character. CoreText may report
+                    // separate nonpainting control spans; this is not a split
+                    // of a combining/emoji/ZWJ glyph cluster. Do not edit ranges.
+                    let controlBoundary = isCRLFControlBoundary(offset, in: units)
+                    XCTAssertTrue(boundaries.contains(offset) || controlBoundary,
+                                  "Line split a painting cluster: \(detail) offset=\(offset)")
+                }
                 replay += (text as NSString).substring(with: range); next = NSMaxRange(range)
             }
-            XCTAssertEqual(next, text.utf16.count); XCTAssertEqual(replay, text)
+            XCTAssertEqual(next, text.utf16.count, diagnostic); XCTAssertEqual(replay, text, diagnostic)
         }
         XCTAssertThrowsError(try MacPhotoTextLayout.make(String(repeating: "👩🏽‍💻 文 ", count: 100), rect: CGRect(x: 0, y: 0, width: 1, height: 1)))
     }
@@ -550,7 +637,7 @@ final class MacPhotoRendererTests: XCTestCase {
     private func observeGlyphBaselines(text: String, rect: CGRect, sourcePNG: Data,
                                        actualComposite: CGImage, oracle: CGImage) throws {
         let layout = try MacPhotoTextLayout.make(text, rect: rect)
-        let replay = try MacPhotoTextRaster.make(layout, bounds: rect.size)
+        let replay = try MacPhotoTextRaster.makeBacking(layout, bounds: rect.size).image
         let lines = CTFrameGetLines(layout.frame) as! [CTLine]
         var origins = [CGPoint](repeating: .zero, count: lines.count)
         CTFrameGetLineOrigins(layout.frame, CFRange(location: 0, length: 0), &origins)

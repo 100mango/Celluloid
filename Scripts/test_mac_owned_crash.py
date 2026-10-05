@@ -116,6 +116,117 @@ class OwnedCrashTests(unittest.TestCase):
         for path in [EXE.replace('/Users/runner/work/_temp','/Users/USER/*'),EXE.replace('/work/','/WORK/'),EXE+'/',EXE.replace('/runner/','/USER2/')]:
             with self.subTest(path=path):self.assertFalse(crash.same_path(path,EXE))
 
+    def test_rejected_path_metadata_requires_exact_identity_incident_and_window(self):
+        m,b=report();b['procPath']=EXE.replace('/Users/runner/work/_temp','/Users/USER/*')
+        with self.assertRaises(crash.OwnedCandidatePathMismatch) as caught:crash.projection(encoded(m,b),BINDING,WINDOW)
+        observed=caught.exception.observation
+        self.assertFalse(observed['acceptance']);self.assertFalse(observed['path_match'])
+        self.assertEqual(observed['observed_procPath'],b['procPath']);self.assertEqual(observed['expected_procPath'],EXE)
+        self.assertNotIn('diagnostic',observed);self.assertNotIn('threads',observed)
+        for change in [lambda m,b:m.update(slice_uuid=DEBUG_UUID),lambda m,b:b.update(incident=MAIN_UUID),
+                       lambda m,b:b['bundleInfo'].update(CFBundleIdentifier='other'),
+                       lambda m,b:b.update(procName='other'),lambda m,b:b.update(captureTime='2026-10-05 07:20:00.000 +0000'),
+                       lambda m,b:b.update(procLaunch='2026-10-05 07:00:00.000 +0000'),lambda m,b:b.update(pid=True),
+                       lambda m,b:b.update(procPath='/'+'x'*2048),lambda m,b:b.update(procPath='/bad\npath'),
+                       lambda m,b:b.update(procPath=[]),lambda m,b:b.update(procPath='relative/path')]:
+            metadata,body=copy.deepcopy(m),copy.deepcopy(b);change(metadata,body)
+            try:crash.projection(encoded(metadata,body),BINDING,WINDOW)
+            except crash.OwnedCandidatePathMismatch:self.fail('Unqualified/malformed candidate leaked path observation')
+            except (ValueError,TypeError,KeyError):pass
+            else:self.fail('Malformed candidate accepted')
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder).resolve();(root/f'{crash.NAME}-owned.ips').write_bytes(encoded(m,b))
+            row=crash.collect_reports(root,BINDING,WINDOW)
+            self.assertEqual(row['matched_count'],0);self.assertEqual(row['incidents'],[])
+            self.assertEqual(row['state'],'incomplete-rejected-candidates')
+            self.assertEqual(row['rejected'][0]['owned_path_mismatch'],observed)
+
+    def rejected_detail(self,metadata,body):
+        body['procPath']=EXE.replace('/Users/runner/work/_temp','/Users/USER/*')
+        with self.assertRaises(crash.OwnedCandidatePathMismatch) as caught:
+            crash.projection(encoded(metadata,body),BINDING,WINDOW)
+        return caught.exception.observation
+
+    def test_uuid_bound_path_unverified_projection_retains_cause_but_stays_rejected(self):
+        metadata,body=report();body['asi']={'CelluloidMacPhotosExtension':['Synthetic fatal assertion']}
+        for image in body['usedImages']:
+            if image['path'].startswith('/Users/runner/'):
+                image['path']=image['path'].replace('/Users/runner/work/_temp','/Users/USER/*')
+        body['usedImages'].append({'uuid':'55555555-5555-4555-8555-555555555555','path':'/unrelated/private-marker'})
+        observation=self.rejected_detail(metadata,body);detail=observation['uuid_bound_diagnostic']
+        self.assertEqual(observation['schema'],'Celluloid.OwnedPathMismatch.2')
+        self.assertEqual(detail['schema'],'Celluloid.UUIDBoundPathUnverifiedCrash.1')
+        self.assertFalse(detail['acceptance']);self.assertFalse(detail['executable_path_verified'])
+        self.assertEqual(detail['diagnostic']['exception']['signal'],'SIGABRT')
+        self.assertEqual(detail['application_specific'],body['asi'])
+        self.assertEqual(detail['uuid_bound_image_path_matches'],{'executable':False,'debug_dylib':False})
+        self.assertEqual(detail['uuid_bound_image_indexes'],{'executable':1,'debug_dylib':2})
+        self.assertTrue(detail['uuid_bound_debug_dylib_loaded'])
+        raw=json.dumps(observation)
+        for forbidden in ['private-device-marker','unrelated-thread-state','unrelated-trial-marker','noncrashed-private-marker','/unrelated/private-marker','owned_image_indexes','"debug_dylib_loaded"']:
+            self.assertNotIn(forbidden,raw)
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder).resolve();(root/f'{crash.NAME}-owned.ips').write_bytes(encoded(metadata,body))
+            result=crash.collect_reports(root,BINDING,WINDOW)
+            self.assertEqual(result['matched_count'],0);self.assertEqual(result['incidents'],[])
+            self.assertEqual(result['state'],'incomplete-rejected-candidates')
+            self.assertEqual(result['rejected'][0]['owned_path_mismatch'],observation)
+        # The same redacted loaded-image paths are still rejected if the process
+        # path passes: diagnostics cannot broaden the accepted projection path.
+        body['procPath']=EXE
+        with self.assertRaisesRegex(ValueError,'Conflicting/duplicate owned image'):
+            crash.projection(encoded(metadata,body),BINDING,WINDOW)
+
+    def test_unverified_loader_diagnostic_does_not_require_debug_dylib_presence(self):
+        metadata,body=report();body['usedImages']=[];body['threads']=[];body.pop('faultingThread')
+        body['termination']={'namespace':'DYLD','code':1,'indicator':'Library missing'}
+        detail=self.rejected_detail(metadata,body)['uuid_bound_diagnostic']
+        self.assertEqual(detail['diagnostic']['termination']['namespace'],'DYLD')
+        self.assertEqual(detail['images'],[]);self.assertFalse(detail['uuid_bound_debug_dylib_loaded'])
+
+    def test_unverified_projection_keeps_all_uuid_type_frame_image_and_payload_caps(self):
+        changes=[lambda b:b['usedImages'][1].update(uuid=DEBUG_UUID),
+                 lambda b:b['usedImages'][2].update(uuid=MAIN_UUID),
+                 lambda b:b['usedImages'][1].update(path='/bad\npath'),
+                 lambda b:b['usedImages'][1].update(path='/'+'x'*2048),
+                 lambda b:b['usedImages'].append(dict(b['usedImages'][1])),
+                 lambda b:b['threads'][1]['frames'][0].update(imageIndex=99),
+                 lambda b:b['threads'][1]['frames'][0].update(imageIndex=True),
+                 lambda b:b['threads'][1].update(frames=[{'imageIndex':0,'imageOffset':0}]*129),
+                 lambda b:b.update(faultingThread=0),lambda b:b.update(usedImages=[{}]*1025),
+                 lambda b:b.update(threads=[{}]*257),lambda b:b.update(reportNotes=['x']*17),
+                 lambda b:b.update(asi={'module':['x'*4097]}),lambda b:b.update(asi={'module':['x']*9}),
+                 lambda b:b.update(asi={str(i):[] for i in range(9)}),
+                 lambda b:b.update(exception={'message':{'unexpected':'object'}},termination={})]
+        for change in changes:
+            metadata,body=report();change(body)
+            with self.subTest(change=changes.index(change)):
+                observation=self.rejected_detail(metadata,body)
+                self.assertNotIn('uuid_bound_diagnostic',observation)
+                self.assertTrue(observation['projection_error']);self.assertFalse(observation['acceptance'])
+
+    def test_unverified_and_accepted_incidents_share_count_duplicate_and_output_caps(self):
+        for count,expected in [(4,None),(5,'incident count cap')]:
+            with tempfile.TemporaryDirectory() as folder:
+                root=self.populate(folder,count)
+                for index,path in enumerate(sorted(root.iterdir())):
+                    if index%2:
+                        first,second=path.read_text().split('\n',1);metadata=json.loads(first);body=json.loads(second)
+                        body['procPath']=EXE.replace('/Users/runner/work/_temp','/Users/USER/*');path.write_bytes(encoded(metadata,body))
+                if expected:
+                    with self.assertRaisesRegex(ValueError,expected):crash.collect_reports(root,BINDING,WINDOW)
+                else:
+                    result=crash.collect_reports(root,BINDING,WINDOW)
+                    self.assertEqual(result['matched_count'],2);self.assertEqual(len(result['rejected']),2)
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder).resolve();metadata,body=report();body['procPath']=EXE+'/other'
+            for index in range(2):(root/f'{crash.NAME}-{index}.ips').write_bytes(encoded(metadata,body))
+            with self.assertRaisesRegex(ValueError,'Duplicate incident'):crash.collect_reports(root,BINDING,WINDOW)
+        with tempfile.TemporaryDirectory() as folder,mock.patch.object(crash,'MAX_OUTPUT',8200):
+            root=Path(folder).resolve();metadata,body=report();body['procPath']=EXE+'/other'
+            (root/f'{crash.NAME}-owned.ips').write_bytes(encoded(metadata,body))
+            with self.assertRaisesRegex(ValueError,'Projection byte cap'):crash.collect_reports(root,BINDING,WINDOW)
+
     def test_projection_drops_unrelated_fields_and_remaps_only_needed_images(self):
         m,b=report();b['usedImages'].insert(0,{'uuid':'55555555-5555-4555-8555-555555555555','path':'/unrelated/private-marker'})
         for thread in b['threads']:

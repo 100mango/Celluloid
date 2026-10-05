@@ -15,6 +15,7 @@ import sys
 import tempfile
 import unittest
 import re
+from validation_route import FULL as FULL_ROUTE, FOCUSED as FOCUSED_ROUTE
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('gate', ROOT / 'Scripts/mac_photos_host_gate.py')
@@ -351,7 +352,7 @@ class MacPhotosHostGateTests(unittest.TestCase):
 
     def test_collection_stays_bounded_and_excludes_raw_payloads(self):
         with tempfile.TemporaryDirectory() as folder, mock.patch.dict(os.environ, {'RUNNER_TEMP': folder, 'GITHUB_SHA': 'a'*40}):
-            root = Path(folder); gate.write(root/'mac-host-acceptance.json', {'host_entry_contract':gate.HOST_CONTRACT,'source_sha':'a'*40,'prerequisite_accepted':False,'complete_host_e2e':False,'error':'AssertionError: discovery failed'}); observed = root / 'mac-host-observed'; observed.mkdir()
+            root = Path(folder); gate.write(root/'mac-host-acceptance.json', {'validation_route':dict(FULL_ROUTE),'host_entry_contract':gate.HOST_CONTRACT,'source_sha':'a'*40,'prerequisite_accepted':False,'complete_host_e2e':False,'error':'AssertionError: discovery failed'}); observed = root / 'mac-host-observed'; observed.mkdir()
             (observed / 'extensions.jpg').write_bytes(b'a' * 600_000)
             (observed / 'last-observed.jpg').write_bytes(b'b' * 600_000)
             for index in range(22): (observed / f'phase-{index:02d}.txt').write_bytes(b'x' * 140_000)
@@ -468,7 +469,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
         app = str(root / 'Applications/CelluloidHost-test.app')
         extension = app + '/Contents/PlugIns/CelluloidMacPhotosExtension.appex'
         executable = extension + '/Contents/MacOS/CelluloidMacPhotosExtension'
-        context = {'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'base_sha': gate.BASE, 'app_path': app,
+        context = {'validation_route':dict(FULL_ROUTE),'runner_environment':{'GITHUB_REF':'refs/heads/codex/apple-platforms'},'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'base_sha': gate.BASE, 'app_path': app,
                    'extension_path': extension, 'extension_executable': executable,
                    'app_id': gate.APP_ID, 'extension_id': gate.EXT_ID, 'complete_host_e2e': False,
                    'script_sha256': gate.sha(gate.__file__), 'test_source_sha256': gate.sha(ROOT/'Platforms/UITests/MacPhotosHostUITests.swift'),
@@ -479,9 +480,9 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
                    'testFailures': [], 'devicesAndConfigurations': [
                        {'passedTests': 1, 'failedTests': 0, 'skippedTests': 0, 'expectedFailures': 0,
                         'device': {'platform': 'macOS', 'osVersion': '27.0'}}]}
-        source = {'source_sha': self.SOURCE, 'base_sha': gate.BASE, 'base_tree': gate.BASE_TREE,
+        source = {'validation_route':dict(FULL_ROUTE),'source_sha': self.SOURCE, 'base_sha': gate.BASE, 'base_tree': gate.BASE_TREE,
                   'unchanged_bound_files': gate.UNCHANGED_BASE_FILES, 'reviewed_diagnostic_test_files': gate.REVIEWED_TEST_FILES, 'reviewed_candidate_files': gate.REVIEWED_CANDIDATE_FILES, 'complete_host_e2e': False, 'tree': 'b' * 40,
-                  'workflow_sha256': 'c' * 64}
+                  'workflow_sha256': gate.sha(ROOT/'.github/workflows/apple-platforms.yml')}
         clock={'source_sha':self.SOURCE,'started_monotonic':100.0,'started_unix':10000.0,'execution_budget_seconds':gate.JOB_EXECUTION_SECONDS}
         gate.write(root/'mac-job-clock.json',clock)
         checks=[{'phase':phase,'observed_monotonic':now,'deadline_monotonic':2560.0,'remaining_seconds':2560.0-now,'required_seconds':1020,'admitted':True} for phase,now in [('before-prepare',101.0),('before-host',110.0)]]
@@ -861,7 +862,7 @@ class CollectedProofTests(SyntheticHostFixtureCase):
             (root/'mac-host-observed').mkdir()
             gate.write(root/'mac-host-source-before.json',{'source_sha':self.SOURCE,'observed':'source-bound diagnostic'})
             gate.write(root/'mac-host-observed/outcome.json',{'source_sha':self.SOURCE,'last_stage':'discovery failed'})
-            status={'host_entry_contract':gate.HOST_CONTRACT,'source_sha':self.SOURCE,'prerequisite_accepted':False,'complete_host_e2e':False,'error':'AssertionError: extension not registered'}
+            status={'validation_route':dict(FULL_ROUTE),'host_entry_contract':gate.HOST_CONTRACT,'source_sha':self.SOURCE,'prerequisite_accepted':False,'complete_host_e2e':False,'error':'AssertionError: extension not registered'}
         gate.write(root/'mac-host-acceptance.json',status)
     def collect(self,root):
         with mock.patch.dict(os.environ,RUNNER_TEMP=str(root),GITHUB_SHA=self.SOURCE):gate.collect()
@@ -988,7 +989,7 @@ class CollectedProofTests(SyntheticHostFixtureCase):
             with self.assertRaisesRegex(AssertionError,'reserved host allocation'):self.collect(root)
     def test_missing_diagnostic_failure_or_oversized_available_proof_rejects(self):
         for mutate in [lambda r:(r/'mac-host-acceptance.json').unlink(),
-                       lambda r:gate.write(r/'mac-host-acceptance.json',{'host_entry_contract':gate.HOST_CONTRACT,'source_sha':self.SOURCE,'prerequisite_accepted':False,'complete_host_e2e':False,'error':''}),
+                       lambda r:gate.write(r/'mac-host-acceptance.json',{'validation_route':dict(FULL_ROUTE),'host_entry_contract':gate.HOST_CONTRACT,'source_sha':self.SOURCE,'prerequisite_accepted':False,'complete_host_e2e':False,'error':''}),
                        lambda r:(r/'mac-host-source-before.json').write_bytes(b' '*160_001)]:
             with tempfile.TemporaryDirectory() as tmp:
                 root=Path(tmp);self.packet(root,False);mutate(root)

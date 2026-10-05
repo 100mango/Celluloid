@@ -115,6 +115,17 @@ def test_window(log,summary,context,context_hash):
     check(len(suites)==1 and abs(timestamp(suites[0]+' '+next(iter(offsets)))-case_end)<=0.01,'Actual host suite terminal contradicts duration')
     return {'start':case_start,'end':case_end,'result':terminal[1],'test_log_sha256':digest(log.encode())}
 
+class OwnedCandidatePathMismatch(ValueError):
+    def __init__(self,body,binding,incident):
+        observed=text(body.get('procPath'),2048);expected=text(binding['expected_executable'],2048)
+        check(observed.startswith('/') and not any(ord(c)<32 or ord(c)==127 for c in observed),'Malformed observed executable path')
+        self.observation={'schema':'Celluloid.OwnedPathMismatch.2','acceptance':False,'path_match':False,
+            'identity_and_window_validated':True,'incident':incident,'executable_uuid':binding['executable_uuid'],
+            'extension_id':EXT_ID,'observed_procPath':observed,'expected_procPath':expected,
+            'captureTime':body['captureTime'],'procLaunch':body.get('procLaunch'),
+            'comparison_reason':'Neither exact expected path nor sole /Users/<runner>/ to /Users/USER/ substitution'}
+        super().__init__('Wrong executable path')
+
 def projection(raw,binding,window):
     check(0<len(raw)<=MAX_INPUT,'IPS input cap')
     first,rest=raw.decode('utf8',errors='strict').split('\n',1)
@@ -126,10 +137,26 @@ def projection(raw,binding,window):
     check(metadata.get('app_name')==body.get('procName')==NAME,'Wrong process name')
     incident=uuid(metadata.get('incident_id'));check(uuid(body.get('incident'))==incident,'Conflicting incident identity')
     check(uuid(metadata.get('slice_uuid'))==binding['executable_uuid'],'Wrong executable UUID')
-    check(same_path(body.get('procPath'),binding['expected_executable']),'Wrong executable path')
     captured=timestamp(body.get('captureTime'));check(window['start']<=captured<=window['end'],'Incident outside host-test window')
     if 'procLaunch' in body:check(window['start']<=timestamp(body['procLaunch'])<=captured,'Process launched outside host-test window')
     check(integer(body.get('pid')) and body['pid']>0,'Invalid process PID')
+    if not same_path(body.get('procPath'),binding['expected_executable']):
+        mismatch=OwnedCandidatePathMismatch(body,binding,incident)
+        try:
+            detail=_project_details(raw,body,binding,incident,captured,verified_path=False)
+            # This is rejected evidence. UUID attribution does not establish its
+            # executable path or satisfy any host/product acceptance predicate.
+            detail.update(schema='Celluloid.UUIDBoundPathUnverifiedCrash.1',acceptance=False,
+                executable_path_verified=False,attribution='Exact built UUID, bundle/process, incident and test window; executable path unverified')
+            mismatch.observation['uuid_bound_diagnostic']=detail
+        except (ValueError,KeyError,TypeError,UnicodeError,RecursionError) as error:
+            mismatch.observation['projection_error']=text(str(error),256)
+        raise mismatch
+    return _project_details(raw,body,binding,incident,captured,verified_path=True)
+
+def _project_details(raw,body,binding,incident,captured,*,verified_path):
+    # Caller alone establishes the exact product/incident/window binding. This
+    # shared bounded projection never grants acceptance or reads reported paths.
     images=body.get('usedImages',[]);threads=body.get('threads',[])
     check(type(images) is list and len(images)<=1024 and all(type(i) is dict for i in images),'Malformed image table')
     check(type(threads) is list and len(threads)<=256 and all(type(t) is dict for t in threads),'Malformed thread table')
@@ -139,15 +166,17 @@ def projection(raw,binding,window):
     if fault is not None:
         check(integer(fault) and fault<len(threads) and (not triggered or triggered==[fault]),'Invalid/contradictory faulting thread')
         triggered=[fault]
-    selected=set();owned={};seen_owned=set()
+    selected=set();owned={};seen_owned=set();image_path_matches={}
     for i,img in enumerate(images):
         for key,path_key,uuid_key in [('executable','expected_executable','executable_uuid'),('debug_dylib','expected_debug_dylib','debug_dylib_uuid')]:
             path=img.get('path');matches=type(path) is str and same_path(path,binding[path_key])
             named=img.get('name')==Path(binding[path_key]).name
             identified=type(img.get('uuid')) is str and img['uuid'].lower()==binding[uuid_key]
             if matches or named or identified:
-                check(matches and uuid(img.get('uuid'))==binding[uuid_key] and key not in seen_owned,'Conflicting/duplicate owned image')
-                seen_owned.add(key);owned[key]=i;selected.add(i)
+                check((matches or not verified_path) and uuid(img.get('uuid'))==binding[uuid_key] and key not in seen_owned,'Conflicting/duplicate owned image')
+                if not matches:
+                    text(path,2048);check(path.startswith('/') and not any(ord(c)<32 or ord(c)==127 for c in path),'Malformed UUID-bound image path')
+                seen_owned.add(key);owned[key]=i;selected.add(i);image_path_matches[key]=matches
     def frames(value):
         check(type(value) is list and len(value)<=MAX_FRAMES,'Backtrace frame cap/type')
         out=[]
@@ -199,12 +228,17 @@ def projection(raw,binding,window):
         application_specific[module]=[text(message,4096) for message in messages]
     check(len(encode(application_specific))<=16*1024,'Application-specific total byte cap')
     notes=body.get('reportNotes',[]);check(type(notes) is list and len(notes)<=16,'Report notes cap')
-    return {'incident':incident,'input_sha256':digest(raw),'input_bytes':len(raw),'procPath':body['procPath'],
+    result={'incident':incident,'input_sha256':digest(raw),'input_bytes':len(raw),'procPath':body['procPath'],
         'pid':body['pid'],'captureTime':body['captureTime'],'captured_unix':captured,
         'executable_uuid':binding['executable_uuid'],'debug_dylib_loaded':'debug_dylib' in owned,
         'owned_image_indexes':{k:remap[v] for k,v in owned.items()},'diagnostic':detail,
         'crashed_threads':crashed,'last_exception_backtrace':last,'images':projected_images,
         'report_notes':[text(note,2048) for note in notes],'application_specific':application_specific}
+    if not verified_path:
+        result['uuid_bound_image_indexes']=result.pop('owned_image_indexes')
+        result['uuid_bound_image_path_matches']=image_path_matches
+        result['uuid_bound_debug_dylib_loaded']=result.pop('debug_dylib_loaded')
+    return result
 
 def collect_reports(directory,binding,window):
     directory=Path(directory)
@@ -224,12 +258,17 @@ def collect_reports(directory,binding,window):
         remaining=MAX_TOTAL_INPUT-read;check(remaining>0,'Aggregate input cap before read')
         raw=safe_read(path,min(MAX_INPUT,remaining));read+=len(raw)
         try:row=projection(raw,binding,window)
+        except OwnedCandidatePathMismatch as error:
+            incident=error.observation['incident'];check(incident not in seen,'Duplicate incident ID');seen.add(incident)
+            check(len(seen)<=MAX_INCIDENTS,'Identity-bound incident count cap')
+            rejected.append({'name':path.name,'bytes':len(raw),'sha256':digest(raw),'error':str(error),
+                'owned_path_mismatch':error.observation});continue
         except (ValueError,KeyError,TypeError,UnicodeError,RecursionError) as error:
             # Never publish unrelated/raw content or trust a reported filesystem
             # path. The fixed-prefix filename/hash/error is sufficient here.
             rejected.append({'name':path.name,'bytes':len(raw),'sha256':digest(raw),'error':text(str(error),256)});continue
         check(row['incident'] not in seen,'Duplicate incident ID');seen.add(row['incident']);incidents.append(row)
-        check(len(incidents)<=MAX_INCIDENTS,'Matching incident count cap')
+        check(len(seen)<=MAX_INCIDENTS,'Matching incident count cap')
     result={'state':'complete' if not rejected else 'incomplete-rejected-candidates','candidate_count':len(candidates),
         'matched_count':len(incidents),'incidents':incidents,'rejected':rejected}
     check(len(encode(result))<=MAX_OUTPUT-8192,'Projection byte cap')

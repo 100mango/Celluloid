@@ -348,3 +348,52 @@ an exhausted allowance fails before the next read. Oversized next files fail at
 stat before any payload bytes are read. Rejected candidates consume the same read
 budget. A five-full-file adversary measures actual reads and proves they stop at
 2MiB rather than reading the fifth file and checking afterward.
+
+## Owned path mismatch observation and focused repair route
+
+Run [37291109686](https://github.com/100mango/Celluloid/actions/runs/37291109686)
+at `7868de58e41e4d0632befaec1a163d868b508a95` reached the real Photos extension
+again. The owned collector completed, but its sole20,648-byte IPS candidate was
+rejected as `Wrong executable path`. No stack or actual rejected path survived,
+so the crash cause and the path's redaction form remain unknown.
+
+The unchanged matcher still accepts only the exact expected path or the sole
+runner-username→`USER` substitution. A bounded mismatch observation is retained
+only after exact built UUID, bundle/process, incident and actual capture/launch
+window checks pass. It contains observed/expected paths and a fixed comparison
+reason. Malformed, nonabsolute, control-character or oversized process paths
+are rejected without that observation. `Celluloid.OwnedPathMismatch.2` may also
+retain a separate `Celluloid.UUIDBoundPathUnverifiedCrash.1` diagnostic: the same
+bounded exception, termination, crashed-thread/last-exception frames, necessary
+images and application-specific messages, with `acceptance: false` and
+`executable_path_verified: false`. Exact UUIDs remain mandatory for any image
+identified as the built executable or debug dylib, and each image's path-match
+result stays explicit. The debug dylib need not be present. Contradictory UUIDs,
+malformed data or exceeded frame/image/message limits omit this subprojection
+with a bounded error; they never yield a partial truncated stack.
+
+These incidents remain only in `rejected`, never `incidents` or `matched_count`.
+Accepted and UUID-bound rejected incidents share the existing four-incident cap,
+and the unchanged aggregate input/output/time/artifact caps still apply. No
+reported path is opened. This diagnostic neither establishes the executable path
+nor authorizes broader path matching, filesystem access or host acceptance.
+
+The separate push-only `mac-repair.yml` route uses `codex/mac-repair` and shares
+the canonical workflow's concurrency group. The canonical `apple-platforms.yml`
+remains byte-identical. Three serial jobs retain portable/all-platform compile
+preflight, all39 native Mac cases, and the original real Photos sequence and
+source/product/cleanup/evidence guards. This diagnostic route defers the standalone `Native Mac UI launch and editing`
+flow and the `External sandbox document UI and container runtime` flow, in
+addition to early UIKit continuation and later simulator/UIKit/archive jobs.
+The separate Photos job retains its own sandbox seed and product prerequisites.
+These omitted Mac UI flows still require the canonical full run; this route is
+not full Mac qualification. There is no release qualification, distribution
+signing or upload.
+
+Focused execution must match the exact repository, branch, workflow ref, source
+SHA and explicit `mac-repair` scope. Source, context and collected host receipts
+bind the actual selected workflow hash and a fixed `diagnostic_only: true` route.
+Mismatched/missing/relabelled route metadata rejects; a focused prerequisite can
+never supply full-E2E or full-release evidence. Existing45/41/14-minute host caps,
+720/660-second process/test limits, one-day artifacts and per-platform byte caps
+are unchanged. A later canonical full run is still required for complete testing.
