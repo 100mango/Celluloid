@@ -52,7 +52,7 @@ class DiagnosticRouteTests(unittest.TestCase):
         self.assertEqual(source.count('timeout-minutes: 45'),1)
         self.assertEqual(source.count('timeout-minutes: 20'),1)
         self.assertEqual(source.count('retention-days: 1'),1)
-        self.assertIn('fetch-depth: 2',source)
+        self.assertIn('fetch-depth: 3',source)
         self.assertIn('ref: ${{ github.sha }}',source)
         self.assertIn("'execution_budget_seconds':41*60",source)
         self.assertIn('CELLULOID_EVIDENCE_PLATFORM: mac',source)
@@ -97,13 +97,16 @@ class QualifiedSourceTests(unittest.TestCase):
         self.root=Path(self.directory.name)
         self.git('init','-q');self.git('config','user.name','Local Diagnostic Test');self.git('config','user.email','local@example.invalid')
         for path in ['Celluloid/product.swift','CelluloidTests/consumer.swift','controls.json',route.FULL['workflow_path'],route.FOCUSED['workflow_path']]:self.write(path,'protected original\n')
-        for path in ['Scripts/validation_route.py','Scripts/verify_combined_source.py']:self.write(path,'original driver\n')
+        for path in ['Scripts/validation_route.py','Scripts/verify_combined_source.py',*route.PARSER_REPAIR_PATHS]:self.write(path,'original source\n')
         self.commit('base');self.base=self.git('rev-parse','HEAD');self.tree=self.git('rev-parse','HEAD^{tree}')
-        for path in route.DRIVER_ONLY_PATHS:self.write(path,'new admitted driver '+path+'\n')
+        for path in route.ORIGINAL_DRIVER_PATHS:self.write(path,'first admitted driver '+path+'\n')
+        self.commit('previous driver');self.previous=self.git('rev-parse','HEAD');self.previous_tree=self.git('rev-parse','HEAD^{tree}')
+        for path in route.SUCCESSOR_PATHS:self.write(path,'exact parser successor '+path+'\n')
         self.commit('driver');self.driver=self.git('rev-parse','HEAD')
         self.addCleanup(patch.stopall)
         # Synthetic repository identities for local mutation testing only.
         patch.object(route,'QUALIFIED_SOURCE_SHA',self.base).start();patch.object(route,'QUALIFIED_SOURCE_TREE',self.tree).start()
+        patch.object(route,'PREVIOUS_DRIVER_SHA',self.previous).start();patch.object(route,'PREVIOUS_DRIVER_TREE',self.previous_tree).start()
     def git(self,*args):return subprocess.check_output(['git',*args],cwd=self.root,text=True,stderr=subprocess.PIPE,timeout=10).strip()
     def write(self,path,value):
         target=self.root/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_text(value)
@@ -115,6 +118,9 @@ class QualifiedSourceTests(unittest.TestCase):
         result=self.verify()
         self.assertEqual(result['driver_commit'],self.driver);self.assertEqual(result['qualified_source_commit'],self.base)
         self.assertNotEqual(result['driver_commit'],result['qualified_source_commit'])
+        self.assertEqual(result['previous_driver_commit'],self.previous)
+        self.assertEqual(result['previous_driver_tree'],self.previous_tree)
+        self.assertEqual(set(result['repair_files']),route.SUCCESSOR_PATHS)
         self.assertEqual(result['qualified_source_tree'],self.tree)
         self.assertEqual({row['path'] for row in result['driver_files']},route.DRIVER_ONLY_PATHS)
         self.assertFalse(result['full_release_accepted']);self.assertTrue(result['diagnostic_only'])
@@ -122,6 +128,18 @@ class QualifiedSourceTests(unittest.TestCase):
     def test_wrong_driver_or_qualified_tree_rejects(self):
         with self.assertRaisesRegex(ValueError,'driver checkout'):route.qualified_uikit_source(self.root,self.base)
         with patch.object(route,'QUALIFIED_SOURCE_TREE','b'*40),self.assertRaisesRegex(ValueError,'tree changed'):self.verify()
+
+    def test_wrong_previous_tree_or_parent_rejects(self):
+        with patch.object(route,'PREVIOUS_DRIVER_TREE','b'*40),self.assertRaisesRegex(ValueError,'driver tree changed'):self.verify()
+        with patch.object(route,'QUALIFIED_SOURCE_SHA',self.previous),self.assertRaisesRegex(ValueError,'sole qualified8470 parent'):self.verify()
+
+    def test_previous_only_unchanged_file_cannot_change_in_successor(self):
+        self.write('Scripts/verify_combined_source.py','unadmitted successor change\n');self.amend()
+        with self.assertRaisesRegex(ValueError,'five-file parser successor'):self.verify()
+
+    def test_missing_parser_successor_delta_rejects(self):
+        self.git('checkout',self.previous,'--','Scripts/consumer_runtime_binding.py');self.amend()
+        with self.assertRaisesRegex(ValueError,'outside'):self.verify()
 
     def test_fake8470_execution_identity_rejects(self):
         with self.assertRaisesRegex(ValueError,'driver checkout'):route.qualified_uikit_source(self.root,self.base)

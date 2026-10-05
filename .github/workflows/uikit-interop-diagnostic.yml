@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
           # Direct successor only: retains exact8470 parent for full-tree binding.
-          fetch-depth: 2
+          fetch-depth: 3
       - name: Verify exact diagnostic driver and qualified8470 bytes
         timeout-minutes: 4
         shell: bash
