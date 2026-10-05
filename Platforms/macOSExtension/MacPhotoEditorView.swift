@@ -5,6 +5,9 @@ import CelluloidRendering
 
 struct MacPhotoEditorView: View {
     @ObservedObject var session: MacPhotoSession
+#if DEBUG
+    @ObservedObject var selfIdentity: MacPhotoSelfIdentity
+#endif
     @State private var palette: MacPhotoLayer.Kind?
     var body: some View {
         HStack(spacing: 16) {
@@ -65,6 +68,11 @@ struct MacPhotoEditorView: View {
             }.frame(width: 285)
             .accessibilityElement(children: .contain).accessibilityLabel("Photo editing controls")
         }.padding(16).frame(minWidth: 640, minHeight: 440)
+#if DEBUG
+        .overlay(alignment: .topLeading) {
+            MacPhotoSelfIdentityAccessibility(identity: selfIdentity, session: session).frame(width: 1, height: 1)
+        }
+#endif
         .accessibilityElement(children: .contain).accessibilityLabel("Celluloid photo editor")
     }
     private func title(_ layer: MacPhotoLayer) -> String {

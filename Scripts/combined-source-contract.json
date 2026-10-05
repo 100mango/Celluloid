@@ -2,7 +2,7 @@
   "schema": "Celluloid.CombinedSource.1",
   "native_base": "59fca5a8dda30d497715b592966c02310606d743",
   "uikit_base": "c5875ee7586611c28879b5030e5e575a9f33fcbd",
-  "reviewed_source_tree": "8547ed8f49ce747494cc1f0df7b2c8f8449e7496",
+  "reviewed_source_tree": "d90f5fcd7a6c00f64f1f6e9d5c639b8d980320b0",
   "roots": [
     "Celluloid",
     "CelluloidKit",
@@ -1294,7 +1294,7 @@
     ],
     [
       "CelluloidNative.xcodeproj/project.pbxproj",
-      "d69694f9927eb503923b70bf196c6077c2e1c935a2f9ffa7a13c0095c2fa3f8f"
+      "27fbd29403792404a67788bd885a7a9bdcf0376b803835976fea56c9a8764d52"
     ],
     [
       "CelluloidNative.xcodeproj/xcshareddata/xcschemes/CelluloidMac.xcscheme",
@@ -1781,6 +1781,10 @@
       "3243e62132d267fde38c9da3f92c92d9fa0bab55a8a9fff08650470bc84caa1a"
     ],
     [
+      "Platforms/MacExtensionTests/MacPhotoSelfIdentityTests.swift",
+      "7e40754c60732d5b67053b370793b49a2b773f98065b71f4bf16efe45ad57714"
+    ],
+    [
       "Platforms/MacExtensionTests/MacPhotoSessionTests.swift",
       "062efc61776730967b2656f3cee17d9764ed731ed62c637de77e08229bf25a03"
     ],
@@ -1902,7 +1906,7 @@
     ],
     [
       "Platforms/UITests/MacPhotosHostUITests.swift",
-      "074c50e1527661be2dc0f138f9759581dc064f3c8f8b6e93873bd714ecd6e0d8"
+      "f671a350518218d3b72f5d803dc266b5396369f086050be1e70fc447ad5f8c00"
     ],
     [
       "Platforms/UITests/NativeEditorUITests.swift",
@@ -2034,15 +2038,19 @@
     ],
     [
       "Platforms/macOSExtension/MacPhotoEditingController.swift",
-      "74bafc3581765aa269fe06aca6f4885d1279b1e64ac071befc252089e70100e1"
+      "c4f0e373ed562208d40ef449bce588907006340a03c30bda5923b5e6851f4986"
     ],
     [
       "Platforms/macOSExtension/MacPhotoEditorView.swift",
-      "bd592449babea5b244f44944d61ed55e9fa92725a15f4ecf3bcb918b35cd5387"
+      "962f51950fbb60dbff6dbf6017b8584e3fec3cb0747c0e0eecafbca7c2d6e03a"
     ],
     [
       "Platforms/macOSExtension/MacPhotoRenderer.swift",
       "4fc934c7087eb5fd578de4e92885342852273dcdc90fd5e82891d67a5d6864c0"
+    ],
+    [
+      "Platforms/macOSExtension/MacPhotoSelfIdentity.swift",
+      "23217c3fa1d1d6745399fb8d39fdde16d01e938cc9eadc9827f5ff7403354955"
     ],
     [
       "Platforms/macOSExtension/MacPhotoSession.swift",
@@ -2197,7 +2205,7 @@
       "f7603c1c1175e32b5146b43d9e1f03bd6e839416510109795eb942cf7223579a"
     ]
   ],
-  "fingerprint": "270f9814686421955307c0bf4eb59a620abf3197cc8b0f1ae313ea36ad90b760",
+  "fingerprint": "24ae3beaec7adf23beb55959a8ce73ad74fecf9f4ae3b3386dedc76983e5fffe",
   "appearance_cancel_patch_sha256": "a3f6810452a5d2d3475a4bf0a921cda863f431c0660c7d8b7616f484e019f15f",
   "expected_UIKit_executions": {
     "original_qualified": 400,

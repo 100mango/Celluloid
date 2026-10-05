@@ -7,7 +7,6 @@ mutation. A successful prerequisite is deliberately not a complete E2E result.
 from pathlib import Path
 import argparse
 import base64
-import ctypes
 import hashlib
 import json
 import os
@@ -21,6 +20,7 @@ import time
 import math
 from mac_host_transport import load_json,HOST_CONTRACT
 from validation_route import current_route,validate_route
+from mac_host_self_identity import validate as validate_self_identity
 
 # Mandatory acceptance/source/product assertions must never be optimized away.
 # Reject before parsing an action, reading receipts, or creating any evidence.
@@ -34,6 +34,11 @@ BRANCH = 'codex/apple-platforms'
 APP_ID = 'Mango.Celluloid'
 EXT_ID = APP_ID + '.CelluloidPhotoExtension'
 ALLOWED = {
+    'Scripts/test_native_text_release_guard.py',
+    'Platforms/MacExtensionTests/MacPhotoSelfIdentityTests.swift',
+    'Platforms/macOSExtension/MacPhotoSelfIdentity.swift',
+    'Platforms/macOSExtension/MacPhotoEditorView.swift',
+    'Platforms/macOSExtension/MacPhotoEditingController.swift',
     '.github/workflows/apple-platforms.yml',
     '.github/workflows/mac-repair.yml',
     'CelluloidNative.xcodeproj/project.pbxproj',
@@ -61,6 +66,8 @@ ALLOWED = {
     'Scripts/mac-photos-host-source-base.json',
     'Scripts/keyed_archive_graph.py',
     'Scripts/mac_host_transport.py',
+    'Scripts/mac_host_self_identity.py',
+    'Scripts/test_mac_host_self_identity.py',
     'Scripts/mac_owned_crash.py',
     'Scripts/mac_photos_host_gate.py',
     'Scripts/native_text_release_guard.py',
@@ -101,7 +108,7 @@ ALLOWED = {
 CAP = 1_000_000
 BASE_FILE_COUNT = 544
 REVIEWED_TEST_FILES = {'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': 'f4c7a7a16bf5414e6c2a2716bc146bdc216f7ea966a80207acce8a7667584890', 'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift': 'ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034'}
-REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': '3243e62132d267fde38c9da3f92c92d9fa0bab55a8a9fff08650470bc84caa1a', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': '4fc934c7087eb5fd578de4e92885342852273dcdc90fd5e82891d67a5d6864c0', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
+REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': '3243e62132d267fde38c9da3f92c92d9fa0bab55a8a9fff08650470bc84caa1a', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoEditingController.swift': 'c4f0e373ed562208d40ef449bce588907006340a03c30bda5923b5e6851f4986', 'Platforms/macOSExtension/MacPhotoEditorView.swift': '962f51950fbb60dbff6dbf6017b8584e3fec3cb0747c0e0eecafbca7c2d6e03a', 'Platforms/macOSExtension/MacPhotoRenderer.swift': '4fc934c7087eb5fd578de4e92885342852273dcdc90fd5e82891d67a5d6864c0', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
 UNCHANGED_BASE_FILES = BASE_FILE_COUNT - 2 - len(REVIEWED_TEST_FILES) - len(REVIEWED_CANDIDATE_FILES)
 
 def run(*args):
@@ -238,6 +245,9 @@ def prepare():
     context['app_executable_sha256'] = sha(context['app_executable'])
     context['seed'] = seed_receipt(temp() / 'sandbox.log', context['source_sha'], context['app_executable_sha256'])
     context['extension_executable_sha256'] = sha(context['extension_executable'])
+    context['extension_debug_dylib'] = context['extension_executable'] + '.debug.dylib'
+    assert Path(context['extension_debug_dylib']).is_file() and not Path(context['extension_debug_dylib']).is_symlink()
+    context['extension_debug_dylib_sha256'] = sha(context['extension_debug_dylib'])
     write(temp() / 'mac-host-context.json', context)
     print('MAC_HOST_INSTALLED ' + json.dumps({k: v for k, v in context.items() if k != 'bundle_manifest'}, sort_keys=True))
 
@@ -262,38 +272,15 @@ def verify_product():
         assert entitlement(bundle) == c[key + '_entitlements']
     result = {'installed_bytes_unchanged': True, 'strict_signatures_unchanged': True,
               'app_executable_sha256': sha(c['app_executable']),
-              'extension_executable_sha256': sha(c['extension_executable'])}
+              'extension_executable_sha256': sha(c['extension_executable']),
+              'extension_debug_dylib_sha256': sha(c['extension_debug_dylib'])}
     write(temp() / 'mac-host-product-after.json', result)
     print(json.dumps(result, sort_keys=True))
 
 def process_provenance():
-    # Called read-only while Photos has its real editor open. Match actual process
-    # executable paths, never process display name or the extension menu label.
-    require_runner()
-    c = context()
-    lib = ctypes.CDLL('/usr/lib/libproc.dylib')
-    lib.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
-    lib.proc_pidpath.restype = ctypes.c_int
-    found = []
-    for token in run('/bin/ps', '-axo', 'pid=').split():
-        pid = int(token)
-        buffer = ctypes.create_string_buffer(4096)
-        if lib.proc_pidpath(pid, buffer, len(buffer)) <= 0:
-            continue
-        path = buffer.value.decode('utf-8', errors='strict')
-        if Path(path).name == 'CelluloidMacPhotosExtension':
-            actual = str(Path(path).resolve())
-            found.append({'pid': pid, 'executable': actual, 'sha256': sha(actual)})
-    expected = str(Path(c['extension_executable']).resolve())
-    result = {'source_sha': c['source_sha'], 'extension_id': EXT_ID,
-              'extension_processes': found, 'expected_executable': expected,
-              'expected_executable_sha256': c['extension_executable_sha256'],
-              'unique_exact_process': len(found) == 1 and found[0]['executable'] == expected
-              and found[0]['sha256'] == c['extension_executable_sha256']}
-    # This process inherits the XCTest sandbox. Return the actual live-process
-    # receipt through stdout; only the outer runner may materialize evidence.
-    print(json.dumps(result, sort_keys=True))
-    assert result['unique_exact_process'], 'Missing or ambiguous actual extension executable'
+    # Historical v2 env/python3 process enumeration is deliberately retired.
+    # Do not retry it, substitute a launcher or relocate it outside the sandbox.
+    raise RuntimeError('Cross-process enumeration retired after App Sandbox denial; host-entry v3 uses owned in-process self-observation')
 
 EXPECTED_CASE = ('CelluloidMacUITests.MacPhotosHostUITests', 'testInstalledExtensionIsInvokedByActualPhotos')
 CASE_RESULT = re.compile(r"^Test Case '-\[([\w.]+) (\w+)\]' (started|passed|failed|skipped)\b", re.M)
@@ -444,6 +431,8 @@ def verify_acceptance(root, source_sha):
     expected_executable = str(Path(c['extension_executable']).resolve())
     assert expected_extension == str(Path(c['app_path']).resolve() / 'Contents/PlugIns/CelluloidMacPhotosExtension.appex')
     assert expected_executable == str(Path(expected_extension) / 'Contents/MacOS/CelluloidMacPhotosExtension')
+    assert c['extension_debug_dylib']==expected_executable+'.debug.dylib'
+    assert re.fullmatch(r'[0-9a-f]{64}', c['extension_debug_dylib_sha256'])
     assert re.fullmatch(r'[0-9a-f]{64}', c['extension_executable_sha256'])
 
     summary = read_receipt(root / 'mac-host-summary.json')
@@ -508,8 +497,8 @@ def verify_acceptance(root, source_sha):
     assert menu['menu_identifier']==selection['menu_identifier']=='editWithPlugin:' and menu['menu_scope']==selection['menu_scope']=='Extensions.menuButton/childMenu/directMenuItem'
     for key in ['extension_menu_button_count','opened_menu_count']:assert type(menu[key]) is int and menu[key]==selection[key]==1
     assert menu['menu_title']==selection['menu_title']=='Celluloid' and menu['classification']=='selectable', 'Contradictory outcome menu observation'
-    process = read_receipt(observed / 'extension-process.json')
-    for name, receipt in [('prerequisite', prerequisite), ('outcome', outcome), ('process', process)]:
+    self_identity = read_receipt(observed / 'extension-self-identity.json')
+    for name, receipt in [('prerequisite', prerequisite), ('outcome', outcome), ('self-identity', self_identity)]:
         assert receipt['source_sha'] == source_sha, 'Wrong candidate: ' + name
     assert prerequisite['host_entry_contract']==outcome['host_entry_contract']==HOST_CONTRACT
     assert prerequisite['prerequisite_passed'] is True
@@ -519,18 +508,10 @@ def verify_acceptance(root, source_sha):
     assert 'first_blocked_operation' not in outcome, 'A blocked operation cannot grant host-entry acceptance'
     assert outcome['last_stage'] == 'host-entry-prerequisite-passed', 'Host did not reach final prerequisite stage'
     assert outcome['save_reopen_cancel_revert'] == 'not executed in prerequisite phase'
-    assert process['extension_id']==EXT_ID
-    assert process['unique_exact_process'] is True
-    assert process['expected_executable'] == expected_executable
-    assert process['expected_executable_sha256'] == c['extension_executable_sha256']
-    processes = process['extension_processes']
-    assert isinstance(processes, list) and len(processes) == 1, 'Missing/duplicate running extension'
-    actual = processes[0]
-    assert type(actual['pid']) is int and actual['pid'] > 0
-    assert actual['executable'] == expected_executable and actual['sha256'] == c['extension_executable_sha256'], 'Wrong actual executable/path/hash'
+    actual=validate_self_identity(self_identity,c,photos,ownership)
     product = read_receipt(root / 'mac-host-product-after.json')
     assert product['installed_bytes_unchanged'] is True and product['strict_signatures_unchanged'] is True
-    for key in ['app_executable_sha256', 'extension_executable_sha256']:
+    for key in ['app_executable_sha256', 'extension_executable_sha256','extension_debug_dylib_sha256']:
         assert product[key] == c[key], 'Post-host product differs: ' + key
     before = read_receipt(root / 'mac-host-source-before.json')
     after = read_receipt(root / 'mac-host-source-after.json')
@@ -551,13 +532,15 @@ def verify_acceptance(root, source_sha):
         assert combined['source_fingerprint']==contract['fingerprint']
     receipts = [root / name for name in ['combined-source-before.json','combined-source-after.json','mac-job-clock.json', 'mac-host-budget.json', 'mac-host-context.json', 'mac-host-summary.json', 'mac-host-test.log',
                 'mac-host-product-after.json', 'mac-host-source-before.json', 'mac-host-source-after.json', 'mac-host-transport-replay.json']]
-    receipts += [observed / name for name in ['prerequisite.json', 'outcome.json', 'host-selection.json', 'host-editor-before-process.json', 'host-editor-after-process.json', 'extension-process.json', 'fixture-ownership.json', 'fixture.json']]
+    receipts += [observed / name for name in ['prerequisite.json', 'outcome.json', 'host-selection.json', 'host-editor-before-process.json', 'host-editor-after-process.json', 'extension-self-identity.json', 'fixture-ownership.json', 'fixture.json']]
     receipts += [observed/name for name in ['transport.json','containing-process.json','photos-process.json']]
     return {'validation_route':route,'host_entry_contract':HOST_CONTRACT,'source_sha': source_sha, 'prerequisite_accepted': True, 'complete_host_e2e': False,
-            'proof_claim':'Real Photos UI entry with contemporaneously observed exact extension executable; registry inventory, audit-token view attribution, exact delivered-byte equality and full lifecycle are not claimed',
+            'proof_claim':'Real Photos UI entry bound to own-bundle hashes and editing generation self-observed by the extension; OS-wide process uniqueness, registry inventory, audit-token view attribution, exact delivered-byte equality and full lifecycle are not claimed',
+            'identity_kind':'in-process-self-observation-via-photos-ui','os_wide_process_uniqueness':False,
             'expected_testcase': '/'.join(EXPECTED_CASE), 'exactly_one_passed_zero_skipped': True,
             'last_stage': outcome['last_stage'], 'extension_executable': expected_executable,
-            'extension_executable_sha256': actual['sha256'], 'extension_pid': actual['pid'],
+            'extension_executable_sha256': actual['executable_sha256'], 'extension_pid_self_observed': actual['pid'],
+            'editing_generation':actual['generation'],'extension_debug_dylib_sha256':actual['debug_dylib_sha256'],
             'receipts': [{'name': p.name, 'sha256': sha(p)} for p in receipts]}
 
 HOST_SECONDS = 720
@@ -637,7 +620,7 @@ PROOF_LIMITS = {
     'mac-host-observed/host-selection.json':16_000, 'mac-host-observed/host-editor-before-process.json':16_000,
     'mac-host-observed/host-editor-after-process.json':16_000,
     'mac-host-observed/outcome.json':160_000, 'mac-host-observed/prerequisite.json':160_000,
-    'mac-host-observed/extension-process.json':160_000,
+    'mac-host-observed/extension-self-identity.json':160_000,
     'mac-host-observed/fixture-ownership.json':160_000,
     'mac-host-observed/fixture.json':250_000,
 }

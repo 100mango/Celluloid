@@ -5,10 +5,10 @@ import ImageIO
 import UniformTypeIdentifiers
 import CryptoKit
 
-/// Opt-in, real Apple Photos host-entry v2. This test never instantiates the
+/// Opt-in, real Apple Photos host-entry v3. This test never instantiates the
 /// extension controller and deliberately cannot certify the complete host E2E.
 final class MacPhotosHostUITests: XCTestCase {
-    private static let hostEntryContract = "Celluloid.PhotosHostEntry.2"
+    private static let hostEntryContract = "Celluloid.PhotosHostEntry.3"
     private var interruption: NSObjectProtocol?
     private var contextHash = ""
     private var proofSequence = 0
@@ -49,11 +49,12 @@ final class MacPhotosHostUITests: XCTestCase {
     @MainActor func testInstalledExtensionIsInvokedByActualPhotos() throws {
         // Validate the exact read-only input before any host UI action. Only
         // XCTest stdout/attachments carry data back across the sandbox boundary.
-        try report(["schema": "Celluloid.HostTransport.2", "host_entry_contract": Self.hostEntryContract, "source_sha": try value("source_sha"),
+        try report(["schema": "Celluloid.HostTransport.3", "host_entry_contract": Self.hostEntryContract, "source_sha": try value("source_sha"),
                     "context_sha256": contextHash, "test_source_sha256": try value("test_source_sha256"),
                     "verifier_sha256": try value("script_sha256"),
                     "app_executable_sha256": try value("app_executable_sha256"),
                     "extension_executable_sha256": try value("extension_executable_sha256"),
+                    "extension_debug_dylib_sha256": try value("extension_debug_dylib_sha256"),
                     "external_writes": false, "context_validated": true], named: "transport.json")
         let photos = XCUIApplication(bundleIdentifier: "com.apple.Photos")
         var photosIdentityVerified = false
@@ -87,7 +88,7 @@ final class MacPhotosHostUITests: XCTestCase {
         if startupCancel.waitForExistence(timeout: 3) { startupCancel.click() }
         app.terminate()
 
-        // Host-entry v2 tests documented Photos UI behavior. No registry query
+        // Host-entry v3 tests documented Photos UI behavior. No registry query
         // is retried or relocated; the historical denied operation stays failed.
 
         stage = "photos-first-use-and-synthetic-import"
@@ -197,12 +198,17 @@ final class MacPhotosHostUITests: XCTestCase {
         try report(readyEditorObservation(in: photos, expectedPID: photosPID, fixtureHash: fixtureHash,
             assetLabel: selectedAssetLabel, phase: "before-process"), named: "host-editor-before-process.json")
         try checkpoint(photos, "host-editor")
-        stage = "bind-running-extension-executable"
-        let script = URL(fileURLWithPath: try value("script_path"))
-        XCTAssertEqual(try digest(script), try value("script_sha256"))
-        let processes = try command("/usr/bin/env", ["python3", script.path, "processes"])
-        let processReceipt = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(processes.utf8)) as? [String: Any])
-        try report(processReceipt, named: "extension-process.json")
+        stage = "bind-extension-self-identity"
+        let firstIdentity = try selfIdentityObservation(in: photos, allowWait: true)
+        let secondIdentity = try selfIdentityObservation(in: photos, allowWait: false)
+        guard firstIdentity.raw == secondIdentity.raw else { throw block("Editing identity changed between observations") }
+        try report(["schema": "Celluloid.HostSelfIdentity.1", "host_entry_contract": Self.hostEntryContract,
+            "source_sha": try value("source_sha"), "photos_pid": photosPID,
+            "fixture_sha256": fixtureHash, "asset_label": selectedAssetLabel,
+            "identity_identifier": "photos-extension.self-identity", "identity_element_counts": [firstIdentity.count, secondIdentity.count],
+            "observations": [firstIdentity, secondIdentity].map { item in
+                ["raw": item.raw, "bytes": item.raw.utf8.count, "sha256": digest(Data(item.raw.utf8))] as [String: Any]
+            }], named: "extension-self-identity.json")
         stage = "observe-ready-editor-after-process"
         try report(readyEditorObservation(in: photos, expectedPID: photosPID, fixtureHash: fixtureHash,
             assetLabel: selectedAssetLabel, phase: "after-process"), named: "host-editor-after-process.json")
@@ -210,7 +216,7 @@ final class MacPhotosHostUITests: XCTestCase {
         try report(["host_entry_contract": Self.hostEntryContract, "prerequisite_passed": true, "complete_host_e2e": false,
                     "production_source_base": try value("base_sha"), "source_sha": try value("source_sha"),
                     "pending": ["exact host save/cancel/revert/export UI", "resource and geometry readback", "complete lifecycle pixel oracle"]], named: "prerequisite.json")
-        print("MAC_HOST_PREREQUISITE_PASSED actual Photos invocation and exact running extension identity; full lifecycle unexecuted")
+        print("MAC_HOST_PREREQUISITE_PASSED actual Photos invocation and own-bundle identity self-observed by the extension; OS-wide uniqueness and full lifecycle unexecuted")
         // Do not modify the synthetic asset or guess the host's dismissal UI.
         // Fresh runner disposal owns cleanup after the bounded evidence capture.
     }
@@ -380,24 +386,35 @@ final class MacPhotosHostUITests: XCTestCase {
                     "width": width, "height": height, "purpose": "host selection prerequisite only"], named: "fixture.json")
         return file
     }
-    private func command(_ executable: String, _ args: [String]) throws -> String {
-        let p = Process(), pipe = Pipe()
-        p.executableURL = URL(fileURLWithPath: executable); p.arguments = args
-        var environment = ProcessInfo.processInfo.environment
-        for (key, value) in (context["runner_environment"] as? [String: String] ?? [:]) { environment[key] = value }
-        p.environment = environment; p.standardOutput = pipe; p.standardError = pipe
-        try p.run()
-        let deadline = Date().addingTimeInterval(20)
-        while p.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
-        if p.isRunning { p.terminate(); throw block("Bounded read-only command timed out: " + executable) }
-        let bytes = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard bytes.count <= 120_000 else { throw block("Read-only command exceeded output budget") }
-        let result = String(decoding: bytes, as: UTF8.self)
-        guard p.terminationStatus == 0 else {
-            throw block("Read-only command failed: " + result,
-                        operation: ["executable": executable, "arguments": args, "exit_code": p.terminationStatus])
+    @MainActor private func selfIdentityObservation(in photos: XCUIApplication, allowWait: Bool) throws -> (raw: String, count: Int) {
+        // Read only the public AX leaf of the already-ready, uniquely observed
+        // editor. No subprocess, cross-process enumeration or expected-value input.
+        var observed: (raw: String, count: Int)?
+        var contradiction: String?
+        func sample() -> Bool {
+            let editors = editorMatches(in: photos)
+            let editorCount = editors.count
+            guard editorCount == 1 else { contradiction = "Ready editor disappeared or became ambiguous during self-observation"; return true }
+            let identities = editors.element(boundBy: 0).descendants(matching: .any).matching(identifier: "photos-extension.self-identity")
+            let identityCount = identities.count
+            guard identityCount <= 1 else { contradiction = "Duplicate self-identity AX leaf"; return true }
+            guard identityCount == 1 else { return false }
+            let leaf = identities.element(boundBy: 0)
+            guard leaf.label == "CELLULOID_EXTENSION_SELF_IDENTITY_V1", let raw = leaf.value as? String,
+                  !raw.isEmpty, raw.utf8.count <= 8_192,
+                  let data = raw.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data), object is [String: Any] else {
+                contradiction = "Malformed or oversized self-identity AX value"; return true
+            }
+            observed = (raw, identityCount); return true
         }
-        return result
+        if allowWait {
+            let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in sample() }, object: nil)
+            guard XCTWaiter.wait(for: [expectation], timeout: 10) == .completed else { throw block("Missing extension self-identity") }
+        } else { _ = sample() }
+        if let contradiction { throw block(contradiction) }
+        guard let observed else { throw block("Missing extension self-identity after first observation") }
+        return observed
     }
     private func value(_ key: String) throws -> String { try XCTUnwrap(context[key] as? String, "Missing bound context: " + key) }
     private func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
@@ -411,7 +428,7 @@ final class MacPhotosHostUITests: XCTestCase {
     }
     private func proof(_ bytes: Data, named name: String) throws {
         let names = ["transport.json", "containing-process.json", "photos-process.json", "fixture.json", "fixture-ownership.json",
-                     "host-selection.json", "host-editor-before-process.json", "extension-process.json",
+                     "host-selection.json", "host-editor-before-process.json", "extension-self-identity.json",
                      "host-editor-after-process.json", "prerequisite.json", "outcome.json"]
         let limit = name.hasSuffix(".txt") || name == "fixture.json" ? 120_000 : 16_000
         guard names.contains(name), !emittedProofs.contains(name), !bytes.isEmpty, bytes.count <= limit,

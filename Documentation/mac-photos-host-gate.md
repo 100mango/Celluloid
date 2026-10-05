@@ -1,8 +1,10 @@
 # Actual macOS Photos host prerequisite in the existing Mac job
 
-Current contract: `Celluloid.PhotosHostEntry.2`. This explicitly versioned test
-qualifies real Photos UI entry and a contemporaneous exact executable observation.
-It retires registry inventory claims; it does not reinterpret a failed v1 probe.
+Current contract: `Celluloid.PhotosHostEntry.3`. This explicitly versioned test
+qualifies real Photos UI entry and an in-process own-bundle identity observation.
+The extension self-reports its PID and own on-disk executable/debug-dylib hashes;
+OS-wide process uniqueness and mapped-code attestation are not claimed. It does
+not reinterpret the failed v1 registry or v2 process-enumeration contracts.
 Every acceptance report retains `complete_host_e2e: false`. The immutable source
 baseline remains `9c9e7fc9c12df342c883e8a1e4462f796469842c`, tree
 `f53aa262fb56d31cd0b2f03f3836147c26ff2858`, with individually reviewed changes.
@@ -80,8 +82,8 @@ and independent resource/pixel expectations for that target.
 ## Unchanged safety and acceptance requirements
 
 The installed app/extension identities, strict signatures, minimal entitlements,
-bundle inventories, and live extension PID/executable hash checks remain mandatory.
-V2 observes the real Photos menu and editor instead of querying PluginKit:
+bundle inventories, and independently bound own-bundle identity checks remain mandatory.
+V3 observes the real Photos menu and editor instead of querying PluginKit:
 
 1. Verify the fixed system Photos bundle/executable and retain its PID. Select
    only the sole owned synthetic asset with its exact observed label and hash.
@@ -90,21 +92,27 @@ V2 observes the real Photos menu and editor instead of querying PluginKit:
 3. Require one editor containing exactly one `Edited photo preview`, one enabled
    `photos-extension.filter`, no placeholder, no preparing indicator, no read-only
    state and no error. Initial absence/loading may wait up to30 seconds before the
-   process probe; any observed ambiguous controls, read-only or error state is
+   self-observation; any observed ambiguous controls, read-only or error state is
    latched as failure instead of being forgotten when the UI later changes. Each
    readiness poll also rejects a changed or ambiguous Photos identity.
-4. Observe the mandatory live extension PID, canonical executable and actual hash
-   with the existing read-only child. Immediately observe the ready editor again,
-   without a recovery wait, and reverify the same Photos PID/executable on both
-   sides of the child observation. Missing/ambiguous/replaced/loading state rejects.
+4. Observe the DEBUG-only `photos-extension.self-identity` AX leaf twice inside
+   that exact editor. A first missing value may wait up to10 seconds; duplicate,
+   malformed or contradictory observations latch failure. The second read is
+   immediate and cannot recover a disappeared identity. Both raw UTF-8 values
+   must match, including PID, generation and the exact independently hashed
+   installed main executable and debug dylib. Reobserve the ready editor without
+   a recovery wait, with the same verified Photos PID on both sides.
 
-This is an observational association of UI and executable, not an OS audit-token
-attribution of the view, exhaustive global registry inventory, or proof of exact
-`PHContentEditingInput` resource bytes. The two ready snapshots do not detect an
-unobserved disappear/reappear interval during the process helper. The Photos UI
-test invokes the actual
-extension; it never instantiates its controller as a substitute. Missing or
-ambiguous controls stop with AX evidence.
+This associates a self-observation with the ready Photos UI. It is not OS-wide
+process uniqueness, audit-token view attribution, mapped-page attestation, registry
+inventory, or proof of exact `PHContentEditingInput` resource bytes. The extension
+gets no expected path/hash/source from the tester. Fresh VM/builds, no downloaded
+products, the absent-to-ready transition and a new start-generation prevent the
+supported workflow from replaying a prior editor. The raw identity is cleared
+synchronously on start, cancel and finish; generation-checked publication rejects
+late work. Two snapshots cannot detect an unobserved disappear/reappear interval.
+The test invokes the actual extension and never instantiates its controller as a
+substitute. Missing or ambiguous controls stop with evidence.
 
 Unknown permission, account, legal, Gatekeeper, authentication or other system
 interruptions abort before XCTest's default handler. Only the previously observed
@@ -112,12 +120,12 @@ synthetic first-use Get Started action is accepted. The current title-scoped pro
 Apple account or real signing key is changed.
 
 The verifier requires one finalized, passed, unskipped exact XCTest and all
-same-source product/UI-transition/live-process/fixture-ownership receipts. It
+same-source product/UI-transition/self-identity/fixture-ownership receipts. It
 rejects optimized Python before any action. Source verification freezes the base
 files except the reviewed project membership, ordinary test receipt addition,
 two explicitly SHA-pinned diagnostic-only test files, and separately reviewed
 native text renderer/tests, TV picker/title/tests, and Watch/phone traversal test
-files (six individually SHA-pinned candidate files);
+files, plus the two DEBUG-only identity integration files (all individually SHA-pinned);
 the full combined source contract independently binds the resulting candidate.
 
 ## Fixed evidence budget and remaining work
@@ -132,7 +140,7 @@ prefix is explicitly listed in omissions. Runtime markers and failure assertions
 are not relaxed. Any further screenshot omission remains explicit in its manifest.
 
 The dedicated host collector retains mandatory outcome, source, product,
-finalized-test, fixture, UI-transition and live-process receipts before optional
+finalized-test, fixture, UI-transition and self-identity receipts before optional
 screenshots/AX dumps. Both complete combined-source receipts are mandatory and
 must agree with host source tree/workflow, candidate SHA and current contract
 fingerprint. They are verified after host execution before acceptance and upload.
@@ -170,17 +178,17 @@ Only the outer runner writes the allowlisted receipt files. It waits for the
 bounded xcodebuild process to finish, parses the exact testcase enclosure, and
 replays all bytes before acceptance. Acceptance additionally requires exactly one
 passed testcase, the successful xcodebuild terminal, bounded-process exit zero,
-the finalized xcresult summary, actual live-process/executable receipts, unchanged
+the finalized xcresult summary, raw own-bundle self-identity receipts, unchanged
 source/product checks and the fixture/UI-transition checks. Echoed source
 values or a transport-success flag alone cannot grant acceptance. Every collected
 accepted packet reruns the complete transport and host proof.
 
 The context, first payload, proof envelopes, replay report, acceptance and collected
-manifest carry the v2 identity. The exact ordered stdout names are `transport.json`,
+manifest carry the v3 host-entry identity. The exact ordered stdout names are `transport.json`,
 `containing-process.json`, `photos-process.json`, `fixture.json`,
 `fixture-ownership.json`, `host-selection.json`, `host-editor-before-process.json`,
-`extension-process.json`, `host-editor-after-process.json`, `prerequisite.json`,
-`outcome.json`. A v1 or registry-only packet cannot qualify as v2. The collector
+`extension-self-identity.json`, `host-editor-after-process.json`, `prerequisite.json`,
+`outcome.json`. A v1, v2 or registry-only packet cannot qualify as v3. The collector
 requires exact UI schema keys, primitive types, expected counts, labels, phases,
 Photos PID/path, fixture and source identity, and independently replays these
 checks from the actual transport bytes. Nonfinite JSON, duplicate keys and
@@ -188,8 +196,8 @@ contradictory timeout/success evidence reject even after payload rehashing.
 A structured first blocked operation also vetoes acceptance even if a textual
 failure marker is missing.
 
-The Python live-process child is read-only and returns its JSON receipt on stdout;
-it never writes the external evidence directory. Bounded AX text and the two
+The former Python process-enumeration action now raises an unconditional retired-operation
+error before any process query or helper launch. Bounded AX text and the two
 fixed screenshot names use XCTest attachments. The outer exporter accepts only
 known host diagnostic names from the exact host test, with Xcode27's observed
 fixed stem plus iteration/UUID/type suffix (the declared extension is removed
@@ -244,7 +252,7 @@ It repeats those scope checks immediately before the fresh enabled/hittable
 selection and click. No label-or-title fallback, global menu search, settings
 opening, registration query, or toggle action is added. `HostSelection.3` and
 `HostMenuObservation.2` bind the title, identifier, exact parent scope and counts.
-The real editor transition, same Photos PID, actual extension executable, source,
+The real editor transition, same Photos PID, self-observed own executable identity, source,
 owned input and finalized test/process evidence remain mandatory.
 
 [Apple's public XCTest attributes](https://developer.apple.com/documentation/xcuiautomation/xcuielementattributes)
@@ -306,7 +314,7 @@ These files are optional diagnostics, reserved after required host proof and
 before optional screenshots inside the unchanged1MB artifact/one-day retention.
 Malformed or unbound diagnostics are explicitly omitted and cannot alter host
 acceptance. No raw IPS, xcresult, library or product is uploaded. Actual Photos
-invocation, editor transition, live executable and existing source/input checks
+invocation, editor transition, self-observed executable identity and source/input checks
 remain mandatory; complete host lifecycle qualification remains open.
 
 Official format references:
@@ -381,7 +389,7 @@ nor authorizes broader path matching, filesystem access or host acceptance.
 The separate push-only `mac-repair.yml` route uses `codex/mac-repair` and shares
 the canonical workflow's concurrency group. The canonical `apple-platforms.yml`
 remains byte-identical. Three serial jobs retain all portable tests, selected Mac compile/test-bundle/
-package prerequisites, all39 native Mac cases, and the original real Photos sequence and
+package prerequisites, all39 existing native Mac cases plus three identity guard cases, and the real Photos sequence and
 source/product/cleanup/evidence guards. This diagnostic route defers the standalone `Native Mac UI launch and editing`
 flow and the `External sandbox document UI and container runtime` flow, in
 addition to early UIKit continuation and later simulator/UIKit/archive jobs.
@@ -436,3 +444,47 @@ remain blocking. Unconfirmed process/pipe completion stops additional observatio
 marks preparation unfinalized, preventing later crash capture. No new process
 runner, host UI action, private context override, entitlement or permission is
 introduced. The same host invocation and acceptance gates still decide success.
+
+## Host-entry v3: own-process observation after the v2 sandbox denial
+
+Run [37342181970](https://github.com/100mango/Celluloid/actions/runs/37342181970)
+at `e1ffaa6c3e9c24610dfed3a6c6fc7d7ee63b8da1` passed all39 native cases and
+the unchanged independent pixel oracle (maximum difference0), and reached one
+ready editor in actual Photos. Its sandboxed XCTest runner then attempted
+`/usr/bin/env python3 Scripts/mac_photos_host_gate.py processes` and received
+`xcrun: error: cannot be used within an App Sandbox.` The run and v2 contract
+remain failed. V3 does not retry that command, substitute interpreters, move the
+query to another process, enumerate processes, or change entitlements/permissions.
+
+After real `startContentEditing`, a DEBUG-only background task reads its own
+`Bundle.main`, `ProcessInfo.processIdentifier`, and fixed own-bundle main/debug
+files through public descriptor-relative no-follow reads. Each file is regular,
+single-link, positive and at most32MiB; chunks are at most64KiB. Descriptor and
+directory-entry identity/size/timestamps are rechecked after both hashes. The
+10-second monotonic cancellation/deadline is cooperative: an OS file call is not
+forcibly interruptible. Failures leave the identity absent without blocking edits.
+The live AX getter exposes it only while attached, visible, started and fully ready.
+
+`Celluloid.ExtensionSelfIdentity.1` has exactly12 fields: schema, marker,
+observation_kind, bundle_identifier, pid, bundle_path, executable_path,
+executable_sha256, debug_dylib_path, debug_dylib_sha256, generation and
+content_editing_started. Each raw value is at most8192 UTF-8 bytes. The enclosing
+`Celluloid.HostSelfIdentity.1` receipt contains two raw values, byte counts and
+hashes plus the existing source/Photos/fixture/UI binding; it still must fit the
+unchanged16000-byte individual/160000-byte aggregate proof caps. The outer
+parser recomputes both raw hashes, rejects duplicate/unknown/missing keys,
+nonfinite JSON, wrong primitive types, paths/hashes/PID/generation, changed
+observations and legacy contracts. Acceptance waits for the exact completed test,
+unchanged actual source/product receipts and strict transport replay.
+
+Release source projection removes the entire identity helper and integrations.
+The existing actual Release binary guard rejects both prior renderer hooks and
+identity marker/schema/classes/AX identifier in the fixed extension main binary
+and fixed debug dylib if one exists. No source/test pass substitutes for native
+compilation, actual AX discovery or the Release binary check. Full host
+save/reopen/cancel/Revert coverage and release qualification remain open.
+
+Public API references: [Bundle](https://developer.apple.com/documentation/foundation/bundle),
+[ProcessInfo](https://developer.apple.com/documentation/foundation/processinfo),
+[AppKit accessibility](https://developer.apple.com/documentation/appkit/accessibility-for-appkit),
+[AX participation](https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol/isaccessibilityelement()).

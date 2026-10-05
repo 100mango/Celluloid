@@ -57,7 +57,7 @@ class ValidationRouteTests(unittest.TestCase):
                           'name: Native Mac UI launch and editing', 'name: External sandbox document UI and container runtime']:
             self.assertNotIn(forbidden,text)
         inventory=(ROOT/'Scripts/verify_required_interoperability.py').read_text()
-        self.assertIn('assert len(cases) == 39',inventory)
+        self.assertIn('assert len(cases) == 42',inventory)
         self.assertIn("-scheme CelluloidMac -destination 'platform=macOS'",text)
         scope=(ROOT/'Documentation/mac-photos-host-gate.md').read_text()
         self.assertIn('not full Mac qualification',scope)

@@ -5,7 +5,7 @@ import mac_host_transport as t
 
 class HostTransportTests(unittest.TestCase):
     def setUp(self):
-        self.context={'host_entry_contract':t.HOST_CONTRACT,'source_sha':'a'*40,'test_source_sha256':'b'*64,'script_sha256':'c'*64,'app_executable_sha256':'d'*64,'extension_executable_sha256':'e'*64}
+        self.context={'host_entry_contract':t.HOST_CONTRACT,'source_sha':'a'*40,'test_source_sha256':'b'*64,'script_sha256':'c'*64,'app_executable_sha256':'d'*64,'extension_executable_sha256':'e'*64,'extension_debug_dylib_sha256':'9'*64}
         self.context_hash='f'*64
         self.rows=[]
         for index,name in enumerate(t.ORDER):
@@ -32,7 +32,7 @@ class HostTransportTests(unittest.TestCase):
             rows=copy.deepcopy(self.rows);rows[0][key]=value
             with self.subTest(key=key,value=value),self.assertRaises(ValueError):self.parse(self.transcript(rows))
     def test_forged_first_validation_rejects_even_after_rehashing(self):
-        for key,value in [('context_sha256','b'*64),('context_validated',False),('context_validated',1),('external_writes',True),('external_writes',0),('app_executable_sha256','c'*64),('extension_executable_sha256','c'*64)]:
+        for key,value in [('context_sha256','b'*64),('context_validated',False),('context_validated',1),('external_writes',True),('external_writes',0),('app_executable_sha256','c'*64),('extension_executable_sha256','c'*64),('extension_debug_dylib_sha256','c'*64)]:
             rows=copy.deepcopy(self.rows);payload=json.loads(base64.b64decode(rows[0]['base64']));payload[key]=value
             data=json.dumps(payload).encode();rows[0].update(base64=base64.b64encode(data).decode(),bytes=len(data),sha256=t.sha(data))
             with self.subTest(key=key),self.assertRaises(ValueError):self.parse(self.transcript(rows))
@@ -149,7 +149,8 @@ class HostTransportTests(unittest.TestCase):
         self.assertNotIn('reportFolder',swift);self.assertNotIn('folder()',swift)
         self.assertNotIn('.write(to:',swift)
         process=gate.split('def process_provenance():',1)[1].split('EXPECTED_CASE',1)[0]
-        self.assertNotIn('write(',process);self.assertIn('print(json.dumps(result',process)
+        self.assertNotIn('write(',process);self.assertIn('raise RuntimeError',process)
+        for forbidden in ['subprocess.', 'proc_pidpath', '/bin/ps']:self.assertNotIn(forbidden,process)
         self.assertLess(swift.index('named: "transport.json"'),swift.index('app.launch()'))
         self.assertIn('XCTAttachment(data: bytes',swift)
         self.assertLess(shell.index('mac_photos_host_gate.py transport'),shell.index('mac_photos_host_gate.py product-after'))

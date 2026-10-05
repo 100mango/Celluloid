@@ -7,6 +7,9 @@ import CelluloidRendering
 
 @MainActor final class MacPhotoEditingController: NSViewController, PHContentEditingController {
     let session = MacPhotoSession()
+#if DEBUG
+    private let selfIdentity = MacPhotoSelfIdentity()
+#endif
     private var input: PHContentEditingInput?
     private var generation = UUID()
     private var active = false
@@ -20,7 +23,11 @@ import CelluloidRendering
     override func loadView() {
         // The principal object is an NSViewController; the hosted SwiftUI root has
         // real child containment and a resizable, Photos-sized content view.
+#if DEBUG
+        let host = NSHostingController(rootView: MacPhotoEditorView(session: session, selfIdentity: selfIdentity))
+#else
         let host = NSHostingController(rootView: MacPhotoEditorView(session: session))
+#endif
         addChild(host); view = NSView(frame: NSRect(x: 0, y: 0, width: 900, height: 640))
         host.view.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(host.view)
         NSLayoutConstraint.activate([host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -38,9 +45,15 @@ import CelluloidRendering
         session.begin(url: input.fullSizeImageURL, orientation: input.fullSizeImageOrientation,
             previous: input.adjustmentData.map { .init(identifier: $0.formatIdentifier, version: $0.formatVersion, bytes: $0.data) },
             placeholder: placeholderImage)
+#if DEBUG
+        selfIdentity.contentEditingStarted()
+#endif
     }
     func finishContentEditing(completionHandler: @escaping (PHContentEditingOutput?) -> Void) {
         guard active else { return }
+#if DEBUG
+        selfIdentity.invalidate()
+#endif
         generation = UUID(); finish.cancel(); pendingWrite?.cancel(); pendingWrite = nil
         guard let input else { completionHandler(nil); return }
         // Commit active native text editing before taking the frozen snapshot.
@@ -90,6 +103,9 @@ import CelluloidRendering
     }
     var shouldShowCancelConfirmation: Bool { session.changed }
     func cancelContentEditing() {
+#if DEBUG
+        selfIdentity.invalidate()
+#endif
         active = false; generation = UUID(); finish.cancel(); pendingWrite?.cancel(); pendingWrite = nil
         session.cancel(); input = nil
     }

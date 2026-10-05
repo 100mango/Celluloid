@@ -4,11 +4,11 @@ from pathlib import Path
 
 PREFIX='MAC_HOST_PROOF '
 SCHEMA='Celluloid.MacHostProof.2'
-HOST_CONTRACT='Celluloid.PhotosHostEntry.2'
+HOST_CONTRACT='Celluloid.PhotosHostEntry.3'
 CASE=('CelluloidMacUITests.MacPhotosHostUITests','testInstalledExtensionIsInvokedByActualPhotos')
 LABEL='actual-mac-photos-host-prerequisite'
 ORDER=['transport.json','containing-process.json','photos-process.json','fixture.json','fixture-ownership.json',
-       'host-selection.json','host-editor-before-process.json','extension-process.json',
+       'host-selection.json','host-editor-before-process.json','extension-self-identity.json',
        'host-editor-after-process.json','prerequisite.json','outcome.json']
 LIMITS={name:120_000 if name.endswith('.txt') or name=='fixture.json' else 16_000 for name in ORDER}
 TOTAL=160_000
@@ -33,9 +33,9 @@ def load_json(data):
     return json.loads(data,object_pairs_hook=unique,parse_constant=nonfinite,parse_float=finite_real)
 
 def expected_transport(context,context_hash):
-    return {'schema':'Celluloid.HostTransport.2','host_entry_contract':HOST_CONTRACT,'source_sha':context['source_sha'],'context_sha256':context_hash,
+    return {'schema':'Celluloid.HostTransport.3','host_entry_contract':HOST_CONTRACT,'source_sha':context['source_sha'],'context_sha256':context_hash,
         'test_source_sha256':context['test_source_sha256'],'verifier_sha256':context['script_sha256'],
-        'app_executable_sha256':context['app_executable_sha256'],'extension_executable_sha256':context['extension_executable_sha256'],
+        'app_executable_sha256':context['app_executable_sha256'],'extension_executable_sha256':context['extension_executable_sha256'],'extension_debug_dylib_sha256':context['extension_debug_dylib_sha256'],
         'external_writes':False,'context_validated':True}
 
 def parse(log,context,context_hash,complete=False):
