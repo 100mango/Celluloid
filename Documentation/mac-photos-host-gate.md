@@ -380,8 +380,8 @@ nor authorizes broader path matching, filesystem access or host acceptance.
 
 The separate push-only `mac-repair.yml` route uses `codex/mac-repair` and shares
 the canonical workflow's concurrency group. The canonical `apple-platforms.yml`
-remains byte-identical. Three serial jobs retain portable/all-platform compile
-preflight, all39 native Mac cases, and the original real Photos sequence and
+remains byte-identical. Three serial jobs retain all portable tests, selected Mac compile/test-bundle/
+package prerequisites, all39 native Mac cases, and the original real Photos sequence and
 source/product/cleanup/evidence guards. This diagnostic route defers the standalone `Native Mac UI launch and editing`
 flow and the `External sandbox document UI and container runtime` flow, in
 addition to early UIKit continuation and later simulator/UIKit/archive jobs.
@@ -397,3 +397,13 @@ Mismatched/missing/relabelled route metadata rejects; a focused prerequisite can
 never supply full-E2E or full-release evidence. Existing45/41/14-minute host caps,
 720/660-second process/test limits, one-day artifacts and per-platform byte caps
 are unchanged. A later canonical full run is still required for complete testing.
+
+The focused preflight uses only the existing `mac-build-for-testing`,
+`mac-ui-build-for-testing`, and `mac-release-package` operations. The fixed
+`--mac-repair` selection requires the exact focused branch/workflow/source route;
+all selected build arguments, compiled-bundle verification, package validation
+and time/byte caps remain unchanged. Simulator inventory, TV input capability
+and non-Mac build/package operations are deferred. Its receipt enumerates exactly
+those three selected prerequisites, reports their separate pass state, and always
+keeps `all_prerequisites_passed: false` and `long_matrix_allowed: false`. The
+canonical no-option fourteen-stage gate and canonical workflow remain unchanged.

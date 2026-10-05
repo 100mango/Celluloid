@@ -301,7 +301,10 @@ class AppKitShapedRunSourceTests(unittest.TestCase):
         for token in ['assertInkBoundsUseTopLeftPixelCoordinatesAndRetainFaintEdgeInk',
                       'Expansion must preserve every original interior pixel',
                       'Backing must contain all padded-path glyph ink',
-                      'Keep one transparent edge pixel for transformed sampling']:
+                      'Keep one transparent edge pixel for transformed sampling',
+                      'let originalOrigin: CGPoint', 'let originalSize: CGSize',
+                      'CGFloat(original.width)', 'CGFloat(original.height)',
+                      'let originalRect: CGRect', 'normal.image.cropping(to: originalRect)']:
             self.assertIn(token,swift)
 
     def test_only_crlf_control_interiors_relax_line_boundary_assertions(self):

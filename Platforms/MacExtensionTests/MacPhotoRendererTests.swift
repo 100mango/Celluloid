@@ -300,8 +300,11 @@ final class MacPhotoRendererTests: XCTestCase {
             let detail = "text=\(String(reflecting: text)) utf16=\(Array(text.utf16)) origin=\(normal.origin) pixels=\(normal.image.width)x\(normal.image.height) probePadding=\(padding)"
             XCTAssertEqual(try pixels(normal.image), try pixels(crop), "Same draw path must retain identical interior pixels: \(detail)")
             let original = try MacPhotoTextRaster.make(layout, bounds: bounds)
-            let originalCrop = try XCTUnwrap(normal.image.cropping(to: CGRect(x: -normal.origin.x * 2, y: -normal.origin.y * 2,
-                                                                            width: original.width, height: original.height)))
+            let originalOrigin: CGPoint = CGPoint(x: -normal.origin.x * MacPhotoTextRaster.scale,
+                                                  y: -normal.origin.y * MacPhotoTextRaster.scale)
+            let originalSize: CGSize = CGSize(width: CGFloat(original.width), height: CGFloat(original.height))
+            let originalRect: CGRect = CGRect(origin: originalOrigin, size: originalSize)
+            let originalCrop = try XCTUnwrap(normal.image.cropping(to: originalRect))
             XCTAssertEqual(try pixels(original), try pixels(originalCrop), "Expansion must preserve every original interior pixel: \(detail)")
             let outsideAlpha = try alphaOutside(padded, x: x, y: y, width: normal.image.width, height: normal.image.height)
             XCTAssertEqual(outsideAlpha, 0, "Backing must contain all padded-path glyph ink: \(detail)")

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import json,os,plistlib,subprocess,tempfile,unittest
+import contextlib,io,json,os,plistlib,subprocess,tempfile,unittest
+from unittest import mock
+import run_combined_preflight as preflight
 from run_combined_preflight import DEBUG_PLANS,RELEASE_PLANS,available_setup,verify_test_products
 from combined_evidence_budget import BUDGETS,WHOLE_RUN
 
@@ -46,6 +48,52 @@ class CombinedPreflightTests(unittest.TestCase):
         self.assertEqual(BUDGETS['preflight'],500_000);self.assertEqual(len(BUDGETS),12)
         self.assertEqual(sum(BUDGETS.values()),19_500_000);self.assertLess(sum(BUDGETS.values()),WHOLE_RUN)
         self.assertNotIn('COPY_PHASE_STRIP=',source)
+    def execute_selected(self,arguments,fail=None):
+        from test_validation_route import focused_environment
+        runtimes,devices=self.setup_inventory();calls=[]
+        with tempfile.TemporaryDirectory() as directory:
+            def command(args,**options):
+                normalized=[str(v).replace(directory,'$TMP') for v in args]
+                calls.append({'argv':normalized,'log_name':options['log_name'],'timeout':options['timeout']})
+                if options['log_name']==fail:raise RuntimeError('synthetic selected failure')
+                output=json.dumps({'runtimes':runtimes}) if normalized[:4]==['xcrun','simctl','list','runtimes'] else json.dumps({'devicetypes':devices}) if normalized[:4]==['xcrun','simctl','list','devicetypes'] else ''
+                return subprocess.CompletedProcess(args,0,output,'')
+            env=focused_environment();env['RUNNER_TEMP']=directory
+            with mock.patch.dict(os.environ,env,clear=True),mock.patch.object(preflight,'run',side_effect=command),mock.patch.object(preflight,'verify_test_products',side_effect=lambda path,names:{name:[] for name in names}),mock.patch('verify_embedded_watch.verify',return_value={'checks':{'synthetic':True}}),mock.patch('verify_embedded_watch.inventory',return_value=[]),contextlib.redirect_stdout(io.StringIO()):
+                if fail:
+                    with self.assertRaises(SystemExit):preflight.main(arguments)
+                else:preflight.main(arguments)
+            return json.loads((Path(directory)/'combined-preflight.json').read_text()),calls
+
+    def test_fixed_mac_selection_preserves_selected_commands_and_canonical_fourteen_stages(self):
+        full,full_calls=self.execute_selected([]);focused,focused_calls=self.execute_selected(['--mac-repair'])
+        selected=['mac-build-for-testing','mac-ui-build-for-testing','mac-release-package']
+        self.assertEqual(list(full['checks']),['available-runtime-setup','tv-test-input-capability']+[row[0]+'-build-for-testing' for row in DEBUG_PLANS]+[row[0]+'-release-package' for row in RELEASE_PLANS])
+        self.assertEqual(len(full['checks']),14);self.assertTrue(full['all_prerequisites_passed']);self.assertTrue(full['long_matrix_allowed'])
+        self.assertEqual(list(focused['checks']),selected);self.assertEqual(focused['selected_prerequisites'],selected)
+        self.assertTrue(focused['selected_prerequisites_passed']);self.assertFalse(focused['all_prerequisites_passed']);self.assertFalse(focused['long_matrix_allowed'])
+        self.assertTrue(focused['validation_route']['diagnostic_only'])
+        names={'preflight-mac-debug.log','preflight-mac-ui-debug.log','preflight-mac-release.log','preflight-mac-package.log'}
+        self.assertEqual({row['log_name'] for row in focused_calls},names)
+        self.assertEqual(focused_calls,[row for row in full_calls if row['log_name'] in names])
+        for stage in focused['stages']:
+            original=next(row for row in full['stages'] if row['stage']==stage['stage'])
+            self.assertEqual(stage['proof'],original['proof'])
+        self.assertEqual(list(focused['stages'][0]['proof']['compiled_tests']),['CelluloidMacTests','CelluloidMacPhotosExtensionTests'])
+        self.assertEqual(list(focused['stages'][1]['proof']['compiled_tests']),['CelluloidMacUITests'])
+
+    def test_selected_failure_and_unreviewed_route_never_authorize_any_runtime_matrix(self):
+        failed,calls=self.execute_selected(['--mac-repair'],fail='preflight-mac-debug.log')
+        self.assertFalse(failed['selected_prerequisites_passed']);self.assertFalse(failed['all_prerequisites_passed']);self.assertFalse(failed['long_matrix_allowed'])
+        self.assertFalse(failed['checks']['mac-build-for-testing']);self.assertEqual(len(failed['checks']),3)
+        from test_validation_route import focused_environment
+        for env,args in [(dict(focused_environment(),GITHUB_REF='refs/heads/codex/apple-platforms'),['--mac-repair']),
+                         (dict(focused_environment(),GITHUB_WORKFLOW_SHA='b'*40),['--mac-repair']),
+                         (focused_environment(),['--platform','mac']), (focused_environment(),['--mac-repair','extra'])]:
+            with mock.patch.dict(os.environ,env,clear=True),mock.patch.object(preflight,'run') as command:
+                with self.assertRaises(ValueError):preflight.main(args)
+                command.assert_not_called()
+
     def test_preflight_failure_receipts_and_strip_diagnostics_survive_export(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)

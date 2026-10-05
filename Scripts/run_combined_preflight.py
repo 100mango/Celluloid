@@ -51,9 +51,20 @@ def verify_test_products(products,expected):
         found[name]=rows
     return found
 
-def main():
+def main(argv=None):
+    arguments=sys.argv[1:] if argv is None else argv
+    if arguments not in [[],['--mac-repair']]:raise ValueError('Only the fixed focused Mac prerequisite selection is supported')
+    focused=arguments==['--mac-repair']
+    if focused:
+        from validation_route import current_route,FOCUSED
+        if current_route()!=FOCUSED:raise ValueError('Focused prerequisites require the exact diagnostic workflow')
     temp=Path(os.environ['RUNNER_TEMP']);out=temp/'combined-preflight.json'
     report={'source_sha':os.environ['GITHUB_SHA'],'scope':'Grouped unsigned build-for-testing, test-bundle setup and Release package prerequisite; not runtime or feature qualification','stages':[],'checks':{}}
+    selected=['mac-build-for-testing','mac-ui-build-for-testing','mac-release-package']
+    if focused:
+        report.update(scope='Focused Mac compile/test-bundle/package prerequisites only; not full preflight, runtime or release qualification',
+            validation_route=current_route(),selected_prerequisites=selected,selected_prerequisites_passed=False,
+            all_prerequisites_passed=False,long_matrix_allowed=False)
     deadline=time.monotonic()+2400
     def stage(name,operation):
         record={'stage':name,'started_unix':time.time()};report['stages'].append(record)
@@ -70,10 +81,12 @@ def main():
         a=json.loads(command(['xcrun','simctl','list','runtimes','--json'],'runtimes',60).stdout)['runtimes']
         b=json.loads(command(['xcrun','simctl','list','devicetypes','--json'],'devices',60).stdout)['devicetypes']
         return available_setup(a,b)
-    stage('available-runtime-setup',inventory)
-    stage('tv-test-input-capability',lambda:{'return_code':command([sys.executable,ROOT/'Scripts/probe_tv_text_input.py'],'tv-capability',120).returncode})
+    if not focused:
+        stage('available-runtime-setup',inventory)
+        stage('tv-test-input-capability',lambda:{'return_code':command([sys.executable,ROOT/'Scripts/probe_tv_text_input.py'],'tv-capability',120).returncode})
     debug=temp/'preflight-debug'
     for key,project,scheme,destination,tests in DEBUG_PLANS:
+        if focused and key not in {'mac','mac-ui'}:continue
         def build(key=key,project=project,scheme=scheme,destination=destination,tests=tests):
             args=['xcodebuild','-project',project,'-scheme',scheme,'-configuration','Debug','-destination','platform=macOS' if destination=='macOS' else 'generic/platform='+destination,'-derivedDataPath',debug,'-jobs','2','CODE_SIGNING_ALLOWED=NO','COMPILER_INDEX_STORE_ENABLE=NO','build-for-testing']
             if key=='tv':args+=['SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CELLULOID_TV_TYPETEXT_SUPPORTED' if (temp/'tv-typetext-supported').is_file() else 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG']
@@ -92,6 +105,7 @@ def main():
         stage(key+'-build-for-testing',build)
     release=temp/'preflight-release'
     for key,project,scheme,destination,product_dir in RELEASE_PLANS:
+        if focused and key!='mac':continue
         def build(key=key,project=project,scheme=scheme,destination=destination,product_dir=product_dir):
             command(['xcodebuild','-project',project,'-scheme',scheme,'-configuration','Release','-destination','generic/platform='+destination,'-derivedDataPath',release,'-jobs','2','CODE_SIGNING_ALLOWED=NO','COMPILER_INDEX_STORE_ENABLE=NO','build'],key+'-release')
             app=release/'Build/Products'/product_dir/(scheme+'.app')
@@ -101,6 +115,12 @@ def main():
             command([sys.executable,ROOT/'Scripts/verify_native_release.py',key,app],key+'-package',120)
             return {'package_receipt':key+'-release-packaging.json'}
         stage(key+'-release-package',build)
+    if focused:
+        report['selected_prerequisites_passed']=list(report['checks'])==selected and all(report['checks'].values())
+        out.write_text(json.dumps(report,indent=2)+'\n')
+        print('MAC_REPAIR_PREFLIGHT_RESULT '+json.dumps(report),flush=True)
+        if not report['selected_prerequisites_passed']:raise SystemExit('Selected Mac prerequisites failed; focused runtime remains gated')
+        return
     report['all_prerequisites_passed']=len(report['checks'])==14 and all(report['checks'].values())
     report['long_matrix_allowed']=report['all_prerequisites_passed'];out.write_text(json.dumps(report,indent=2)+'\n')
     print('COMBINED_PREFLIGHT_RESULT '+json.dumps({'source_sha':report['source_sha'],'checks':report['checks'],'long_matrix_allowed':report['long_matrix_allowed']}),flush=True)

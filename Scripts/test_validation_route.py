@@ -46,7 +46,7 @@ class ValidationRouteTests(unittest.TestCase):
         self.assertIn('cancel-in-progress: false',text)
         self.assertIn('CELLULOID_VALIDATION_SCOPE: mac-repair',text)
         self.assertIn('python3 -m unittest discover',text)
-        self.assertIn('python3 Scripts/run_combined_preflight.py',text)
+        self.assertIn('python3 Scripts/run_combined_preflight.py --mac-repair',text)
         self.assertIn('verify_required_interoperability.py mac --platform-contract',text)
         self.assertIn('needs: [build-preflight, native-mac]',text)
         self.assertIn('if: always() && needs.build-preflight.result',text)

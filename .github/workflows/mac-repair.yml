@@ -35,11 +35,11 @@ jobs:
           python3 -m unittest discover -s Scripts -p 'test_*.py' -v
           swift -swift-version 5 Scripts/materialize_native_icons.swift
           python3 Scripts/verify_native_icon_inputs.py
-      - name: Grouped all-platform build testing setup and package prerequisites
+      - name: Selected Mac build testing setup and package prerequisites (diagnostic only)
         shell: bash
         run: |
           set -euo pipefail
-          python3 Scripts/run_combined_preflight.py 2>&1 | tee "$RUNNER_TEMP/preflight.log"
+          python3 Scripts/run_combined_preflight.py --mac-repair 2>&1 | tee "$RUNNER_TEMP/preflight.log"
       - name: Verify unchanged combined source
         if: always()
         shell: bash
