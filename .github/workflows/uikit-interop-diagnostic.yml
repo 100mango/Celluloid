@@ -1,0 +1,109 @@
+name: Fixed shipping UIKit interop (diagnostic only)
+on:
+  push:
+    branches: [codex/uikit-interop-diagnostic]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-platforms-refs/heads/codex/apple-platforms
+  cancel-in-progress: false
+env:
+  CELLULOID_VALIDATION_SCOPE: uikit-interop-diagnostic
+jobs:
+  fixed-uikit-interop:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      CELLULOID_EVIDENCE_PLATFORM: mac
+    steps:
+      - name: Reserve the unchanged Mac job budget
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          Path(os.environ['RUNNER_TEMP'],'mac-job-clock.json').write_text(json.dumps({
+            'source_sha':os.environ['GITHUB_SHA'], 'started_monotonic':time.monotonic(),
+            'started_unix':time.time(), 'execution_budget_seconds':41*60}))
+          PY
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          # Direct successor only: retains exact8470 parent for full-tree binding.
+          fetch-depth: 2
+      - name: Verify exact diagnostic driver and qualified8470 bytes
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Scripts/verify_combined_source.py --phase before
+          sw_vers
+          xcodebuild -version | grep -Fx 'Xcode 27.0'
+          python3 -m unittest discover -s Scripts -p 'test_*.py' -v
+          swift -swift-version 5 Scripts/materialize_native_icons.swift
+          python3 Scripts/verify_native_icon_inputs.py
+      - name: Produce fresh Mac fixtures with all original42 native cases
+        id: native_tests
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Scripts/run_bounded.py --seconds 600 --label same-job-Mac-producer xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMac -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-native" -resultBundlePath "$RUNNER_TEMP/CelluloidMac.xcresult" CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/mac.log"
+      - name: Require the unchanged42 cases and independent native text oracle
+        id: mac_producer
+        if: (success() || failure()) && steps.native_tests.outcome == 'success'
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          python3 Scripts/verify_required_interoperability.py mac --platform-contract --log "$RUNNER_TEMP/mac.log" --output "$RUNNER_TEMP/mac-required-tests.json"
+      - name: Admit both fixed displays only with the full existing tail budget
+        id: consumer_admission
+        if: success() && steps.mac_producer.outcome == 'success'
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          # Rechecks all bytes and requires27min of the41min clock before20min
+          # consumers,2min replay,1min source,3min collection and1min upload.
+          python3 Scripts/verify_combined_source.py --phase before
+      - name: Run unchanged shipping UIKit consumers on genuine2x and3x
+        id: early_interop
+        if: success() && steps.consumer_admission.outcome == 'success'
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          # Existing18min active bound and owned-device shutdown/delete stay intact.
+          python3 Scripts/run_early_uikit_interop.py
+      - name: Independently replay exact consumers products controls and cleanup
+        if: (success() || failure()) && steps.consumer_admission.outcome == 'success'
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          # Keep actual early-step failure. No downstream fanout consumes this output.
+          python3 Scripts/verify_interop_continuation.py --github-output "$GITHUB_OUTPUT"
+      - name: Verify unchanged source and remaining collection allowance
+        if: always()
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Scripts/verify_combined_source.py --phase after
+          python3 Scripts/verify_native_icon_inputs.py
+      - name: Export within the unchanged2MB Mac evidence allocation
+        id: bounded_evidence
+        if: always()
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          python3 Scripts/collect_native_evidence.py
+      - name: Upload fixed diagnostic evidence
+        if: always() && steps.bounded_evidence.outcome == 'success'
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: celluloid-uikit-interop-diagnostic-${{ github.sha }}
+          path: ${{ runner.temp }}/celluloid-bounded-evidence/
+          retention-days: 1
+          if-no-files-found: error
