@@ -79,12 +79,24 @@ class NativeGlyphObservationTests(unittest.TestCase):
     def row(self):
         image=TextObservationTests().row(('actual-native-coretext-backing',2,0))
         fields={k:image[k] for k in ['width','height','pngBase64','pngSHA256']}
-        return {'schema':'Celluloid.NativeGlyphObservation.1','acceptance':False,'text':'Hello, 世界 🎬',
+        modes=[('frame-default','CTFrameDraw',{}),('frame-position-on','CTFrameDraw',{'positioning':True}),
+            ('frame-position-off','CTFrameDraw',{'positioning':False}),
+            ('frame-position-on-quant-off','CTFrameDraw',{'positioning':True,'quantization':False}),
+            ('frame-position-on-quant-on','CTFrameDraw',{'positioning':True,'quantization':True}),
+            ('frame-smoothing-off','CTFrameDraw',{'smoothing':False}),
+            ('line-default','CTLineDraw',{}),('run-default','CTRunDraw',{}),('glyph-default','CTFontDrawGlyphs',{})]
+        zero={'premultipliedRGBMaximum':0,'alphaMaximum':0,'premultipliedRGBPixelsAbove2':0,'alphaPixelsAbove2':0}
+        experiments=[dict(fields,name=name,api=api,explicitFlagOverrides=flags,initialCTM=[2,0,0,2,0,6.48],
+            initialTextMatrix=[1,0,0,1,0,0],initialTextPosition=[0,0],finalCTM=[2,0,0,2,0,6.48],
+            finalTextMatrix=[1,0,0,1,0,0],finalTextPosition=[0,0],interpolationQuality=3,
+            premultipliedRGBA_SHA256='d'*64,againstProductionReplay=dict(zero),againstExactOracle=dict(zero)) for name,api,flags in modes]
+        return {'schema':'Celluloid.NativeGlyphObservation.2','acceptance':False,'text':'Hello, 世界 🎬',
             'sourcePNG_SHA256':'a'*64,'actualCompositePNG_SHA256':'b'*64,'actualTextRect':[77.231,26.24,27.875,43.52],
             'frameAllocationHeight':37,'naturalBlockHeight':36,'fontSize':10,'lineHeight':12,'backingScale':2,
             'coreTextLines':[{'frameLineOrigin':[0,y],'runs':[]} for y in [27,15,3]],
             'oracleLines':[{'text':text,'glyphRuns':[]} for text in ['Hello,',' 世界 ','🎬']],
             'images':[dict(fields,role=role) for role in ['replayed-production-backing','exact-appkit-oracle-backing']],
+            'rasterExperiments':experiments,
             'isolatedMetrics':{'premultipliedRGBMaximum':60,'alphaMaximum':102,'premultipliedRGBPixelsAbove2':284,'alphaPixelsAbove2':275},'scope':'Synthetic diagnostic test data'}
     def exercise(self,change=None,result='failed'):
         with tempfile.TemporaryDirectory() as folder:
@@ -114,6 +126,23 @@ class NativeGlyphObservationTests(unittest.TestCase):
         for mutate in mutations:
             def change(lines,row):mutate(row);lines[1]=gate.GLYPH_PREFIX+json.dumps(row);return lines
             with self.subTest(mutate=mutate),self.assertRaises(ValueError):self.exercise(change)
+    def test_raster_experiment_order_flags_geometry_default_control_and_caps_reject(self):
+        mutations=[lambda r:r.update(schema='Celluloid.NativeGlyphObservation.1'),
+            lambda r:r['rasterExperiments'].pop(),lambda r:r['rasterExperiments'].reverse(),
+            lambda r:r['rasterExperiments'][1].update(api='OtherAPI'),
+            lambda r:r['rasterExperiments'][1].update(explicitFlagOverrides={'positioning':1}),
+            lambda r:r['rasterExperiments'][2].update(initialCTM=[2,0,0,2,0,7.48]),
+            lambda r:r['rasterExperiments'][0]['againstProductionReplay'].update(alphaMaximum=1),
+            lambda r:r['rasterExperiments'][0].update(initialTextPosition=[0,1]),
+            lambda r:r['rasterExperiments'][0].update(pngSHA256='f'*64),
+            lambda r:r['rasterExperiments'][0].update(width=57),
+            lambda r:r['rasterExperiments'][0].update(extra='unbound'),
+            lambda r:r['rasterExperiments'][0]['againstExactOracle'].update(alphaMaximum=True),
+            lambda r:r['rasterExperiments'][0].update(pngBase64=base64.b64encode(b'x'*6001).decode())]
+        for mutate in mutations:
+            def change(lines,row):mutate(row);lines[1]=gate.GLYPH_PREFIX+json.dumps(row);return lines
+            with self.subTest(mutate=mutate),self.assertRaises(ValueError):self.exercise(change)
+
     def test_collector_retains_diagnostic_before_optional_pressure_and_rejects_corruption(self):
         import os,subprocess
         root=Path(__file__).resolve().parents[1]
@@ -139,9 +168,12 @@ class NativeGlyphObservationTests(unittest.TestCase):
 
     def test_new_observation_uses_public_glyph_hooks_without_renderer_or_oracle_relaxation(self):
         root=Path(__file__).resolve().parents[1];swift=(root/'Platforms/MacExtensionTests/MacPhotoRendererTests.swift').read_text()
-        for api in ['CTRunGetPositions','CTRunGetStringIndices','CTRunGetTextMatrix','CTFontGetMatrix','super.showCGGlyphs','firstGlyphLocation','observedOracleBacking = image']:
+        for api in ['setAllowsFontSubpixelPositioning','setShouldSubpixelPositionFonts','setAllowsFontSubpixelQuantization','setShouldSubpixelQuantizeFonts','setAllowsFontSmoothing','setShouldSmoothFonts','CTLineDraw','CTRunDraw','CTFontDrawGlyphs','CTRunGetPositions','CTRunGetStringIndices','CTRunGetTextMatrix','CTFontGetMatrix','super.showCGGlyphs','firstGlyphLocation','observedOracleBacking = image']:
             self.assertIn(api,swift)
         self.assertIn('XCTAssertLessThanOrEqual(difference, 2,',swift)
+        self.assertIn('XCTAssertEqual(bytes, a, "Test-only default frame replay must equal the shipping helper")',swift)
+        self.assertIn('guard png.count <= 6_000',swift)
+        self.assertIn('guard data.count <= 100_000',swift)
         self.assertIn('manager.drawGlyphs(forGlyphRange: glyphRange, at: drawOrigin)',swift)
         self.assertIn('let lineBaseline = firstGlyphLocation.y',swift)
         self.assertIn('"acceptance": false',swift)

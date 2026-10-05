@@ -97,13 +97,37 @@ class HostTransportTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.parse(self.transcript()+'x'*20_000_001)
     def attachment(self,folder,name='initial.txt',data=b'actual AX'):
         path=folder/'11111111-2222-3333-4444-555555555555.txt';path.write_bytes(data)
-        item={'exportedFileName':path.name,'suggestedHumanReadableName':t.ATTACHMENT_PREFIX+name+'_0_11111111-2222-3333-4444-555555555555.txt'}
+        item={'exportedFileName':path.name,'suggestedHumanReadableName':t.ATTACHMENT_PREFIX+Path(name).stem+'_0_11111111-2222-3333-4444-555555555555.txt'}
         manifest=[{'testIdentifier':'MacPhotosHostUITests/'+t.CASE[1]+'()','attachments':[item]}]
         return manifest,path
     def test_fixed_observed_export_suffix_and_owned_attachment_are_supported(self):
         with tempfile.TemporaryDirectory() as directory:
             folder=Path(directory);manifest,path=self.attachment(folder)
             self.assertEqual(t.attachment_candidates(folder,manifest),{'initial.txt':b'actual AX'})
+    def test_exact_2980_runtime_stems_preserve_distinct_text_and_image_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory)
+            observed=[('870C6B2F-9522-4C46-92BC-6499B8CC2210.jpeg',
+                'celluloid-host-diagnostic-last-observed_0_112B70D7-DE5F-43D6-AD63-64E93EF4CB09.jpg',b'\xff\xd8\xffsynthetic'),
+                ('90046EAE-F73E-4C63-AFB0-E092FA4AF112',
+                'celluloid-host-diagnostic-last-observed_0_C8DCFD3A-9D66-40F7-84AF-4481B072090D.txt',b'actual AX')]
+            items=[]
+            for exported,human,data in observed:
+                (folder/exported).write_bytes(data)
+                items.append({'exportedFileName':exported,'suggestedHumanReadableName':human})
+            manifest=[{'testIdentifier':'MacPhotosHostUITests/'+t.CASE[1]+'()','attachments':items}]
+            self.assertEqual(t.attachment_candidates(folder,manifest),{'last-observed.jpg':b'\xff\xd8\xffsynthetic','last-observed.txt':b'actual AX'})
+            # The old, unobserved doubled-extension spelling is not a fallback.
+            items[1]['suggestedHumanReadableName']=items[1]['suggestedHumanReadableName'].replace('last-observed_0','last-observed.txt_0')
+            with self.assertRaisesRegex(ValueError,'Unexpected/duplicate named'):t.attachment_candidates(folder,manifest)
+
+    def test_same_fixed_name_with_distinct_export_paths_still_rejects(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory);manifest,path=self.attachment(folder)
+            duplicate=copy.deepcopy(manifest[0]['attachments'][0]);duplicate['exportedFileName']='other.txt'
+            (folder/'other.txt').write_bytes(b'other AX');manifest[0]['attachments'].append(duplicate)
+            with self.assertRaisesRegex(ValueError,'Unexpected/duplicate named'):t.attachment_candidates(folder,manifest)
+
     def test_unexpected_duplicate_oversized_wrong_test_and_unowned_attachment_reject(self):
         changes=[lambda m:m[0]['attachments'][0].update(exportedFileName='../outside.txt'),
             lambda m:m[0]['attachments'][0].update(exportedFileName='/tmp/outside.txt'),

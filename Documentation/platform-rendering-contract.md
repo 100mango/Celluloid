@@ -114,3 +114,34 @@ graph equality from both actual byte strings; a reported boolean is not proof.
 The bounded consumer collector repeats this comparison from its fixed actual
 handoff directory, checks the complete derived receipt, and retains the actual
 archive handoff and manifest before optional evidence can use the byte budget.
+
+## Test-only color-glyph raster comparison
+
+Source `2980ebcf179acf092dbd35f29886cb5c44f6204e` retained the exact oracle backing
+and production-helper replay. The emoji uses the same 10pt fallback font, glyph 813,
+zero CTRun offset and effective device origin (0,12.48). Isolated alpha still differs;
+this does not support a compensating baseline offset or a global color-space change.
+The original production path, independent oracle and ≤2 final-image limit stay frozen.
+
+`Celluloid.NativeGlyphObservation.2` adds nine fixed, test-only draw comparisons at
+the same frame geometry: default CTFrame drawing; explicit subpixel positioning
+on/off; positioning on with quantization on/off; smoothing off; and default CTLine,
+CTRun and CTFont glyph drawing. Flags are identified only as explicit overrides,
+not inferred default/readback values. The default frame replay must byte-match the
+shipping helper. Each result retains public context/text transforms, the explicit
+flags, interpolation setting, a small transparent PNG/hash and separate alpha/RGB
+metrics against both original backings. The AppKit draw hook also records its public
+antialias/interpolation observations. No comparison result grants qualification.
+
+Each experiment PNG is at most 6KB, the complete stdout record remains at most 100KB,
+and the collected diagnostic remains at most 160KB inside the existing Mac budget.
+The collector rejects changed/missing experiment order, unknown flags/APIs/fields,
+nonfinite transforms, changed geometry, corrupt PNGs and a mismatching default replay.
+Actual native execution is still needed to distinguish draw-API behavior from state.
+
+Apple references:
+- [Subpixel positioning](https://developer.apple.com/documentation/coregraphics/cgcontext/setshouldsubpixelpositionfonts(_:))
+- [Allowing subpixel positioning](https://developer.apple.com/documentation/coregraphics/cgcontext/setallowsfontsubpixelpositioning(_:))
+- [Font smoothing](https://developer.apple.com/documentation/coregraphics/cgcontext/setshouldsmoothfonts(_:))
+- [Public glyph drawing](https://developer.apple.com/documentation/coretext/ctfontdrawglyphs(_:_:_:_:_:))
+- [AppKit glyph draw hook](https://developer.apple.com/documentation/appkit/nslayoutmanager/showcgglyphs(_:positions:count:font:textmatrix:attributes:in:))

@@ -92,7 +92,7 @@ ALLOWED = {
 CAP = 1_000_000
 BASE_FILE_COUNT = 544
 REVIEWED_TEST_FILES = {'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': 'f4c7a7a16bf5414e6c2a2716bc146bdc216f7ea966a80207acce8a7667584890', 'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift': 'ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034'}
-REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': '89a25b0c29302850c829f8a86d8e6d29b22ed84cd7addbd3a48aa4bf127231e0', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': 'ba3199901afda2065323e67ba53ad27cd3cd95d047c81508c5045ad177993b58', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
+REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': 'd46a2b69adb296e6160d17b30f6f4a516f40b4178b356997fcbdcfcff794aeb0', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': 'ba3199901afda2065323e67ba53ad27cd3cd95d047c81508c5045ad177993b58', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
 UNCHANGED_BASE_FILES = BASE_FILE_COUNT - 2 - len(REVIEWED_TEST_FILES) - len(REVIEWED_CANDIDATE_FILES)
 
 def run(*args):
@@ -482,6 +482,12 @@ def verify_acceptance(root, source_sha):
     editor_before=read_receipt(observed/'host-editor-before-process.json')
     editor_after=read_receipt(observed/'host-editor-after-process.json')
     validate_host_ui(selection,editor_before,editor_after,photos,ownership,source_sha)
+    menu=outcome.get('extension_menu_observation')
+    assert type(menu) is dict and set(menu)=={'schema','acceptance','menu_label','menu_count','menu_enabled','menu_hittable','classification'}, 'Missing/malformed outcome menu observation'
+    assert menu['schema']=='Celluloid.HostMenuObservation.1' and menu['acceptance'] is False
+    assert type(menu['menu_count']) is int and menu['menu_count']==selection['menu_count']==1
+    assert menu['menu_enabled'] is True and menu['menu_hittable'] is True
+    assert menu['menu_label']==selection['menu_label']=='Celluloid' and menu['classification']=='selectable', 'Contradictory outcome menu observation'
     process = read_receipt(observed / 'extension-process.json')
     for name, receipt in [('prerequisite', prerequisite), ('outcome', outcome), ('process', process)]:
         assert receipt['source_sha'] == source_sha, 'Wrong candidate: ' + name

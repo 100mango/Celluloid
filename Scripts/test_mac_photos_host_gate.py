@@ -189,6 +189,40 @@ class MacPhotosHostGateTests(unittest.TestCase):
         self.assertIn('"reason": String(reason.prefix(2000))',self.swift)
         self.assertIn('outcome["first_blocked_operation"] = firstBlockedOperation',cleanup)
         self.assertIn('print("MAC_HOST_BLOCKED stage=" + stage + " reason=" + reason)',self.swift)
+        self.assertNotIn('actual Manage state captured',self.swift)
+        self.assertIn('no enablement action was taken',self.swift)
+
+    def test_menu_classification_survives_export_failure_in_bounded_stdout_outcome(self):
+        self.assertLess(self.swift.index('extensionMenuObservation = ['),self.swift.index('checkpoint(photos, "extensions", screenshot: true)'))
+        self.assertIn('outcome["extension_menu_observation"] = extensionMenuObservation',self.swift)
+        self.assertIn('let menuCount = celluloid.count',self.swift)
+        self.assertEqual(self.swift.count('celluloid.count'),2)
+        for state in ['absent','ambiguous','disabled','not-hittable','selectable']:
+            self.assertIn('"'+state+'"',self.swift)
+        self.assertIn('menuEnabled.map { $0 as Any } ?? NSNull()',self.swift)
+        self.assertIn('menuHittable.map { $0 as Any } ?? NSNull()',self.swift)
+        self.assertIn('"schema": "Celluloid.HostMenuObservation.1", "acceptance": false',self.swift)
+
+    def test_menu_is_freshly_revalidated_after_checkpoint_without_mixing_snapshots(self):
+        body=self.swift.split('        let editorCountBefore =',1)[1].split('        stage = "invoke-real-photos-extension"',1)[0]
+        self.assertEqual(body.count('celluloid.count'),1)
+        self.assertLess(self.swift.index('checkpoint(photos, "extensions", screenshot: true)'),self.swift.index('let invocationMenuCount ='))
+        self.assertLess(body.index('try hostObservation('),body.index('let invocationMenuCount ='))
+        self.assertLess(body.index('let invocationMenuCount ='),body.index('named: "host-selection.json"'))
+        self.assertIn('"menu_count": invocationMenuCount, "menu_enabled": invocationEnabled == true',body)
+        self.assertIn('"menu_hittable": invocationHittable == true',body)
+        for exact in ['invocationMenuCount == menuCount, invocationMenuCount == 1',
+                      'invocationEnabled == menuEnabled, invocationEnabled == true',
+                      'invocationHittable == menuHittable, invocationHittable == true']:
+            self.assertIn(exact,body)
+        # Executable transition model tied to the source conditions above. These
+        # are observed states, not a claim about unobserved intervals.
+        def permitted(early,fresh):
+            return early==(1,True,True) and fresh[0]==early[0]==1 and fresh[1]==early[1] is True and fresh[2]==early[2] is True
+        self.assertTrue(permitted((1,True,True),(1,True,True)))
+        for fresh in [(0,None,None),(2,None,None),(1,False,True),(1,True,False),(1,False,False)]:
+            with self.subTest(fresh=fresh):self.assertFalse(permitted((1,True,True),fresh))
+        self.assertFalse(permitted((0,None,None),(1,True,True)))
 
     def test_unknown_interruptions_abort_without_alert_action(self):
         handler = self.swift.split('addUIInterruptionMonitor', 1)[1].split('let input', 1)[0]
@@ -220,7 +254,7 @@ class MacPhotosHostGateTests(unittest.TestCase):
     def test_v2_source_observes_enabled_selection_and_ready_editor_around_live_process(self):
         self.assertNotIn('pluginkit',self.swift)
         self.assertNotIn('assertUniqueRegistration',self.swift)
-        self.assertIn('!celluloid.firstMatch.isEnabled',self.swift)
+        self.assertIn('menuEnabled != true || menuHittable != true',self.swift)
         self.assertIn('XCTAssertEqual(editorCountBefore, 0',self.swift)
         self.assertLess(self.swift.index('named: "host-selection.json"'),self.swift.index('celluloid.element(boundBy: 0).click()'))
         self.assertLess(self.swift.index('named: "host-editor-before-process.json"'),self.swift.index('named: "extension-process.json"'))
@@ -449,7 +483,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             'mac-host-observed/prerequisite.json': {'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'prerequisite_passed': True,
                 'complete_host_e2e': False, 'production_source_base': gate.BASE},
             'mac-host-observed/outcome.json': {'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'complete_host_e2e': False,
-                'last_stage': 'host-entry-prerequisite-passed', 'save_reopen_cancel_revert': 'not executed in prerequisite phase'},
+                'last_stage': 'host-entry-prerequisite-passed', 'save_reopen_cancel_revert': 'not executed in prerequisite phase', 'extension_menu_observation': {'schema':'Celluloid.HostMenuObservation.1','acceptance':False,'menu_label':'Celluloid','menu_count':1,'menu_enabled':True,'menu_hittable':True,'classification':'selectable'}},
             'mac-host-observed/extension-process.json': {'source_sha': self.SOURCE, 'extension_id': gate.EXT_ID,
                 'expected_executable': executable, 'expected_executable_sha256': 'e' * 64,
                 'unique_exact_process': True,
@@ -550,7 +584,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             root=Path(folder);self.seed(root);context=gate.read_receipt(root/'mac-host-context.json')
             (root/'mac-host-transport-replay.json').unlink()
             for path in (root/'mac-host-observed').iterdir():path.unlink()
-            name='celluloid-host-diagnostic-unexpected.txt_0_12345678-1234-1234-1234-123456789ABC.txt'
+            name='celluloid-host-diagnostic-unexpected_0_12345678-1234-1234-1234-123456789ABC.txt'
             manifest=[{'testIdentifier':'MacPhotosHostUITests/testInstalledExtensionIsInvokedByActualPhotos()',
                        'attachments':[{'suggestedHumanReadableName':name,'exportedFileName':'owned.txt'}]}]
             raw=json.dumps(manifest).encode()
@@ -566,6 +600,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             self.assertEqual(report['retained_first_items'][0]['suggestedHumanReadableName'],name)
             self.assertLessEqual(path.stat().st_size,16_000)
             self.assertFalse((root/'mac-host-observed/unexpected.txt').exists())
+            self.assertEqual(gate.read_receipt(root/'mac-host-observed/outcome.json')['extension_menu_observation']['classification'],'selectable')
 
     def test_attachment_error_metadata_caps_unicode_and_preserves_original_write_failure(self):
         for fail_write in [False,True]:
@@ -681,6 +716,16 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
                               ('outcome.json', {'save_reopen_cancel_revert': 'passed'})]:
             with self.subTest(name=name, updates=updates):
                 self.check_mutation_rejected(lambda root: self.edit(root / 'mac-host-observed' / name, **updates))
+
+    def test_menu_outcome_cannot_contradict_passed_host_selection_after_rehash(self):
+        for change in [{'menu_count':0,'menu_enabled':None,'menu_hittable':None,'classification':'absent'},
+                       {'menu_count':2,'classification':'ambiguous'},{'menu_enabled':False,'classification':'disabled'},
+                       {'menu_hittable':False,'classification':'not-hittable'},{'menu_count':True},{'acceptance':True}]:
+            with self.subTest(change=change),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);self.seed(root);path=root/'mac-host-observed/outcome.json'
+                row=gate.read_receipt(path);row['extension_menu_observation'].update(change);gate.write(path,row)
+                self.write_transport_log(root)
+                with self.assertRaises(AssertionError):gate.verify_acceptance(root,self.SOURCE)
 
     def test_structured_blocked_operation_vetoes_rehashed_success_without_text_marker(self):
         for blocked in [{},{'reason':'denied'},None,False]:

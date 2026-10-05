@@ -192,8 +192,9 @@ failure marker is missing.
 The Python live-process child is read-only and returns its JSON receipt on stdout;
 it never writes the external evidence directory. Bounded AX text and the two
 fixed screenshot names use XCTest attachments. The outer exporter accepts only
-known host diagnostic names from the exact host test, with Xcode's observed
-iteration/UUID suffix, direct owned export files, no symlinks, correct file types
+known host diagnostic names from the exact host test, with Xcode27's observed
+fixed stem plus iteration/UUID/type suffix (the declared extension is removed
+before that suffix is added), direct owned export files, no symlinks, correct file types
 and the existing size caps. Transport completion is published only after this
 export is finished and validated. Missing, malformed, duplicate, out-of-order,
 truncated, over-budget or wrong-context records remain red. On an attachment
@@ -207,3 +208,24 @@ attempted only after its identity has been verified.
 This changes neither entitlements nor permissions, privacy settings, registration
 preferences, production serialization, rendering goldens or the guarded Photos
 save path. Portable parser tests are not an Apple runtime or host-entry pass.
+
+## Observed attachment and menu diagnostic correction
+
+Run [37266677778](https://github.com/100mango/Celluloid/actions/runs/37266677778),
+source `2980ebcf179acf092dbd35f29886cb5c44f6204e`, launched actual Photos, imported
+its owned synthetic asset and reached Edit → Extensions. It failed before
+invocation because Celluloid was not uniquely selectable. The failed export
+retained metadata proving the exact Xcode27 spelling, for example
+`celluloid-host-diagnostic-last-observed_0_<UUID>.jpg`. The receiver reconstructs
+only the fixed `last-observed.jpg` name from that stem and typed suffix. It does
+not accept the earlier doubled-extension assumption as a second format. Unknown
+stems/types, duplicate selected names, other tests, unsafe paths and existing
+caps still reject. That historical run remains failed.
+
+Before optional screenshots, the test now captures the Celluloid menu count once
+and, only for one element, its enabled/hittable values. The bounded stdout outcome
+retains `absent`, `ambiguous`, `disabled`, `not-hittable` or `selectable`. Properties
+not observed for absent/ambiguous matches are null, never invented false values.
+No new host UI action is added. A claimed acceptance must agree with the successful
+selection receipt; a contradictory outcome cannot be discarded. Failure wording
+no longer claims that Manage was captured when that branch was not executed.

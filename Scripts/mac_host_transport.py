@@ -111,11 +111,12 @@ def attachment_candidates(folder,manifest):
             seen.add(exported);path=folder/exported
             require(path.is_file() and not path.is_symlink() and path.resolve().parent==folder.resolve(),'Unowned attachment path')
             if type(name) is not str or not name.startswith(ATTACHMENT_PREFIX):continue
-            # xcresulttool appends its observed iteration/UUID/type suffix to
-            # the user-set attachment name. Parse only that exact bounded form.
+            # Observed Xcode27 exports remove the declared extension before
+            # appending iteration/UUID/type. Reconstruct only a fixed stem/type
+            # pair; no alternate suffix or arbitrary reported path is trusted.
             suffix=re.fullmatch(re.escape(ATTACHMENT_PREFIX)+r'(.+)_(0)_([0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})\.(txt|jpg|jpeg)',name)
             require(suffix is not None,'Unexpected host attachment display name')
-            selected=suffix[1]
+            selected=suffix[1]+('.jpg' if suffix[4] in {'jpg','jpeg'} else '.txt')
             require(selected in DIAGNOSTIC_NAMES and selected not in result,'Unexpected/duplicate named host attachment')
             require(record.get('testIdentifier')=='MacPhotosHostUITests/'+CASE[1]+'()','Host attachment belongs to another test')
             require((selected.endswith('.txt') and suffix[4]=='txt') or (selected.endswith('.jpg') and suffix[4] in {'jpg','jpeg'}),'Unexpected host attachment extension')

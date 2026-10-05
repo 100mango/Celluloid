@@ -18,6 +18,7 @@ final class MacPhotosHostUITests: XCTestCase {
     private var context: [String: Any] = [:]
     private var stage = "not-started"
     private var firstBlockedOperation: [String: Any]?
+    private var extensionMenuObservation: [String: Any]?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -63,6 +64,7 @@ final class MacPhotosHostUITests: XCTestCase {
                 "last_stage": stage, "host_entry_contract": Self.hostEntryContract, "complete_host_e2e": false,
                 "save_reopen_cancel_revert": "not executed in prerequisite phase"]
             if let firstBlockedOperation { outcome["first_blocked_operation"] = firstBlockedOperation }
+            if let extensionMenuObservation { outcome["extension_menu_observation"] = extensionMenuObservation }
             try? report(outcome, named: "outcome.json")
             if photosIdentityVerified {
                 do { try checkpoint(photos, "last-observed", screenshot: true) }
@@ -147,9 +149,20 @@ final class MacPhotosHostUITests: XCTestCase {
         try checkpoint(photos, "editing")
         stage = "observe-extensions-menu"
         try clickNamed("Extensions", in: photos)
-        try checkpoint(photos, "extensions", screenshot: true)
         let celluloid = photos.menuItems.matching(NSPredicate(format: "label == %@", "Celluloid"))
-        if celluloid.count != 1 || !celluloid.firstMatch.isEnabled || !celluloid.firstMatch.isHittable {
+        let menuCount = celluloid.count
+        let menuEnabled: Bool? = menuCount == 1 ? celluloid.element(boundBy: 0).isEnabled : nil
+        let menuHittable: Bool? = menuCount == 1 ? celluloid.element(boundBy: 0).isHittable : nil
+        let classification = menuCount == 0 ? "absent" : menuCount != 1 ? "ambiguous"
+            : menuEnabled != true ? "disabled" : menuHittable != true ? "not-hittable" : "selectable"
+        // Save bounded observations in the stdout outcome before optional AX or
+        // screenshot export can fail. Missing properties are null, not false.
+        extensionMenuObservation = ["schema": "Celluloid.HostMenuObservation.1", "acceptance": false,
+            "menu_label": "Celluloid", "menu_count": menuCount,
+            "menu_enabled": menuEnabled.map { $0 as Any } ?? NSNull(),
+            "menu_hittable": menuHittable.map { $0 as Any } ?? NSNull(), "classification": classification]
+        try checkpoint(photos, "extensions", screenshot: true)
+        if menuCount != 1 || menuEnabled != true || menuHittable != true {
             stage = "extension-not-selectable-observe-manage"
             let manage = namedControls("Manage", in: photos) + namedControls("Manage…", in: photos)
             if manage.count == 1 && manage[0].isHittable {
@@ -160,14 +173,26 @@ final class MacPhotosHostUITests: XCTestCase {
                 // Do not guess a toggle or change any preference in this probe.
                 // The exact observed Photos Editing row must be reviewed first.
             }
-            throw block("Celluloid is not uniquely selectable; actual Manage state captured, enablement not guessed")
+            throw block("Celluloid is not uniquely selectable; no enablement action was taken")
         }
         let editorCountBefore = editorMatches(in: photos).count
         XCTAssertEqual(editorCountBefore, 0, "An already-present editor cannot prove this host transition")
         var selection = try hostObservation(expectedPID: photosPID, fixtureHash: fixtureHash, assetLabel: selectedAssetLabel)
+        stage = "revalidate-extension-before-invoke"
+        let invocationMenuCount = celluloid.count
+        let invocationEnabled: Bool? = invocationMenuCount == 1 ? celluloid.element(boundBy: 0).isEnabled : nil
+        let invocationHittable: Bool? = invocationMenuCount == 1 ? celluloid.element(boundBy: 0).isHittable : nil
+        guard invocationMenuCount == menuCount, invocationMenuCount == 1,
+              invocationEnabled == menuEnabled, invocationEnabled == true,
+              invocationHittable == menuHittable, invocationHittable == true else {
+            throw block("Celluloid menu state changed before invocation",
+                operation: ["menu_count": invocationMenuCount,
+                    "menu_enabled": invocationEnabled.map { $0 as Any } ?? NSNull(),
+                    "menu_hittable": invocationHittable.map { $0 as Any } ?? NSNull()])
+        }
         selection.merge(["schema": "Celluloid.HostSelection.2", "menu_label": "Celluloid",
-            "menu_count": celluloid.count, "menu_enabled": celluloid.element(boundBy: 0).isEnabled,
-            "menu_hittable": celluloid.element(boundBy: 0).isHittable,
+            "menu_count": invocationMenuCount, "menu_enabled": invocationEnabled == true,
+            "menu_hittable": invocationHittable == true,
             "editor_count_before": editorCountBefore]) { _, new in new }
         try report(selection, named: "host-selection.json")
         stage = "invoke-real-photos-extension"

@@ -524,7 +524,7 @@ final class MacPhotoRendererTests: XCTestCase {
             alphaMaximum = max(alphaMaximum, alpha); rgbMaximum = max(rgbMaximum, rgb)
             if alpha > 2 { alphaPixels += 1 }; if rgb > 2 { rgbPixels += 1 }
         }
-        let record: [String: Any] = ["schema": "Celluloid.NativeGlyphObservation.1", "acceptance": false,
+        let record: [String: Any] = ["schema": "Celluloid.NativeGlyphObservation.2", "acceptance": false,
             "text": text, "sourcePNG_SHA256": digest(sourcePNG),
             "actualCompositePNG_SHA256": digest(try RasterCodec.encode(actualComposite, as: .png)),
             "actualTextRect": [rect.minX, rect.minY, rect.width, rect.height],
@@ -533,12 +533,99 @@ final class MacPhotoRendererTests: XCTestCase {
             "coreTextLines": nativeLines, "oracleLines": observedOracleLines,
             "images": [try imageRecord(replay, role: "replayed-production-backing"),
                        try imageRecord(oracle, role: "exact-appkit-oracle-backing")],
+            "rasterExperiments": try rasterExperiments(layout, bounds: rect.size, replay: replay, oracle: oracle),
             "isolatedMetrics": ["premultipliedRGBMaximum": rgbMaximum, "alphaMaximum": alphaMaximum,
                 "premultipliedRGBPixelsAbove2": rgbPixels, "alphaPixelsAbove2": alphaPixels],
             "scope": "Diagnostic only. Exact oracle backing; production helper replay at actual computed bounds. Frame origins, glyph offsets and draw-hook locations are distinct observations, not interchangeable baselines."]
         let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
         guard data.count <= 100_000 else { throw NSError(domain: "NativeGlyphObservation", code: 2) }
         print("MAC_NATIVE_GLYPH_OBSERVATION " + String(decoding: data, as: UTF8.self))
+    }
+
+    /// Test-only draw API/flag comparisons at the same CT frame geometry. No
+    /// candidate rendering or independent oracle draw state is changed.
+    private func rasterExperiments(_ layout: MacPhotoTextLayout, bounds: CGSize,
+                                   replay: CGImage, oracle: CGImage) throws -> [[String: Any]] {
+        let modes: [(String, String, [String: Bool])] = [
+            ("frame-default", "CTFrameDraw", [:]),
+            ("frame-position-on", "CTFrameDraw", ["positioning": true]),
+            ("frame-position-off", "CTFrameDraw", ["positioning": false]),
+            ("frame-position-on-quant-off", "CTFrameDraw", ["positioning": true, "quantization": false]),
+            ("frame-position-on-quant-on", "CTFrameDraw", ["positioning": true, "quantization": true]),
+            ("frame-smoothing-off", "CTFrameDraw", ["smoothing": false]),
+            ("line-default", "CTLineDraw", [:]), ("run-default", "CTRunDraw", [:]),
+            ("glyph-default", "CTFontDrawGlyphs", [:])]
+        let lines = CTFrameGetLines(layout.frame) as! [CTLine]
+        var origins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(layout.frame, CFRange(location: 0, length: 0), &origins)
+        let a = try pixels(replay), b = try pixels(oracle)
+        func matrix(_ t: CGAffineTransform) -> [CGFloat] { [t.a, t.b, t.c, t.d, t.tx, t.ty] }
+        func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+        func metrics(_ bytes: [UInt8], _ other: [UInt8]) -> [String: Int] {
+            var rgbMaximum = 0, alphaMaximum = 0, rgbPixels = 0, alphaPixels = 0
+            for index in stride(from: 0, to: bytes.count, by: 4) {
+                let rgb = (0..<3).map { abs(Int(bytes[index + $0]) - Int(other[index + $0])) }.max() ?? 0
+                let alpha = abs(Int(bytes[index + 3]) - Int(other[index + 3]))
+                rgbMaximum = max(rgbMaximum, rgb); alphaMaximum = max(alphaMaximum, alpha)
+                if rgb > 2 { rgbPixels += 1 }; if alpha > 2 { alphaPixels += 1 }
+            }
+            return ["premultipliedRGBMaximum": rgbMaximum, "alphaMaximum": alphaMaximum,
+                    "premultipliedRGBPixelsAbove2": rgbPixels, "alphaPixelsAbove2": alphaPixels]
+        }
+        var results: [[String: Any]] = []
+        for (name, api, flags) in modes {
+            let bitmap = try RasterCodec.bitmap(width: replay.width, height: replay.height)
+            bitmap.scaleBy(x: MacPhotoTextRaster.scale, y: MacPhotoTextRaster.scale)
+            bitmap.translateBy(x: 0, y: CGFloat(replay.height) / MacPhotoTextRaster.scale - layout.height
+                               - (bounds.height - layout.typographicHeight) / 2)
+            bitmap.textMatrix = .identity
+            if let enabled = flags["positioning"] {
+                bitmap.setAllowsFontSubpixelPositioning(enabled); bitmap.setShouldSubpixelPositionFonts(enabled)
+            }
+            if let enabled = flags["quantization"] {
+                bitmap.setAllowsFontSubpixelQuantization(enabled); bitmap.setShouldSubpixelQuantizeFonts(enabled)
+            }
+            if let enabled = flags["smoothing"] {
+                bitmap.setAllowsFontSmoothing(enabled); bitmap.setShouldSmoothFonts(enabled)
+            }
+            let initialCTM = matrix(bitmap.ctm), initialTextMatrix = matrix(bitmap.textMatrix)
+            let initialPosition = bitmap.textPosition
+            if api == "CTFrameDraw" { CTFrameDraw(layout.frame, bitmap) }
+            else {
+                for (index, line) in lines.enumerated() {
+                    bitmap.textMatrix = .identity; bitmap.textPosition = origins[index]
+                    if api == "CTLineDraw" { CTLineDraw(line, bitmap); continue }
+                    for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+                        bitmap.textMatrix = .identity; bitmap.textPosition = origins[index]
+                        if api == "CTRunDraw" { CTRunDraw(run, bitmap, CFRange(location: 0, length: 0)); continue }
+                        let count = CTRunGetGlyphCount(run)
+                        var glyphs = [CGGlyph](repeating: 0, count: count)
+                        var positions = [CGPoint](repeating: .zero, count: count)
+                        CTRunGetGlyphs(run, CFRange(location: 0, length: 0), &glyphs)
+                        CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
+                        positions = positions.map { CGPoint(x: $0.x + origins[index].x, y: $0.y + origins[index].y) }
+                        let font = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
+                        bitmap.textPosition = .zero
+                        CTFontDrawGlyphs(font, &glyphs, &positions, count, bitmap)
+                    }
+                }
+            }
+            let image = try XCTUnwrap(bitmap.makeImage()), bytes = try pixels(image)
+            XCTAssertEqual(bytes.count, a.count); XCTAssertEqual(bytes.count, b.count)
+            if name == "frame-default" { XCTAssertEqual(bytes, a, "Test-only default frame replay must equal the shipping helper") }
+            let png = try RasterCodec.encode(image, as: .png)
+            guard png.count <= 6_000 else { throw NSError(domain: "NativeGlyphObservation", code: 3) }
+            results.append(["name": name, "api": api, "explicitFlagOverrides": flags,
+                "initialCTM": initialCTM, "initialTextMatrix": initialTextMatrix,
+                "initialTextPosition": [initialPosition.x, initialPosition.y],
+                "finalCTM": matrix(bitmap.ctm), "finalTextMatrix": matrix(bitmap.textMatrix),
+                "finalTextPosition": [bitmap.textPosition.x, bitmap.textPosition.y],
+                "interpolationQuality": bitmap.interpolationQuality.rawValue,
+                "premultipliedRGBA_SHA256": digest(Data(bytes)), "againstProductionReplay": metrics(bytes, a),
+                "againstExactOracle": metrics(bytes, b), "width": image.width, "height": image.height,
+                "pngSHA256": digest(png), "pngBase64": png.base64EncodedString()])
+        }
+        return results
     }
 
     @MainActor func testPrincipalControllerHostsRealEditorAndPureFormatNegotiation() throws {
@@ -568,7 +655,11 @@ private final class NativeOracleGlyphObserver: NSLayoutManager {
             "glyphs": Array(UnsafeBufferPointer(start: glyphs, count: glyphCount)).map(Int.init),
             "positions": Array(UnsafeBufferPointer(start: positions, count: glyphCount)).map { [$0.x, $0.y] },
             "textMatrix": [textMatrix.a, textMatrix.b, textMatrix.c, textMatrix.d, textMatrix.tx, textMatrix.ty],
-            "contextCTM": [ctm.a, ctm.b, ctm.c, ctm.d, ctm.tx, ctm.ty]])
+            "contextCTM": [ctm.a, ctm.b, ctm.c, ctm.d, ctm.tx, ctm.ty],
+            "interpolationQuality": context.interpolationQuality.rawValue,
+            "appKitShouldAntialias": NSGraphicsContext.current.map { $0.shouldAntialias as Any } ?? NSNull(),
+            "fontFlags": "Public setter values are not readable here; no default is inferred"])
+
         super.showCGGlyphs(glyphs, positions: positions, count: glyphCount, font: font,
             textMatrix: textMatrix, attributes: attributes, in: context)
     }

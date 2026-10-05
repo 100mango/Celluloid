@@ -89,8 +89,8 @@ def collect_glyphs(temp,source):
     check(len(events)==2 and events[0][0]=='started' and events[1][0] in {'passed','failed'},'Missing/ambiguous glyph diagnostic testcase')
     check(all(events[0][1]<position<events[1][1] for position,_ in rows+contracts),'Glyph observation outside actual testcase')
     row=rows[0][1];contract=contracts[0][1]
-    keys={'schema','acceptance','text','sourcePNG_SHA256','actualCompositePNG_SHA256','actualTextRect','frameAllocationHeight','naturalBlockHeight','fontSize','lineHeight','backingScale','coreTextLines','oracleLines','images','isolatedMetrics','scope'}
-    check(type(row) is dict and set(row)==keys and row['schema']=='Celluloid.NativeGlyphObservation.1' and row['acceptance'] is False,'Unknown/accepted glyph observation')
+    keys={'schema','acceptance','text','sourcePNG_SHA256','actualCompositePNG_SHA256','actualTextRect','frameAllocationHeight','naturalBlockHeight','fontSize','lineHeight','backingScale','coreTextLines','oracleLines','images','isolatedMetrics','rasterExperiments','scope'}
+    check(type(row) is dict and set(row)==keys and row['schema']=='Celluloid.NativeGlyphObservation.2' and row['acceptance'] is False,'Unknown/accepted glyph observation')
     check(row['text']=='Hello, 世界 🎬' and row['sourcePNG_SHA256']==contract['sourcePNG_SHA256'] and row['actualCompositePNG_SHA256']==contract['actualPNG_SHA256'],'Glyph/composite image binding changed')
     check(contract['schema']=='Celluloid.NativeTextContract.1' and contract['case']=='manufactured-affine','Wrong native diagnostic contract')
     for key in ['sourcePNG_SHA256','actualCompositePNG_SHA256']:check(re.fullmatch('[0-9a-f]{64}',row[key]) is not None,'Invalid glyph image digest')
@@ -100,6 +100,32 @@ def collect_glyphs(temp,source):
     check([r.get('text') for r in row['oracleLines']]==['Hello,',' 世界 ','🎬'],'Wrong independent oracle line strings')
     metrics=row['isolatedMetrics'];check(type(metrics) is dict and set(metrics)=={'premultipliedRGBMaximum','alphaMaximum','premultipliedRGBPixelsAbove2','alphaPixelsAbove2'},'Malformed isolated metrics')
     for key,value in metrics.items():check(type(value) is int and 0<=value<=(255 if key.endswith('Maximum') else 56*88),'Invalid isolated metric')
+    experiments=row['rasterExperiments']
+    expected=[('frame-default','CTFrameDraw',{}),('frame-position-on','CTFrameDraw',{'positioning':True}),
+        ('frame-position-off','CTFrameDraw',{'positioning':False}),
+        ('frame-position-on-quant-off','CTFrameDraw',{'positioning':True,'quantization':False}),
+        ('frame-position-on-quant-on','CTFrameDraw',{'positioning':True,'quantization':True}),
+        ('frame-smoothing-off','CTFrameDraw',{'smoothing':False}),
+        ('line-default','CTLineDraw',{}),('run-default','CTRunDraw',{}),('glyph-default','CTFontDrawGlyphs',{})]
+    check(type(experiments) is list and len(experiments)==len(expected),'Missing/duplicate raster experiment')
+    fields={'name','api','explicitFlagOverrides','initialCTM','initialTextMatrix','initialTextPosition',
+        'finalCTM','finalTextMatrix','finalTextPosition','interpolationQuality','premultipliedRGBA_SHA256',
+        'againstProductionReplay','againstExactOracle','width','height','pngSHA256','pngBase64'}
+    for experiment,(name,api,flags) in zip(experiments,expected):
+        check(type(experiment) is dict and set(experiment)==fields,'Unknown raster experiment fields')
+        check((experiment['name'],experiment['api'])==(name,api),'Wrong/out-of-order raster experiment')
+        check(experiment['explicitFlagOverrides']==flags and all(type(v) is bool for v in experiment['explicitFlagOverrides'].values()),'Wrong raster flag overrides')
+        for key,size in [('initialCTM',6),('initialTextMatrix',6),('initialTextPosition',2),('finalCTM',6),('finalTextMatrix',6),('finalTextPosition',2)]:
+            check(type(experiment[key]) is list and len(experiment[key])==size and all(type(v) in (int,float) and math.isfinite(v) for v in experiment[key]),'Malformed raster transform')
+        check(experiment['initialCTM']==experiments[0]['initialCTM'] and experiment['initialTextMatrix']==[1,0,0,1,0,0] and experiment['initialTextPosition']==[0,0],'Changed raster experiment geometry')
+        check(type(experiment['interpolationQuality']) is int and experiment['interpolationQuality']==experiments[0]['interpolationQuality'],'Changed raster interpolation')
+        check(re.fullmatch('[0-9a-f]{64}',experiment['premultipliedRGBA_SHA256']) is not None,'Malformed raster digest')
+        check(type(experiment['width']) is int and type(experiment['height']) is int and (experiment['width'],experiment['height'])==(56,88),'Changed raster experiment backing')
+        check(len(base64.b64decode(experiment['pngBase64'],validate=True))<=6000,'Raster experiment PNG cap')
+        for key in ['againstProductionReplay','againstExactOracle']:
+            value=experiment[key];check(type(value) is dict and set(value)==set(metrics),'Malformed raster comparison')
+            for metric,n in value.items():check(type(n) is int and 0<=n<=(255 if metric.endswith('Maximum') else 56*88),'Invalid raster comparison')
+        if name=='frame-default':check(all(v==0 for v in experiment['againstProductionReplay'].values()),'Default frame replay differs from production helper')
     validate_pngs(row)
     report={'source_sha':source,'log_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'acceptance':False,
         'case_result':events[1][0],'observation':row,'scope':'Bounded public glyph/baseline diagnostics only; neither test success nor rendering qualification follows from this record.'}
