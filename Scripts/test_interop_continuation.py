@@ -100,15 +100,24 @@ class ContinuationTests(unittest.TestCase):
             staging={'source_sha':self.SOURCE,'built_app':str(app),'installed_app':f"/Sim/Devices/{row['udid']}/data/Containers/Bundle/Application/UUID/Celluloid.app",'binary_sha256':gate.sha(app/'Celluloid'),'layer_archive_sha256':fixture['sha256'],'owned_fixture_sha256':hashlib.sha256(json.dumps(fixture).encode()).hexdigest()}
             write(f'early-uikit-{p}-staging.json',staging);row['staging']=staging;row['consumer']=required_verify('uikit',temp/name,directory,self.SOURCE);packet['profiles'].append(row);summaries[p]=summary
         write('early-uikit-interop.json',packet);return packet,summaries
-    def exercise_packet(self,mutate=None,devices=None,source_mismatch=False,dirty=False,fingerprint=None):
-        with tempfile.TemporaryDirectory() as folder:
+    def exercise_packet(self,mutate=None,devices=None,source_mismatch=False,dirty=False,fingerprint=None,temporary_prefix='tmp'):
+        with tempfile.TemporaryDirectory(prefix=temporary_prefix) as folder:
             temp=Path(folder);packet,summaries=self.packet(temp)
             if mutate:mutate(temp,packet,summaries);(temp/'early-uikit-interop.json').write_text(json.dumps(packet))
             def command(args,**kwargs):
                 args=list(map(str,args))
-                value={'devices':devices or {}} if 'simctl' in args else summaries['2x' if '2x' in args[-1] else '3x']
+                profiles={'CelluloidEarlyUIKit2x.xcresult':'2x','CelluloidEarlyUIKit3x.xcresult':'3x'}
+                value={'devices':devices or {}} if 'simctl' in args else summaries[profiles[Path(args[-1]).name]]
                 return subprocess.CompletedProcess(args,0,json.dumps(value),'')
             with patch.object(gate.subprocess,'check_output',side_effect=[('b'*40 if source_mismatch else self.SOURCE)+'\n','dirty' if dirty else '']),patch.object(gate,'frozen_uikit_fingerprint',return_value=fingerprint or gate.FROZEN_UIKIT_FINGERPRINT),patch.object(gate,'run',side_effect=command):return gate.verify(temp,self.SOURCE,platform_contract=False)
+    def test_3x_summary_is_selected_when_temporary_parent_contains_2x(self):
+        result=self.exercise_packet(temporary_prefix='celluloid-parent-2x-')
+        self.assertTrue(result['continuation_safe'])
+        self.assertFalse(result['final_archive_accepted'])
+        self.assertEqual([row['profile'] for row in result['profiles']],['2x','3x'])
+        self.assertEqual([row['scale'] for row in result['profiles']],[2,3])
+        self.assertNotEqual(result['profiles'][0]['device_id'],result['profiles'][1]['device_id'])
+
     def test_full_source_binary_fixture_result_and_cleanup_proof_continues_but_blocks_archive(self):
         report=self.exercise_packet();self.assertTrue(report['continuation_safe']);self.assertFalse(report['strict_pixel_passed']);self.assertFalse(report['final_archive_accepted'])
     def test_checkout_fingerprint_setup_or_live_device_blocks(self):

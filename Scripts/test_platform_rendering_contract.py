@@ -109,15 +109,23 @@ class PlatformContractTests(unittest.TestCase):
             (temp/f"early-uikit-{row['profile']}-staging.json").write_text(json.dumps(row['staging']))
             row['consumer']=required_verify('uikit',temp/f"early-uikit-{row['profile']}-interop.log",temp/'early-uikit-fixtures',self.SOURCE,platform_contract=True,runtime_summary=summaries[row['profile']],expected_device={'id':row['udid'],'model':row['device_type']})
         (temp/'early-uikit-interop.json').write_text(json.dumps(packet));return packet,summaries
-    def exercise(self,mutate=None):
-        with tempfile.TemporaryDirectory() as folder:
+    def exercise(self,mutate=None,temporary_prefix='tmp'):
+        with tempfile.TemporaryDirectory(prefix=temporary_prefix) as folder:
             temp=Path(folder);packet,summaries=self.packet(temp)
             if mutate:mutate(temp,packet,summaries);(temp/'early-uikit-interop.json').write_text(json.dumps(packet))
             def command(args,**kwargs):
-                args=list(map(str,args));value={'devices':{}} if 'simctl' in args else summaries['2x' if '2x' in args[-1] else '3x']
+                args=list(map(str,args));profiles={'CelluloidEarlyUIKit2x.xcresult':'2x','CelluloidEarlyUIKit3x.xcresult':'3x'}
+                value={'devices':{}} if 'simctl' in args else summaries[profiles[Path(args[-1]).name]]
                 return subprocess.CompletedProcess(args,0,json.dumps(value),'')
             with patch.object(gate.subprocess,'check_output',side_effect=[self.SOURCE+'\n','']),patch.object(gate,'frozen_uikit_fingerprint',return_value=gate.FROZEN_UIKIT_FINGERPRINT),patch.object(gate,'TEST_SOURCE_SHA',gate.sha(gate.ROOT/gate.TEST_SOURCE)),patch.object(gate,'run',side_effect=command):
                 return gate.verify(temp,self.SOURCE)
+    def test_3x_summary_is_selected_when_temporary_parent_contains_2x(self):
+        result=self.exercise(temporary_prefix='celluloid-parent-2x-')
+        self.assertTrue(result['continuation_safe'])
+        self.assertEqual([row['profile'] for row in result['profiles']],['2x','3x'])
+        self.assertEqual([row['scale'] for row in result['profiles']],[2,3])
+        self.assertNotEqual(result['profiles'][0]['device_id'],result['profiles'][1]['device_id'])
+
     def test_complete_versioned_full_proof_keeps_historical_failure_and_archive_freeze(self):
         result=self.exercise();self.assertTrue(result['continuation_safe']);self.assertTrue(result['platform_contract_accepted']);self.assertFalse(result['strict_pixel_passed']);self.assertFalse(result['final_archive_accepted'])
         self.assertEqual(result['profiles'][0]['deltas']['full'],202)

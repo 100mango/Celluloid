@@ -260,7 +260,18 @@ class SeedReceiptTests(unittest.TestCase):
         self.assertIn('record=verify_collected(folder',collector)
         self.assertIn('Required host evidence exceeds shared Mac allocation',collector)
 
-class RuntimeAcceptanceTests(unittest.TestCase):
+class SyntheticHostFixtureCase(unittest.TestCase):
+    """Keep synthetic source receipts separate from the real invoking CI job."""
+    SOURCE = 'a' * 40
+
+    def setUp(self):
+        super().setUp()
+        source_environment = mock.patch.dict(os.environ, GITHUB_SHA=self.SOURCE)
+        source_environment.start()
+        self.addCleanup(source_environment.stop)
+
+
+class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
     """Synthetic verifier fixtures only, never evidence of an Apple runtime pass."""
     SOURCE = 'a' * 40
 
@@ -538,7 +549,7 @@ class RuntimeAcceptanceTests(unittest.TestCase):
         self.assertLess(workflow.index('mac_photos_host_gate.py accept'), workflow.index('mac_photos_host_gate.py collect'))
 
 
-class CollectedProofTests(unittest.TestCase):
+class CollectedProofTests(SyntheticHostFixtureCase):
     """Both collectors replay complete proofs; synthetic packets are not CI proof."""
     SOURCE='a'*40
     seed=RuntimeAcceptanceTests.seed
@@ -661,7 +672,7 @@ class CollectedProofTests(unittest.TestCase):
                 root=Path(tmp);self.packet(root,False);mutate(root)
                 with self.assertRaises(AssertionError):self.collect(root)
 
-class HostTimeBudgetTests(unittest.TestCase):
+class HostTimeBudgetTests(SyntheticHostFixtureCase):
     def prepare(self,root):
         gate.write(root/'mac-job-clock.json',{'source_sha':'a'*40,'started_monotonic':100.0,'started_unix':10000.0,'execution_budget_seconds':2460})
     def test_two_time_checks_reserve_twelve_minute_host_plus_five_minute_proof_tail(self):
@@ -722,5 +733,58 @@ class HostTimeBudgetTests(unittest.TestCase):
         self.assertLess(shell.index('budget-before-prepare'),shell.index('source-before'))
         self.assertLess(shell.index('budget-before-host'),shell.index('TEST_RUNNER_CELLULOID_MAC_PHOTOS_HOST_PREREQUISITE'))
         self.assertIn('timeout-minutes: 45',workflow)
+
+class HostFixtureEnvironmentTests(unittest.TestCase):
+    CI_SOURCE = '0995214f6a7a0a88c94aebe28fcb1b507d7ad4eb'
+
+    def test_fixture_cases_override_only_their_source_and_restore_ci_environment(self):
+        for owner in [RuntimeAcceptanceTests, CollectedProofTests, HostTimeBudgetTests]:
+            with self.subTest(owner=owner.__name__), mock.patch.dict(os.environ, GITHUB_SHA=self.CI_SOURCE, GITHUB_WORKFLOW_SHA=self.CI_SOURCE, GITHUB_ACTIONS='true'):
+                original = dict(os.environ)
+                case = owner()
+                case.setUp()
+                try:
+                    self.assertEqual(os.environ['GITHUB_SHA'], case.SOURCE)
+                    self.assertEqual(os.environ['GITHUB_WORKFLOW_SHA'], self.CI_SOURCE)
+                    with tempfile.TemporaryDirectory() as folder:
+                        root = Path(folder)
+                        RuntimeAcceptanceTests.seed(case, root)
+                        self.assertTrue(gate.verify_acceptance(root, case.SOURCE)['prerequisite_accepted'])
+                finally:
+                    case.doCleanups()
+                self.assertEqual(dict(os.environ), original)
+
+    def test_source_environment_restores_after_failure_and_when_initially_absent(self):
+        class DeliberateFailure(SyntheticHostFixtureCase):
+            def runTest(self):
+                self.assertEqual(os.environ['GITHUB_SHA'], self.SOURCE)
+                self.fail('Synthetic cleanup regression probe')
+        for initial in [None, self.CI_SOURCE]:
+            with self.subTest(initial=initial), mock.patch.dict(os.environ):
+                if initial is None: os.environ.pop('GITHUB_SHA', None)
+                else: os.environ['GITHUB_SHA'] = initial
+                original = dict(os.environ)
+                result = unittest.TestResult()
+                DeliberateFailure().run(result)
+                self.assertEqual(result.testsRun, 1)
+                self.assertEqual(len(result.failures), 1)
+                self.assertEqual(len(result.errors), 0)
+                self.assertEqual(dict(os.environ), original)
+
+    def test_real_transport_source_guard_still_rejects_foreign_ci_source(self):
+        with mock.patch.dict(os.environ, GITHUB_SHA=self.CI_SOURCE), tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            fixture = RuntimeAcceptanceTests()
+            fixture.setUp()
+            try:
+                fixture.seed(root)
+                context = gate.read_receipt(root/'mac-host-context.json')
+                self.assertTrue(gate.transport_records(root, context, complete=True))
+            finally:
+                fixture.doCleanups()
+            self.assertEqual(os.environ['GITHUB_SHA'], self.CI_SOURCE)
+            with self.assertRaises(AssertionError):
+                gate.transport_records(root, context, complete=True)
+
 
 if __name__ == '__main__': unittest.main()
