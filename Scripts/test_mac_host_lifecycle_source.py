@@ -326,9 +326,117 @@ class ExportAssociationSourceTests(unittest.TestCase):
             with self.subTest(old=old),self.assertRaises(AssertionError):replay_export_association(self.swift.replace(old,new),export_association_sample())
         for required in ['"Photo Kind": "popup_photoKind"','"File Name": "popup_useFileName"',
             '"Subfolder Format": "popup_subfolderFormat"','"button_disclosure", "customize"',
-            'if disclosureState == "0"','expanded.value as? String == "1"',
+            'role: "DisclosureTriangle", desired: 1, photos: photos','final.scalar.state == desired',
             'prospective.count <= 6','withJSONObject: receipt).count <= 16_000']:
             self.assertIn(required,self.swift)
         self.assertNotIn('coordinate(',self.swift)
+
+def replay_binary_transition(swift, samples, role='DisclosureTriangle'):
+    """Tagged public-value model. Actual Foundation bridging runs in the host case."""
+    normalize=swift.split('private static func binaryScalar(',1)[1].split('private func verifyBinaryScalarContract(',1)[0]
+    required=['guard let raw else { return nil }','text == "0" || text == "1"','raw as? NSNumber',
+        'CFGetTypeID(number) == CFBooleanGetTypeID()','["c", "B"].contains(encoding)',
+        '["c", "C", "s", "S", "i", "I", "l", "L", "q", "Q", "f", "d"].contains(encoding)',
+        'number.doubleValue.isFinite','number.compare(NSNumber(value: 0)) == .orderedSame, number.decimalValue == Decimal(0)',
+        'number.compare(NSNumber(value: 1)) == .orderedSame, number.decimalValue == Decimal(1)']
+    observe=swift.split('@MainActor private func observeExportBinary(',1)[1].split('private func retainExportBinary(',1)[0]
+    observe_required=['let count = query.count','guard count == 1','identifier == "button_disclosure" && label == "customize"',
+        'element.elementType == .disclosureTriangle','element.elementType == .checkBox','xmpLabels.allSatisfy',
+        'guard disclosure || sidecar','guard enabled, hittable','let raw = element.value','Self.binaryScalar(raw)']
+    transition=swift.split('@MainActor private func setExportBinary(',1)[1].split('private func exportFrame(',1)[0]
+    transition_required=['initial.scalar.state != desired','fresh.scalar.state == initial.scalar.state',
+        'try retainExportBinary(fresh)','try deadlineClick(fresh.element)','observed.scalar.state == desired',
+        'catch { observationFailure = error; return true }','if let observationFailure { throw observationFailure }',
+        'final.scalar.state == desired','try retainExportBinary(final)']
+    if not all(part in normalize for part in required) or not all(part in observe for part in observe_required) or not all(part in transition for part in transition_required):
+        raise AssertionError('Binary scalar/transition source no longer matches model')
+    if observe.count('query.count')!=1 or observe.count('element.value')!=1:raise AssertionError('Binary observation resamples state/count')
+    if transition.index('try retainExportBinary(fresh)')>transition.index('try deadlineClick(fresh.element)'):raise AssertionError('Binary click precedes bounded evidence')
+    pending=copy.deepcopy(samples);trace={'clicks':0,'recorded':[],'failure':None,'accepted':False}
+    def need(value):
+        if not value:raise ValueError('Invalid binary target/state')
+    def read():
+        need(bool(pending));row=pending.pop(0)
+        need(row['count']==1 and row['enabled'] is True and row['hittable'] is True and row['role']==role)
+        if role=='DisclosureTriangle':need(row['id']=='button_disclosure' and row['label']=='customize')
+        else:need(role=='CheckBox' and row['label']=='Export IPTC as XMP')
+        kind,encoding,raw=row['kind'],row['encoding'],row['raw']
+        if kind=='string':need(encoding=='' and type(raw) is str and raw in ('0','1'));state=int(raw)
+        elif kind=='boolean':need(encoding in ('c','B') and type(raw) is bool);state=int(raw)
+        else:
+            need(kind=='number' and encoding in ('c','C','s','S','i','I','l','L','q','Q','f','d') and type(raw) in (int,float)
+                 and raw in (0,1) and math.isfinite(raw));state=int(raw)
+        return (row['role'],row['id'],row['label']),state
+    try:
+        need(role in ('DisclosureTriangle','CheckBox'));wanted=1 if role=='DisclosureTriangle' else 0
+        identity,initial=read();trace['recorded'].append(initial)
+        if initial!=wanted:
+            fresh,state=read();need(fresh==identity and state==initial);trace['recorded'].append(state);trace['clicks']+=1
+            while True:
+                fresh,state=read();need(fresh==identity)
+                if state==wanted:break
+        fresh,state=read();need(fresh==identity and state==wanted);trace['recorded'].append(state);trace['accepted']=True
+    except ValueError as error:trace['failure']=str(error)
+    trace['unobserved']=pending
+    return trace
+
+def binary_sample(value=0,kind='number',role='DisclosureTriangle'):
+    return {'count':1,'enabled':True,'hittable':True,'role':role,'id':'button_disclosure' if role=='DisclosureTriangle' else 'synthetic_xmp',
+            'label':'customize' if role=='DisclosureTriangle' else 'Export IPTC as XMP','kind':kind,
+            'encoding':'' if kind=='string' else 'c' if kind=='boolean' else 'i','raw':value}
+
+class BinaryScalarSourceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):cls.swift=(ROOT/'Platforms/UITests/MacPhotosHostUITests.swift').read_text()
+    def test_typed_transition_and_already_correct_state_do_not_toggle_blindly(self):
+        for kind,convert in [('string',str),('boolean',bool),('number',int),('number',float)]:
+            for role,wanted in [('DisclosureTriangle',1),('CheckBox',0)]:
+                rows=[binary_sample(convert(v),kind,role) for v in [1-wanted,1-wanted,wanted,wanted]]
+                result=replay_binary_transition(self.swift,rows,role)
+                self.assertTrue(result['accepted']);self.assertEqual(result['clicks'],1)
+                self.assertEqual(result['recorded'],[1-wanted,1-wanted,wanted])
+                result=replay_binary_transition(self.swift,[binary_sample(convert(wanted),kind,role)]*2,role)
+                self.assertTrue(result['accepted']);self.assertEqual(result['clicks'],0)
+    def test_missing_mixed_fractional_nonfinite_and_arbitrary_values_stop_without_click(self):
+        for kind,values in [('string',[None,'','mixed',' 0','01','+1','1.0','true','false','2',0]),
+            ('number',[None,[],{},False,-1,2,10**400,.5,float('nan'),float('inf'),float('-inf')]),('boolean',[None,0,1,'false']),('unknown',[0])]:
+            for value in values:
+                with self.subTest(kind=kind,value=value):
+                    result=replay_binary_transition(self.swift,[binary_sample(value,kind)])
+                    self.assertFalse(result['accepted']);self.assertEqual(result['clicks'],0)
+    def test_stale_duplicate_or_unusable_preclick_state_cannot_be_resampled_away(self):
+        for mutation in [dict(count=0),dict(count=2),dict(enabled=False),dict(hittable=False),dict(raw=1),dict(raw=None),dict(id='replacement'),dict(label='other')]:
+            fresh=binary_sample();fresh.update(mutation)
+            result=replay_binary_transition(self.swift,[binary_sample(),fresh,binary_sample(),binary_sample(1),binary_sample(1)])
+            self.assertFalse(result['accepted']);self.assertEqual(result['clicks'],0);self.assertEqual(len(result['unobserved']),3)
+    def test_postclick_invalid_snapshot_latches_and_final_state_must_still_match(self):
+        for mutation in [dict(count=2),dict(raw='mixed'),dict(raw=None),dict(enabled=False),dict(id='replacement')]:
+            bad=binary_sample();bad.update(mutation)
+            result=replay_binary_transition(self.swift,[binary_sample(),binary_sample(),bad,binary_sample(1),binary_sample(1)])
+            self.assertFalse(result['accepted']);self.assertEqual(result['clicks'],1);self.assertEqual(len(result['unobserved']),2)
+        result=replay_binary_transition(self.swift,[binary_sample(),binary_sample(),binary_sample(1),binary_sample(0)])
+        self.assertFalse(result['accepted']);self.assertEqual(result['clicks'],1)
+    def test_native_foundation_adversaries_precede_ui_and_only_two_paths_are_normalized(self):
+        body=self.swift.split('@MainActor func testInstalledExtensionIsInvokedByActualPhotos()',1)[1]
+        self.assertLess(body.index('try verifyBinaryScalarContract()'),body.index('app.launch()'))
+        tests=self.swift.split('private func verifyBinaryScalarContract()',1)[1].split('@MainActor private func observeExportBinary(',1)[0]
+        for value in ['NSString(string: "0")','NSNumber(value: false)','NSNumber(value: true)','NSNumber(value: Int64(0))',
+            'NSNumber(value: UInt64(1))','NSNumber(value: Float(1))','NSNumber(value: Double.nan)',
+            'NSNumber(value: Double.infinity)','NSDecimalNumber(string: "1.00000000000000000001")','NSDecimalNumber.notANumber','Data([0])']:
+            self.assertIn(value,tests)
+        self.assertIn('binaryScalarSelfTested = true',tests)
+        export=self.swift.split('@MainActor private func exportRaster(',1)[1].split('private func readBoundedOwnedFile(',1)[0]
+        self.assertEqual(export.count('try setExportBinary('),2)
+        self.assertNotIn('sidecar.value as? String',export);self.assertNotIn('disclosure.value as? String',export)
+        self.assertIn('fresh.query.element(boundBy: 0).value as? String == wanted',export)
+        normalize=self.swift.split('private static func binaryScalar(',1)[1].split('private func verifyBinaryScalarContract(',1)[0]
+        for forbidden in ['debugDescription','intValue','String(describing:','?? 0']:self.assertNotIn(forbidden,normalize)
+        self.assertIn('prospective.count <= 12',self.swift);self.assertIn('encoded.count <= 256',self.swift)
+    def test_source_ties_reject_scalar_weakening_and_resampled_value(self):
+        for old,new in [('number.doubleValue.isFinite','true'),('text == "0" || text == "1"','!text.isEmpty'),
+            ('number.decimalValue == Decimal(1)','true'),('guard count == 1 else { throw block("Missing/ambiguous export binary control"','guard count >= 1 else { throw block("Missing/ambiguous export binary control"'),
+            ('let raw = element.value','let raw = element.value\n        _ = element.value'),
+            ('fresh.scalar.state == initial.scalar.state','true'),('if let observationFailure { throw observationFailure }','if let observationFailure { print(observationFailure) }')]:
+            with self.subTest(old=old),self.assertRaises(AssertionError):replay_binary_transition(self.swift.replace(old,new),[binary_sample(1)]*2)
 
 if __name__=='__main__':unittest.main()

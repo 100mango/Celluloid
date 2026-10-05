@@ -630,3 +630,29 @@ This repairs the observed options lookup. Native compilation and newly exposed
 controls, destination selection, actual PNG profile/pixels, reopened state,
 no-change Cancel and Revert remain unexecuted for this successor. No unobserved
 confirmation is accepted and no native 42-case or UIKit result is inferred.
+
+The next observed boundary was the customize value representation. Run
+37382285523 selected PNG successfully, then its String-only state cast rejected
+the disclosure. The retained AX snapshot shows value 0 while that cast retained
+an empty string; the precise Foundation runtime class was not captured. Apple's
+[XCUI value contract](https://developer.apple.com/documentation/xcuiautomation/xcuielementattributes/value)
+returns `Any?` and permits element-dependent types.
+
+The bounded successor handles binary scalars only for that exact customize
+control and the existing public XMP checkbox. It accepts exact String 0/1,
+Boolean values, or supported finite numeric 0/1 with exact numeric comparison.
+Missing, mixed, fractional, nonfinite, arbitrary text and collection values never
+become a default state. Actual runtime type, kind, numeric encoding, primitive
+value and normalized state are retained against the exact observed control row
+and independently replayed. Before a click, identity and the prior state must
+still agree; a newly observed contradiction stops the action. Post-click polling
+latches malformed or ambiguous observations, then requires a fresh final state.
+An already-correct value is observed again without a click. These checks do not
+interpret the debug snapshot as an actionable value.
+
+Pure Foundation valid/invalid cases run within the same selected host testcase
+before Photos UI actions. They establish the supported bridge behavior on the
+actual native runtime. The raw string handling for ordinary popups, exact
+selectors, persisted PNG oracle and all execution/evidence ceilings stay fixed.
+The previous failed run and missing stored output remain historical evidence;
+this source correction does not qualify the unobserved downstream dialogs.

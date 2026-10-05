@@ -9,7 +9,7 @@ SCHEMA='Celluloid.PhotosFilterLifecycle.1'
 PHASES=('source-retained','fade-ready','saved-export','reopened-fade','cancelled-export','reverted-export','unmodified-original','reopened-original')
 COLUMNS=['scope','role','identifier','title','label','value','count','enabled','hittable']
 META={'bytes','sha256','rgba_sha256','format','width','height','bit_depth','color_type','interlace','orientation','profile','profile_encoding','alpha'}
-FIELDS={'schema','host_entry_contract','source_sha','context_sha256','test_source_sha256','verifier_sha256','photos_pid','fixture_sha256','asset_label','single_photo_topologies','export_option_bindings','complete','dirty_cancel_tested','deadline_seconds','control_columns','control_catalog','phases','images','raw_exports','srgb_icc_reference'}
+FIELDS={'schema','host_entry_contract','source_sha','context_sha256','test_source_sha256','verifier_sha256','photos_pid','fixture_sha256','asset_label','single_photo_topologies','export_option_bindings','binary_states','binary_scalar_self_tested','complete','dirty_cancel_tested','deadline_seconds','control_columns','control_catalog','phases','images','raw_exports','srgb_icc_reference'}
 SINGLE_PHOTO_TOPOLOGIES=('collection-present','collection-absent')
 FILENAME='Celluloid-Owned-Host.png'
 
@@ -52,6 +52,8 @@ def validate(row,context,photos,ownership,baseline,images,context_hash):
         last=phase['elapsed_ms'];details[name]=phase['details']
     validate_controls(row['control_catalog'],phases)
     validate_export_bindings(row['export_option_bindings'],row['control_catalog'])
+    require(row['binary_scalar_self_tested'] is True,'Foundation binary scalar self-test not completed')
+    validate_binary_states(row['binary_states'],row['control_catalog'])
     source=details['source-retained'];exact(source,{'fixture_filename','fixture_sha256','retained_before_import'},'Malformed source retention')
     require(source=={'fixture_filename':FILENAME,'fixture_sha256':ownership['fixture_sha256'],'retained_before_import':True} and source['retained_before_import'] is True,'Original was not retained before import')
     fade=details['fade-ready'];exact(fade,{'filter','independent_filter','jpeg_quality','jpeg_sha256'},'Malformed independent reference')
@@ -96,6 +98,30 @@ def validate(row,context,photos,ownership,baseline,images,context_hash):
         'single_photo_topologies':list(topologies),
         'phase_count':len(phases),'editing_generations':sorted(generations),'saved_comparison':saved,
         'images':{name:{key:d[key] for key in ['bytes','png_sha256','rgba_sha256','profile','profile_sha256','rendering_intent']} for name,d in decoded.items()}}
+
+def validate_binary_states(states,catalog):
+    require(type(states) is list and 2<=len(states)<=12,'Missing/oversized export binary scalar evidence')
+    bound=set();serial=[]
+    for row in states:
+        require(type(row) is list and len(row)==6 and integer(row[0],0,len(catalog)-1),'Malformed binary scalar observation')
+        index,kind,runtime_type,encoding,raw,state=row
+        require(type(kind) is str and kind in ('string','number','boolean') and type(runtime_type) is str and 0<len(runtime_type.encode('utf8'))<=96
+                and type(encoding) is str and integer(state,0,1),'Invalid binary scalar kind/type/state')
+        control=catalog[index]
+        labels=[s for s in control[3:5] if s]
+        disclosure=control[:3]==['ExportOptions','DisclosureTriangle','button_disclosure'] and control[4]=='customize'
+        sidecar=control[:2]==['ExportOptions','CheckBox'] and bool(labels) and all(s in ('Export IPTC as XMP','Export IPTC as XMP:') for s in labels)
+        require((disclosure or sidecar) and control[5]==str(state),'Wrong binary target/control state')
+        if kind=='string':require(encoding=='' and type(raw) is str and raw in ('0','1') and int(raw)==state,'Invalid binary string evidence')
+        elif kind=='boolean':require(encoding in ('c','B') and type(raw) is bool and int(raw)==state,'Invalid binary Boolean evidence')
+        else:require(encoding in ('c','C','s','S','i','I','l','L','q','Q','f','d') and type(raw) in (int,float)
+                     and raw in (0,1) and math.isfinite(raw) and raw==state,'Invalid binary number evidence')
+        encoded=json.dumps(row,separators=(',',':'),ensure_ascii=False)
+        require(len(encoded.encode('utf8'))<=256,'Oversized binary scalar observation')
+        serial.append(encoded);bound.add(index)
+    require(len(serial)==len(set(serial)),'Duplicate binary scalar observation')
+    expected={i for i,control in enumerate(catalog) if control[0]=='ExportOptions' and control[1] in ('CheckBox','DisclosureTriangle')}
+    require(bound==expected,'Missing/unused binary scalar observations')
 
 def validate_export_bindings(bindings,catalog):
     require(type(bindings) is list and 2<=len(bindings)<=6,'Missing/oversized export option bindings')
@@ -160,17 +186,23 @@ def validate_controls(catalog,phases):
             known={'Photo Kind':'popup_photoKind','File Name':'popup_useFileName','Subfolder Format':'popup_subfolderFormat'}
             row=take('ExportOptions/'+title,'PopUpButton',identifier=known.get(title))
             if row[5]!=wanted:take('ExportOptions/'+title+'/Menu','MenuItem',title=wanted)
+        def binary(role,wanted,identifier=None,label=None,public=None):
+            first=take('ExportOptions',role,identifier=identifier,label=label,public=public)
+            require(first[5] in ('0','1'),'Unknown export binary initial state')
+            if first[5]!=wanted:
+                fresh=take('ExportOptions',role,identifier=identifier,label=label,public=public,value=first[5])
+                require(fresh[:5]==first[:5],'Binary identity changed before click')
+            final=take('ExportOptions',role,identifier=identifier,label=label,public=public,value=wanted)
+            require(final[:5]==first[:5],'Binary identity changed after transition')
         def export(phase,original=False):
             take('Photos/MenuBar','MenuBarItem',title='File')
             take('File/Menu','MenuItem',identifier='_NS:1604',title='Export')
             take('File/Export/Menu','MenuItem',identifier='_NS:635' if original else '_NS:630',title='Export Unmodified Original For 1 Photo' if original else 'Export 1 Photo')
             if original:
-                row=take('ExportOptions','CheckBox',public='Export IPTC as XMP');require(row[5] in ('0','1'),'Unknown sidecar state')
+                binary('CheckBox','0',public='Export IPTC as XMP')
             else:
                 popup('Photo Kind','PNG')
-                disclosure=take('ExportOptions','DisclosureTriangle',identifier='button_disclosure',label='customize')
-                require(disclosure[5] in ('0','1'),'Unknown customize disclosure state')
-                take('ExportOptions','DisclosureTriangle',identifier='button_disclosure',label='customize',value='1')
+                binary('DisclosureTriangle','1',identifier='button_disclosure',label='customize')
                 popup('Color Profile','sRGB IEC61966-2.1');popup('Size','Full Size')
             popup('File Name','Use File Name');popup('Subfolder Format','None')
             take('ExportOptions','Button',identifier='button_export',title='Export')

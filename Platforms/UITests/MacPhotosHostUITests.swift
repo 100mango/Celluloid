@@ -1,6 +1,7 @@
 import XCTest
 import AppKit
 import CoreGraphics
+import CoreFoundation
 import CoreImage
 import Darwin
 import zlib
@@ -35,6 +36,8 @@ final class MacPhotosHostUITests: XCTestCase {
     private var lifecycleControls: [Int] = []
     private var lifecycleControlCatalog: [[Any]] = []
     private var exportOptionBindings: [[Any]] = []
+    private var exportBinaryStates: [[Any]] = []
+    private var binaryScalarSelfTested = false
     private var lifecycleImages: [String: [String: Any]] = [:]
     private var lifecycleExports: [String: [String: Any]] = [:]
     private var lifecyclePNGBytes = 0
@@ -47,6 +50,13 @@ final class MacPhotosHostUITests: XCTestCase {
         let bytes: Data
         let rgba: Data
         let metadata: [String: Any]
+    }
+    private struct BinaryScalar {
+        let kind: String
+        let runtimeType: String
+        let encoding: String
+        let raw: Any
+        let state: Int
     }
 
     override func setUpWithError() throws {
@@ -77,6 +87,7 @@ final class MacPhotosHostUITests: XCTestCase {
 
     @MainActor func testInstalledExtensionIsInvokedByActualPhotos() throws {
         testStarted = ProcessInfo.processInfo.systemUptime
+        try verifyBinaryScalarContract()
         // Validate the exact read-only input before any host UI action. Only
         // XCTest stdout/attachments carry data back across the sandbox boundary.
         try report(["schema": "Celluloid.HostTransport.3", "host_entry_contract": Self.hostEntryContract, "source_sha": try value("source_sha"),
@@ -501,6 +512,7 @@ final class MacPhotosHostUITests: XCTestCase {
             "deadline_seconds": 600, "control_columns": ["scope", "role", "identifier", "title", "label", "value", "count", "enabled", "hittable"],
             "control_catalog": lifecycleControlCatalog, "phases": lifecycleRows, "images": lifecycleImages, "raw_exports": lifecycleExports,
             "export_option_bindings": exportOptionBindings,
+            "binary_states": exportBinaryStates, "binary_scalar_self_tested": binaryScalarSelfTested,
             "srgb_icc_reference": lifecycleICC.map { $0 as Any } ?? NSNull()]
     }
     @MainActor private func lifecycleGuard(_ photos: XCUIApplication, photosPID: pid_t,
@@ -603,6 +615,11 @@ final class MacPhotosHostUITests: XCTestCase {
             "role": role, "identifier": element.identifier, "label": element.label, "enabled": enabled, "hittable": hittable]) }
         let row: [Any] = [scope, role, element.identifier, element.title, element.label,
             (element.value as? String) ?? "", count, enabled, hittable]
+        _ = try retainLifecycleControl(row)
+        if click { try deadlineClick(element) }
+        return element
+    }
+    private func retainLifecycleControl(_ row: [Any]) throws -> Int {
         _ = try remainingTime(1)
         guard row.prefix(6).allSatisfy({ (($0 as? String)?.utf8.count ?? 1025) <= 1024 }), lifecycleControlCatalog.count < 100 else {
             throw block("Oversized lifecycle control observation")
@@ -613,8 +630,7 @@ final class MacPhotosHostUITests: XCTestCase {
         if found == nil { lifecycleControlCatalog.append(row) }
         lifecycleControls.append(index)
         guard lifecycleControls.count <= 40 else { throw block("Excessive lifecycle controls in one phase") }
-        if click { try deadlineClick(element) }
-        return element
+        return index
     }
     @MainActor private func toolbarAction(_ title: String, id: String, role: XCUIElement.ElementType,
         in photos: XCUIApplication) throws {
@@ -824,6 +840,111 @@ final class MacPhotosHostUITests: XCTestCase {
         }
         return sheets.element(boundBy: 0)
     }
+    // XCUIElement.value is Any?. Normalize only the admitted binary domain,
+    // never debugDescription, general popup text, or a missing-value default.
+    private static func binaryScalar(_ raw: Any?) -> BinaryScalar? {
+        guard let raw else { return nil }
+        let runtimeType = String(reflecting: Swift.type(of: raw))
+        guard !runtimeType.isEmpty, runtimeType.utf8.count <= 96 else { return nil }
+        if let text = raw as? String {
+            guard text == "0" || text == "1" else { return nil }
+            return BinaryScalar(kind: "string", runtimeType: runtimeType, encoding: "", raw: text, state: text == "1" ? 1 : 0)
+        }
+        guard let number = raw as? NSNumber else { return nil }
+        let encoding = String(cString: number.objCType)
+        if CFGetTypeID(number) == CFBooleanGetTypeID() {
+            guard ["c", "B"].contains(encoding) else { return nil }
+            return BinaryScalar(kind: "boolean", runtimeType: runtimeType, encoding: encoding, raw: number.boolValue, state: number.boolValue ? 1 : 0)
+        }
+        guard ["c", "C", "s", "S", "i", "I", "l", "L", "q", "Q", "f", "d"].contains(encoding),
+              number.doubleValue.isFinite else { return nil }
+        let state: Int
+        if number.compare(NSNumber(value: 0)) == .orderedSame, number.decimalValue == Decimal(0) { state = 0 }
+        else if number.compare(NSNumber(value: 1)) == .orderedSame, number.decimalValue == Decimal(1) { state = 1 }
+        else { return nil }
+        return BinaryScalar(kind: "number", runtimeType: runtimeType, encoding: encoding, raw: number, state: state)
+    }
+    private func verifyBinaryScalarContract() throws {
+        let valid: [(Any, String, Int)] = [("0", "string", 0), ("1", "string", 1), (NSString(string: "0"), "string", 0),
+            (false, "boolean", 0), (true, "boolean", 1), (NSNumber(value: false), "boolean", 0), (NSNumber(value: true), "boolean", 1),
+            (0, "number", 0), (1, "number", 1), (NSNumber(value: Int64(0)), "number", 0), (NSNumber(value: UInt64(1)), "number", 1),
+            (0.0, "number", 0), (NSNumber(value: Float(1)), "number", 1), (NSDecimalNumber(string: "1"), "number", 1)]
+        for (raw, kind, state) in valid {
+            guard let scalar = Self.binaryScalar(raw), scalar.kind == kind, scalar.state == state else {
+                throw block("Binary scalar Foundation positive self-test failed", operation: ["value_type": String(reflecting: Swift.type(of: raw)), "expected_kind": kind, "expected_state": state])
+            }
+        }
+        let invalid: [Any?] = [nil, NSNull(), "", " 0", "01", "+1", "1.0", "true", "false", "mixed", "2", -1, 2, 0.5,
+            NSNumber(value: Double.nan), NSNumber(value: Double.infinity), NSNumber(value: -Double.infinity), NSNumber(value: UInt64.max),
+            NSDecimalNumber(string: "1.00000000000000000001"), NSDecimalNumber.notANumber, [0], ["state": 1], Data([0])]
+        for raw in invalid {
+            if let scalar = Self.binaryScalar(raw) {
+                throw block("Binary scalar Foundation negative self-test failed", operation: ["value_type": scalar.runtimeType, "kind": scalar.kind, "state": scalar.state])
+            }
+        }
+        binaryScalarSelfTested = true
+    }
+    @MainActor private func observeExportBinary(_ query: XCUIElementQuery, role: String) throws -> (element: XCUIElement, row: [Any], scalar: BinaryScalar) {
+        _ = try remainingTime(1)
+        let count = query.count
+        guard count == 1 else { throw block("Missing/ambiguous export binary control", operation: ["role": role, "count": count]) }
+        let element = query.element(boundBy: 0)
+        let identifier = element.identifier, title = element.title, label = element.label
+        let disclosure = role == "DisclosureTriangle" && element.elementType == .disclosureTriangle
+            && identifier == "button_disclosure" && label == "customize"
+        let xmpLabels = [title, label].filter { !$0.isEmpty }
+        let sidecar = role == "CheckBox" && element.elementType == .checkBox && !xmpLabels.isEmpty
+            && xmpLabels.allSatisfy({ ["Export IPTC as XMP", "Export IPTC as XMP:"].contains($0) })
+        guard disclosure || sidecar else { throw block("Unadmitted export binary target") }
+        let enabled = element.isEnabled, hittable = element.isHittable
+        guard enabled, hittable else { throw block("Export binary control disabled/not hittable") }
+        let raw = element.value
+        guard let scalar = Self.binaryScalar(raw) else {
+            throw block("Unsupported export binary value", operation: ["role": role, "identifier": identifier,
+                "value_type": String((raw.map { String(reflecting: Swift.type(of: $0)) } ?? "nil").prefix(96))])
+        }
+        return (element, ["ExportOptions", role, identifier, title, label, String(scalar.state), count, enabled, hittable], scalar)
+    }
+    private func retainExportBinary(_ observation: (element: XCUIElement, row: [Any], scalar: BinaryScalar)) throws {
+        let index = try retainLifecycleControl(observation.row), scalar = observation.scalar
+        let row: [Any] = [index, scalar.kind, scalar.runtimeType, scalar.encoding, scalar.raw, scalar.state]
+        let encoded = try JSONSerialization.data(withJSONObject: row)
+        guard encoded.count <= 256 else { throw block("Oversized export binary observation") }
+        if try exportBinaryStates.contains(where: { try JSONSerialization.data(withJSONObject: $0) == encoded }) { return }
+        let prospective = exportBinaryStates + [row]
+        var receipt = try lifecycleReceipt(photosPID: lifecyclePhotosPID)
+        receipt["binary_states"] = prospective
+        guard prospective.count <= 12, try JSONSerialization.data(withJSONObject: receipt).count <= 16_000 else {
+            throw block("Export binary observation would exceed lifecycle proof budget")
+        }
+        exportBinaryStates = prospective
+    }
+    @MainActor private func setExportBinary(_ query: XCUIElementQuery, role: String, desired: Int, photos: XCUIApplication) throws {
+        guard (role == "DisclosureTriangle" && desired == 1) || (role == "CheckBox" && desired == 0) else { throw block("Unadmitted export binary transition") }
+        let initial = try observeExportBinary(query, role: role)
+        let identity = try JSONSerialization.data(withJSONObject: Array(initial.row.prefix(5)))
+        try retainExportBinary(initial)
+        if initial.scalar.state != desired {
+            let fresh = try observeExportBinary(query, role: role)
+            guard try JSONSerialization.data(withJSONObject: Array(fresh.row.prefix(5))) == identity,
+                  fresh.scalar.state == initial.scalar.state else { throw block("Stale export binary identity/state before click") }
+            try retainExportBinary(fresh)
+            try deadlineClick(fresh.element)
+            var observationFailure: Error?
+            try lifecycleWait(photos, seconds: 10, description: "Export binary control did not reach requested state") {
+                do {
+                    let observed = try self.observeExportBinary(query, role: role)
+                    guard try JSONSerialization.data(withJSONObject: Array(observed.row.prefix(5))) == identity else { throw self.block("Export binary identity changed while waiting") }
+                    return observed.scalar.state == desired
+                } catch { observationFailure = error; return true }
+            }
+            if let observationFailure { throw observationFailure }
+        }
+        let final = try observeExportBinary(query, role: role)
+        guard try JSONSerialization.data(withJSONObject: Array(final.row.prefix(5))) == identity,
+              final.scalar.state == desired else { throw block("Export binary final identity/state changed") }
+        try retainExportBinary(final)
+    }
     private func exportFrame(_ frame: CGRect) throws -> [Double] {
         let values = [frame.minX, frame.minY, frame.width, frame.height].map(Double.init)
         guard values.allSatisfy({ $0.isFinite && abs($0) <= 32768 }), frame.width > 0, frame.height > 0 else {
@@ -1028,23 +1149,11 @@ final class MacPhotosHostUITests: XCTestCase {
         guard options.identifier == "sheetWindow_export" else { throw block("Unobserved export options sheet identity") }
         var optionSignatures: [String: Data] = [:]
         if original {
-            let sidecar = try lifecycleControl(publicLabel("Export IPTC as XMP", role: .checkBox, in: options), scope: "ExportOptions", role: "CheckBox", click: false)
-            guard let state = sidecar.value as? String, ["0", "1"].contains(state) else { throw block("Unknown sidecar checkbox state") }
-            if state == "1" { try deadlineClick(sidecar) }
-            guard sidecar.value as? String == "0" else { throw block("Original export sidecar not disabled") }
+            try setExportBinary(publicLabel("Export IPTC as XMP", role: .checkBox, in: options), role: "CheckBox", desired: 0, photos: photos)
         } else {
             optionSignatures["Photo Kind"] = try popup("Photo Kind", choose: "PNG", in: options)
             let disclosures = options.descendants(matching: .disclosureTriangle).matching(NSPredicate(format: "identifier == %@ AND label == %@", "button_disclosure", "customize"))
-            let disclosure = try lifecycleControl(disclosures, scope: "ExportOptions", role: "DisclosureTriangle", click: false)
-            guard let disclosureState = disclosure.value as? String, ["0", "1"].contains(disclosureState) else { throw block("Unknown customize disclosure state") }
-            if disclosureState == "0" {
-                try deadlineClick(disclosure)
-                try lifecycleWait(photos, seconds: 10, description: "Customize export options did not expand") {
-                    disclosures.count == 1 && disclosures.element(boundBy: 0).value as? String == "1"
-                }
-            }
-            let expanded = try lifecycleControl(disclosures, scope: "ExportOptions", role: "DisclosureTriangle", click: false)
-            guard expanded.value as? String == "1" else { throw block("Stale customize disclosure") }
+            try setExportBinary(disclosures, role: "DisclosureTriangle", desired: 1, photos: photos)
             optionSignatures["Color Profile"] = try popup("Color Profile", choose: "sRGB IEC61966-2.1", in: options)
             optionSignatures["Size"] = try popup("Size", choose: "Full Size", in: options)
         }

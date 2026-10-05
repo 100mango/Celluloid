@@ -11,9 +11,10 @@ def control(scope,role,identifier='',title='',label='',value=''):
 def export_controls(phase,original=False):
     rows=[control('Photos/MenuBar','MenuBarItem',title='File'),control('File/Menu','MenuItem','_NS:1604','Export'),
         control('File/Export/Menu','MenuItem','_NS:635' if original else '_NS:630','Export Unmodified Original For 1 Photo' if original else 'Export 1 Photo')]
-    if original:rows.append(control('ExportOptions','CheckBox',label='Export IPTC as XMP',value='0'))
+    if original:rows.extend([control('ExportOptions','CheckBox',label='Export IPTC as XMP',value='0')]*2)
     else:
         rows.append(control('ExportOptions/Photo Kind','PopUpButton','popup_photoKind',value='PNG'))
+        rows.append(control('ExportOptions','DisclosureTriangle','button_disclosure',label='customize',value='0'))
         rows.append(control('ExportOptions','DisclosureTriangle','button_disclosure',label='customize',value='0'))
         rows.append(control('ExportOptions','DisclosureTriangle','button_disclosure',label='customize',value='1'))
         for title,value in [('Color Profile','sRGB IEC61966-2.1'),('Size','Full Size')]:rows.append(control('ExportOptions/'+title,'PopUpButton','synthetic_'+title,label=title,value=value))
@@ -43,7 +44,8 @@ def fixture(context=None,photos=None,ownership=None,context_hash='f'*64):
         'context_sha256':context_hash,'test_source_sha256':context['test_source_sha256'],'verifier_sha256':context['script_sha256'],
         'photos_pid':photos['pid'],'fixture_sha256':ownership['fixture_sha256'],'asset_label':ownership['asset_label'],
         'complete':True,'dirty_cancel_tested':False,'deadline_seconds':600,'control_columns':gate.COLUMNS,'control_catalog':[],
-        'phases':[],'images':{},'raw_exports':{},'srgb_icc_reference':None,'single_photo_topologies':['collection-absent'],'export_option_bindings':[]}
+        'phases':[],'images':{},'raw_exports':{},'srgb_icc_reference':None,'single_photo_topologies':['collection-absent'],'export_option_bindings':[],
+        'binary_states':[],'binary_scalar_self_tested':True}
     def phase(name,details,controls=()):
         ids=[]
         for row in controls:
@@ -67,6 +69,8 @@ def fixture(context=None,photos=None,ownership=None,context_hash='f'*64):
     for index,row in enumerate(top['control_catalog']):
         if row[0] in ('ExportOptions/Color Profile','ExportOptions/Size') and row[1]=='PopUpButton':
             top['export_option_bindings'].append([index,'direct','sheetWindow_export','','',row[4],[],[410,300,302,26],[240,200,542,450],[240,200,542,450]])
+        if row[0]=='ExportOptions' and row[1] in ('DisclosureTriangle','CheckBox'):
+            top['binary_states'].append([index,'number','Synthetic.NSNumber','i',int(row[5]),int(row[5])])
     for name,data in images.items():
         d=pixels.decode(data);top['images'][name]={'bytes':len(data),'sha256':gate.sha(data),'rgba_sha256':d['rgba_sha256'],
             'format':'public.png','width':1200,'height':800,'bit_depth':8,'color_type':6,'interlace':0,'orientation':1,'profile':'sRGB','profile_encoding':'srgb-chunk','alpha':'opaque'}
@@ -170,5 +174,40 @@ class LifecycleReplayTests(unittest.TestCase):
                 row=next(r for r in a[0]['control_catalog'] if r[:2]==[scope,role] and r[2]==identifier);row[2]='unknown'
             self.reject(mutate)
         self.reject(lambda a:next(row for row in a[0]['control_catalog'] if row[1]=='DisclosureTriangle' and row[5]=='1').__setitem__(5,'0'))
+    def test_binary_scalar_string_number_and_boolean_evidence_recompute_exact_states(self):
+        for kind,encoding,convert in [('string','',str),('number','d',float),('number','q',int),('boolean','c',bool),('boolean','B',bool)]:
+            args=self.packet()
+            for row in args[0]['binary_states']:row[1:5]=[kind,'Synthetic.'+kind,encoding,convert(row[5])]
+            self.assertTrue(self.validate(args)['filter_lifecycle_accepted'])
+        self.assertLess(len(json.dumps(self.packet()[0],separators=(',',':')).encode()),16_000)
+    def test_binary_scalar_forgery_missing_mixed_fractional_and_nonfinite_values_reject(self):
+        for column,value in [(0,True),(0,0),(1,'guessed'),(2,''),(2,'x'*97),(2,[]),(3,'B'),(3,'unknown'),
+                             (4,None),(4,'0'),(4,False),(4,[]),(4,{}),(4,-1),(4,2),(4,10**400),(4,.5),(4,float('nan')),
+                             (4,float('inf')),(4,float('-inf')),(5,True),(5,2),(5,1)]:
+            with self.subTest(column=column,value=value):self.reject(lambda a:a[0]['binary_states'][0].__setitem__(column,value))
+        for kind,encoding,raw in [('string','',''),('string','','mixed'),('string','',' 0'),('string','','01'),
+            ('string','','+1'),('string','','1.0'),('string','','true'),('string','','false'),('string','','2'),
+            ('boolean','c',0),('boolean','c','false'),('boolean','i',False),('number','i',True)]:
+            self.reject(lambda a:a[0]['binary_states'][0].__setitem__(slice(1,5),[kind,'Synthetic.Value',encoding,raw]))
+        self.reject(lambda a:a[0]['binary_states'].pop())
+        self.reject(lambda a:a[0]['binary_states'].append(a[0]['binary_states'][0]))
+        self.reject(lambda a:a[0].pop('binary_states'))
+        for value in [False,1,None]:self.reject(lambda a:a[0].update(binary_scalar_self_tested=value))
+    def test_binary_fresh_and_final_observations_cannot_be_omitted_or_relabelled(self):
+        def omit_fresh(a):
+            indices=a[0]['phases'][2]['controls'];catalog=a[0]['control_catalog']
+            positions=[i for i,index in enumerate(indices) if catalog[index][1]=='DisclosureTriangle']
+            indices.pop(positions[1])
+        self.reject(omit_fresh)
+        def wrong_final(a):
+            indices=a[0]['phases'][2]['controls'];catalog=a[0]['control_catalog']
+            positions=[i for i,index in enumerate(indices) if catalog[index][1]=='DisclosureTriangle']
+            indices[positions[2]]=indices[positions[0]]
+        self.reject(wrong_final)
+        def omit_sidecar_final(a):
+            indices=a[0]['phases'][6]['controls'];catalog=a[0]['control_catalog']
+            positions=[i for i,index in enumerate(indices) if catalog[index][:2]==['ExportOptions','CheckBox']]
+            indices.pop(positions[1])
+        self.reject(omit_sidecar_final)
 
 if __name__=='__main__':unittest.main()
