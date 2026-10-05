@@ -19,7 +19,7 @@ import tempfile
 import time
 import math
 from mac_host_transport import load_json,HOST_CONTRACT
-from validation_route import current_route,validate_route
+from validation_route import current_route,validate_route,HOST_ONLY,host_only_source_binding
 from mac_host_self_identity import validate as validate_self_identity
 from mac_host_lifecycle import validate as validate_lifecycle
 from mac_host_lifecycle_pixels import NAMES as LIFECYCLE_IMAGES,PNG_LIMIT,read_owned_png
@@ -559,6 +559,8 @@ def verify_acceptance(root, source_sha):
         assert combined['tree']==before['tree'] and combined['workflow_sha256']==before['workflow_sha256']
         assert type(combined['file_count']) is int and combined['file_count']==len(contract['files'])
         assert combined['source_fingerprint']==contract['fingerprint']
+        if route==HOST_ONLY:
+            assert combined.get('host_only_diagnostic')==host_only_source_binding(contract['files']), 'Wrong fixed host-only source claims'
     receipts = [root / name for name in ['combined-source-before.json','combined-source-after.json','mac-job-clock.json', 'mac-host-budget.json', 'mac-host-context.json', 'mac-host-summary.json', 'mac-host-test.log',
                 'mac-host-product-after.json', 'mac-host-source-before.json', 'mac-host-source-after.json', 'mac-host-transport-replay.json']]
     receipts += [observed / name for name in ['prerequisite.json', 'outcome.json', 'host-selection.json', 'host-editor-before-process.json', 'host-editor-after-process.json', 'extension-self-identity.json', 'fixture-ownership.json', 'fixture.json']]

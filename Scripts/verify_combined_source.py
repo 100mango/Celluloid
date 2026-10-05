@@ -2,7 +2,7 @@
 """Bind exact combined app/test/project bytes and workflow to the admitted checkout."""
 from pathlib import Path
 import argparse, hashlib, json, os, subprocess
-from validation_route import current_route,HOST_ONLY,HOST_ONLY_BASE
+from validation_route import current_route,HOST_ONLY,host_only_source_binding
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
@@ -22,10 +22,7 @@ def main():
     assert not any(git('ls-files','--',p) for p in forbidden)
     report={'source_sha':os.environ['GITHUB_SHA'],'tree':git('rev-parse','HEAD^{tree}'),'phase':args.phase,'file_count':len(rows),'source_fingerprint':fingerprint,'reviewed_source_tree':contract['reviewed_source_tree'],'appearance_cancel_patch_sha256':contract.get('appearance_cancel_patch_sha256'),'expected_UIKit_executions':contract.get('expected_UIKit_executions'),'uikit_base':contract['uikit_base'],'native_base':contract['native_base'],'workflow_sha256':hashlib.sha256((ROOT/route['workflow_path']).read_bytes()).hexdigest(),'validation_route':route}
     if route==HOST_ONLY:
-        if fingerprint!=HOST_ONLY_BASE['fingerprint'] or len(rows)!=547:
-            raise ValueError('Host-only diagnostic changed qualified production/Swift bytes')
-        report['host_only_diagnostic']={'prior_source':dict(HOST_ONLY_BASE),'native_42_reexecuted':False,'uikit_reexecuted':False,
-            'actual_host_test_required':'MacPhotosHostUITests/testInstalledExtensionIsInvokedByActualPhotos'}
+        report['host_only_diagnostic']=host_only_source_binding(rows)
     (Path(os.environ['RUNNER_TEMP'])/('combined-source-'+args.phase+'.json')).write_text(json.dumps(report,indent=2)+'\n')
     print('COMBINED_SOURCE '+json.dumps(report,sort_keys=True))
 if __name__=='__main__':main()

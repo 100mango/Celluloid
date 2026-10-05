@@ -1,5 +1,5 @@
 """Source-tied safety/independence checks; no native UI success is inferred."""
-import ast,json,re,unittest
+import ast,copy,json,math,re,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -203,5 +203,132 @@ class LifecycleSourceTests(unittest.TestCase):
         for count in range(len(full['phases'])+1):
             partial=dict(full,complete=False,phases=full['phases'][:count])
             self.assertLess(len(json.dumps(partial,separators=(',',':'),ensure_ascii=False).encode()),16_000)
+
+def replay_export_association(swift, snapshot):
+    """Bounded synthetic public-attribute replay; not native Photos execution."""
+    body=swift.split('@MainActor private func exportPopup(',1)[1].split('private func exportBindingSignature(',1)[0]
+    required=['sheet.identifier == "sheetWindow_export"','["Color Profile", "Size"].contains(title)',
+        'let directCount = direct.count','guard directCount <= 1','if directCount == 1',
+        'let labelCount = labels.count','guard labelCount == 1','label.isHittable',
+        'let groupCount = groups.count','groupCount > 0, groupCount <= 8 else',
+        'group.children(matching: .staticText).matching(labelPredicate).count','guard childCount <= 1',
+        'guard parents.count == 1','parentFrame.contains(labelFrame)',
+        'let popups = parent.children(matching: .popUpButton)','let popupCount = popups.count',
+        'popupCount > 0, popupCount <= 6 else','frame.minX >= labelFrame.maxX',
+        'frame.minX - labelFrame.maxX <= 24','abs(frame.midY - labelFrame.midY) <= 6',
+        'aligned.append((candidate, frame))','guard aligned.count == 1',
+        '!identifier.isEmpty, control.isEnabled, control.isHittable',
+        'let query = popups.matching(identifier: identifier)','guard query.count == 1',
+        '["label-row", sheet.identifier, parent.identifier, label.identifier, texts[0]']
+    if not all(value in body for value in required):raise AssertionError('Source export association no longer matches replay')
+    selection=body.split('var aligned:',1)[1].split('guard aligned.count == 1',1)[0]
+    if 'isEnabled' in selection or 'isHittable' in selection:raise AssertionError('Usability hides aligned duplicates')
+    for expression in ['direct.count','labels.count','groups.count','popups.count']:
+        if body.count(expression)!=1:raise AssertionError('Repeated dynamic association count')
+    def need(value):
+        if not value:raise ValueError('Ambiguous, stale or invalid export association')
+    def rect(value):
+        need(len(value)==4 and all(type(v) in (int,float) and math.isfinite(v) and abs(v)<=32768 for v in value) and value[2]>0 and value[3]>0)
+        return value
+    def contains(a,b):return a[0]<=b[0] and a[1]<=b[1] and b[0]+b[2]<=a[0]+a[2] and b[1]+b[3]<=a[1]+a[3]
+    field=snapshot['field'];names=(field,field+':');sheet=rect(snapshot['frame']);groups=snapshot['groups']
+    need(snapshot['sheet']=='sheetWindow_export' and field in ('Color Profile','Size'))
+    direct=[p for g in groups for p in g['popups'] if p['label'] in names or p['title'] in names]
+    need(len(direct)<=1)
+    if direct:
+        control=direct[0];frame=rect(control['frame']);texts=[control[k] for k in ('label','title') if control[k]]
+        need(all(t in names for t in texts) and contains(sheet,frame) and control['enabled'] and control['hittable'])
+        return [control['id'],['direct',snapshot['sheet'],'','',texts[0],[],frame,sheet,sheet]],control['value']
+    labels=[label for g in groups for label in g['labels'] if any(t in names for t in label['texts'])]
+    need(len(labels)==1);label=labels[0];lf=rect(label['frame'])
+    need(label['hittable'] and all(t in names for t in label['texts']) and contains(sheet,lf))
+    need(0<len(groups)<=8)
+    parents=[g for g in groups if any(any(t in names for t in label['texts']) for label in g['labels'])]
+    need(len(parents)==1);parent=parents[0];pf=rect(parent['frame'])
+    need(contains(sheet,pf) and contains(pf,lf));popups=parent['popups'];need(0<len(popups)<=6)
+    aligned=[]
+    for control in popups:
+        frame=rect(control['frame'])
+        if contains(pf,frame) and 0<=frame[0]-(lf[0]+lf[2])<=24 and abs(frame[1]+frame[3]/2-(lf[1]+lf[3]/2))<=6:aligned.append(control)
+    need(len(aligned)==1);control=aligned[0]
+    need(control['id']!='' and control['enabled'] and control['hittable'] and all(control[k]=='' or control[k] in names for k in ('label','title')))
+    need(sum(p['id']==control['id'] for p in popups)==1)
+    return [control['id'],['label-row',snapshot['sheet'],parent['id'],label['id'],label['texts'][0],lf,control['frame'],pf,sheet]],control['value']
+
+def export_association_sample():
+    return {'field':'Color Profile','sheet':'sheetWindow_export','frame':[240,200,542,450],
+        'groups':[{'id':'observed_group','frame':[260,220,502,400],
+            'labels':[{'id':'observed_label','texts':['Color Profile:'],'frame':[300,304,104,18],'hittable':True}],
+            'popups':[{'id':'observed_popup','label':'','title':'','value':'sRGB IEC61966-2.1',
+                       'frame':[410,300,302,26],'enabled':True,'hittable':True}]}]}
+
+class ExportAssociationSourceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):cls.swift=(ROOT/'Platforms/UITests/MacPhotosHostUITests.swift').read_text()
+    def test_actual_visible_label_row_and_direct_semantics_are_distinct(self):
+        row=export_association_sample();signature,value=replay_export_association(self.swift,row)
+        self.assertEqual(signature[0],'observed_popup');self.assertEqual(signature[1][0],'label-row')
+        self.assertEqual(signature[1][4],'Color Profile:');self.assertEqual(value,'sRGB IEC61966-2.1')
+        row['groups'][0]['popups'][0]['label']='Color Profile'
+        self.assertEqual(replay_export_association(self.swift,row)[0][1][0],'direct')
+    def test_duplicate_disabled_and_ambiguous_candidates_never_disappear(self):
+        variants=[]
+        for enabled in [True,False]:
+            row=export_association_sample();other=copy.deepcopy(row['groups'][0]['popups'][0]);other.update(id='another',enabled=enabled)
+            row['groups'][0]['popups'].append(other);variants.append(row)
+        row=export_association_sample();row['groups'][0]['labels']*=2;variants.append(row)
+        row=export_association_sample();row['groups']*=2;variants.append(row)
+        row=export_association_sample();other=copy.deepcopy(row['groups'][0]['popups'][0]);other['frame']=[410,360,302,26]
+        row['groups'][0]['popups'].append(other);variants.append(row)
+        row=export_association_sample();row['groups'][0]['popups']*=7;variants.append(row)
+        row=export_association_sample();row['groups'] += [{'id':'other','frame':[260,220,502,400],'labels':[],'popups':[]}]*8;variants.append(row)
+        row=export_association_sample();row['groups'][0]['popups'][0]['label']='Color Profile';row['groups'][0]['popups']*=2;variants.append(row)
+        for row in variants:
+            with self.subTest(row=row),self.assertRaises(ValueError):replay_export_association(self.swift,row)
+    def test_wrong_sheet_label_parent_row_visibility_and_nonfinite_frames_reject(self):
+        mutations=[lambda r:r.update(sheet='other'),lambda r:r.update(field='unrequested'),
+            lambda r:r['groups'][0]['labels'][0].update(texts=['Size:']),
+            lambda r:r['groups'][0]['labels'][0].update(texts=['Color Profile:','different']),
+            lambda r:r['groups'][0]['labels'][0].update(hittable=False),
+            lambda r:r['groups'][0]['labels'][0].update(frame=[300,360,104,18]),
+            lambda r:r['groups'][0]['labels'][0].update(frame=[300,304,80,18]),
+            lambda r:r['groups'][0]['labels'][0].update(frame=[300,float('inf'),104,18]),
+            lambda r:r['groups'][0].update(frame=[260,220,502,20]),
+            lambda r:r['groups'][0]['popups'][0].update(frame=[410,300,0,26]),
+            lambda r:r['groups'][0]['popups'][0].update(enabled=False),
+            lambda r:r['groups'][0]['popups'][0].update(hittable=False),
+            lambda r:r['groups'][0]['popups'][0].update(id=''),
+            lambda r:r['groups'][0]['popups'][0].update(label='unrelated')]
+        for mutate in mutations:
+            row=export_association_sample();mutate(row)
+            with self.subTest(row=row),self.assertRaises(ValueError):replay_export_association(self.swift,row)
+    def test_stale_observed_binding_and_value_are_checked_before_click_and_export(self):
+        initial=export_association_sample();signature,value=replay_export_association(self.swift,initial)
+        for mutate in [lambda r:r['groups'][0].update(id='replacement'),
+                       lambda r:r['groups'][0]['labels'][0].update(id='replacement'),
+                       lambda r:r['groups'][0]['popups'][0].update(id='replacement'),
+                       lambda r:r['groups'][0]['popups'][0].update(frame=[411,300,302,26])]:
+            row=copy.deepcopy(initial);mutate(row)
+            self.assertNotEqual(replay_export_association(self.swift,row)[0],signature)
+        row=copy.deepcopy(initial);row['groups'][0]['popups'][0]['value']='Display P3'
+        self.assertNotEqual(replay_export_association(self.swift,row)[1],value)
+        body=self.swift.split('@MainActor private func popup(',1)[1].split('@MainActor private func chooseOwnedExportDirectory(',1)[0]
+        self.assertLess(body.index('retainExportBinding('),body.index('deadlineClick('))
+        self.assertLess(body.index('Stale export option binding before action'),body.index('deadlineClick('))
+        self.assertIn('fresh.query.element(boundBy: 0).value as? String == value',body)
+        export=self.swift.split('@MainActor private func exportRaster(',1)[1].split('private func readBoundedOwnedFile(',1)[0]
+        self.assertLess(export.index('Export option changed before Export'),export.index('"button_export", "Export"'))
+    def test_source_ties_reject_weakening_and_disclosure_is_observed_closed_then_expanded(self):
+        for old,new in [('groupCount <= 8','groupCount <= 80'),('popupCount <= 6','popupCount <= 60'),
+            ('guard aligned.count == 1','guard aligned.count >= 1'),('frame.minX - labelFrame.maxX <= 24','frame.minX - labelFrame.maxX <= 1000'),
+            ('aligned.append((candidate, frame))','if candidate.isEnabled { aligned.append((candidate, frame)) }'),
+            ('let labelCount = labels.count','let labelCount = labels.count\n        _ = labels.count')]:
+            with self.subTest(old=old),self.assertRaises(AssertionError):replay_export_association(self.swift.replace(old,new),export_association_sample())
+        for required in ['"Photo Kind": "popup_photoKind"','"File Name": "popup_useFileName"',
+            '"Subfolder Format": "popup_subfolderFormat"','"button_disclosure", "customize"',
+            'if disclosureState == "0"','expanded.value as? String == "1"',
+            'prospective.count <= 6','withJSONObject: receipt).count <= 16_000']:
+            self.assertIn(required,self.swift)
+        self.assertNotIn('coordinate(',self.swift)
 
 if __name__=='__main__':unittest.main()

@@ -1,5 +1,5 @@
 """Strict replay of the bounded, owned real Photos filter lifecycle receipt."""
-import base64,hashlib,json,re
+import base64,hashlib,json,math,re
 from pathlib import Path
 from mac_host_self_identity import validate as self_identity,RECEIPT,IDENTIFIER
 from mac_host_transport import HOST_CONTRACT
@@ -9,7 +9,7 @@ SCHEMA='Celluloid.PhotosFilterLifecycle.1'
 PHASES=('source-retained','fade-ready','saved-export','reopened-fade','cancelled-export','reverted-export','unmodified-original','reopened-original')
 COLUMNS=['scope','role','identifier','title','label','value','count','enabled','hittable']
 META={'bytes','sha256','rgba_sha256','format','width','height','bit_depth','color_type','interlace','orientation','profile','profile_encoding','alpha'}
-FIELDS={'schema','host_entry_contract','source_sha','context_sha256','test_source_sha256','verifier_sha256','photos_pid','fixture_sha256','asset_label','single_photo_topologies','complete','dirty_cancel_tested','deadline_seconds','control_columns','control_catalog','phases','images','raw_exports','srgb_icc_reference'}
+FIELDS={'schema','host_entry_contract','source_sha','context_sha256','test_source_sha256','verifier_sha256','photos_pid','fixture_sha256','asset_label','single_photo_topologies','export_option_bindings','complete','dirty_cancel_tested','deadline_seconds','control_columns','control_catalog','phases','images','raw_exports','srgb_icc_reference'}
 SINGLE_PHOTO_TOPOLOGIES=('collection-present','collection-absent')
 FILENAME='Celluloid-Owned-Host.png'
 
@@ -51,6 +51,7 @@ def validate(row,context,photos,ownership,baseline,images,context_hash):
         require(integer(phase['elapsed_ms'],0,599999) and phase['elapsed_ms']>=last,'Out-of-budget/nonmonotonic lifecycle phase')
         last=phase['elapsed_ms'];details[name]=phase['details']
     validate_controls(row['control_catalog'],phases)
+    validate_export_bindings(row['export_option_bindings'],row['control_catalog'])
     source=details['source-retained'];exact(source,{'fixture_filename','fixture_sha256','retained_before_import'},'Malformed source retention')
     require(source=={'fixture_filename':FILENAME,'fixture_sha256':ownership['fixture_sha256'],'retained_before_import':True} and source['retained_before_import'] is True,'Original was not retained before import')
     fade=details['fade-ready'];exact(fade,{'filter','independent_filter','jpeg_quality','jpeg_sha256'},'Malformed independent reference')
@@ -96,6 +97,42 @@ def validate(row,context,photos,ownership,baseline,images,context_hash):
         'phase_count':len(phases),'editing_generations':sorted(generations),'saved_comparison':saved,
         'images':{name:{key:d[key] for key in ['bytes','png_sha256','rgba_sha256','profile','profile_sha256','rendering_intent']} for name,d in decoded.items()}}
 
+def validate_export_bindings(bindings,catalog):
+    require(type(bindings) is list and 2<=len(bindings)<=6,'Missing/oversized export option bindings')
+    def frame(value):
+        require(type(value) is list and len(value)==4 and all(type(v) in (int,float) and math.isfinite(v) and abs(v)<=32768 for v in value)
+                and value[2]>0 and value[3]>0,'Invalid observed export frame')
+        return value
+    def contains(parent,child):
+        return parent[0]<=child[0] and parent[1]<=child[1] and child[0]+child[2]<=parent[0]+parent[2] and child[1]+child[3]<=parent[1]+parent[3]
+    serial=[];bound=set()
+    for binding in bindings:
+        require(type(binding) is list and len(binding)==10 and integer(binding[0],0,len(catalog)-1),'Malformed export option binding')
+        index,method,sheet,group,label,text,label_rect,control_rect,parent_rect,sheet_rect=binding
+        require(all(type(value) is str and len(value.encode('utf8'))<=512 for value in binding[1:6]),'Invalid export binding text')
+        require(method in ('direct','label-row') and sheet=='sheetWindow_export','Wrong export binding method/sheet')
+        control=catalog[index];field=control[0].removeprefix('ExportOptions/')
+        require(control[0]=='ExportOptions/'+field and field in ('Color Profile','Size') and control[1]=='PopUpButton','Unadmitted export binding field/control')
+        require(text in (field,field+':'),'Observed export label does not name its field')
+        require(all(value=='' or value in (field,field+':') for value in control[3:5]),'Contradictory export control label')
+        control_rect=frame(control_rect);parent_rect=frame(parent_rect);sheet_rect=frame(sheet_rect)
+        require(contains(sheet_rect,parent_rect) and contains(parent_rect,control_rect),'Export control escaped its visible container')
+        if method=='direct':
+            require(group==label=='' and label_rect==[] and parent_rect==sheet_rect and text in control[3:5],'Unbound direct export label')
+        else:
+            require(control[2]!='','Associated export control has no observed identity')
+            label_rect=frame(label_rect)
+            require(contains(parent_rect,label_rect),'Export label escaped its direct parent')
+            gap=control_rect[0]-(label_rect[0]+label_rect[2])
+            delta=abs(control_rect[1]+control_rect[3]/2-(label_rect[1]+label_rect[3]/2))
+            require(0<=gap<=24 and delta<=6,'Export label/control row association mismatch')
+        encoded=json.dumps(binding,separators=(',',':'),ensure_ascii=False)
+        require(len(encoded.encode('utf8'))<=768,'Oversized export binding observation')
+        serial.append(encoded);bound.add(index)
+    require(len(serial)==len(set(serial)),'Duplicate export option binding')
+    expected={i for i,row in enumerate(catalog) if row[0] in ('ExportOptions/Color Profile','ExportOptions/Size') and row[1]=='PopUpButton'}
+    require(bound==expected,'Missing/unused export option association evidence')
+
 def validate_controls(catalog,phases):
     require(type(catalog) is list and 1<=len(catalog)<=64,'Missing/oversized lifecycle control catalog')
     serial=[]
@@ -120,7 +157,8 @@ def validate_controls(catalog,phases):
         def toolbar(title,identifier,role='Button'):
             return take('MainWindow/Toolbar',role,identifier=identifier,label=title)
         def popup(title,wanted):
-            row=take('ExportOptions','PopUpButton',public=title)
+            known={'Photo Kind':'popup_photoKind','File Name':'popup_useFileName','Subfolder Format':'popup_subfolderFormat'}
+            row=take('ExportOptions/'+title,'PopUpButton',identifier=known.get(title))
             if row[5]!=wanted:take('ExportOptions/'+title+'/Menu','MenuItem',title=wanted)
         def export(phase,original=False):
             take('Photos/MenuBar','MenuBarItem',title='File')
@@ -130,11 +168,12 @@ def validate_controls(catalog,phases):
                 row=take('ExportOptions','CheckBox',public='Export IPTC as XMP');require(row[5] in ('0','1'),'Unknown sidecar state')
             else:
                 popup('Photo Kind','PNG')
-                if position<len(rows) and rows[position][:2]==['ExportOptions','DisclosureTriangle']:
-                    take('ExportOptions','DisclosureTriangle')
+                disclosure=take('ExportOptions','DisclosureTriangle',identifier='button_disclosure',label='customize')
+                require(disclosure[5] in ('0','1'),'Unknown customize disclosure state')
+                take('ExportOptions','DisclosureTriangle',identifier='button_disclosure',label='customize',value='1')
                 popup('Color Profile','sRGB IEC61966-2.1');popup('Size','Full Size')
             popup('File Name','Use File Name');popup('Subfolder Format','None')
-            take('ExportOptions','Button',public='Export')
+            take('ExportOptions','Button',identifier='button_export',title='Export')
             title='Export Originals' if original else 'Export'
             take('ExportSavePanel','Button',public=title)
             require(position<len(rows) and rows[position][1] in ('ComboBox','TextField'),'Missing owned destination input')

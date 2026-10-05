@@ -588,15 +588,45 @@ The push-only `codex/photos-export-observation` workflow reuses the actual
 source/product/entitlement checks, the same 45-minute job and 41-minute clock,
 14-minute host step, and 1MB evidence allocation. It does not rerun the 42 native
 cases, UIKit consumers, or full prerequisite matrix and cannot qualify a release.
-Its protected production/Swift fingerprint is fixed to public `25b8edc9`. The new
-execution uses its own actual commit SHA. Original full and focused workflows
+The 546 protected application/test/project files remain fixed to public
+`25b8edc9`; the exact reviewed `MacPhotosHostUITests.swift` hash is bound separately.
+The new execution builds and runs that current host test and uses its own actual
+commit SHA. These bindings do not imply that the native 42 cases or UIKit
+consumers were reexecuted. Original full and focused workflows
 are unchanged, and the shared no-cancel concurrency group remains serial.
 
-The immediate purpose is to retain the owned export-dialog TXT/JPEG after the
-observed Photo Kind selector returned zero matches. No selector is changed
-without the actual snapshot. The 70-item XCTest inventory now fits an explicit
+The first host-only run retained the owned export-dialog TXT/JPEG after the
+Photo Kind selector returned zero matches. Its actual snapshot now supports the
+reviewed export-options selector repair. Stored PNG and lifecycle outcomes
+remain runtime gates. The 70-item XCTest inventory now fits an explicit
 1024-item total bound, equal to the former 16x64 total capacity. Ordinary XCTest
 UI snapshots/events are never ingested. Independently safe fixed-name diagnostic
 bytes may survive rejection, but malformed/unsafe inventory still withholds
 transport completion. Lifecycle PNG proof has no fallback, and stored-pixel,
 reopen, no-change Cancel and Revert gates remain mandatory.
+
+The recovered normal export-options sheet is `sheetWindow_export`. Its observed
+`popup_photoKind`, `popup_useFileName`, and `popup_subfolderFormat` controls have
+values but no accessible labels; their visible text is in separate static-text
+siblings. The reviewed selector uses those exact identifiers in that sheet, and
+`button_export` with title `Export`. The exact `button_disclosure`/`customize`
+control is read before action and only clicked from observed state 0; expanded
+state 1 is required before choosing Color Profile and Size.
+
+Only Color Profile and Size may use bounded discovery after expansion: one
+consistent directly labelled popup, or one exact visible static-text label with
+one aligned popup in its same direct parent group. All aligned candidates count,
+including disabled ones. At most eight groups and six sibling popups are read;
+ambiguous labels, duplicate candidates, contradictory text, invalid/out-of-sheet
+frames, unusable controls, or stale association fail before selection. Frames
+associate a visible row; actions use the verified element's public click API.
+The actual method, sheet/group/label/control identities, label text and frames
+are retained in a deduplicated catalog, at most six 768-byte rows, within the
+unchanged 16KB lifecycle receipt. Discovery is repeated before selection and all
+chosen values/identities are checked again before Export. Independent replay
+requires complete matching association evidence for the actual control catalog.
+
+This repairs the observed options lookup. Native compilation and newly exposed
+controls, destination selection, actual PNG profile/pixels, reopened state,
+no-change Cancel and Revert remain unexecuted for this successor. No unobserved
+confirmation is accepted and no native 42-case or UIKit result is inferred.

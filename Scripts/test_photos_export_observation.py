@@ -58,7 +58,6 @@ class PhotosObservationRouteTests(unittest.TestCase):
     def test_protected_bytes_and_report_distinguish_prior_proof_from_new_execution(self):
         import verify_combined_source as verify
         contract=json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())
-        self.assertEqual(contract['fingerprint'],route.HOST_ONLY_BASE['fingerprint'])
         self.assertEqual(len(contract['files']),547)
         for path,digest in contract['files']:self.assertEqual(hashlib.sha256((ROOT/path).read_bytes()).hexdigest(),digest)
         source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
@@ -68,7 +67,25 @@ class PhotosObservationRouteTests(unittest.TestCase):
             self.assertFalse(report['host_only_diagnostic']['native_42_reexecuted'])
             self.assertFalse(report['host_only_diagnostic']['uikit_reexecuted'])
             self.assertEqual(report['host_only_diagnostic']['prior_source'],route.HOST_ONLY_BASE)
-            with mock.patch.dict(verify.HOST_ONLY_BASE,{'fingerprint':'0'*64}),self.assertRaises(ValueError):verify.main()
+            self.assertEqual(report['host_only_diagnostic'],route.host_only_source_binding(contract['files']))
+            with mock.patch.object(route,'HOST_ONLY_PROTECTED_FINGERPRINT','0'*64),self.assertRaises(ValueError):verify.main()
+
+    def test_only_exact_reviewed_ui_test_can_differ_from_qualified_source(self):
+        rows=json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['files']
+        result=route.host_only_source_binding(rows)
+        self.assertEqual(result['unchanged_protected_files'],546)
+        self.assertEqual(result['reviewed_host_ui_test'],route.HOST_ONLY_UI_TEST)
+        protected=[row for row in rows if row[0]!=route.HOST_ONLY_UI_TEST['path']]
+        self.assertEqual(hashlib.sha256(json.dumps(protected,separators=(',',':')).encode()).hexdigest(),route.HOST_ONLY_PROTECTED_FINGERPRINT)
+        cases=[]
+        import copy
+        for target in [0,next(i for i,row in enumerate(rows) if row[0]==route.HOST_ONLY_UI_TEST['path'])]:
+            bad=copy.deepcopy(rows);bad[target][1]='0'*64;cases.append(bad)
+        cases.extend([rows[:-1],rows+[rows[0]],list(reversed(rows))])
+        bad=copy.deepcopy(rows);bad[0][0]='Platforms/UITests/Unreviewed.swift';cases.append(bad)
+        bad=copy.deepcopy(rows);bad[0]=list(next(row for row in rows if row[0]==route.HOST_ONLY_UI_TEST['path']));cases.append(bad)
+        for bad in cases:
+            with self.subTest(change=bad[:1]),self.assertRaises(ValueError):route.host_only_source_binding(bad)
 
     def test_actual_host_receipts_and_collected_replay_bind_the_new_route(self):
         import test_mac_photos_host_gate as fixture
@@ -78,11 +95,20 @@ class PhotosObservationRouteTests(unittest.TestCase):
             root=Path(folder).resolve();helper.seed(root)
             context=gate.read_receipt(root/'mac-host-context.json');context.update(validation_route=dict(route.HOST_ONLY),runner_environment=environment(helper.SOURCE));gate.write(root/'mac-host-context.json',context)
             for name in ['mac-host-source-before.json','mac-host-source-after.json','combined-source-before.json','combined-source-after.json']:
-                value=gate.read_receipt(root/name);value.update(validation_route=dict(route.HOST_ONLY),workflow_sha256=gate.sha(ROOT/route.HOST_ONLY['workflow_path']));gate.write(root/name,value)
+                value=gate.read_receipt(root/name);value.update(validation_route=dict(route.HOST_ONLY),workflow_sha256=gate.sha(ROOT/route.HOST_ONLY['workflow_path']))
+                if name.startswith('combined-source-'):
+                    value['host_only_diagnostic']=route.host_only_source_binding(json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['files'])
+                gate.write(root/name,value)
             path=root/'mac-host-observed/lifecycle.json';value=gate.read_receipt(path);value['context_sha256']=gate.sha(root/'mac-host-context.json');path.write_text(json.dumps(value,separators=(',',':'))+'\n')
             helper.write_transport_log(root,context)
             result=gate.verify_acceptance(root,helper.SOURCE);self.assertTrue(result['prerequisite_accepted']);self.assertFalse(result['complete_host_e2e'])
-            self.assertEqual(result['validation_route'],route.HOST_ONLY);gate.write(root/'mac-host-acceptance.json',result)
+            self.assertEqual(result['validation_route'],route.HOST_ONLY)
+            for phase in ['before','after']:
+                path=root/('combined-source-'+phase+'.json');original=path.read_bytes();value=gate.read_receipt(path)
+                value['host_only_diagnostic']['native_42_reexecuted']=True;gate.write(path,value)
+                with self.assertRaises(AssertionError):gate.verify_acceptance(root,helper.SOURCE)
+                path.write_bytes(original)
+            gate.write(root/'mac-host-acceptance.json',result)
             collected=collector.collect(root);manifest=gate.verify_collected(collected,helper.SOURCE);self.assertEqual(manifest['validation_route'],route.HOST_ONLY)
             gate.write(collected/'manifest.json',dict(manifest,validation_route=dict(route.FULL)))
             with self.assertRaises(AssertionError):gate.verify_collected(collected,helper.SOURCE)

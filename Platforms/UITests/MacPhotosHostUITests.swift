@@ -34,6 +34,7 @@ final class MacPhotosHostUITests: XCTestCase {
     private var lifecycleRows: [[String: Any]] = []
     private var lifecycleControls: [Int] = []
     private var lifecycleControlCatalog: [[Any]] = []
+    private var exportOptionBindings: [[Any]] = []
     private var lifecycleImages: [String: [String: Any]] = [:]
     private var lifecycleExports: [String: [String: Any]] = [:]
     private var lifecyclePNGBytes = 0
@@ -499,6 +500,7 @@ final class MacPhotosHostUITests: XCTestCase {
             "complete": lifecycleComplete, "dirty_cancel_tested": false,
             "deadline_seconds": 600, "control_columns": ["scope", "role", "identifier", "title", "label", "value", "count", "enabled", "hittable"],
             "control_catalog": lifecycleControlCatalog, "phases": lifecycleRows, "images": lifecycleImages, "raw_exports": lifecycleExports,
+            "export_option_bindings": exportOptionBindings,
             "srgb_icc_reference": lifecycleICC.map { $0 as Any } ?? NSNull()]
     }
     @MainActor private func lifecycleGuard(_ photos: XCUIApplication, photosPID: pid_t,
@@ -822,16 +824,123 @@ final class MacPhotosHostUITests: XCTestCase {
         }
         return sheets.element(boundBy: 0)
     }
-    @MainActor private func popup(_ title: String, choose value: String, in sheet: XCUIElement) throws {
-        let query = publicLabel(title, role: .popUpButton, in: sheet)
-        let control = try lifecycleControl(query, scope: "ExportOptions", role: "PopUpButton", click: false)
+    private func exportFrame(_ frame: CGRect) throws -> [Double] {
+        let values = [frame.minX, frame.minY, frame.width, frame.height].map(Double.init)
+        guard values.allSatisfy({ $0.isFinite && abs($0) <= 32768 }), frame.width > 0, frame.height > 0 else {
+            throw block("Invalid visible export control frame")
+        }
+        return values
+    }
+    @MainActor private func exportPopup(_ title: String, in sheet: XCUIElement) throws -> (query: XCUIElementQuery, identity: String, binding: [Any]) {
+        _ = try remainingTime(1)
+        guard sheet.exists, sheet.identifier == "sheetWindow_export" else { throw block("Changed export options sheet") }
+        let known = ["Photo Kind": "popup_photoKind", "File Name": "popup_useFileName", "Subfolder Format": "popup_subfolderFormat"]
+        if let identifier = known[title] {
+            let query = sheet.descendants(matching: .popUpButton).matching(identifier: identifier)
+            guard query.count == 1 else { throw block("Missing/ambiguous observed export option: " + title) }
+            guard query.element(boundBy: 0).isEnabled, query.element(boundBy: 0).isHittable else { throw block("Unusable observed export option: " + title) }
+            return (query, identifier, [])
+        }
+        guard ["Color Profile", "Size"].contains(title) else { throw block("Unadmitted export option discovery") }
+        let sheetFrame = sheet.frame
+        let sheetRect = try exportFrame(sheetFrame)
+        let direct = publicLabel(title, role: .popUpButton, in: sheet)
+        let directCount = direct.count
+        guard directCount <= 1 else { throw block("Ambiguous directly labelled export option: " + title) }
+        if directCount == 1 {
+            let control = direct.element(boundBy: 0), frame = direct.element(boundBy: 0).frame
+            let texts = [control.label, control.title].filter { !$0.isEmpty }
+            guard !texts.isEmpty, texts.allSatisfy({ [title, title + ":"].contains($0) }),
+                  sheetFrame.contains(frame), control.isEnabled, control.isHittable else { throw block("Unusable directly labelled export option: " + title) }
+            return (direct, control.identifier, ["direct", sheet.identifier, "", "", texts[0], [Double](), try exportFrame(frame), sheetRect, sheetRect])
+        }
+        // Only these two intended options may use a visible, same-direct-parent
+        // label association. Frames identify a row; clicks never use coordinates.
+        let labelPredicate = NSPredicate(format: "label IN %@ OR title IN %@ OR value IN %@", [title, title + ":"], [title, title + ":"], [title, title + ":"])
+        let labels = sheet.descendants(matching: .staticText).matching(labelPredicate)
+        let labelCount = labels.count
+        guard labelCount == 1 else { throw block("Missing/ambiguous visible export label: " + title) }
+        let label = labels.element(boundBy: 0), labelFrame = labels.element(boundBy: 0).frame
+        let texts = [label.label, label.title, (label.value as? String) ?? ""].filter { !$0.isEmpty }
+        guard !texts.isEmpty, texts.allSatisfy({ [title, title + ":"].contains($0) }), label.isHittable,
+              sheetFrame.contains(labelFrame) else { throw block("Unusable visible export label: " + title) }
+        let labelRect = try exportFrame(labelFrame)
+        let groups = sheet.descendants(matching: .group)
+        let groupCount = groups.count
+        guard groupCount > 0, groupCount <= 8 else { throw block("Unbounded export label containers") }
+        var parents: [XCUIElement] = []
+        for index in 0..<groupCount {
+            let group = groups.element(boundBy: index)
+            let childCount = group.children(matching: .staticText).matching(labelPredicate).count
+            guard childCount <= 1 else { throw block("Duplicate direct export labels") }
+            if childCount == 1 { parents.append(group) }
+        }
+        guard parents.count == 1 else { throw block("Ambiguous direct export label parent") }
+        let parent = parents[0], parentFrame = parents[0].frame
+        let parentRect = try exportFrame(parentFrame)
+        guard sheetFrame.contains(parentFrame), parentFrame.contains(labelFrame) else { throw block("Export label escaped its visible parent") }
+        let popups = parent.children(matching: .popUpButton)
+        let popupCount = popups.count
+        guard popupCount > 0, popupCount <= 6 else { throw block("Unbounded associated export popups") }
+        var aligned: [(control: XCUIElement, frame: CGRect)] = []
+        for index in 0..<popupCount {
+            let candidate = popups.element(boundBy: index), frame = popups.element(boundBy: index).frame
+            _ = try exportFrame(frame)
+            if parentFrame.contains(frame), frame.minX >= labelFrame.maxX,
+               frame.minX - labelFrame.maxX <= 24, abs(frame.midY - labelFrame.midY) <= 6 {
+                aligned.append((candidate, frame))
+            }
+        }
+        // Count every aligned candidate before inspecting usability. A disabled
+        // duplicate remains a contradiction rather than disappearing from selection.
+        guard aligned.count == 1 else { throw block("Missing/ambiguous aligned export popup") }
+        let control = aligned[0].control, controlFrame = aligned[0].frame
+        let identifier = control.identifier
+        guard !identifier.isEmpty, control.isEnabled, control.isHittable,
+              [control.label, control.title].allSatisfy({ $0.isEmpty || [title, title + ":"].contains($0) }) else {
+            throw block("Unusable or contradictory associated export popup")
+        }
+        let query = popups.matching(identifier: identifier)
+        guard query.count == 1 else { throw block("Ambiguous observed export popup identity") }
+        return (query, identifier, ["label-row", sheet.identifier, parent.identifier, label.identifier, texts[0],
+            labelRect, try exportFrame(controlFrame), parentRect, sheetRect])
+    }
+    private func exportBindingSignature(_ observation: (query: XCUIElementQuery, identity: String, binding: [Any])) throws -> Data {
+        try JSONSerialization.data(withJSONObject: [observation.identity, observation.binding])
+    }
+    private func retainExportBinding(_ binding: [Any], controlIndex: Int) throws {
+        guard !binding.isEmpty else { return }
+        let row: [Any] = [controlIndex] + binding
+        let encoded = try JSONSerialization.data(withJSONObject: row)
+        guard encoded.count <= 768 else { throw block("Oversized export option binding") }
+        if try exportOptionBindings.contains(where: { try JSONSerialization.data(withJSONObject: $0) == encoded }) { return }
+        let prospective = exportOptionBindings + [row]
+        var receipt = try lifecycleReceipt(photosPID: lifecyclePhotosPID)
+        receipt["export_option_bindings"] = prospective
+        guard prospective.count <= 6, try JSONSerialization.data(withJSONObject: receipt).count <= 16_000 else {
+            throw block("Export option binding would exceed lifecycle proof budget")
+        }
+        exportOptionBindings = prospective
+    }
+    @MainActor private func popup(_ title: String, choose value: String, in sheet: XCUIElement) throws -> Data {
+        let observation = try exportPopup(title, in: sheet)
+        let signature = try exportBindingSignature(observation)
+        let control = try lifecycleControl(observation.query, scope: "ExportOptions/" + title, role: "PopUpButton", click: false)
+        guard control.identifier == observation.identity else { throw block("Export option identity changed before action") }
+        try retainExportBinding(observation.binding, controlIndex: try XCTUnwrap(lifecycleControls.last))
         if control.value as? String != value {
-            try deadlineClick(control)
-            let menu = try uniqueOpenMenu(query, description: title)
+            let fresh = try exportPopup(title, in: sheet)
+            guard try exportBindingSignature(fresh) == signature else { throw block("Stale export option binding before action") }
+            try deadlineClick(fresh.query.element(boundBy: 0))
+            let menu = try uniqueOpenMenu(fresh.query, description: title)
             _ = try lifecycleControl(menu.children(matching: .menuItem).matching(NSPredicate(format: "title == %@", value)),
                 scope: "ExportOptions/" + title + "/Menu", role: "MenuItem")
         }
-        guard query.count == 1, query.element(boundBy: 0).value as? String == value else { throw block("Export option not observed: " + title + "=" + value) }
+        let fresh = try exportPopup(title, in: sheet)
+        guard try exportBindingSignature(fresh) == signature, fresh.query.element(boundBy: 0).value as? String == value else {
+            throw block("Export option binding/value not retained: " + title + "=" + value)
+        }
+        return signature
     }
     @MainActor private func chooseOwnedExportDirectory(_ directory: URL, in photos: XCUIApplication, original: Bool) throws {
         let panel = try exportSheet(in: photos)
@@ -916,24 +1025,40 @@ final class MacPhotosHostUITests: XCTestCase {
             scope: "File/Export/Menu", role: "MenuItem")
         try lifecycleWait(photos, seconds: 10, description: "Export options sheet absent") { photos.sheets.count > 0 }
         let options = try exportSheet(in: photos)
+        guard options.identifier == "sheetWindow_export" else { throw block("Unobserved export options sheet identity") }
+        var optionSignatures: [String: Data] = [:]
         if original {
             let sidecar = try lifecycleControl(publicLabel("Export IPTC as XMP", role: .checkBox, in: options), scope: "ExportOptions", role: "CheckBox", click: false)
             guard let state = sidecar.value as? String, ["0", "1"].contains(state) else { throw block("Unknown sidecar checkbox state") }
             if state == "1" { try deadlineClick(sidecar) }
             guard sidecar.value as? String == "0" else { throw block("Original export sidecar not disabled") }
         } else {
-            try popup("Photo Kind", choose: "PNG", in: options)
-            if publicLabel("Color Profile", role: .popUpButton, in: options).count == 0 || publicLabel("Size", role: .popUpButton, in: options).count == 0 {
-                // Apple's documented options disclosure; require an actually
-                // observed unique disclosure role, not an invented button ID.
-                _ = try lifecycleControl(options.descendants(matching: .disclosureTriangle), scope: "ExportOptions", role: "DisclosureTriangle")
+            optionSignatures["Photo Kind"] = try popup("Photo Kind", choose: "PNG", in: options)
+            let disclosures = options.descendants(matching: .disclosureTriangle).matching(NSPredicate(format: "identifier == %@ AND label == %@", "button_disclosure", "customize"))
+            let disclosure = try lifecycleControl(disclosures, scope: "ExportOptions", role: "DisclosureTriangle", click: false)
+            guard let disclosureState = disclosure.value as? String, ["0", "1"].contains(disclosureState) else { throw block("Unknown customize disclosure state") }
+            if disclosureState == "0" {
+                try deadlineClick(disclosure)
+                try lifecycleWait(photos, seconds: 10, description: "Customize export options did not expand") {
+                    disclosures.count == 1 && disclosures.element(boundBy: 0).value as? String == "1"
+                }
             }
-            try popup("Color Profile", choose: "sRGB IEC61966-2.1", in: options)
-            try popup("Size", choose: "Full Size", in: options)
+            let expanded = try lifecycleControl(disclosures, scope: "ExportOptions", role: "DisclosureTriangle", click: false)
+            guard expanded.value as? String == "1" else { throw block("Stale customize disclosure") }
+            optionSignatures["Color Profile"] = try popup("Color Profile", choose: "sRGB IEC61966-2.1", in: options)
+            optionSignatures["Size"] = try popup("Size", choose: "Full Size", in: options)
         }
-        try popup("File Name", choose: "Use File Name", in: options)
-        try popup("Subfolder Format", choose: "None", in: options)
-        _ = try lifecycleControl(publicLabel("Export", role: .button, in: options), scope: "ExportOptions", role: "Button")
+        optionSignatures["File Name"] = try popup("File Name", choose: "Use File Name", in: options)
+        optionSignatures["Subfolder Format"] = try popup("Subfolder Format", choose: "None", in: options)
+        for (title, wanted) in [("Photo Kind", "PNG"), ("Color Profile", "sRGB IEC61966-2.1"), ("Size", "Full Size"), ("File Name", "Use File Name"), ("Subfolder Format", "None")] {
+            if original && ["Photo Kind", "Color Profile", "Size"].contains(title) { continue }
+            let fresh = try exportPopup(title, in: options)
+            guard let signature = optionSignatures[title], try exportBindingSignature(fresh) == signature,
+                  fresh.query.element(boundBy: 0).value as? String == wanted else {
+                throw block("Export option changed before Export: " + title)
+            }
+        }
+        _ = try lifecycleControl(options.children(matching: .button).matching(NSPredicate(format: "identifier == %@ AND title == %@", "button_export", "Export")), scope: "ExportOptions", role: "Button")
         try chooseOwnedExportDirectory(directory, in: photos, original: original)
         try lifecycleWait(photos, description: "Owned export did not finish") {
             photos.sheets.count == 0 && photos.dialogs.count == 0 && FileManager.default.fileExists(atPath: file.path)

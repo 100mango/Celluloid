@@ -13,10 +13,13 @@ def export_controls(phase,original=False):
         control('File/Export/Menu','MenuItem','_NS:635' if original else '_NS:630','Export Unmodified Original For 1 Photo' if original else 'Export 1 Photo')]
     if original:rows.append(control('ExportOptions','CheckBox',label='Export IPTC as XMP',value='0'))
     else:
-        for title,value in [('Photo Kind','PNG'),('Color Profile','sRGB IEC61966-2.1'),('Size','Full Size')]:rows.append(control('ExportOptions','PopUpButton',label=title,value=value))
-    for title,value in [('File Name','Use File Name'),('Subfolder Format','None')]:rows.append(control('ExportOptions','PopUpButton',label=title,value=value))
+        rows.append(control('ExportOptions/Photo Kind','PopUpButton','popup_photoKind',value='PNG'))
+        rows.append(control('ExportOptions','DisclosureTriangle','button_disclosure',label='customize',value='0'))
+        rows.append(control('ExportOptions','DisclosureTriangle','button_disclosure',label='customize',value='1'))
+        for title,value in [('Color Profile','sRGB IEC61966-2.1'),('Size','Full Size')]:rows.append(control('ExportOptions/'+title,'PopUpButton','synthetic_'+title,label=title,value=value))
+    for title,identifier,value in [('File Name','popup_useFileName','Use File Name'),('Subfolder Format','popup_subfolderFormat','None')]:rows.append(control('ExportOptions/'+title,'PopUpButton',identifier,value=value))
     final='Export Originals' if original else 'Export'
-    rows.extend([control('ExportOptions','Button',label='Export'),control('ExportSavePanel','Button',label=final),
+    rows.extend([control('ExportOptions','Button','button_export',title='Export'),control('ExportSavePanel','Button',label=final),
         control('ExportSavePanel/GoToFolder','ComboBox'),control('ExportSavePanel/GoToFolder','Button',label='Go'),
         control('ExportSavePanel','PopUpButton',label='Where',value=phase),control('ExportSavePanel','Button',label=final)])
     return rows
@@ -40,7 +43,7 @@ def fixture(context=None,photos=None,ownership=None,context_hash='f'*64):
         'context_sha256':context_hash,'test_source_sha256':context['test_source_sha256'],'verifier_sha256':context['script_sha256'],
         'photos_pid':photos['pid'],'fixture_sha256':ownership['fixture_sha256'],'asset_label':ownership['asset_label'],
         'complete':True,'dirty_cancel_tested':False,'deadline_seconds':600,'control_columns':gate.COLUMNS,'control_catalog':[],
-        'phases':[],'images':{},'raw_exports':{},'srgb_icc_reference':None,'single_photo_topologies':['collection-absent']}
+        'phases':[],'images':{},'raw_exports':{},'srgb_icc_reference':None,'single_photo_topologies':['collection-absent'],'export_option_bindings':[]}
     def phase(name,details,controls=()):
         ids=[]
         for row in controls:
@@ -61,6 +64,9 @@ def fixture(context=None,photos=None,ownership=None,context_hash='f'*64):
     phase('reverted-export',{'rgba_equal_source':True,'sole_asset_count':1},[control('Photos/MenuBar','MenuBarItem',title='Image'),control('Image/Menu','MenuItem','_NS:766','Revert to Original')]+export_controls('reverted'))
     phase('unmodified-original',{'bytes_equal_source':True,'sha256_equal_source':True,'sole_asset_count':1},export_controls('original',True))
     phase('reopened-original',reopen('Original','32345678-1234-4321-8123-123456789ABC'),reentry)
+    for index,row in enumerate(top['control_catalog']):
+        if row[0] in ('ExportOptions/Color Profile','ExportOptions/Size') and row[1]=='PopUpButton':
+            top['export_option_bindings'].append([index,'direct','sheetWindow_export','','',row[4],[],[410,300,302,26],[240,200,542,450],[240,200,542,450]])
     for name,data in images.items():
         d=pixels.decode(data);top['images'][name]={'bytes':len(data),'sha256':gate.sha(data),'rgba_sha256':d['rgba_sha256'],
             'format':'public.png','width':1200,'height':800,'bit_depth':8,'color_type':6,'interlace':0,'orientation':1,'profile':'sRGB','profile_encoding':'srgb-chunk','alpha':'opaque'}
@@ -130,5 +136,39 @@ class LifecycleReplayTests(unittest.TestCase):
             a[0]['images'][name].update(bytes=len(data),sha256=gate.sha(data),rgba_sha256=gate.sha(bytes(rgba)))
             a[0]['raw_exports']['saved'].update(bytes=len(data),sha256=gate.sha(data))
         self.reject(mutate)
+    def test_actual_same_parent_label_row_binding_replays_without_echoed_popup_label(self):
+        args=self.packet()
+        for row in args[0]['export_option_bindings']:
+            control=args[0]['control_catalog'][row[0]];control[4]=''
+            field=control[0].split('/',1)[1]
+            row[1:]=['label-row','sheetWindow_export','synthetic_parent','synthetic_label',field+':',
+                     [300,304,104,18],[410,300,302,26],[260,220,502,400],[240,200,542,450]]
+        self.assertTrue(self.validate(args)['filter_lifecycle_accepted'])
+        self.assertLess(len(json.dumps(args[0],separators=(',',':')).encode()),16_000)
+    def test_export_binding_unknown_labels_forgery_geometry_duplicates_and_missing_evidence_reject(self):
+        for index,value in [(0,True),(0,0),(1,'guessed'),(2,'another_sheet'),(3,'unexpected_direct_parent'),
+                            (5,'wrong field'),(5,''),(6,[1,2,3,4]),(7,[410,float('nan'),302,26]),
+                            (7,[410,300,0,26]),(7,[False,300,302,26]),(7,[800,300,302,26]),
+                            (8,[240,200,542,1000]),(9,[240,200,10,10])]:
+            with self.subTest(column=index,value=value):
+                self.reject(lambda a:a[0]['export_option_bindings'][0].__setitem__(index,value))
+        self.reject(lambda a:a[0]['export_option_bindings'].pop())
+        self.reject(lambda a:a[0]['export_option_bindings'].append(a[0]['export_option_bindings'][0]))
+        self.reject(lambda a:a[0].pop('export_option_bindings'))
+        self.reject(lambda a:a[0]['control_catalog'][a[0]['export_option_bindings'][0][0]].__setitem__(4,'unrelated'))
+        for label_rect in [[300,304,80,18],[300,330,104,18],[420,304,104,18],[100,304,304,18]]:
+            def mutate(a):
+                row=a[0]['export_option_bindings'][0]
+                row[1:]=['label-row','sheetWindow_export','group','label',row[5],label_rect,[410,300,302,26],
+                         [260,220,502,400],[240,200,542,450]]
+            self.reject(mutate)
+    def test_observed_known_ids_and_customize_closed_to_expanded_receipt_are_required(self):
+        for scope,role,identifier in [('ExportOptions/Photo Kind','PopUpButton','popup_photoKind'),
+            ('ExportOptions/File Name','PopUpButton','popup_useFileName'),('ExportOptions/Subfolder Format','PopUpButton','popup_subfolderFormat'),
+            ('ExportOptions','Button','button_export'),('ExportOptions','DisclosureTriangle','button_disclosure')]:
+            def mutate(a):
+                row=next(r for r in a[0]['control_catalog'] if r[:2]==[scope,role] and r[2]==identifier);row[2]='unknown'
+            self.reject(mutate)
+        self.reject(lambda a:next(row for row in a[0]['control_catalog'] if row[1]=='DisclosureTriangle' and row[5]=='1').__setitem__(5,'0'))
 
 if __name__=='__main__':unittest.main()
