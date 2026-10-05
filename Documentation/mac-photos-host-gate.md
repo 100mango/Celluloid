@@ -579,3 +579,24 @@ Public workflow references: [Apple extension editing](https://support.apple.com/
 [original input and adjustment semantics](https://developer.apple.com/documentation/photos/phcontenteditinginputrequestoptions/canhandleadjustmentdata).
 The bounded inflater uses Apple's [system zlib module](https://github.com/apple-oss-distributions/zlib/blob/main/zlib.modulemap)
 and public uncompress2 input-consumption/output-size contract; no new package is installed.
+
+
+## Fixed export-observation diagnostic
+
+The push-only `codex/photos-export-observation` workflow reuses the actual
+`native-mac-host` job, with fresh UI-test and ordinary sandbox product builds,
+source/product/entitlement checks, the same 45-minute job and 41-minute clock,
+14-minute host step, and 1MB evidence allocation. It does not rerun the 42 native
+cases, UIKit consumers, or full prerequisite matrix and cannot qualify a release.
+Its protected production/Swift fingerprint is fixed to public `25b8edc9`. The new
+execution uses its own actual commit SHA. Original full and focused workflows
+are unchanged, and the shared no-cancel concurrency group remains serial.
+
+The immediate purpose is to retain the owned export-dialog TXT/JPEG after the
+observed Photo Kind selector returned zero matches. No selector is changed
+without the actual snapshot. The 70-item XCTest inventory now fits an explicit
+1024-item total bound, equal to the former 16x64 total capacity. Ordinary XCTest
+UI snapshots/events are never ingested. Independently safe fixed-name diagnostic
+bytes may survive rejection, but malformed/unsafe inventory still withholds
+transport completion. Lifecycle PNG proof has no fallback, and stored-pixel,
+reopen, no-change Cancel and Revert gates remain mandatory.

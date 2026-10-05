@@ -36,6 +36,8 @@ BRANCH = 'codex/apple-platforms'
 APP_ID = 'Mango.Celluloid'
 EXT_ID = APP_ID + '.CelluloidPhotoExtension'
 ALLOWED = {
+    '.github/workflows/photos-export-observation.yml',
+    'Scripts/test_photos_export_observation.py',
     'Scripts/test_mac_host_lifecycle_source.py',
     'Scripts/test_mac_host_lifecycle_transport.py',
     'Scripts/test_mac_host_lifecycle_pixels.py',
@@ -339,16 +341,22 @@ def extract_transport():
     # Lifecycle PNGs are required raw stored-pixel proof; other attachments are
     # diagnostic only. Their namespaces and export ownership
     # are strict. A malformed selected attachment is never silently accepted.
-    from mac_host_transport import attachment_candidates
+    from mac_host_transport import attachment_candidates,safe_diagnostic_candidates
     with tempfile.TemporaryDirectory(prefix='celluloid-host-attachments-',dir=root) as folder:
         folder=Path(folder)
         exported=subprocess.run(['xcrun','xcresulttool','export','attachments','--path',str(root/'MacPhotosHost.xcresult'),'--output-path',str(folder)],capture_output=True,timeout=60)
         assert exported.returncode==0, 'Required bounded host attachment export failed'
         manifest=folder/'manifest.json'
         assert manifest.is_file() and not manifest.is_symlink() and manifest.stat().st_size<=200_000
-        raw=manifest.read_bytes(); parsed=None
+        raw=manifest.read_bytes(); parsed=None; retained_diagnostics={}
         try:
             parsed=load_json(raw)
+            # Retain only independently safe fixed-name diagnostics before full
+            # interpretation. These bytes never publish transport completion.
+            for name,data in safe_diagnostic_candidates(folder,parsed).items():
+                target=observed/name
+                assert not target.exists() and not target.is_symlink(), 'Diagnostic collides with a host receipt'
+                target.write_bytes(data);retained_diagnostics[name]=hashlib.sha256(data).hexdigest()
             diagnostics=attachment_candidates(folder,parsed)
         except (AssertionError,ValueError,UnicodeError) as error:
             # Metadata only, never an alternate attachment-matching path. Keep
@@ -368,6 +376,7 @@ def extract_transport():
                 'manifest_sha256':hashlib.sha256(raw).hexdigest(),
                 'error':type(error).__name__+': '+str(error)[:1000],
                 'metadata_field_limit':160,'attachment_count':count,'retained_first_items':rows,
+                'retained_diagnostic_sha256':retained_diagnostics,
                 'omitted_items':count-len(rows)}
             target=observed/'attachment-export-failure.json'
             if not target.exists() and not target.is_symlink():
@@ -381,8 +390,11 @@ def extract_transport():
             raise
         for name,data in diagnostics.items():
             target=observed/name
-            assert not target.exists() and not target.is_symlink(), 'Attachment collides with a host receipt'
-            target.write_bytes(data)
+            if name in retained_diagnostics:
+                assert target.is_file() and not target.is_symlink() and target.stat().st_size==len(data) and hashlib.sha256(data).hexdigest()==retained_diagnostics[name] and target.read_bytes()==data, 'Retained diagnostic changed during validation'
+            else:
+                assert not target.exists() and not target.is_symlink(), 'Attachment collides with a host receipt'
+                target.write_bytes(data)
     # Publish the mandatory transport completion only after the actual export
     # finished and every selected name/path/type/size was validated.
     write(root/'mac-host-transport-replay.json',transport_report(root,c,records))
@@ -725,7 +737,7 @@ def collect():
     for name in crash_limits:
         if not (root/name).exists():omitted.append({'name':name,'reason':'owned-crash diagnostic unavailable','bytes':0})
     if observed.is_dir():
-        optional += [p for p in sorted(observed.iterdir(),key=lambda p:(p.suffix!='.jpg',p.name))
+        optional += [p for p in sorted(observed.iterdir(),key=lambda p:(p.name!='last-observed.txt',p.suffix!='.jpg',p.name))
                   if p.is_file() and p.suffix in ['.json','.txt','.jpg'] and str(p.relative_to(root)) not in PROOF_LIMITS]
     for path in optional:
         count=path.stat().st_size;limit=crash_limits.get(path.name,700_000 if path.suffix=='.jpg' else 160_000)

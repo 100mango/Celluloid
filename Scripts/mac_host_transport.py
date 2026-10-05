@@ -1,5 +1,6 @@
 """Bounded, fixed-name stdout handoff from sandboxed XCTest to its outer runner."""
-import base64,hashlib,json,math,re
+import base64,hashlib,json,math,os,re,stat
+from collections import Counter
 from pathlib import Path
 
 PREFIX='MAC_HOST_PROOF '
@@ -13,6 +14,8 @@ ORDER=['transport.json','containing-process.json','photos-process.json','fixture
 LIMITS={name:120_000 if name.endswith('.txt') or name=='fixture.json' else 16_000 for name in ORDER}
 TOTAL=160_000
 DIAGNOSTIC_NAMES={name+'.txt' for name in ['initial','imported','single-photo','editing','extensions','manage-observed','host-editor','last-observed','missing-control-edit','missing-control-extensions']}|{'extensions.jpg','last-observed.jpg'}
+MAX_ATTACHMENT_RECORDS=16
+MAX_ATTACHMENT_ITEMS=16*64  # Same former total capacity, independent of test grouping.
 ATTACHMENT_PREFIX='celluloid-host-diagnostic-'
 LIFECYCLE_PREFIX='celluloid-host-lifecycle-'
 from mac_host_lifecycle_pixels import NAMES as LIFECYCLE_IMAGES,PNG_LIMIT
@@ -99,13 +102,69 @@ def parse(log,context,context_hash,complete=False):
         require(len(terminals)==1 and terminals[0][0]=='** TEST EXECUTE SUCCEEDED **' and cases[-1][1]<terminals[0][1]<ep,'Missing/contradictory finalized xcodebuild result')
     return records
 
+def diagnostic_name(name):
+    if type(name) is not str or not name.startswith(ATTACHMENT_PREFIX):return None
+    suffix=re.fullmatch(re.escape(ATTACHMENT_PREFIX)+r'(.+)_(0)_([0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})\.(txt|jpg|jpeg)',name)
+    require(suffix is not None,'Unexpected host attachment display name')
+    selected=suffix[1]+('.jpg' if suffix[4] in {'jpg','jpeg'} else '.txt')
+    require(selected in DIAGNOSTIC_NAMES,'Unexpected/duplicate named host attachment')
+    return selected
+
+def diagnostic_bytes(folder,exported,selected):
+    require(type(exported) is str and Path(exported).name==exported and exported not in {'','.','..'},'Unexpected attachment path')
+    path=folder/exported
+    require(path.is_file() and not path.is_symlink() and path.resolve().parent==folder.resolve(),'Unowned attachment path')
+    limit=700_000 if selected.endswith('.jpg') else 120_000
+    fd=os.open(path,os.O_RDONLY|os.O_NONBLOCK|os.O_CLOEXEC|os.O_NOFOLLOW)
+    try:
+        before=os.fstat(fd)
+        require(stat.S_ISREG(before.st_mode) and 0<before.st_size<=limit,'Oversized/unowned host diagnostic attachment')
+        snapshot=lambda value:(value.st_dev,value.st_ino,value.st_mode,value.st_nlink,value.st_size,value.st_mtime_ns,value.st_ctime_ns)
+        parts=[];remaining=before.st_size
+        while remaining:
+            data=os.read(fd,min(65536,remaining));require(data,'Truncated host diagnostic attachment')
+            parts.append(data);remaining-=len(data)
+        require(snapshot(os.fstat(fd))==snapshot(before)==snapshot(os.stat(path,follow_symlinks=False)),'Host diagnostic attachment changed during read')
+        data=b''.join(parts)
+    finally:os.close(fd)
+    if selected.endswith('.jpg'):require(data.startswith(b'\xff\xd8\xff'),'Wrong diagnostic JPEG type')
+    else:data.decode('utf8',errors='strict')
+    return data
+
+def safe_diagnostic_candidates(folder,manifest):
+    """Unqualified TXT/JPEG retention only; full validation still decides completion.
+
+    Malformed other inventory cannot authorize a file. Inspect only bounded
+    metadata, exclude every ambiguous name/path, and read only fixed owned names.
+    Lifecycle PNGs and ordinary XCTest snapshot/event bytes are never read here.
+    """
+    folder=Path(folder);require(folder.is_dir() and not folder.is_symlink(),'Invalid attachment export directory')
+    require(type(manifest) is list and len(manifest)<=MAX_ATTACHMENT_RECORDS,'Malformed attachment manifest')
+    records=[row for row in manifest if type(row) is dict and type(row.get('attachments')) is list]
+    require(sum(len(row['attachments']) for row in records)<=MAX_ATTACHMENT_ITEMS,'Oversized attachment inventory')
+    items=[(row,item) for row in records for item in row['attachments'] if type(item) is dict]
+    paths=Counter(item['exportedFileName'] for _,item in items if type(item.get('exportedFileName')) is str)
+    candidates=[]
+    for row,item in items:
+        try:selected=diagnostic_name(item.get('suggestedHumanReadableName'))
+        except ValueError:continue  # Full strict parser retains this rejection.
+        if selected is not None:candidates.append((row,item,selected))
+    names=Counter(selected for _,_,selected in candidates);result={}
+    for row,item,selected in candidates:
+        exported=item.get('exportedFileName')
+        if row.get('testIdentifier')!='MacPhotosHostUITests/'+CASE[1]+'()' or names[selected]!=1 or type(exported) is not str or paths[exported]!=1:continue
+        try:result[selected]=diagnostic_bytes(folder,exported,selected)
+        except (ValueError,OSError,UnicodeError):continue  # No partial/unsafe bytes retained.
+    return result
+
 def attachment_candidates(folder,manifest):
     """Only selected fixed names and direct owned export files may be copied."""
     folder=Path(folder);require(folder.is_dir() and not folder.is_symlink(),'Invalid attachment export directory')
-    require(type(manifest) is list and len(manifest)<=16,'Malformed attachment manifest')
+    require(type(manifest) is list and len(manifest)<=MAX_ATTACHMENT_RECORDS,'Malformed attachment manifest')
+    require(all(type(record) is dict and type(record.get('attachments')) is list for record in manifest),'Malformed attachment record')
+    require(sum(len(record['attachments']) for record in manifest)<=MAX_ATTACHMENT_ITEMS,'Oversized attachment inventory')
     result={};seen=set()
     for record in manifest:
-        require(type(record) is dict and type(record.get('attachments')) is list and len(record['attachments'])<=64,'Malformed attachment record')
         for item in record['attachments']:
             require(type(item) is dict,'Malformed attachment item')
             name=item.get('suggestedHumanReadableName');exported=item.get('exportedFileName')
@@ -124,19 +183,8 @@ def attachment_candidates(folder,manifest):
                 result[selected]=data
                 continue
             if type(name) is not str or not name.startswith(ATTACHMENT_PREFIX):continue
-            # Observed Xcode27 exports remove the declared extension before
-            # appending iteration/UUID/type. Reconstruct only a fixed stem/type
-            # pair; no alternate suffix or arbitrary reported path is trusted.
-            suffix=re.fullmatch(re.escape(ATTACHMENT_PREFIX)+r'(.+)_(0)_([0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})\.(txt|jpg|jpeg)',name)
-            require(suffix is not None,'Unexpected host attachment display name')
-            selected=suffix[1]+('.jpg' if suffix[4] in {'jpg','jpeg'} else '.txt')
-            require(selected in DIAGNOSTIC_NAMES and selected not in result,'Unexpected/duplicate named host attachment')
+            selected=diagnostic_name(name)
+            require(selected not in result,'Unexpected/duplicate named host attachment')
             require(record.get('testIdentifier')=='MacPhotosHostUITests/'+CASE[1]+'()','Host attachment belongs to another test')
-            require((selected.endswith('.txt') and suffix[4]=='txt') or (selected.endswith('.jpg') and suffix[4] in {'jpg','jpeg'}),'Unexpected host attachment extension')
-            limit=700_000 if selected.endswith('.jpg') else 120_000
-            require(0<path.stat().st_size<=limit,'Oversized host diagnostic attachment')
-            data=path.read_bytes()
-            if selected.endswith('.jpg'):require(data.startswith(b'\xff\xd8\xff'),'Wrong diagnostic JPEG type')
-            else:data.decode('utf8',errors='strict')
-            result[selected]=data
+            result[selected]=diagnostic_bytes(folder,exported,selected)
     return result

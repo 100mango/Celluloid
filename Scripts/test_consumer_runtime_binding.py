@@ -4,7 +4,97 @@ import copy,hashlib,json,tempfile,unittest,os,subprocess
 import test_platform_rendering_contract as fixtures
 from native_fixture_handoff import layer_from_log,LAYER_FILE
 from verify_required_interoperability import verify,required,CONSUMER
-from consumer_runtime_binding import MODEL_SCALES
+from consumer_runtime_binding import MODEL_SCALES,validate_raw_execution
+
+class ResultSessionMetadataTests(unittest.TestCase):
+    # Structural fixture from run37360765993's retained 2x log. Payload lines
+    # are deliberately omitted; this is parser coverage, not native proof.
+    PATH='/Users/runner/work/_temp/CelluloidEarlyUIKit2x.xcresult'
+    INITIAL='Writing result bundle at path:\n\t'+PATH+'\n\n'
+    FINAL='Test session results, code coverage, and logs:\n\t'+PATH+'\n\n'
+    CASE='-[CelluloidTests.MacPhotosManufacturedAdjustmentTests testManufacturedMacArchiveThroughOriginalUIKitReaderAndCompositor]'
+    TERMINAL='** TEST EXECUTE SUCCEEDED **\n'
+    def transcript(self):
+        log=self.INITIAL
+        for name in ['Selected tests','CelluloidTests.xctest','MacPhotosManufacturedAdjustmentTests']:
+            log+=f"Test Suite '{name}' started at 2026-10-05 19:14:34.648.\n"
+        log+=f"Test Case '{self.CASE}' started.\nTest Case '{self.CASE}' passed (29.245 seconds).\n"
+        for name in ['MacPhotosManufacturedAdjustmentTests','CelluloidTests.xctest','Selected tests']:
+            log+=f"Test Suite '{name}' passed at 2026-10-05 19:15:03.898.\n\t Executed 1 test, with 0 failures (0 unexpected) in 29.245 (29.250) seconds\n"
+        return log+self.FINAL+self.TERMINAL
+    def summary(self):return {'result':'Passed','totalTestCount':1,'passedTests':1,'failedTests':0,'skippedTests':0,'testFailures':[]}
+    def test_exact_paired_announcements_preserve_complete_accounting(self):
+        report=validate_raw_execution(self.transcript(),self.summary())
+        self.assertTrue(report['aggregate_execution_passed'])
+        self.assertEqual(report['case_counts'],{'passed':1,'failed':0,'skipped':0})
+        self.assertEqual(report['result_session_path_observation'],self.PATH)
+    def test_final_only_and_header_free_formats_remain_supported(self):
+        final_only=self.transcript().replace(self.INITIAL,'',1)
+        self.assertEqual(validate_raw_execution(final_only,self.summary())['result_session_path_observation'],self.PATH)
+        self.assertIsNone(validate_raw_execution(final_only.replace(self.FINAL,'',1),self.summary())['result_session_path_observation'])
+    def test_missing_duplicate_or_stray_announcements_reject(self):
+        log=self.transcript()
+        changes={
+            'missing initial header':log.replace('Writing result bundle at path:\n','',1),
+            'missing final header':log.replace('Test session results, code coverage, and logs:\n','',1),
+            'missing initial path':log.replace('\t'+self.PATH+'\n','',1),
+            'missing final path':log.replace(self.FINAL,'Test session results, code coverage, and logs:\n'),
+            'initial announcement only':log.replace(self.FINAL,''),
+            'duplicate initial header':'Writing result bundle at path:\n'+log,
+            'duplicate final header':log.replace(self.FINAL,'Test session results, code coverage, and logs:\n'+self.FINAL),
+            'duplicate initial pair':self.INITIAL+log,
+            'duplicate final pair':log.replace(self.FINAL,self.FINAL+self.FINAL),
+            'stray same path before':self.PATH+'\n'+log,
+            'stray other path before':'/repo/Other.xcresult\n'+log,
+            'stray same path after':log+self.PATH+'\n',
+            'stray other path after':log+'/repo/Other.xcresult\n',
+        }
+        for label,changed in changes.items():
+            with self.subTest(mutation=label),self.assertRaises(ValueError):validate_raw_execution(changed,self.summary())
+    def test_mismatched_or_malformed_paths_and_headers_reject(self):
+        for replacement in ['/repo/Other.xcresult','relative.xcresult','/repo/no-result.txt','/'+'a'*1025+'.xcresult','/repo/invalid\x00.xcresult']:
+            for block in [self.INITIAL,self.FINAL]:
+                changed=self.transcript().replace(block,block.replace(self.PATH,replacement),1)
+                with self.subTest(path=replacement,block=block),self.assertRaises(ValueError):validate_raw_execution(changed,self.summary())
+        for header in ['Writing result bundle at path:','Test session results, code coverage, and logs:']:
+            for replacement in [header[:-1],header.lower(),header+' extra']:
+                with self.subTest(header=replacement),self.assertRaises(ValueError):validate_raw_execution(self.transcript().replace(header,replacement),self.summary())
+        for path in ['/'+'a'*1025+'.xcresult','/repo/invalid\x00.xcresult']:
+            with self.subTest(stray=path),self.assertRaises(ValueError):validate_raw_execution(self.transcript()+path+'\n',self.summary())
+    def test_original_path_bound_remains_exact(self):
+        maximum='/'+'a'*1024+'.xcresult'
+        self.assertEqual(validate_raw_execution(self.transcript().replace(self.PATH,maximum),self.summary())['result_session_path_observation'],maximum)
+    def test_metadata_must_bracket_all_suites_cases_and_totals_before_terminal(self):
+        log=self.transcript();without_initial=log.replace(self.INITIAL,'',1);without_final=log.replace(self.FINAL,'',1)
+        suite_start="Test Suite 'Selected tests' started at 2026-10-05 19:14:34.648.\n"
+        case_end=f"Test Case '{self.CASE}' passed (29.245 seconds).\n"
+        total='\t Executed 1 test, with 0 failures (0 unexpected) in 29.245 (29.250) seconds\n'
+        changes={
+            'initial after suite start':without_initial.replace(suite_start,suite_start+self.INITIAL,1),
+            'initial after case end':without_initial.replace(case_end,case_end+self.INITIAL,1),
+            'initial after final':without_initial.replace(self.FINAL,self.FINAL+self.INITIAL),
+            'initial path before header':log.replace(self.INITIAL,'\t'+self.PATH+'\nWriting result bundle at path:\n'),
+            'unpaired intervening content':log.replace(self.INITIAL,'Writing result bundle at path:\nunrelated output\n\t'+self.PATH+'\n'),
+            'final before suite ends':without_final.replace(case_end,case_end+self.FINAL),
+            'final before last total':without_final.replace(total+self.TERMINAL,self.FINAL+total+self.TERMINAL),
+            'final path before header':log.replace(self.FINAL,'\t'+self.PATH+'\nTest session results, code coverage, and logs:\n'),
+            'final after terminal':without_final+self.FINAL,
+        }
+        for label,changed in changes.items():
+            self.assertNotEqual(changed,log,label)
+            with self.subTest(mutation=label),self.assertRaises(ValueError):validate_raw_execution(changed,self.summary())
+    def test_pair_cannot_mask_case_suite_total_terminal_or_error_failure(self):
+        log=self.transcript()
+        changes=[log.replace(f"Test Case '{self.CASE}' started.\n",''),
+            log.replace('passed (29.245 seconds).','failed (29.245 seconds).'),
+            log.replace("Test Suite 'Selected tests' passed","Test Suite 'Selected tests' failed"),
+            log.replace('Executed 1 test','Executed 2 tests'),
+            log.replace(self.TERMINAL,'** TEST EXECUTE FAILED **\n'),
+            log+self.TERMINAL,log+'error: unexplained build/runtime failure\n',
+            log+'Failing tests:\nUnknown.testUnknown()\n']
+        for changed in changes:
+            with self.subTest(log=changed),self.assertRaises(ValueError):validate_raw_execution(changed,self.summary())
+
 class GenericRuntimeTests(unittest.TestCase):
     SOURCE='a'*40
     def exercise(self,scope,model='iPhone SE (3rd generation)',change=None,missing=None,log_change=None):
@@ -108,6 +198,19 @@ class GenericRuntimeTests(unittest.TestCase):
             self.assertEqual(report['raw_execution_accounting']['result_session_path_observation'],'/repo/TestResults-units.xcresult')
             for old,new in [('UnrelatedTests.testUnrelated()','WrongTests.testUnknown()'),('/repo/TestResults-units.xcresult','/repo/no-result.txt'),('Test session results, code coverage, and logs:','Test session results, code coverage, and logs:\nTest session results, code coverage, and logs:'),('/repo/TestResults-units.xcresult','/repo/TestResults-units.xcresult\nerror: unexplained')]:
                 with self.subTest(scope=scope,mutation=new),self.assertRaises(ValueError):self.exercise(scope,log_change=lambda log,summary:failed(log,summary).replace(old,new))
+            def paired(log,summary):return 'Writing result bundle at path:\n/repo/TestResults-units.xcresult\n\n'+failed(log,summary)
+            report=self.exercise(scope,log_change=paired)
+            self.assertTrue(report['renderer_consumer_passed']);self.assertFalse(report['aggregate_execution_passed'])
+            self.assertEqual(report['raw_execution_accounting']['result_session_path_observation'],'/repo/TestResults-units.xcresult')
+            for old,new in [('UnrelatedTests.testUnrelated()','WrongTests.testUnknown()'),('with 1 failure','with 0 failures'),('** TEST EXECUTE FAILED **','** TEST EXECUTE SUCCEEDED **')]:
+                with self.subTest(scope=scope,paired_mutation=new),self.assertRaises(ValueError):self.exercise(scope,log_change=lambda log,summary:paired(log,summary).replace(old,new))
+
+    def test_both_consumer_routes_accept_one_exact_paired_result_announcement(self):
+        def paired(log,summary):return ResultSessionMetadataTests.INITIAL+log.replace('** TEST EXECUTE SUCCEEDED **',ResultSessionMetadataTests.FINAL+'** TEST EXECUTE SUCCEEDED **')
+        for scope in ['uikit','phone']:
+            report=self.exercise(scope,log_change=paired)
+            self.assertTrue(report['renderer_consumer_passed']);self.assertTrue(report['aggregate_execution_passed'])
+            self.assertEqual(report['raw_execution_accounting']['result_session_path_observation'],ResultSessionMetadataTests.PATH)
 
     def test_standard_unrelated_skipped_totals_and_count_mutations(self):
         def skipped(log,summary,count):

@@ -1,5 +1,6 @@
 """Portable transport adversaries; synthetic data does not qualify Apple host UI."""
 import base64,copy,json,tempfile,unittest
+from unittest import mock
 from pathlib import Path
 import mac_host_transport as t
 
@@ -144,6 +145,69 @@ class HostTransportTests(unittest.TestCase):
                 if mode=='symlink':path.unlink();path.symlink_to('/etc/hosts')
                 else:path.write_bytes(b'x'*120001)
                 with self.assertRaises(ValueError):t.attachment_candidates(folder,manifest)
+    def test_observed_seventy_item_single_record_keeps_existing_total_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory);manifest,path=self.attachment(folder,'last-observed.txt')
+            for index in range(69):
+                name='ordinary-'+str(index);(folder/name).write_bytes(b'not ingested UI snapshot')
+                manifest[0]['attachments'].append({'exportedFileName':name,'suggestedHumanReadableName':'UI Snapshot or Synthesized Event'})
+            self.assertEqual(len(manifest[0]['attachments']),70)
+            with mock.patch.object(Path,'read_bytes',side_effect=AssertionError('ordinary bytes must not be read')):
+                self.assertEqual(t.safe_diagnostic_candidates(folder,manifest),{'last-observed.txt':b'actual AX'})
+                self.assertEqual(t.attachment_candidates(folder,manifest),{'last-observed.txt':b'actual AX'})
+            self.assertEqual(t.MAX_ATTACHMENT_RECORDS,16);self.assertEqual(t.MAX_ATTACHMENT_ITEMS,16*64)
+            manifest[0]['attachments']=[{}]*1025
+            with mock.patch.object(t.os,'open') as opened:
+                for parser in [t.safe_diagnostic_candidates,t.attachment_candidates]:
+                    with self.assertRaisesRegex(ValueError,'inventory'):parser(folder,manifest)
+                opened.assert_not_called()
+
+    def test_early_retention_never_accepts_or_reads_lifecycle_or_ordinary_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory);manifest,path=self.attachment(folder,'last-observed.txt')
+            (folder/'broken.png').write_bytes(b'not png')
+            manifest[0]['attachments'].append({'exportedFileName':'broken.png','suggestedHumanReadableName':t.LIFECYCLE_PREFIX+'lifecycle-saved_0_11111111-2222-3333-4444-555555555555.png'})
+            self.assertEqual(t.safe_diagnostic_candidates(folder,manifest),{'last-observed.txt':b'actual AX'})
+            with self.assertRaisesRegex(ValueError,'PNG'):t.attachment_candidates(folder,manifest)
+            manifest[0]['attachments'][-1]={'exportedFileName':'../outside','suggestedHumanReadableName':'UI Snapshot'}
+            self.assertEqual(t.safe_diagnostic_candidates(folder,manifest),{'last-observed.txt':b'actual AX'})
+            with self.assertRaisesRegex(ValueError,'path'):t.attachment_candidates(folder,manifest)
+            manifest.append({'attachments':None})
+            self.assertEqual(t.safe_diagnostic_candidates(folder,manifest),{'last-observed.txt':b'actual AX'})
+            with self.assertRaisesRegex(ValueError,'record'):t.attachment_candidates(folder,manifest)
+
+    def test_early_diagnostics_exclude_ambiguous_wrong_owner_and_unsafe_files(self):
+        for mutation in ['duplicate-path','duplicate-name','wrong-test','traversal','symlink','oversized','invalid-text']:
+            with self.subTest(mutation=mutation),tempfile.TemporaryDirectory() as directory:
+                folder=Path(directory);manifest,path=self.attachment(folder,'last-observed.txt')
+                item=manifest[0]['attachments'][0]
+                if mutation=='duplicate-path':manifest[0]['attachments'].append(dict(item,suggestedHumanReadableName='UI Snapshot'))
+                if mutation=='duplicate-name':
+                    (folder/'other').write_bytes(b'other');manifest[0]['attachments'].append(dict(item,exportedFileName='other'))
+                if mutation=='wrong-test':manifest[0]['testIdentifier']='OtherTests/testOther()'
+                if mutation=='traversal':item['exportedFileName']='../outside'
+                if mutation=='symlink':path.unlink();path.symlink_to('/etc/hosts')
+                if mutation=='oversized':path.write_bytes(b'x'*120001)
+                if mutation=='invalid-text':path.write_bytes(b'\xff')
+                self.assertEqual(t.safe_diagnostic_candidates(folder,manifest),{})
+                with self.assertRaises((ValueError,UnicodeError)):t.attachment_candidates(folder,manifest)
+
+    def test_diagnostic_read_is_bounded_and_rejects_a_changed_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory);manifest,path=self.attachment(folder,'last-observed.txt',b'x'*120000)
+            original=t.os.read;read_count=0;changed=False
+            def mutate(fd,size):
+                nonlocal read_count,changed
+                value=original(fd,size);read_count+=len(value)
+                if not changed:
+                    changed=True
+                    with path.open('ab') as stream:stream.write(b'extra')
+                return value
+            with mock.patch.object(t.os,'read',side_effect=mutate):
+                self.assertEqual(t.safe_diagnostic_candidates(folder,manifest),{})
+            self.assertEqual(read_count,120000)
+            with self.assertRaises(ValueError):t.attachment_candidates(folder,manifest)
+
     def test_source_routes_never_write_external_evidence_from_sandbox(self):
         root=Path(__file__).resolve().parents[1];swift=(root/'Platforms/UITests/MacPhotosHostUITests.swift').read_text();gate=(root/'Scripts/mac_photos_host_gate.py').read_text();shell=(root/'Scripts/run_mac_photos_host_gate.sh').read_text()
         self.assertNotIn('reportFolder',swift);self.assertNotIn('folder()',swift)

@@ -34,7 +34,7 @@ def validate(summary,receipt,expected_device):
 def validate_raw_execution(log,summary):
     """Consistent failed aggregates retain passed consumer evidence, never a green row."""
     import re
-    lines=log.splitlines();cases={};active={};suites={};totals=[];terminals=[];errors=[];unclassified=[];failure_headers=[];result_headers=[];result_paths=[]
+    lines=log.splitlines();cases={};active={};suites={};totals=[];terminals=[];errors=[];unclassified=[];failure_headers=[];writing_headers=[];result_headers=[];result_paths=[]
     case_re=re.compile(r"Test Case '(.+)' (started\.|(passed|failed|skipped) \([0-9]+(?:\.[0-9]+)? seconds\)\.)")
     suite_re=re.compile(r"Test Suite '([^']+)' (started|passed|failed) at [0-9-]+ [0-9:.]+\.")
     total_re=re.compile(r'Executed (\d+) test(?:s)?, with (?:(\d+) test(?:s)? skipped and )?(\d+) failure(?:s)? \((\d+) unexpected\)(?: in [0-9.]+ \([0-9.]+\) seconds)?')
@@ -59,8 +59,12 @@ def validate_raw_execution(log,summary):
         elif re.match(r'^\*\* TEST(?: EXECUTE)?\b',stripped,re.I):terminals.append((stripped,index))
         elif stripped.lower().startswith('failing tests:'):
             require(stripped=='Failing tests:','Malformed failing-tests header');failure_headers.append(index)
-        elif stripped=='Test session results, code coverage, and logs:':result_headers.append(index)
-        elif re.fullmatch(r'/[^\r\n\x00]{1,1024}\.xcresult',stripped):result_paths.append((stripped,index))
+        elif stripped.lower().startswith('writing result bundle'):
+            require(stripped=='Writing result bundle at path:','Malformed result-bundle header');writing_headers.append(index)
+        elif stripped.lower().startswith('test session results'):
+            require(stripped=='Test session results, code coverage, and logs:','Malformed result-session header');result_headers.append(index)
+        elif stripped.startswith('/') and stripped.endswith('.xcresult'):
+            require(re.fullmatch(r'/[^\r\n\x00]{1,1024}\.xcresult',stripped) is not None,'Malformed result-session path');result_paths.append((stripped,index))
         elif authoritative.search(line):errors.append((line,index))
         elif re.search(r'\b(?:failed|failure|error|warning)\b',line,re.I):
             # Non-authoritative console observations are retained, not treated
@@ -124,9 +128,20 @@ def validate_raw_execution(log,summary):
             check_total(values,inside);covered.update(inside);previous=position
     require(covered==set(cases),'Execution totals leave raw cases unaccounted')
     metadata_positions=set()
-    if result_headers or result_paths:
-        require(len(result_headers)==len(result_paths)==1 and max(row['end_line'] for row in cases.values())<result_headers[0]<result_paths[0][1]<end,'Malformed result-session metadata')
-        metadata_positions={result_headers[0],result_paths[0][1]}
+    if writing_headers or result_headers or result_paths:
+        # xcodebuild may announce the same bundle before execution and again
+        # after all suites/totals. Account for both records, never deduplicate
+        # arbitrary paths. Final-only and header-free transcripts stay valid.
+        require(len(writing_headers)<=1 and len(result_headers)==1 and len(result_paths)==1+len(writing_headers),'Malformed result-session metadata')
+        execution_positions=[row[key] for row in cases.values() for key in ['start_line','end_line']]+[position for events in suites.values() for _,position in events]+[position for _,position in totals]
+        final_path,final_position=result_paths[-1]
+        require(max(execution_positions)<result_headers[0]<final_position<end,'Malformed result-session metadata')
+        metadata_positions={result_headers[0],final_position}
+        if writing_headers:
+            initial_path,initial_position=result_paths[0]
+            require(writing_headers[0]<initial_position<min(execution_positions) and initial_path==final_path,'Malformed result-session metadata')
+            require(not any(line.strip() for line in lines[writing_headers[0]+1:initial_position]),'Malformed result-bundle announcement')
+            metadata_positions.update({writing_headers[0],initial_position})
     if outcome=='Passed':require(not failure_headers,'Failing-tests block contradicts Passed summary')
     else:
         require(len(failure_headers)==1 and max(row['end_line'] for row in cases.values())<failure_headers[0]<end,'Missing/duplicate/premature failing-tests block')
@@ -148,5 +163,5 @@ def validate_raw_execution(log,summary):
     return {'scope':'Complete enclosing XCTest accounting; passed renderer consumer is separate from aggregate failures',
         'aggregate_result':outcome,'aggregate_execution_passed':outcome=='Passed','case_counts':counts,
         'failed_cases':sorted(failed),'scoped_errors':scoped_errors,'terminal':terminals[0][0],
-        'result_session_path_observation':result_paths[0][0] if result_paths else None,
+        'result_session_path_observation':result_paths[-1][0] if result_paths else None,
         'unclassified_console_diagnostics':unclassified,'console_diagnostics_classified':False}

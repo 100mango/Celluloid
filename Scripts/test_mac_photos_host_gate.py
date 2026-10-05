@@ -647,6 +647,64 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             self.assertFalse((root/'mac-host-observed/unexpected.txt').exists())
             self.assertEqual(gate.read_receipt(root/'mac-host-observed/outcome.json')['extension_menu_observation']['classification'],'selectable')
 
+    def test_safe_owned_diagnostics_survive_later_inventory_rejection_without_completion(self):
+        for malformed in ['ordinary-path','other-record','lifecycle-png']:
+            with self.subTest(malformed=malformed),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);self.seed(root);context=gate.read_receipt(root/'mac-host-context.json')
+                (root/'mac-host-transport-replay.json').unlink()
+                for path in (root/'mac-host-observed').iterdir():path.unlink()
+                good={'suggestedHumanReadableName':'celluloid-host-diagnostic-last-observed_0_12345678-1234-1234-1234-123456789ABC.txt','exportedFileName':'owned.txt'}
+                manifest=[{'testIdentifier':'MacPhotosHostUITests/testInstalledExtensionIsInvokedByActualPhotos()','attachments':[good]}]
+                if malformed=='ordinary-path':manifest[0]['attachments'].append({'suggestedHumanReadableName':'UI Snapshot','exportedFileName':'../outside'})
+                if malformed=='other-record':manifest.append({'attachments':None})
+                if malformed=='lifecycle-png':manifest[0]['attachments'].append({'suggestedHumanReadableName':'celluloid-host-lifecycle-lifecycle-saved_0_12345678-1234-1234-1234-123456789ABC.png','exportedFileName':'broken.png'})
+                def export(command,**kwargs):
+                    destination=Path(command[command.index('--output-path')+1])
+                    (destination/'manifest.json').write_text(json.dumps(manifest));(destination/'owned.txt').write_bytes(b'bounded actual owned AX')
+                    (destination/'broken.png').write_bytes(b'not PNG')
+                    return subprocess.CompletedProcess(command,0,b'',b'')
+                with mock.patch.object(gate,'require_runner'),mock.patch.object(gate,'temp',return_value=root),mock.patch.object(gate,'context',return_value=context),mock.patch.object(gate.subprocess,'run',side_effect=export):
+                    with self.assertRaises(ValueError):gate.extract_transport()
+                self.assertEqual((root/'mac-host-observed/last-observed.txt').read_bytes(),b'bounded actual owned AX')
+                self.assertFalse((root/'mac-host-transport-replay.json').exists())
+                self.assertFalse((root/'mac-host-observed/lifecycle-saved.png').exists())
+                rejection=gate.read_receipt(root/'mac-host-observed/attachment-export-failure.json')
+                self.assertFalse(rejection['acceptance']);self.assertEqual(rejection['retained_diagnostic_sha256'],{'last-observed.txt':hashlib.sha256(b'bounded actual owned AX').hexdigest()})
+                with self.assertRaises((AssertionError,ValueError)):gate.verify_acceptance(root,self.SOURCE)
+
+    def test_seventy_item_export_publishes_completion_only_after_strict_validation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self.seed(root);context=gate.read_receipt(root/'mac-host-context.json')
+            (root/'mac-host-transport-replay.json').unlink()
+            for path in (root/'mac-host-observed').iterdir():path.unlink()
+            def export(command,**kwargs):
+                destination=Path(command[command.index('--output-path')+1]);items=[]
+                for index in range(70):
+                    name='item-'+str(index);(destination/name).write_bytes(b'owned AX' if index==0 else b'ordinary snapshot bytes')
+                    human='celluloid-host-diagnostic-last-observed_0_12345678-1234-1234-1234-123456789ABC.txt' if index==0 else 'UI Snapshot'
+                    items.append({'suggestedHumanReadableName':human,'exportedFileName':name})
+                (destination/'manifest.json').write_text(json.dumps([{'testIdentifier':'MacPhotosHostUITests/testInstalledExtensionIsInvokedByActualPhotos()','attachments':items}]))
+                return subprocess.CompletedProcess(command,0,b'',b'')
+            with mock.patch.object(gate,'require_runner'),mock.patch.object(gate,'temp',return_value=root),mock.patch.object(gate,'context',return_value=context),mock.patch.object(gate.subprocess,'run',side_effect=export):gate.extract_transport()
+            self.assertTrue((root/'mac-host-transport-replay.json').is_file())
+            self.assertEqual((root/'mac-host-observed/last-observed.txt').read_bytes(),b'owned AX')
+            self.assertFalse((root/'mac-host-observed/attachment-export-failure.json').exists())
+            self.assertFalse(any(p.name.startswith('item-') for p in (root/'mac-host-observed').iterdir()))
+
+    def test_changed_second_diagnostic_read_never_publishes_completion(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self.seed(root);context=gate.read_receipt(root/'mac-host-context.json')
+            (root/'mac-host-transport-replay.json').unlink()
+            for path in (root/'mac-host-observed').iterdir():path.unlink()
+            def export(command,**kwargs):
+                destination=Path(command[command.index('--output-path')+1]);(destination/'owned').write_bytes(b'original AX')
+                (destination/'manifest.json').write_text(json.dumps([{'testIdentifier':'MacPhotosHostUITests/testInstalledExtensionIsInvokedByActualPhotos()','attachments':[{'suggestedHumanReadableName':'celluloid-host-diagnostic-last-observed_0_12345678-1234-1234-1234-123456789ABC.txt','exportedFileName':'owned'}]}]))
+                return subprocess.CompletedProcess(command,0,b'',b'')
+            with mock.patch.object(gate,'require_runner'),mock.patch.object(gate,'temp',return_value=root),mock.patch.object(gate,'context',return_value=context),mock.patch.object(gate.subprocess,'run',side_effect=export),mock.patch('mac_host_transport.attachment_candidates',return_value={'last-observed.txt':b'changed AX!'}):
+                with self.assertRaisesRegex(AssertionError,'Retained diagnostic changed'):gate.extract_transport()
+            self.assertEqual((root/'mac-host-observed/last-observed.txt').read_bytes(),b'original AX')
+            self.assertFalse((root/'mac-host-transport-replay.json').exists())
+
     def test_attachment_error_metadata_caps_unicode_and_preserves_original_write_failure(self):
         for fail_write in [False,True]:
             with self.subTest(fail_write=fail_write),tempfile.TemporaryDirectory() as folder:
@@ -959,6 +1017,31 @@ class CollectedProofTests(SyntheticHostFixtureCase):
             for row in record['files']:
                 name=row['path'];self.assertIn(name if name.startswith('mac-host-') else 'mac-host-'+name,outer_names)
             self.assertLessEqual(sum(p.stat().st_size for p in (root/'celluloid-bounded-evidence').iterdir()),2_000_000)
+    def test_last_observed_AX_precedes_optional_images_without_displacing_proof(self):
+        for accepted in [True,False]:
+            with self.subTest(accepted=accepted),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);self.packet(root)
+                if not accepted:
+                    status=gate.read_receipt(root/'mac-host-acceptance.json')
+                    status.update(prerequisite_accepted=False,error='Synthetic original UI-control failure remains')
+                    gate.write(root/'mac-host-acceptance.json',status)
+                observed=root/'mac-host-observed'
+                (observed/'extensions.jpg').write_bytes(b'\xff\xd8\xff'+b'x'*699997)
+                (observed/'last-observed.jpg').write_bytes(b'\xff\xd8\xff'+b'x'*119997)
+                (observed/'last-observed.txt').write_bytes(b'A'*120000)
+                folder=self.collect(root);record=gate.verify_collected(folder,self.SOURCE)
+                self.assertEqual((folder/'last-observed.txt').read_bytes(),b'A'*120000)
+                self.assertFalse((folder/'last-observed.jpg').exists())
+                omitted=[row for row in record['omitted'] if row['name']=='last-observed.jpg']
+                self.assertEqual(len(omitted),1);self.assertIn('cap',omitted[0]['reason']);self.assertEqual(omitted[0]['bytes'],120000)
+                self.assertEqual(record['prerequisite_accepted'],accepted);self.assertFalse(record['complete_host_e2e'])
+                rows=record['files'];ax=next(i for i,row in enumerate(rows) if row['path']=='last-observed.txt')
+                self.assertEqual(rows[ax]['kind'],'optional-diagnostic')
+                self.assertTrue(all(i<ax for i,row in enumerate(rows) if row['kind']=='required-proof'))
+                self.assertTrue(all(i>ax for i,row in enumerate(rows) if row['path'].endswith('.jpg')))
+                self.assertLessEqual(sum(path.stat().st_size for path in folder.iterdir()),gate.CAP)
+                self.assertNotIn('mac-host-observed/last-observed.jpg',gate.PROOF_LIMITS)
+
     def test_missing_accepted_proof_rejected_by_both_collectors(self):
         for missing in gate.PROOF_LIMITS:
             with self.subTest(missing=missing),tempfile.TemporaryDirectory() as tmp:
