@@ -17,7 +17,7 @@ def export_controls(phase,original=False):
         rows.append(control('ExportOptions','DisclosureTriangle','button_disclosure',label='customize',value='0'))
         rows.append(control('ExportOptions','DisclosureTriangle','button_disclosure',label='customize',value='0'))
         rows.append(control('ExportOptions','DisclosureTriangle','button_disclosure',label='customize',value='1'))
-        for title,value in [('Color Profile','sRGB IEC61966-2.1'),('Size','Full Size')]:rows.append(control('ExportOptions/'+title,'PopUpButton','synthetic_'+title,label=title,value=value))
+        for title,value in [('Color Profile','sRGB'),('Size','Full Size')]:rows.append(control('ExportOptions/'+title,'PopUpButton','synthetic_'+title,label=title,value=value))
     for title,identifier,value in [('File Name','popup_useFileName','Use File Name'),('Subfolder Format','popup_subfolderFormat','None')]:rows.append(control('ExportOptions/'+title,'PopUpButton',identifier,value=value))
     final='Export Originals' if original else 'Export'
     rows.extend([control('ExportOptions','Button','button_export',title='Export'),control('ExportSavePanel','Button',label=final),
@@ -127,6 +127,21 @@ class LifecycleReplayTests(unittest.TestCase):
         self.reject(lambda a:a[0]['control_catalog'][0].__setitem__(0,'Other app'))
         self.reject(lambda a:a[0]['control_catalog'].append(control('unobserved','Button')))
         self.reject(lambda a:a[0]['control_catalog'].append(a[0]['control_catalog'][0]))
+    def test_measured_srgb_title_selection_and_exact_value_remain_required(self):
+        args=self.packet();row=args[0];catalog=row['control_catalog']
+        profile=next(i for i,value in enumerate(catalog) if value[:2]==['ExportOptions/Color Profile','PopUpButton'])
+        catalog[profile][5]='Most Compatible'
+        selected=len(catalog);catalog.append(control('ExportOptions/Color Profile/Menu','MenuItem','_popUpItemAction:',title='sRGB'))
+        for phase in row['phases']:
+            if profile in phase['controls']:
+                position=phase['controls'].index(profile);phase['controls'].insert(position+1,selected)
+        gate.validate(*args)
+        for wrong in ['Most Compatible','AdobeRGB','Display P3','Original','sRGB IEC61966-2.1','srgb']:
+            bad=copy.deepcopy(args);bad[0]['control_catalog'][selected][3]=wrong
+            with self.subTest(menu=wrong),self.assertRaises(ValueError):gate.validate(*bad)
+        for wrong in ['sRGB IEC61966-2.1','Display P3','Original']:
+            self.reject(lambda a,w=wrong:next(value for value in a[0]['control_catalog'] if value[:2]==['ExportOptions/Color Profile','PopUpButton']).__setitem__(5,w))
+
     def test_wrong_filter_reference_no_change_cancel_and_revert_claims_reject(self):
         self.reject(lambda a:a[0]['phases'][1]['details'].update(independent_filter='CIPhotoEffectFade'))
         self.reject(lambda a:a[0]['phases'][1]['details'].update(jpeg_quality=1))

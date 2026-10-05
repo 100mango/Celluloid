@@ -1154,12 +1154,12 @@ final class MacPhotosHostUITests: XCTestCase {
             optionSignatures["Photo Kind"] = try popup("Photo Kind", choose: "PNG", in: options)
             let disclosures = options.descendants(matching: .disclosureTriangle).matching(NSPredicate(format: "identifier == %@ AND label == %@", "button_disclosure", "customize"))
             try setExportBinary(disclosures, role: "DisclosureTriangle", desired: 1, photos: photos)
-            optionSignatures["Color Profile"] = try popup("Color Profile", choose: "sRGB IEC61966-2.1", in: options)
+            optionSignatures["Color Profile"] = try popup("Color Profile", choose: "sRGB", in: options)
             optionSignatures["Size"] = try popup("Size", choose: "Full Size", in: options)
         }
         optionSignatures["File Name"] = try popup("File Name", choose: "Use File Name", in: options)
         optionSignatures["Subfolder Format"] = try popup("Subfolder Format", choose: "None", in: options)
-        for (title, wanted) in [("Photo Kind", "PNG"), ("Color Profile", "sRGB IEC61966-2.1"), ("Size", "Full Size"), ("File Name", "Use File Name"), ("Subfolder Format", "None")] {
+        for (title, wanted) in [("Photo Kind", "PNG"), ("Color Profile", "sRGB"), ("Size", "Full Size"), ("File Name", "Use File Name"), ("Subfolder Format", "None")] {
             if original && ["Photo Kind", "Color Profile", "Size"].contains(title) { continue }
             let fresh = try exportPopup(title, in: options)
             guard let signature = optionSignatures[title], try exportBindingSignature(fresh) == signature,

@@ -203,7 +203,7 @@ def validate_controls(catalog,phases):
             else:
                 popup('Photo Kind','PNG')
                 binary('DisclosureTriangle','1',identifier='button_disclosure',label='customize')
-                popup('Color Profile','sRGB IEC61966-2.1');popup('Size','Full Size')
+                popup('Color Profile','sRGB');popup('Size','Full Size')
             popup('File Name','Use File Name');popup('Subfolder Format','None')
             take('ExportOptions','Button',identifier='button_export',title='Export')
             title='Export Originals' if original else 'Export'

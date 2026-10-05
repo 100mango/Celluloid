@@ -259,16 +259,26 @@ def export_association_sample():
     return {'field':'Color Profile','sheet':'sheetWindow_export','frame':[240,200,542,450],
         'groups':[{'id':'observed_group','frame':[260,220,502,400],
             'labels':[{'id':'observed_label','texts':['Color Profile:'],'frame':[300,304,104,18],'hittable':True}],
-            'popups':[{'id':'observed_popup','label':'','title':'','value':'sRGB IEC61966-2.1',
+            'popups':[{'id':'observed_popup','label':'','title':'','value':'sRGB',
                        'frame':[410,300,302,26],'enabled':True,'hittable':True}]}]}
 
 class ExportAssociationSourceTests(unittest.TestCase):
+    def test_exact_observed_profile_wording_keeps_final_value_and_byte_oracle(self):
+        source=(ROOT/'Platforms/UITests/MacPhotosHostUITests.swift').read_text()
+        self.assertIn('popup("Color Profile", choose: "sRGB", in: options)',source)
+        self.assertIn('("Color Profile", "sRGB")',source)
+        self.assertNotIn('sRGB IEC61966-2.1',source)
+        self.assertIn('fresh.query.element(boundBy: 0).value as? String == value',source)
+        self.assertIn('fresh.query.element(boundBy: 0).value as? String == wanted',source)
+        self.assertIn('copyICCData()',source)
+        self.assertIn('CGColorSpace(name: CGColorSpace.sRGB)',source)
+
     @classmethod
     def setUpClass(cls):cls.swift=(ROOT/'Platforms/UITests/MacPhotosHostUITests.swift').read_text()
     def test_actual_visible_label_row_and_direct_semantics_are_distinct(self):
         row=export_association_sample();signature,value=replay_export_association(self.swift,row)
         self.assertEqual(signature[0],'observed_popup');self.assertEqual(signature[1][0],'label-row')
-        self.assertEqual(signature[1][4],'Color Profile:');self.assertEqual(value,'sRGB IEC61966-2.1')
+        self.assertEqual(signature[1][4],'Color Profile:');self.assertEqual(value,'sRGB')
         row['groups'][0]['popups'][0]['label']='Color Profile'
         self.assertEqual(replay_export_association(self.swift,row)[0][1][0],'direct')
     def test_duplicate_disabled_and_ambiguous_candidates_never_disappear(self):

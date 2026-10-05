@@ -1906,7 +1906,7 @@
     ],
     [
       "Platforms/UITests/MacPhotosHostUITests.swift",
-      "be6aad78bfd6e4599aa2de79dd4111d3fd424c15148bf10464f35ba4ac3221e9"
+      "016ea09080512500032495791a41d26359ef794973efe7a6f4ee1b7eade76b6f"
     ],
     [
       "Platforms/UITests/NativeEditorUITests.swift",
@@ -2205,7 +2205,7 @@
       "f7603c1c1175e32b5146b43d9e1f03bd6e839416510109795eb942cf7223579a"
     ]
   ],
-  "fingerprint": "6965eec3e5c1456db59f8c39782834aaa07d7d4aa7e824b26748b93e28ea6143",
+  "fingerprint": "5ea05e03738b0850de61d6968ddcd3465c54b3d16c26413961d93990ecebd1b9",
   "appearance_cancel_patch_sha256": "a3f6810452a5d2d3475a4bf0a921cda863f431c0660c7d8b7616f484e019f15f",
   "expected_UIKit_executions": {
     "original_qualified": 400,

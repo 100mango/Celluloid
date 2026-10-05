@@ -656,3 +656,16 @@ actual native runtime. The raw string handling for ordinary popups, exact
 selectors, persisted PNG oracle and all execution/evidence ceilings stay fixed.
 The previous failed run and missing stored output remain historical evidence;
 this source correction does not qualify the unobserved downstream dialogs.
+
+
+Run 37385461470 confirmed the scalar correction on the native runtime: customize
+reported `__NSCFNumber`, encoding `q`, with exact 0 and 1 observations, and the
+Foundation self-tests passed. Expansion and same-parent Color Profile discovery
+worked. The open menu exposes the exact title `sRGB`, alongside Most Compatible,
+AdobeRGB, Display P3 and Original. The prior longer profile-name literal was not
+present as a title or label. The selector and independent control replay now
+require the observed `sRGB` title and exact selected popup value. Size already
+reported Full Size, File Name Use File Name, and Subfolder Format None; their
+selectors and values are unchanged. This is a UI wording correction. The actual
+PNG profile, complete ICC byte equivalence and <=2 pixel checks remain unchanged
+and authoritative; the menu label alone does not prove exported color correctness.
