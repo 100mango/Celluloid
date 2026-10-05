@@ -76,6 +76,9 @@ class ValidationRouteTests(unittest.TestCase):
         gate.write(root/'mac-host-context.json',context)
         for name in ['mac-host-source-before.json','mac-host-source-after.json','combined-source-before.json','combined-source-after.json']:
             value=gate.read_receipt(root/name);value.update(validation_route=dict(route.FOCUSED),workflow_sha256=gate.sha(ROOT/route.FOCUSED['workflow_path']));gate.write(root/name,value)
+        lifecycle_path=root/'mac-host-observed/lifecycle.json'
+        lifecycle=gate.read_receipt(lifecycle_path);lifecycle['context_sha256']=gate.sha(root/'mac-host-context.json')
+        lifecycle_path.write_text(json.dumps(lifecycle,separators=(',',':'))+'\n')
         helper.write_transport_log(root,context)
         return context
 

@@ -182,7 +182,7 @@ class MacPhotosHostGateTests(unittest.TestCase):
         body=self.swift.split('@MainActor func testInstalledExtensionIsInvokedByActualPhotos()',1)[1]
         cleanup=body.split('        defer {',1)[1].split('        stage = "launch-exact-installed-containing-app"',1)[0]
         self.assertLess(cleanup.index('named: "outcome.json"'),cleanup.index('checkpoint(photos'))
-        self.assertIn('if photosIdentityVerified {',cleanup)
+        self.assertIn('if photosIdentityVerified, (try? remainingTime(1)) != nil {',cleanup)
         self.assertIn('MAC_HOST_DIAGNOSTIC_FAILED',cleanup)
         self.assertLess(body.index('named: "photos-process.json"'),body.index('photosIdentityVerified = true'))
         self.assertIn('if firstBlockedOperation == nil',self.swift)
@@ -232,7 +232,7 @@ class MacPhotosHostGateTests(unittest.TestCase):
             'menu.children(matching: .menuItem)','"title == %@ AND identifier == %@", "Celluloid", "editWithPlugin:"']:
             self.assertIn(exact,helper)
         self.assertNotIn(' OR ',helper);self.assertNotIn('"label == %@", "Celluloid"',self.swift)
-        self.assertEqual(self.swift.count('try openedExtensionItems(in: photos)'),2)
+        self.assertEqual(self.swift.count('try openedExtensionItems(in: photos)'),3)  # two initial checks plus exact lifecycle reentry
         # Exact observed title, identifier and parent scope are conjunctive.
         def matches(item):return item['scope']=='Extensions.menuButton/childMenu/directMenuItem' and item['title']=='Celluloid' and item['identifier']=='editWithPlugin:'
         good={'scope':'Extensions.menuButton/childMenu/directMenuItem','title':'Celluloid','identifier':'editWithPlugin:','label':''}
@@ -274,7 +274,7 @@ class MacPhotosHostGateTests(unittest.TestCase):
         self.assertNotIn('assertUniqueRegistration',self.swift)
         self.assertIn('menuEnabled != true || menuHittable != true',self.swift)
         self.assertIn('XCTAssertEqual(editorCountBefore, 0',self.swift)
-        self.assertLess(self.swift.index('named: "host-selection.json"'),self.swift.index('invocationItems.element(boundBy: 0).click()'))
+        self.assertLess(self.swift.index('named: "host-selection.json"'),self.swift.index('try deadlineClick(invocationItems.element(boundBy: 0))'))
         self.assertLess(self.swift.index('named: "host-editor-before-process.json"'),self.swift.index('named: "extension-self-identity.json"'))
         self.assertLess(self.swift.index('named: "extension-self-identity.json"'),self.swift.index('named: "host-editor-after-process.json"'))
         for label in ['Celluloid photo editor','Edited photo preview','Current photo from Photos','Preparing photo']:
@@ -376,7 +376,9 @@ class MacPhotosHostGateTests(unittest.TestCase):
     def test_report_does_not_equate_prerequisite_with_full_lifecycle(self):
         self.assertIn('"prerequisite_passed": true, "complete_host_e2e": false', self.swift)
         self.assertIn('save_reopen_cancel_revert', self.swift)
-        self.assertIn('not executed in prerequisite phase', self.swift)
+        self.assertIn('PhotosFilterLifecycle.1 incomplete',self.swift)
+        self.assertIn('dirty Cancel untested',self.swift)
+        self.assertIn('\"dirty_cancel_tested\": false',self.swift)
         self.assertNotIn('settings = XCUIApplication', self.swift)
 
     def test_optimized_python_rejects_before_any_action_or_acceptance(self):
@@ -486,6 +488,8 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
         root = Path(root).resolve()  # Match real producer receipts across macOS /var -> /private/var.
         observed = root / 'mac-host-observed'
         observed.mkdir()
+        from test_mac_host_lifecycle import fixture as lifecycle_fixture,sample_images
+        fixture_sha=hashlib.sha256(sample_images()['lifecycle-source.png']).hexdigest()
         app = str(root / 'Applications/CelluloidHost-test.app')
         extension = app + '/Contents/PlugIns/CelluloidMacPhotosExtension.appex'
         executable = extension + '/Contents/MacOS/CelluloidMacPhotosExtension'
@@ -511,8 +515,8 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             'combined-source-before.json': dict(source,phase='before',file_count=len(json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['files']),source_fingerprint=json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['fingerprint']),
             'combined-source-after.json': dict(source,phase='after',file_count=len(json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['files']),source_fingerprint=json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['fingerprint']),
             'mac-host-budget.json':{'source_sha':self.SOURCE,'checks':checks,'admitted':True,'clock_sha256':gate.sha(root/'mac-job-clock.json'),'host_process_seconds':720,'evidence_reserve_seconds':300,'complete_host_e2e':False},
-            'mac-host-observed/fixture.json': {'source_sha': self.SOURCE, 'sha256': 'f' * 64},
-            'mac-host-observed/fixture-ownership.json': {'source_sha': self.SOURCE, 'app_executable_sha256': 'd' * 64, 'initial_count': 0, 'selected_count': 1, 'width': 1200, 'height': 800, 'asset_label': 'synthetic sole asset', 'fixture_sha256': 'f' * 64, 'mode': 'require-empty-library'},
+            'mac-host-observed/fixture.json': {'source_sha': self.SOURCE, 'sha256': fixture_sha},
+            'mac-host-observed/fixture-ownership.json': {'source_sha': self.SOURCE, 'app_executable_sha256': 'd' * 64, 'initial_count': 0, 'selected_count': 1, 'width': 1200, 'height': 800, 'asset_label': 'synthetic sole asset', 'fixture_sha256': fixture_sha, 'mode': 'require-empty-library'},
             'mac-host-context.json': context, 'mac-host-summary.json': summary,
             'mac-host-product-after.json': {'installed_bytes_unchanged': True, 'strict_signatures_unchanged': True,
                 'app_executable_sha256': 'd' * 64, 'extension_executable_sha256': 'e' * 64,'extension_debug_dylib_sha256':'9'*64},
@@ -521,13 +525,13 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             'mac-host-observed/prerequisite.json': {'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'prerequisite_passed': True,
                 'complete_host_e2e': False, 'production_source_base': gate.BASE},
             'mac-host-observed/outcome.json': {'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'complete_host_e2e': False,
-                'last_stage': 'host-entry-prerequisite-passed', 'save_reopen_cancel_revert': 'not executed in prerequisite phase', 'extension_menu_observation': {'schema':'Celluloid.HostMenuObservation.2','acceptance':False,'menu_title':'Celluloid','menu_identifier':'editWithPlugin:','menu_scope':'Extensions.menuButton/childMenu/directMenuItem','extension_menu_button_count':1,'opened_menu_count':1,'menu_count':1,'menu_enabled':True,'menu_hittable':True,'classification':'selectable'}},
+                'last_stage': 'photos-filter-lifecycle-passed', 'save_reopen_cancel_revert': 'PhotosFilterLifecycle.1 complete', 'extension_menu_observation': {'schema':'Celluloid.HostMenuObservation.2','acceptance':False,'menu_title':'Celluloid','menu_identifier':'editWithPlugin:','menu_scope':'Extensions.menuButton/childMenu/directMenuItem','extension_menu_button_count':1,'opened_menu_count':1,'menu_count':1,'menu_enabled':True,'menu_hittable':True,'classification':'selectable'}},
         }
         from test_mac_host_self_identity import receipt
         documents['mac-host-observed/extension-self-identity.json']=receipt(context,{'pid':122},documents['mac-host-observed/fixture-ownership.json'])
         common={'host_entry_contract':gate.HOST_CONTRACT,'source_sha':self.SOURCE,'photos_pid':122,
             'photos_bundle':'/System/Applications/Photos.app','photos_executable':'/System/Applications/Photos.app/Contents/MacOS/Photos',
-            'fixture_sha256':'f'*64,'asset_label':'synthetic sole asset'}
+            'fixture_sha256':fixture_sha,'asset_label':'synthetic sole asset'}
         documents['mac-host-observed/host-selection.json']=dict(common,schema='Celluloid.HostSelection.3',menu_title='Celluloid',menu_identifier='editWithPlugin:',menu_scope='Extensions.menuButton/childMenu/directMenuItem',extension_menu_button_count=1,opened_menu_count=1,menu_count=1,menu_enabled=True,menu_hittable=True,editor_count_before=0)
         for phase in ['before','after']:
             documents['mac-host-observed/host-editor-'+phase+'-process.json']=dict(common,schema='Celluloid.HostEditor.2',phase=phase+'-process',
@@ -538,6 +542,10 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
         gate.write(observed/'transport.json',expected_transport(context,gate.sha(root/'mac-host-context.json')))
         gate.write(observed/'containing-process.json',{'bundle':app,'executable':context['app_executable'],'pid':121})
         gate.write(observed/'photos-process.json',{'bundle':'/System/Applications/Photos.app','executable':'/System/Applications/Photos.app/Contents/MacOS/Photos','pid':122})
+        lifecycle,*_=lifecycle_fixture(context,{'pid':122},documents['mac-host-observed/fixture-ownership.json'],gate.sha(root/'mac-host-context.json'))
+        documents['mac-host-observed/lifecycle.json']=lifecycle
+        (observed/'lifecycle.json').write_text(json.dumps(lifecycle,sort_keys=True,separators=(',',':'))+'\n')
+        for name,data in sample_images().items():(observed/name).write_bytes(data)
         RuntimeAcceptanceTests.write_transport_log(self,root,context)
         return documents
 
@@ -554,7 +562,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             lines.append(PREFIX+json.dumps({'schema':SCHEMA,'sequence':index,'name':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),
                 'base64':base64.b64encode(data).decode(),'source_sha':self.SOURCE,'context_sha256':gate.sha(root/'mac-host-context.json'),
                 'test_source_sha256':context['test_source_sha256'],'verifier_sha256':context['script_sha256']}))
-        lines+=['MAC_HOST_PREREQUISITE_PASSED synthetic verifier fixture',"Test Case '-["+owner+' '+method+"]' passed (1.0 seconds).",
+        lines+=['MAC_HOST_PREREQUISITE_PASSED synthetic verifier fixture','MAC_HOST_FILTER_LIFECYCLE_PASSED synthetic verifier fixture',"Test Case '-["+owner+' '+method+"]' passed (1.0 seconds).",
             '** TEST EXECUTE SUCCEEDED **','BOUNDED_COMMAND_END '+json.dumps({'label':LABEL,'exit_code':0,'elapsed_seconds':1})]
         (root/'mac-host-test.log').write_text('\n'.join(lines)+'\n')
         records=gate.transport_records(root,context,complete=True)
@@ -576,7 +584,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             self.assertTrue(accepted['prerequisite_accepted'])
             self.assertTrue(accepted['exactly_one_passed_zero_skipped'])
             self.assertFalse(accepted['complete_host_e2e'])
-            self.assertEqual(len(accepted['receipts']), 22)
+            self.assertEqual(len(accepted['receipts']), 28)
 
     def test_rehashed_nonfinite_proof_and_timeout_contradictions_reject_at_transport(self):
         from mac_host_transport import PREFIX
@@ -859,6 +867,28 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             with self.assertRaisesRegex(RuntimeError,'Cross-process enumeration retired'):gate.process_provenance()
             run.assert_not_called()
 
+    def test_rehashed_lifecycle_failures_and_actual_png_substitution_cannot_grant_host_acceptance(self):
+        from test_mac_host_self_identity import envelope
+        for change in ['incomplete','missing-final','stale-generation','reverted-is-saved','missing-marker']:
+            with self.subTest(change=change),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);self.seed(root);observed=root/'mac-host-observed';path=observed/'lifecycle.json'
+                row=gate.read_receipt(path)
+                if change=='incomplete':row['complete']=False
+                elif change=='missing-final':row['phases'].pop()
+                elif change=='stale-generation':
+                    baseline=gate.read_receipt(observed/'extension-self-identity.json')['observations']
+                    row['phases'][3]['details']['observations']=baseline
+                elif change=='reverted-is-saved':
+                    saved=(observed/'lifecycle-saved.png').read_bytes();(observed/'lifecycle-reverted.png').write_bytes(saved)
+                    row['images']['lifecycle-reverted.png']=dict(row['images']['lifecycle-saved.png'])
+                    row['raw_exports']['reverted'].update(bytes=len(saved),sha256=hashlib.sha256(saved).hexdigest())
+                path.write_text(json.dumps(row,separators=(',',':'))+'\n');self.write_transport_log(root)
+                if change=='missing-marker':
+                    log=root/'mac-host-test.log';log.write_text(log.read_text().replace('MAC_HOST_FILTER_LIFECYCLE_PASSED','REMOVED_LIFECYCLE_MARKER'))
+                    context=gate.read_receipt(root/'mac-host-context.json');records=gate.transport_records(root,context,complete=True)
+                    gate.write(root/'mac-host-transport-replay.json',gate.transport_report(root,context,records))
+                with self.assertRaises((AssertionError,ValueError)):gate.verify_acceptance(root,self.SOURCE)
+
     def test_changed_product_source_or_symlink_receipt_rejects(self):
         for name, updates in [('mac-host-product-after.json', {'installed_bytes_unchanged': False}),
                               ('mac-host-product-after.json', {'strict_signatures_unchanged': False}),
@@ -1016,6 +1046,9 @@ class CollectedProofTests(SyntheticHostFixtureCase):
             root=Path(tmp);self.packet(root)
             for name,size in [('mac-host-context.json',480_000),('mac-host-summary.json',140_000),('mac-host-product-after.json',140_000)]:
                 p=root/name;record=json.loads(p.read_text());record['diagnostic_padding']='x'*(size-p.stat().st_size);gate.write(p,record)
+            lifecycle_path=root/'mac-host-observed/lifecycle.json'
+            lifecycle=gate.read_receipt(lifecycle_path);lifecycle['context_sha256']=gate.sha(root/'mac-host-context.json')
+            lifecycle_path.write_text(json.dumps(lifecycle,separators=(',',':'))+'\n')
             RuntimeAcceptanceTests.write_transport_log(self,root)
             p=root/'mac-host-test.log';p.write_text(p.read_text()+' '*(299_000-p.stat().st_size))
             context=gate.read_receipt(root/'mac-host-context.json');records=gate.transport_records(root,context,complete=True)

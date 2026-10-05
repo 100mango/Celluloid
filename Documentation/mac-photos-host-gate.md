@@ -188,7 +188,7 @@ manifest carry the v3 host-entry identity. The exact ordered stdout names are `t
 `containing-process.json`, `photos-process.json`, `fixture.json`,
 `fixture-ownership.json`, `host-selection.json`, `host-editor-before-process.json`,
 `extension-self-identity.json`, `host-editor-after-process.json`, `prerequisite.json`,
-`outcome.json`. A v1, v2 or registry-only packet cannot qualify as v3. The collector
+`lifecycle.json`, `outcome.json`. A v1, v2 or registry-only packet cannot qualify as v3. The collector
 requires exact UI schema keys, primitive types, expected counts, labels, phases,
 Photos PID/path, fixture and source identity, and independently replays these
 checks from the actual transport bytes. Nonfinite JSON, duplicate keys and
@@ -488,3 +488,94 @@ Public API references: [Bundle](https://developer.apple.com/documentation/founda
 [ProcessInfo](https://developer.apple.com/documentation/foundation/processinfo),
 [AppKit accessibility](https://developer.apple.com/documentation/appkit/accessibility-for-appkit),
 [AX participation](https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol/isaccessibilityelement()).
+
+## Bounded owned filter lifecycle continuation
+
+Public [run37349739749](https://github.com/100mango/Celluloid/actions/runs/37349739749)
+at 8470141a passed all 42 required Mac cases, the unchanged native pixel oracle
+(maximum 0), actual Release hook absence, and real HostEntry.3 with two identical
+1,013-byte own-process observations. This historical accepted entry proof remains
+valid for that source. It did not exercise Save/reopen/Cancel/Revert.
+
+The next source candidate appends `Celluloid.PhotosFilterLifecycle.1` to that
+same real host testcase. It retains the original source PNG before import, uses
+only the fresh-job sole manufactured asset, and keeps the v3 entry guards.
+Required ordered phases are source-retained, fade-ready, saved-export,
+reopened-fade, cancelled-export, reverted-export, unmodified-original and
+reopened-original. All phases and all actual image bytes must verify before the
+new candidate can pass. A failed appended case is never accepted from its earlier
+entry marker. No prior successful run is relabelled as having run these phases.
+
+The independent reference uses literal CIPhotoEffectInstant, full-resolution
+sRGB composition and ImageIO JPEG quality 0.95 encode/decode, without a production
+renderer/filter/codec helper. JPEG loss is included in the reference before the
+unchanged 2-level maximum comparison; no fitted offsets, masks or new broad
+tolerance are used. The earlier independent native text oracle is unchanged.
+
+After selecting Fade, the test acts only on newly observed unique enabled and
+hittable owned Photos controls: Save Changes, Done, normal File/Export, Edit,
+Extensions/Celluloid, Cancel without a new edit, and Image/Revert to Original.
+Unknown dialogs/confirmations stop with bounded observations; no broad confirmation,
+privacy change, registration query or helper process is added. Export uses normal
+Photos UI to a freshly created XCTest-owned directory, four fixed per-phase
+paths and one fixed filename. An access denial stops without changing locations.
+Existing original app/source/product/Photos PID and owned asset checks are repeated.
+Both reopened editors require a new editing generation and actual two-read
+self-identity binding; restored picker values must be Fade and then Original.
+
+Actual Photos exports are essential: a canHandle=true editing input may be the
+original plus an adjustment recipe, so the extension's re-rendered preview does
+not prove the stored raster. Saved, cancelled and reverted attachments contain
+the exact exported PNG bytes. Cancel without a new edit must preserve exact
+canonical RGBA; Revert must restore original canonical RGBA; Export Unmodified
+Original must return exact retained source bytes. Dirty-session Cancel rollback
+is explicitly `dirty_cancel_tested: false`. No Photos database, private resource
+directory or separate PhotoKit authorization is read or requested.
+
+Five fixed required PNGs are `lifecycle-source.png`, `lifecycle-expected-save.png`,
+`lifecycle-saved.png`, `lifecycle-cancelled.png` and `lifecycle-reverted.png`. Each
+is at most 128 KiB and together at most 640 KiB, inside the unchanged 1 MB host artifact.
+They are exact-test XCTest attachments under a separate fixed prefix; no arbitrary
+reported path or exporter suffix is admitted. Mandatory pixels/receipts precede
+optional screenshots and AX. The lifecycle JSON is at most 16,000 bytes and all
+stdout proof remains at most 16,0000 bytes. Raw local export reads are capped at
+16 MiB each/64 MiB aggregate, admitted before reading, with nonblocking no-follow
+descriptor-relative opens,64 KiB chunks and file/parent metadata rechecks.
+
+PNG replay validates exact 1200 × 800, 8-bit RGB/RGBA, opaque alpha, orientation,
+no interlace/animation, chunk CRC/order, bounded decompression and complete image
+span. sRGB intent 0 is supported directly; an iCCP profile must match the entire
+independently observed public CoreGraphics sRGB profile byte-count and SHA256.
+Actual ICC bytes remain in the required PNG and are bounded-inflated before
+ImageIO or outer comparison. This is exact byte-equivalence evidence, not generic
+ICC/color-profile equivalence. Unknown profiles are a separately described profile
+failure, never hidden by loosening the pixel oracle. The compact raw_exports table
+references the fixed retained PNG, path, bytes and SHA instead of duplicating
+image metadata; no required proof or identity observation is dropped.
+
+All eight phase records have strict fields, indices, monotonic elapsed times and
+ordered control occurrences. Identical control tuples may share catalog storage
+only after fresh observation; duplicate catalog rows, unused rows, missing or
+extra actions, wrong ownership/controls, stale generations, changed actual PNGs
+and contradictory reported metrics fail independent replay. Actual hashes and
+pixels are recomputed from retained bytes, not accepted from a boolean.
+
+One 600-second shared monotonic test deadline fences every action and bounds every
+wait beneath the unchanged 660-second testcase/720-second process,14-minute host
+step and41-minute job clocks. No cap, permission or workflow change is included.
+Theoretical mandatory pixels 640 KiB plus measured ordinary proof below 200 KiB and
+50 KiB manifest reserve fit the existing 1 MB; actual admission still checks every
+byte and fails rather than omitting proof.
+
+Even if this one static sRGB filter lifecycle passes, `complete_host_e2e` stays
+false: dirty rollback, layered editing/legacy UIKit interoperability, arbitrary
+resources/orientations/color spaces and release qualification are not inferred.
+Sticker/Bubble controls and layered Photos output remain guarded. Native execution
+of this appended lifecycle remains pending until its exact source is admitted.
+
+Public workflow references: [Apple extension editing](https://support.apple.com/en-ie/102259),
+[Photos PNG/original export](https://support.apple.com/en-au/guide/photos/-pht6e157c5f/mac),
+[Revert to Original](https://support.apple.com/guide/photos/editing-basics-pht304c2ace6/mac),
+[original input and adjustment semantics](https://developer.apple.com/documentation/photos/phcontenteditinginputrequestoptions/canhandleadjustmentdata).
+The bounded inflater uses Apple's [system zlib module](https://github.com/apple-oss-distributions/zlib/blob/main/zlib.modulemap)
+and public uncompress2 input-consumption/output-size contract; no new package is installed.

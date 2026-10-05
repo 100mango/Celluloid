@@ -1,6 +1,9 @@
 import XCTest
 import AppKit
 import CoreGraphics
+import CoreImage
+import Darwin
+import zlib
 import ImageIO
 import UniformTypeIdentifiers
 import CryptoKit
@@ -19,6 +22,30 @@ final class MacPhotosHostUITests: XCTestCase {
     private var stage = "not-started"
     private var firstBlockedOperation: [String: Any]?
     private var extensionMenuObservation: [String: Any]?
+    private static let lifecycleContract = "Celluloid.PhotosFilterLifecycle.1"
+    private static let fixtureFilename = "Celluloid-Owned-Host.png"
+    private static let lifecyclePhases = ["source-retained", "fade-ready", "saved-export", "reopened-fade",
+        "cancelled-export", "reverted-export", "unmodified-original", "reopened-original"]
+    private var testStarted: TimeInterval = 0
+    private var lifecyclePhotosPID: pid_t = 0
+    private var lifecycleAssetLabel = ""
+    private var lifecycleComplete = false
+    private var lifecycleRows: [[String: Any]] = []
+    private var lifecycleControls: [Int] = []
+    private var lifecycleControlCatalog: [[Any]] = []
+    private var lifecycleImages: [String: [String: Any]] = [:]
+    private var lifecycleExports: [String: [String: Any]] = [:]
+    private var lifecyclePNGBytes = 0
+    private var lifecycleRawBytes = 0
+    private var lifecycleICC: [String: Any]?
+    private var retainedSource: LifecycleRaster?
+    private var retainedFixtureURL: URL?
+    private var lifecycleRoot: URL?
+    private struct LifecycleRaster {
+        let bytes: Data
+        let rgba: Data
+        let metadata: [String: Any]
+    }
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -47,6 +74,7 @@ final class MacPhotosHostUITests: XCTestCase {
     }
 
     @MainActor func testInstalledExtensionIsInvokedByActualPhotos() throws {
+        testStarted = ProcessInfo.processInfo.systemUptime
         // Validate the exact read-only input before any host UI action. Only
         // XCTest stdout/attachments carry data back across the sandbox boundary.
         try report(["schema": "Celluloid.HostTransport.3", "host_entry_contract": Self.hostEntryContract, "source_sha": try value("source_sha"),
@@ -63,11 +91,14 @@ final class MacPhotosHostUITests: XCTestCase {
             // request can itself fail. This record grants no host acceptance.
             var outcome: [String: Any] = ["source_sha": context["source_sha"] as? String ?? "missing",
                 "last_stage": stage, "host_entry_contract": Self.hostEntryContract, "complete_host_e2e": false,
-                "save_reopen_cancel_revert": "not executed in prerequisite phase"]
+                "save_reopen_cancel_revert": lifecycleComplete ? "PhotosFilterLifecycle.1 complete" : "PhotosFilterLifecycle.1 incomplete"]
             if let firstBlockedOperation { outcome["first_blocked_operation"] = firstBlockedOperation }
             if let extensionMenuObservation { outcome["extension_menu_observation"] = extensionMenuObservation }
+            if retainedSource != nil {
+                try? report(lifecycleReceipt(photosPID: lifecyclePhotosPID), named: "lifecycle.json")
+            }
             try? report(outcome, named: "outcome.json")
-            if photosIdentityVerified {
+            if photosIdentityVerified, (try? remainingTime(1)) != nil {
                 do { try checkpoint(photos, "last-observed", screenshot: true) }
                 catch { print("MAC_HOST_DIAGNOSTIC_FAILED " + String(error.localizedDescription.prefix(1000))) }
             }
@@ -76,7 +107,7 @@ final class MacPhotosHostUITests: XCTestCase {
         let appURL = URL(fileURLWithPath: try value("app_path")).standardizedFileURL.resolvingSymlinksInPath()
         let app = XCUIApplication(url: appURL)
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES"]
-        app.launch()
+        _ = try remainingTime(1); app.launch()
         let candidates = NSRunningApplication.runningApplications(withBundleIdentifier: "Mango.Celluloid")
         XCTAssertEqual(candidates.count, 1, "An unexpected containing app instance makes identity ambiguous")
         let running = try XCTUnwrap(candidates.first)
@@ -85,15 +116,15 @@ final class MacPhotosHostUITests: XCTestCase {
         XCTAssertEqual(try digest(URL(fileURLWithPath: value("app_executable"))), try value("app_executable_sha256"))
         try report(["bundle": appURL.path, "executable": try value("app_executable"), "pid": running.processIdentifier], named: "containing-process.json")
         let startupCancel = app.windows["open-panel"].buttons["CancelButton"]
-        if startupCancel.waitForExistence(timeout: 3) { startupCancel.click() }
-        app.terminate()
+        if startupCancel.waitForExistence(timeout: try remainingTime(3)) { try deadlineClick(startupCancel) }
+        _ = try remainingTime(1); app.terminate()
 
         // Host-entry v3 tests documented Photos UI behavior. No registry query
         // is retried or relocated; the historical denied operation stays failed.
 
         stage = "photos-first-use-and-synthetic-import"
         photos.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        photos.launch()
+        _ = try remainingTime(1); photos.launch()
         let hosts = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Photos")
         XCTAssertEqual(hosts.count, 1)
         let host = try XCTUnwrap(hosts.first)
@@ -101,10 +132,11 @@ final class MacPhotosHostUITests: XCTestCase {
         try report(["bundle": host.bundleURL!.path, "executable": host.executableURL?.path ?? "", "pid": host.processIdentifier], named: "photos-process.json")
         photosIdentityVerified = true
         let photosPID = host.processIdentifier
+        lifecyclePhotosPID = photosPID
         // The sole first-use action already observed and qualified in the base
         // Photos27 synthetic-library lane. No account/permission alert is accepted.
         let started = photos.buttons["Get Started"]
-        if started.waitForExistence(timeout: 5) { started.click() }
+        if started.waitForExistence(timeout: try remainingTime(5)) { try deadlineClick(started) }
         try checkpoint(photos, "initial")
         let seed = try XCTUnwrap(context["seed"] as? [String: Any])
         let mode = try XCTUnwrap(seed["mode"] as? String)
@@ -116,30 +148,31 @@ final class MacPhotosHostUITests: XCTestCase {
             XCTAssertEqual(seed["initial_count"] as? Int, 0); XCTAssertEqual(seed["imported_count"] as? Int, 1)
             XCTAssertEqual(seed["width"] as? Int, 1200); XCTAssertEqual(seed["height"] as? Int, 800)
             XCTAssertEqual(seed["fixture_kind"] as? String, "native-ui-solid-blue")
-            XCTAssertTrue(assets.firstMatch.waitForExistence(timeout: 20)); XCTAssertEqual(assets.count, 1)
+            XCTAssertTrue(assets.firstMatch.waitForExistence(timeout: try remainingTime(20))); XCTAssertEqual(assets.count, 1)
             XCTAssertEqual(assets.firstMatch.label, seed["asset_label"] as? String)
             fixtureHash = try XCTUnwrap(seed["fixture_sha256"] as? String)
             try report(seed, named: "fixture.json")
         } else {
             XCTAssertEqual(mode, "require-empty-library")
             let empty = photos.staticTexts["_NS:99"]
-            XCTAssertTrue(empty.waitForExistence(timeout: 10))
+            XCTAssertTrue(empty.waitForExistence(timeout: try remainingTime(10)))
             XCTAssertEqual(empty.value as? String, "Welcome to Photos", "Never import into an unknown populated library")
             XCTAssertEqual(assets.count, 0)
             let fixture = try makeFixture(); fixtureHash = try digest(fixture)
             try importFixture(fixture, into: photos)
         }
         try checkpoint(photos, "imported")
-        XCTAssertTrue(assets.firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(assets.firstMatch.waitForExistence(timeout: try remainingTime(20)))
         XCTAssertEqual(assets.count, 1, "Only the freshly imported owned synthetic asset may be opened")
         XCTAssertTrue(assets.firstMatch.isHittable)
         let selectedAssetLabel = assets.firstMatch.label
+        lifecycleAssetLabel = selectedAssetLabel
         try report(["source_sha": try value("source_sha"), "mode": mode,
                     "initial_count": 0, "selected_count": assets.count,
                     "asset_label": selectedAssetLabel, "fixture_sha256": fixtureHash,
                     "app_executable_sha256": try value("app_executable_sha256"),
                     "width": 1200, "height": 800], named: "fixture-ownership.json")
-        assets.firstMatch.doubleClick()
+        try deadlineClick(assets.firstMatch, twice: true)
         try checkpoint(photos, "single-photo")
 
         stage = "observe-edit-controls"
@@ -193,7 +226,7 @@ final class MacPhotosHostUITests: XCTestCase {
             "editor_count_before": editorCountBefore]) { _, new in new }
         try report(selection, named: "host-selection.json")
         stage = "invoke-real-photos-extension"
-        invocationItems.element(boundBy: 0).click()
+        try deadlineClick(invocationItems.element(boundBy: 0))
         stage = "observe-ready-editor-before-process"
         try report(readyEditorObservation(in: photos, expectedPID: photosPID, fixtureHash: fixtureHash,
             assetLabel: selectedAssetLabel, phase: "before-process"), named: "host-editor-before-process.json")
@@ -217,24 +250,25 @@ final class MacPhotosHostUITests: XCTestCase {
                     "production_source_base": try value("base_sha"), "source_sha": try value("source_sha"),
                     "pending": ["exact host save/cancel/revert/export UI", "resource and geometry readback", "complete lifecycle pixel oracle"]], named: "prerequisite.json")
         print("MAC_HOST_PREREQUISITE_PASSED actual Photos invocation and own-bundle identity self-observed by the extension; OS-wide uniqueness and full lifecycle unexecuted")
-        // Do not modify the synthetic asset or guess the host's dismissal UI.
-        // Fresh runner disposal owns cleanup after the bounded evidence capture.
+        try runFilterLifecycle(in: photos, photosPID: photosPID, fixtureHash: fixtureHash,
+            assetLabel: selectedAssetLabel, baselineIdentity: firstIdentity.raw)
+
     }
 
     @MainActor private func importFixture(_ fixture: URL, into photos: XCUIApplication) throws {
         let file = photos.menuBarItems["File"]
-        XCTAssertTrue(file.waitForExistence(timeout: 10)); file.click()
+        XCTAssertTrue(file.waitForExistence(timeout: try remainingTime(10))); try deadlineClick(file)
         let item = photos.menuItems["_NS:1096"] // Observed Photos27 Import… identity in base evidence.
-        XCTAssertTrue(item.exists && item.isEnabled); item.click()
-        photos.typeKey("g", modifierFlags: [.command, .shift])
-        photos.typeKey("a", modifierFlags: .command); photos.typeText(fixture.path)
-        photos.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(item.exists && item.isEnabled); try deadlineClick(item)
+        try deadlineKey(photos, "g", modifierFlags: [.command, .shift])
+        try deadlineKey(photos, "a", modifierFlags: .command); try deadlineText(photos, fixture.path)
+        try deadlineKey(photos, .return, modifierFlags: [])
         let open = photos.sheets["open-panel"].buttons["OKButton"]
-        XCTAssertTrue(open.waitForExistence(timeout: 10)); open.click()
+        XCTAssertTrue(open.waitForExistence(timeout: try remainingTime(10))); try deadlineClick(open)
         let review = photos.buttons["Review for Import"]
-        if review.waitForExistence(timeout: 3) { review.click() }
+        if review.waitForExistence(timeout: try remainingTime(3)) { try deadlineClick(review) }
         let all = photos.buttons["Import All New Photos"]
-        if all.waitForExistence(timeout: 3) { all.click() }
+        if all.waitForExistence(timeout: try remainingTime(3)) { try deadlineClick(all) }
         XCTAssertFalse(photos.sheets["open-panel"].exists)
     }
     @MainActor private func namedControls(_ label: String, in app: XCUIApplication) -> [XCUIElement] {
@@ -250,7 +284,7 @@ final class MacPhotosHostUITests: XCTestCase {
             try checkpoint(app, "missing-control-" + label.lowercased())
             throw block("Actual control is missing/ambiguous/not hittable: " + label)
         }
-        controls[0].click()
+        try deadlineClick(controls[0])
     }
     @MainActor private func openedExtensionItems(in photos: XCUIApplication) throws -> XCUIElementQuery {
         // Exact title/identifier and parent relationship observed in e723 AX.
@@ -334,7 +368,7 @@ final class MacPhotosHostUITests: XCTestCase {
                 }
                 return ready(row)
             }, object: nil)
-            guard XCTWaiter.wait(for: [expectation], timeout: 30) == .completed else {
+            guard XCTWaiter.wait(for: [expectation], timeout: try remainingTime(30)) == .completed else {
                 throw block("Actual Celluloid editor did not become ready")
             }
             if let contradiction { throw block(contradiction) }
@@ -377,13 +411,20 @@ final class MacPhotosHostUITests: XCTestCase {
             bitmap.setFillColor(color.cgColor); bitmap.fill(rect)
         }
         let image = try XCTUnwrap(bitmap.makeImage())
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("CelluloidPhotosHost-" + UUID().uuidString)
+        let dir = FileManager.default.temporaryDirectory.standardizedFileURL.resolvingSymlinksInPath().appendingPathComponent("CelluloidPhotosHost-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: false)
-        let file = dir.appendingPathComponent("Celluloid-Owned-Host-" + UUID().uuidString + ".png")
+        let file = dir.appendingPathComponent(Self.fixtureFilename)
         let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(file as CFURL, UTType.png.identifier as CFString, 1, nil))
         CGImageDestinationAddImage(destination, image, nil); XCTAssertTrue(CGImageDestinationFinalize(destination))
-        try report(["source_sha": try value("source_sha"), "synthetic_filename": file.lastPathComponent, "sha256": try digest(file),
-                    "width": width, "height": height, "purpose": "host selection prerequisite only"], named: "fixture.json")
+        // Preserve exact fixture bytes and decoded pixels BEFORE import or any edit.
+        retainedFixtureURL = file
+        let source = try lifecycleRaster(readBoundedOwnedFile(file), expectedFormat: UTType.png.identifier)
+        retainedSource = source
+        try retainLifecycleImage(source, named: "lifecycle-source.png")
+        try lifecyclePhase("source-retained", details: ["fixture_filename": Self.fixtureFilename,
+            "fixture_sha256": digest(source.bytes), "retained_before_import": true])
+        try report(["source_sha": try value("source_sha"), "synthetic_filename": file.lastPathComponent, "sha256": digest(source.bytes),
+                    "width": width, "height": height, "purpose": "owned filter lifecycle fixture"], named: "fixture.json")
         return file
     }
     @MainActor private func selfIdentityObservation(in photos: XCUIApplication, allowWait: Bool) throws -> (raw: String, count: Int) {
@@ -410,12 +451,660 @@ final class MacPhotosHostUITests: XCTestCase {
         }
         if allowWait {
             let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in sample() }, object: nil)
-            guard XCTWaiter.wait(for: [expectation], timeout: 10) == .completed else { throw block("Missing extension self-identity") }
+            guard XCTWaiter.wait(for: [expectation], timeout: try remainingTime(10)) == .completed else { throw block("Missing extension self-identity") }
         } else { _ = sample() }
         if let contradiction { throw block(contradiction) }
         guard let observed else { throw block("Missing extension self-identity after first observation") }
         return observed
     }
+    // MARK: - Bounded stored-raster lifecycle (independent of the native oracle)
+
+    @MainActor private func deadlineClick(_ element: XCUIElement, twice: Bool = false) throws {
+        _ = try remainingTime(1)
+        if twice { element.doubleClick() } else { element.click() }
+    }
+    @MainActor private func deadlineKey(_ element: XCUIElement, _ key: String, modifierFlags: XCUIElement.KeyModifierFlags) throws {
+        _ = try remainingTime(1)
+        element.typeKey(key, modifierFlags: modifierFlags)
+    }
+    @MainActor private func deadlineKey(_ element: XCUIElement, _ key: XCUIKeyboardKey, modifierFlags: XCUIElement.KeyModifierFlags) throws {
+        _ = try remainingTime(1)
+        element.typeKey(key, modifierFlags: modifierFlags)
+    }
+    @MainActor private func deadlineText(_ element: XCUIElement, _ text: String) throws {
+        _ = try remainingTime(1)
+        element.typeText(text)
+    }
+    private func remainingTime(_ requested: TimeInterval) throws -> TimeInterval {
+        let remaining = 600 - (ProcessInfo.processInfo.systemUptime - testStarted)
+        guard testStarted > 0, remaining > 0 else { throw block("Shared 600-second Photos lifecycle deadline exhausted") }
+        return min(requested, remaining)
+    }
+    private func lifecyclePhase(_ name: String, details: [String: Any]) throws {
+        _ = try remainingTime(1)
+        guard lifecycleRows.count < Self.lifecyclePhases.count,
+              Self.lifecyclePhases[lifecycleRows.count] == name else { throw block("Out-of-order lifecycle phase") }
+        lifecycleRows.append(["index": lifecycleRows.count, "name": name,
+            "elapsed_ms": Int((ProcessInfo.processInfo.systemUptime - testStarted) * 1000),
+            "controls": lifecycleControls, "details": details])
+        lifecycleControls.removeAll()
+    }
+    private func lifecycleReceipt(photosPID: pid_t) throws -> [String: Any] {
+        return ["schema": Self.lifecycleContract, "host_entry_contract": Self.hostEntryContract,
+            "source_sha": try value("source_sha"), "context_sha256": contextHash,
+            "test_source_sha256": try value("test_source_sha256"), "verifier_sha256": try value("script_sha256"),
+            "photos_pid": photosPID, "fixture_sha256": retainedSource.map { digest($0.bytes) } ?? "",
+            "asset_label": lifecycleAssetLabel, "complete": lifecycleComplete, "dirty_cancel_tested": false,
+            "deadline_seconds": 600, "control_columns": ["scope", "role", "identifier", "title", "label", "value", "count", "enabled", "hittable"],
+            "control_catalog": lifecycleControlCatalog, "phases": lifecycleRows, "images": lifecycleImages, "raw_exports": lifecycleExports,
+            "srgb_icc_reference": lifecycleICC.map { $0 as Any } ?? NSNull()]
+    }
+    @MainActor private func lifecycleGuard(_ photos: XCUIApplication, photosPID: pid_t,
+        fixtureHash: String, assetLabel: String, normal: Bool = false) throws {
+        _ = try remainingTime(1)
+        _ = try hostObservation(expectedPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel)
+        for (path, hash) in [("app_executable", "app_executable_sha256"), ("extension_executable", "extension_executable_sha256"),
+                             ("extension_debug_dylib", "extension_debug_dylib_sha256"), ("test_source_path", "test_source_sha256"),
+                             ("script_path", "script_sha256")] {
+            guard try digest(URL(fileURLWithPath: value(path))) == value(hash) else { throw block("Lifecycle source/product changed: " + path) }
+        }
+        guard let retainedSource, let retainedFixtureURL,
+              digest(try readBoundedOwnedFile(retainedFixtureURL)) == digest(retainedSource.bytes),
+              digest(retainedSource.bytes) == fixtureHash else { throw block("Owned lifecycle fixture changed") }
+        try rejectLifecycleAlert(photos)
+        if normal { try soleAsset(in: photos, assetLabel: assetLabel) }
+    }
+    @MainActor private func rejectLifecycleAlert(_ photos: XCUIApplication) throws {
+        let alertCount = photos.alerts.count
+        guard alertCount == 0 else {
+            throw block("Unadmitted Photos confirmation or access alert; no action taken",
+                operation: ["alert_count": alertCount, "observed_ax": String(photos.debugDescription.prefix(3000))])
+        }
+    }
+    @MainActor private func soleAsset(in photos: XCUIApplication, assetLabel: String) throws {
+        let assets = photos.collectionViews["photos_collection_view"].descendants(matching: .any).matching(identifier: "mediaKind_asset")
+        let count = assets.count
+        let canvas = photos.descendants(matching: .group).matching(identifier: "IPXCanvasItemView")
+        guard count == 1, assets.element(boundBy: 0).label == assetLabel, canvas.count == 1,
+              canvas.element(boundBy: 0).images.matching(NSPredicate(format: "label == %@", assetLabel)).count == 1,
+              photos.windows["MainWindow"].toolbars.staticTexts["_NS:10"].value as? String == "1 of 1",
+              editorMatches(in: photos).count == 0 else { throw block("Sole owned asset label/count/canvas changed") }
+    }
+    @MainActor private func lifecycleControl(_ query: XCUIElementQuery, scope: String, role: String,
+        click: Bool = true) throws -> XCUIElement {
+        _ = try remainingTime(1)
+        let count = query.count
+        guard count == 1 else { throw block("Missing/ambiguous lifecycle control", operation: ["scope": scope, "role": role, "count": count]) }
+        let element = query.element(boundBy: 0)
+        let enabled = element.isEnabled, hittable = element.isHittable
+        guard enabled, hittable else { throw block("Lifecycle control disabled/not hittable", operation: ["scope": scope,
+            "role": role, "identifier": element.identifier, "label": element.label, "enabled": enabled, "hittable": hittable]) }
+        let row: [Any] = [scope, role, element.identifier, element.title, element.label,
+            (element.value as? String) ?? "", count, enabled, hittable]
+        _ = try remainingTime(1)
+        guard row.prefix(6).allSatisfy({ (($0 as? String)?.utf8.count ?? 1025) <= 1024 }), lifecycleControlCatalog.count < 100 else {
+            throw block("Oversized lifecycle control observation")
+        }
+        let encoded = try JSONSerialization.data(withJSONObject: row)
+        let found = try lifecycleControlCatalog.firstIndex { try JSONSerialization.data(withJSONObject: $0) == encoded }
+        let index = found ?? lifecycleControlCatalog.count
+        if found == nil { lifecycleControlCatalog.append(row) }
+        lifecycleControls.append(index)
+        guard lifecycleControls.count <= 40 else { throw block("Excessive lifecycle controls in one phase") }
+        if click { try deadlineClick(element) }
+        return element
+    }
+    @MainActor private func toolbarAction(_ title: String, id: String, role: XCUIElement.ElementType,
+        in photos: XCUIApplication) throws {
+        try rejectLifecycleAlert(photos)
+        let windows = photos.windows.matching(identifier: "MainWindow")
+        guard windows.count == 1, windows.element(boundBy: 0).toolbars.count == 1 else { throw block("Unknown Photos toolbar parent") }
+        _ = try lifecycleControl(windows.element(boundBy: 0).toolbars.element(boundBy: 0).children(matching: role)
+            .matching(NSPredicate(format: "identifier == %@ AND label == %@", id, title)),
+            scope: "MainWindow/Toolbar", role: role == .checkBox ? "CheckBox" : "Button")
+    }
+    @MainActor private func lifecycleWait(_ photos: XCUIApplication, seconds: TimeInterval = 30,
+        description: String, condition: @escaping () -> Bool) throws {
+        var alert: String?
+        let predicate = NSPredicate { _, _ in
+            if photos.alerts.count > 0 { alert = String(photos.debugDescription.prefix(3000)); return true }
+            return condition()
+        }
+        guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: nil)],
+                            timeout: try remainingTime(seconds)) == .completed else { throw block(description) }
+        if let alert { throw block("Unknown Photos alert; no confirmation taken", operation: ["observed_ax": alert]) }
+        _ = try remainingTime(1)
+    }
+    @MainActor private func requireNoSheet(_ photos: XCUIApplication) throws {
+        try rejectLifecycleAlert(photos)
+        guard photos.sheets.count == 0, photos.dialogs.count == 0 else {
+            throw block("Unadmitted Photos sheet/dialog; no confirmation taken", operation: ["observed_ax": String(photos.debugDescription.prefix(3000))])
+        }
+    }
+    @MainActor private func closeExtension(in photos: XCUIApplication, save: Bool) throws {
+        try toolbarAction(save ? "Save Changes" : "Cancel", id: save ? "a_saveChangesPressed:" : "a_cancelPressed:", role: .checkBox, in: photos)
+        try lifecycleWait(photos, description: "Extension did not dismiss") {
+            self.editorMatches(in: photos).count == 0 && photos.descendants(matching: .any).matching(identifier: "photos-extension.self-identity").count == 0
+        }
+        try requireNoSheet(photos)
+        try toolbarAction("Done", id: "IPXToolbarItemIDToggleDoneEdit", role: .button, in: photos)
+        try lifecycleWait(photos, description: "Photos did not return to single-photo view") {
+            photos.buttons.matching(identifier: "IPXToolbarItemIDToggleEdit").count == 1
+                && photos.buttons.matching(identifier: "IPXToolbarItemIDToggleDoneEdit").count == 0
+        }
+        try requireNoSheet(photos)
+    }
+    @MainActor private func filterValue(in photos: XCUIApplication) throws -> String {
+        let editors = editorMatches(in: photos)
+        guard editors.count == 1 else { throw block("Missing/ambiguous ready editor") }
+        let filters = editors.element(boundBy: 0).popUpButtons.matching(NSPredicate(format: "identifier == %@ AND label == %@", "photos-extension.filter", "Filter"))
+        guard filters.count == 1, filters.element(boundBy: 0).isEnabled,
+              let value = filters.element(boundBy: 0).value as? String else { throw block("Invalid actual filter picker") }
+        return value
+    }
+    @MainActor private func selectFade(in photos: XCUIApplication, photosPID: pid_t, fixtureHash: String, assetLabel: String) throws {
+        guard try filterValue(in: photos) == "Original" else { throw block("Initial owned fixture is not Original") }
+        let editor = editorMatches(in: photos).element(boundBy: 0)
+        let picker = try lifecycleControl(editor.popUpButtons.matching(NSPredicate(format: "identifier == %@ AND label == %@", "photos-extension.filter", "Filter")),
+            scope: "Celluloid photo editor", role: "PopUpButton")
+        let menus = picker.children(matching: .menu)
+        guard menus.count == 1 else { throw block("Unknown filter picker menu parent") }
+        _ = try lifecycleControl(menus.element(boundBy: 0).children(matching: .menuItem).matching(NSPredicate(format: "title == %@", "Fade")),
+            scope: "photos-extension.filter/Menu", role: "MenuItem")
+        _ = try readyEditorObservation(in: photos, expectedPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, phase: "before-process")
+        guard try filterValue(in: photos) == "Fade" else { throw block("Fade was not observed after rendering") }
+    }
+    private func validatedIdentity(_ raw: String, photosPID: pid_t) throws -> [String: Any] {
+        let value = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
+        let keys: Set<String> = ["schema", "marker", "observation_kind", "bundle_identifier", "pid", "bundle_path", "executable_path",
+            "executable_sha256", "debug_dylib_path", "debug_dylib_sha256", "generation", "content_editing_started"]
+        guard Set(value.keys) == keys, value["schema"] as? String == "Celluloid.ExtensionSelfIdentity.1",
+              value["marker"] as? String == "CELLULOID_EXTENSION_SELF_IDENTITY_V1", value["observation_kind"] as? String == "extension-self",
+              value["bundle_identifier"] as? String == (try self.value("extension_id")), value["content_editing_started"] as? Bool == true,
+              let pid = value["pid"] as? Int, pid > 0, pid < Int(Int32.max), pid != Int(photosPID),
+              let generation = value["generation"] as? String, UUID(uuidString: generation) != nil,
+              generation.replacingOccurrences(of: "-", with: "") != String(repeating: "0", count: 32) else { throw block("Unbound lifecycle extension identity") }
+        for (observed, expected) in [("bundle_path", "extension_path"), ("executable_path", "extension_executable"),
+            ("debug_dylib_path", "extension_debug_dylib"), ("executable_sha256", "extension_executable_sha256"),
+            ("debug_dylib_sha256", "extension_debug_dylib_sha256")] {
+            guard value[observed] as? String == (try self.value(expected)) else { throw block("Changed lifecycle self-identity: " + observed) }
+        }
+        return value
+    }
+    @MainActor private func reenter(in photos: XCUIApplication, photosPID: pid_t, fixtureHash: String,
+        assetLabel: String, filter: String, previousGenerations: Set<String>) throws -> (generation: String, details: [String: Any]) {
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
+        try toolbarAction("Edit", id: "IPXToolbarItemIDToggleEdit", role: .button, in: photos)
+        try requireNoSheet(photos)
+        _ = try lifecycleControl(photos.windows["MainWindow"].toolbars.descendants(matching: .menuButton)
+            .matching(NSPredicate(format: "label == %@", "Extensions")), scope: "MainWindow/Toolbar", role: "MenuButton")
+        let items = try openedExtensionItems(in: photos)
+        guard editorMatches(in: photos).count == 0,
+              photos.descendants(matching: .any).matching(identifier: "photos-extension.self-identity").count == 0 else { throw block("Stale editor before lifecycle reentry") }
+        _ = try lifecycleControl(items, scope: "Extensions/Menu", role: "MenuItem")
+        _ = try readyEditorObservation(in: photos, expectedPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, phase: "before-process")
+        let first = try selfIdentityObservation(in: photos, allowWait: true)
+        let second = try selfIdentityObservation(in: photos, allowWait: false)
+        guard first.raw == second.raw else { throw block("Reentry identity changed between observations") }
+        let identity = try validatedIdentity(first.raw, photosPID: photosPID)
+        let generation = try XCTUnwrap(identity["generation"] as? String)
+        guard !previousGenerations.contains(generation), try filterValue(in: photos) == filter else { throw block("Stale generation or wrong restored filter") }
+        _ = try readyEditorObservation(in: photos, expectedPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, phase: "after-process")
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel)
+        return (generation, ["filter": filter, "editor_count_before": 0, "editor_count_after": 1,
+            "identity_element_counts": [first.count, second.count], "observations": [first, second].map { item in
+                ["raw": item.raw, "bytes": item.raw.utf8.count, "sha256": digest(Data(item.raw.utf8))] as [String: Any]
+            }])
+    }
+    @MainActor private func runFilterLifecycle(in photos: XCUIApplication, photosPID: pid_t, fixtureHash: String,
+        assetLabel: String, baselineIdentity: String) throws {
+        guard let source = retainedSource else { throw block("Lifecycle needs newly manufactured source bytes; seeded reuse cannot qualify") }
+        lifecycleAssetLabel = assetLabel
+        let baseline = try validatedIdentity(baselineIdentity, photosPID: photosPID)
+        let initialGeneration = try XCTUnwrap(baseline["generation"] as? String)
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel)
+        let reference = try expectedFade(source)
+        guard try maximumDelta(reference.raster.rgba, source.rgba) > 2 else { throw block("Independent Fade reference failed to change the fixture") }
+        try retainLifecycleImage(reference.raster, named: "lifecycle-expected-save.png")
+        stage = "lifecycle-select-fade"
+        try selectFade(in: photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel)
+        try lifecyclePhase("fade-ready", details: ["filter": "Fade", "independent_filter": "CIPhotoEffectInstant",
+            "jpeg_quality": 0.95, "jpeg_sha256": reference.jpegSHA256])
+        stage = "lifecycle-save-and-export"
+        let beforeSaveIdentity = try selfIdentityObservation(in: photos, allowWait: false)
+        guard beforeSaveIdentity.raw == baselineIdentity else { throw block("Initial editing identity changed before Save Changes") }
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel)
+        try closeExtension(in: photos, save: true)
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
+        let saved = try exportRaster("saved", in: photos, original: false)
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
+        let savedDelta = try maximumDelta(saved.rgba, reference.raster.rgba)
+        try retainLifecycleImage(saved, named: "lifecycle-saved.png")
+        guard savedDelta <= 2 else { throw block("Stored saved raster disagrees with independent JPEG-aware reference", operation: ["max_channel_delta": savedDelta]) }
+        try lifecyclePhase("saved-export", details: ["max_channel_delta": savedDelta, "limit": 2, "sole_asset_count": 1])
+        stage = "lifecycle-reopen-fade"
+        let reopened = try reenter(in: photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel,
+            filter: "Fade", previousGenerations: [initialGeneration])
+        try lifecyclePhase("reopened-fade", details: reopened.details)
+        // No picker/layer action is allowed between this bracket and Cancel.
+        stage = "lifecycle-cancel-without-new-edit"
+        let beforeCancelIdentity = try selfIdentityObservation(in: photos, allowWait: false)
+        guard try validatedIdentity(beforeCancelIdentity.raw, photosPID: photosPID)["generation"] as? String == reopened.generation,
+              try filterValue(in: photos) == "Fade" else { throw block("Reopened editing identity/filter changed before Cancel") }
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel)
+        try closeExtension(in: photos, save: false)
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
+        let cancelled = try exportRaster("cancelled", in: photos, original: false)
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
+        try retainLifecycleImage(cancelled, named: "lifecycle-cancelled.png")
+        guard cancelled.rgba == saved.rgba else { throw block("Nonmutating Cancel changed stored pixels") }
+        try lifecyclePhase("cancelled-export", details: ["rgba_equal_saved": true, "new_edit_made": false, "sole_asset_count": 1])
+        stage = "lifecycle-revert-owned-asset"
+        try openTopMenu("Image", in: photos)
+        let imageMenu = try uniqueOpenMenu(photos.menuBarItems.matching(NSPredicate(format: "title == %@", "Image")), description: "Image")
+        _ = try lifecycleControl(imageMenu.children(matching: .menuItem).matching(NSPredicate(format: "identifier == %@ AND title == %@", "_NS:766", "Revert to Original")),
+            scope: "Image/Menu", role: "MenuItem")
+        // No Revert confirmation has been admitted. Any new alert/sheet is a stop.
+        try requireNoSheet(photos)
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
+        let reverted = try exportRaster("reverted", in: photos, original: false)
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
+        try retainLifecycleImage(reverted, named: "lifecycle-reverted.png")
+        guard reverted.rgba == source.rgba else { throw block("Revert did not restore original pixels") }
+        try lifecyclePhase("reverted-export", details: ["rgba_equal_source": true, "sole_asset_count": 1])
+        stage = "lifecycle-export-unmodified-original"
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
+        let original = try exportRaster("original", in: photos, original: true)
+        try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
+        guard original.bytes == source.bytes else { throw block("Unmodified original export differs from retained source bytes") }
+        try lifecyclePhase("unmodified-original", details: ["bytes_equal_source": true, "sha256_equal_source": true, "sole_asset_count": 1])
+        stage = "lifecycle-reopen-original"
+        let final = try reenter(in: photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel,
+            filter: "Original", previousGenerations: [initialGeneration, reopened.generation])
+        try lifecyclePhase("reopened-original", details: final.details)
+        try verifyOwnedExportTree()
+        let usedControls = Set(lifecycleRows.flatMap { $0["controls"] as? [Int] ?? [] })
+        guard usedControls == Set(lifecycleControlCatalog.indices), lifecycleControls.isEmpty,
+              lifecycleImages.count == 5, lifecycleExports.count == 4, lifecycleRows.count == 8,
+              try JSONSerialization.data(withJSONObject: lifecycleReceipt(photosPID: photosPID), options: [.sortedKeys]).count <= 16_000 else {
+            throw block("Incomplete/oversized mandatory lifecycle proof")
+        }
+        _ = try remainingTime(1)
+        lifecycleComplete = true
+        stage = "photos-filter-lifecycle-passed"
+        print("MAC_HOST_FILTER_LIFECYCLE_PASSED owned static sRGB Fade Save, reopen, nonmutating Cancel, Revert and mandatory Original reentry; dirty Cancel untested")
+    }
+
+    @MainActor private func openTopMenu(_ title: String, in photos: XCUIApplication) throws {
+        try requireNoSheet(photos)
+        guard photos.menuBars.count == 1 else { throw block("Unknown Photos menu-bar parent") }
+        _ = try lifecycleControl(photos.menuBars.element(boundBy: 0).children(matching: .menuBarItem)
+            .matching(NSPredicate(format: "title == %@", title)), scope: "Photos/MenuBar", role: "MenuBarItem")
+    }
+    @MainActor private func uniqueOpenMenu(_ parents: XCUIElementQuery, description: String) throws -> XCUIElement {
+        guard parents.count == 1 else { throw block("Unknown menu parent: " + description) }
+        let menus = parents.element(boundBy: 0).children(matching: .menu)
+        guard menus.count == 1, menus.element(boundBy: 0).exists, !menus.element(boundBy: 0).frame.isEmpty else {
+            throw block("Missing/ambiguous visible child menu: " + description)
+        }
+        return menus.element(boundBy: 0)
+    }
+    @MainActor private func publicLabel(_ title: String, role: XCUIElement.ElementType, in parent: XCUIElement) -> XCUIElementQuery {
+        // Public visible labels may be exposed with a trailing form-label colon.
+        // No private/guessed identifier or coordinate is accepted for export UI.
+        parent.descendants(matching: role).matching(NSPredicate(format: "label IN %@ OR title IN %@", [title, title + ":"], [title, title + ":"]))
+    }
+    @MainActor private func exportSheet(in photos: XCUIApplication) throws -> XCUIElement {
+        try rejectLifecycleAlert(photos)
+        let sheets = photos.windows["MainWindow"].sheets
+        guard sheets.count == 1, photos.sheets.count == 1, photos.dialogs.count == 0 else {
+            throw block("Unknown export sheet parent", operation: ["observed_ax": String(photos.debugDescription.prefix(3000))])
+        }
+        return sheets.element(boundBy: 0)
+    }
+    @MainActor private func popup(_ title: String, choose value: String, in sheet: XCUIElement) throws {
+        let query = publicLabel(title, role: .popUpButton, in: sheet)
+        let control = try lifecycleControl(query, scope: "ExportOptions", role: "PopUpButton", click: false)
+        if control.value as? String != value {
+            try deadlineClick(control)
+            let menu = try uniqueOpenMenu(query, description: title)
+            _ = try lifecycleControl(menu.children(matching: .menuItem).matching(NSPredicate(format: "title == %@", value)),
+                scope: "ExportOptions/" + title + "/Menu", role: "MenuItem")
+        }
+        guard query.count == 1, query.element(boundBy: 0).value as? String == value else { throw block("Export option not observed: " + title + "=" + value) }
+    }
+    @MainActor private func chooseOwnedExportDirectory(_ directory: URL, in photos: XCUIApplication, original: Bool) throws {
+        let panel = try exportSheet(in: photos)
+        let finalTitle = original ? "Export Originals" : "Export"
+        _ = try lifecycleControl(publicLabel(finalTitle, role: .button, in: panel), scope: "ExportSavePanel", role: "Button", click: false)
+        _ = try remainingTime(1)
+        try deadlineKey(photos, "g", modifierFlags: [.command, .shift])
+        try lifecycleWait(photos, seconds: 10, description: "Normal Go to Folder sheet absent") {
+            photos.sheets.allElementsBoundByIndex.filter { self.publicLabel("Go", role: .button, in: $0).count == 1 }.count == 1
+        }
+        let candidates = photos.sheets.allElementsBoundByIndex.filter { publicLabel("Go", role: .button, in: $0).count == 1 }
+        guard candidates.count == 1 else { throw block("Ambiguous Go to Folder parent") }
+        let go = candidates[0]
+        let combos = go.descendants(matching: .comboBox), fields = go.descendants(matching: .textField)
+        let input: XCUIElement
+        if combos.count == 1 {
+            input = try lifecycleControl(combos, scope: "ExportSavePanel/GoToFolder", role: "ComboBox")
+        } else {
+            guard combos.count == 0 else { throw block("Ambiguous Go to Folder input") }
+            input = try lifecycleControl(fields, scope: "ExportSavePanel/GoToFolder", role: "TextField")
+        }
+        try deadlineKey(input, "a", modifierFlags: .command); try deadlineText(input, directory.path)
+        guard input.value as? String == directory.path else { throw block("Go to Folder did not retain exact owned directory") }
+        _ = try lifecycleControl(publicLabel("Go", role: .button, in: go), scope: "ExportSavePanel/GoToFolder", role: "Button")
+        try lifecycleWait(photos, seconds: 10, description: "Go to Folder did not close") { !go.exists }
+        let selected = try exportSheet(in: photos)
+        let location = try lifecycleControl(publicLabel("Where", role: .popUpButton, in: selected), scope: "ExportSavePanel", role: "PopUpButton", click: false)
+        guard location.value as? String == directory.lastPathComponent else { throw block("Save panel location does not show the owned export directory") }
+        try rejectLifecycleAlert(photos)
+        _ = try lifecycleControl(publicLabel(finalTitle, role: .button, in: selected), scope: "ExportSavePanel", role: "Button")
+    }
+    private func ownedExportDirectory(_ name: String) throws -> URL {
+        guard ["saved", "cancelled", "reverted", "original"].contains(name), lifecycleExports[name] == nil else { throw block("Unexpected/repeated export phase") }
+        if lifecycleRoot == nil {
+            let temporary = FileManager.default.temporaryDirectory.standardizedFileURL.resolvingSymlinksInPath()
+            let root = temporary.appendingPathComponent("CelluloidPhotosLifecycle-" + UUID().uuidString, isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+            for child in ["saved", "cancelled", "reverted", "original"] {
+                try FileManager.default.createDirectory(at: root.appendingPathComponent(child, isDirectory: true), withIntermediateDirectories: false)
+            }
+            lifecycleRoot = root
+        }
+        try verifyOwnedExportTree()
+        return try XCTUnwrap(lifecycleRoot).appendingPathComponent(name, isDirectory: true)
+    }
+    private func verifyOwnedExportTree() throws {
+        _ = try remainingTime(1)
+        let root = try XCTUnwrap(lifecycleRoot)
+        guard root == root.resolvingSymlinksInPath() else { throw block("Owned export root became a symlink") }
+        let members = try FileManager.default.contentsOfDirectory(atPath: root.path)
+        guard Set(members) == Set(["saved", "cancelled", "reverted", "original"]) else { throw block("Unexpected owned export root member") }
+        for child in members {
+            let directory = root.appendingPathComponent(child, isDirectory: true)
+            let attributes = try FileManager.default.attributesOfItem(atPath: directory.path)
+            guard attributes[.type] as? FileAttributeType == .typeDirectory,
+                  directory.standardizedFileURL == directory.resolvingSymlinksInPath() else { throw block("Symlink/non-directory in owned export root") }
+            let files = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            guard files == (lifecycleExports[child] == nil ? [] : [Self.fixtureFilename]) else { throw block("Unexpected or stale owned export member") }
+            if !files.isEmpty {
+                let file = directory.appendingPathComponent(Self.fixtureFilename)
+                var status = stat()
+                guard file.path.withCString({ lstat($0, &status) }) == 0,
+                      (status.st_mode & S_IFMT) == S_IFREG, status.st_nlink == 1,
+                      status.st_size > 0, status.st_size <= 16 * 1024 * 1024 else { throw block("Owned export tree contains nonregular/linked/oversized file") }
+            }
+        }
+    }
+    @MainActor private func exportRaster(_ name: String, in photos: XCUIApplication, original: Bool) throws -> LifecycleRaster {
+        _ = try remainingTime(1)
+        guard original == (name == "original") else { throw block("Mismatched raw export/image binding") }
+        try requireNoSheet(photos)
+        let directory = try ownedExportDirectory(name)
+        let file = directory.appendingPathComponent(Self.fixtureFilename)
+        guard !FileManager.default.fileExists(atPath: file.path) else { throw block("Export destination already exists") }
+        try openTopMenu("File", in: photos)
+        let fileMenu = try uniqueOpenMenu(photos.menuBarItems.matching(NSPredicate(format: "title == %@", "File")), description: "File")
+        let exportItems = fileMenu.children(matching: .menuItem).matching(NSPredicate(format: "identifier == %@ AND title == %@", "_NS:1604", "Export"))
+        _ = try lifecycleControl(exportItems, scope: "File/Menu", role: "MenuItem")
+        let exportMenu = try uniqueOpenMenu(exportItems, description: "Export")
+        _ = try lifecycleControl(exportMenu.children(matching: .menuItem).matching(NSPredicate(format: "identifier == %@ AND title == %@",
+            original ? "_NS:635" : "_NS:630", original ? "Export Unmodified Original For 1 Photo" : "Export 1 Photo")),
+            scope: "File/Export/Menu", role: "MenuItem")
+        try lifecycleWait(photos, seconds: 10, description: "Export options sheet absent") { photos.sheets.count > 0 }
+        let options = try exportSheet(in: photos)
+        if original {
+            let sidecar = try lifecycleControl(publicLabel("Export IPTC as XMP", role: .checkBox, in: options), scope: "ExportOptions", role: "CheckBox", click: false)
+            guard let state = sidecar.value as? String, ["0", "1"].contains(state) else { throw block("Unknown sidecar checkbox state") }
+            if state == "1" { try deadlineClick(sidecar) }
+            guard sidecar.value as? String == "0" else { throw block("Original export sidecar not disabled") }
+        } else {
+            try popup("Photo Kind", choose: "PNG", in: options)
+            if publicLabel("Color Profile", role: .popUpButton, in: options).count == 0 || publicLabel("Size", role: .popUpButton, in: options).count == 0 {
+                // Apple's documented options disclosure; require an actually
+                // observed unique disclosure role, not an invented button ID.
+                _ = try lifecycleControl(options.descendants(matching: .disclosureTriangle), scope: "ExportOptions", role: "DisclosureTriangle")
+            }
+            try popup("Color Profile", choose: "sRGB IEC61966-2.1", in: options)
+            try popup("Size", choose: "Full Size", in: options)
+        }
+        try popup("File Name", choose: "Use File Name", in: options)
+        try popup("Subfolder Format", choose: "None", in: options)
+        _ = try lifecycleControl(publicLabel("Export", role: .button, in: options), scope: "ExportOptions", role: "Button")
+        try chooseOwnedExportDirectory(directory, in: photos, original: original)
+        try lifecycleWait(photos, description: "Owned export did not finish") {
+            photos.sheets.count == 0 && photos.dialogs.count == 0 && FileManager.default.fileExists(atPath: file.path)
+        }
+        try requireNoSheet(photos)
+        guard try FileManager.default.contentsOfDirectory(atPath: directory.path) == [Self.fixtureFilename] else { throw block("Export produced extra files or wrong filename") }
+        let rawAllowance = min(16 * 1024 * 1024, 64 * 1024 * 1024 - lifecycleRawBytes)
+        guard rawAllowance > 0 else { throw block("Raw export aggregate allowance exhausted") }
+        let bytes = try readBoundedOwnedFile(file, maximumBytes: rawAllowance)
+        guard lifecycleRawBytes + bytes.count <= 64 * 1024 * 1024 else { throw block("Raw export aggregate exceeds 64 MiB") }
+        lifecycleRawBytes += bytes.count
+        let raster = try lifecycleRaster(bytes, expectedFormat: UTType.png.identifier)
+        let retainedImage = original ? "lifecycle-source.png" : "lifecycle-" + name + ".png"
+        lifecycleExports[name] = ["image": retainedImage, "relative_path": name + "/" + Self.fixtureFilename,
+            "bytes": bytes.count, "sha256": digest(bytes)]
+        return raster
+    }
+
+    private func readBoundedOwnedFile(_ file: URL, maximumBytes: Int = 16 * 1024 * 1024) throws -> Data {
+        _ = try remainingTime(1)
+        let canonical = file.standardizedFileURL
+        let parent = canonical.deletingLastPathComponent()
+        let ownedSource = retainedFixtureURL?.standardizedFileURL == canonical
+        let ownedExport = lifecycleRoot.map { root in
+            ["saved", "cancelled", "reverted", "original"].contains { phase in
+                root.appendingPathComponent(phase).appendingPathComponent(Self.fixtureFilename) == canonical
+            }
+        } ?? false
+        guard ownedSource || ownedExport, maximumBytes > 0, maximumBytes <= 16 * 1024 * 1024,
+              parent == parent.resolvingSymlinksInPath(), canonical.lastPathComponent == Self.fixtureFilename else {
+            throw block("File is not a fixed owned source/export path")
+        }
+        let directoryFD = parent.path.withCString { Darwin.open($0, O_RDONLY | O_DIRECTORY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW) }
+        guard directoryFD >= 0 else { throw block("Owned parent directory denied; no alternate location", operation: ["errno": errno]) }
+        defer { Darwin.close(directoryFD) }
+        var parentBefore = stat()
+        guard fstat(directoryFD, &parentBefore) == 0, (parentBefore.st_mode & S_IFMT) == S_IFDIR else { throw block("Owned export parent changed") }
+        let descriptor = canonical.lastPathComponent.withCString { openat(directoryFD, $0, O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW) }
+        guard descriptor >= 0 else { throw block("Owned file read denied or symlink; no alternate path", operation: ["filename": file.lastPathComponent, "errno": errno]) }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var before = stat()
+        guard fstat(descriptor, &before) == 0, (before.st_mode & S_IFMT) == S_IFREG,
+              before.st_nlink == 1, before.st_size > 0, before.st_size <= Int64(maximumBytes) else {
+            throw block("Owned export is not a bounded single-link regular file")
+        }
+        let size = Int(before.st_size)
+        var bytes = Data(); bytes.reserveCapacity(size)
+        while bytes.count < size {
+            _ = try remainingTime(1)
+            let chunk = try XCTUnwrap(handle.read(upToCount: min(65_536, size - bytes.count)))
+            guard !chunk.isEmpty, chunk.count <= size - bytes.count else { throw block("Owned file truncated during read") }
+            bytes.append(chunk)
+        }
+        var after = stat(), pathAfter = stat(), parentAfter = stat()
+        let pathStatus = canonical.path.withCString { lstat($0, &pathAfter) }
+        let parentStatus = parent.path.withCString { lstat($0, &parentAfter) }
+        guard fstat(descriptor, &after) == 0, pathStatus == 0, parentStatus == 0,
+              parent == parent.resolvingSymlinksInPath(), (parentAfter.st_mode & S_IFMT) == S_IFDIR,
+              parentBefore.st_dev == parentAfter.st_dev, parentBefore.st_ino == parentAfter.st_ino,
+              (after.st_mode & S_IFMT) == S_IFREG, (pathAfter.st_mode & S_IFMT) == S_IFREG,
+              after.st_nlink == 1, pathAfter.st_nlink == 1,
+              before.st_dev == after.st_dev, before.st_ino == after.st_ino,
+              after.st_dev == pathAfter.st_dev, after.st_ino == pathAfter.st_ino,
+              before.st_size == after.st_size, after.st_size == pathAfter.st_size, bytes.count == size,
+              before.st_mtimespec.tv_sec == after.st_mtimespec.tv_sec,
+              before.st_mtimespec.tv_nsec == after.st_mtimespec.tv_nsec,
+              before.st_ctimespec.tv_sec == after.st_ctimespec.tv_sec,
+              before.st_ctimespec.tv_nsec == after.st_ctimespec.tv_nsec,
+              after.st_mtimespec.tv_sec == pathAfter.st_mtimespec.tv_sec,
+              after.st_mtimespec.tv_nsec == pathAfter.st_mtimespec.tv_nsec,
+              after.st_ctimespec.tv_sec == pathAfter.st_ctimespec.tv_sec,
+              after.st_ctimespec.tv_nsec == pathAfter.st_ctimespec.tv_nsec else { throw block("Owned export/path changed during bounded read") }
+        _ = try remainingTime(1)
+        return bytes
+    }
+    private func pngHeader(_ data: Data) throws -> (colorType: Int, profileEncoding: String) {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 45, bytes.count <= 128 * 1024,
+              Array(bytes.prefix(8)) == [137, 80, 78, 71, 13, 10, 26, 10] else { throw block("Required PNG signature/128 KiB bound failed") }
+        func u32(_ offset: Int) -> Int {
+            Int(bytes[offset]) << 24 | Int(bytes[offset + 1]) << 16 | Int(bytes[offset + 2]) << 8 | Int(bytes[offset + 3])
+        }
+        guard u32(8) == 13, String(bytes: bytes[12..<16], encoding: .ascii) == "IHDR",
+              u32(16) == 1200, u32(20) == 800, bytes[24] == 8, [2, 6].contains(bytes[25]),
+              bytes[26] == 0, bytes[27] == 0, bytes[28] == 0 else {
+            throw block("Required PNG dimensions/depth/color type/interlace failed", operation: ["sha256": digest(data), "bytes": data.count])
+        }
+        var offset = 8, chunks = 0, srgb = 0, icc = 0
+        while offset < bytes.count {
+            guard offset <= bytes.count - 12, chunks < 64 else { throw block("PNG chunk framing limit") }
+            let count = u32(offset)
+            guard count <= bytes.count - offset - 12 else { throw block("Truncated PNG chunk") }
+            let tag = String(bytes: bytes[(offset + 4)..<(offset + 8)], encoding: .ascii) ?? ""
+            if tag == "sRGB" {
+                guard count == 1, bytes[offset + 8] == 0 else { throw block("PNG sRGB rendering intent mismatch") }
+                srgb += 1
+            }
+            if tag == "iCCP" {
+                icc += 1
+                guard icc == 1 else { throw block("Duplicate ICC profile before decode") }
+                try admitICC(Array(bytes[(offset + 8)..<(offset + 8 + count)]), pngSHA256: digest(data))
+            }
+            guard ["IHDR", "sRGB", "iCCP", "gAMA", "cHRM", "pHYs", "eXIf", "IDAT", "IEND"].contains(tag) else {
+                throw block("Unsupported PNG chunk before decode", operation: ["chunk": tag, "sha256": digest(data)])
+            }
+            guard !["acTL", "fcTL", "fdAT", "tRNS"].contains(tag) else { throw block("Animated/transparency PNG is outside the fixture contract") }
+            offset += count + 12; chunks += 1
+        }
+        guard offset == bytes.count, (srgb == 1 && icc == 0) || (srgb == 0 && icc == 1) else {
+            throw block("PNG profile missing/ambiguous; pixel conversion is not a fallback", operation: ["sha256": digest(data), "sRGB_chunks": srgb, "iCCP_chunks": icc])
+        }
+        return (Int(bytes[25]), srgb == 1 ? "srgb-chunk" : "icc-reference")
+    }
+    private func admitICC(_ payload: [UInt8], pngSHA256: String) throws {
+        _ = try remainingTime(1)
+        guard let separator = payload.firstIndex(of: 0), (1...79).contains(separator),
+              separator + 2 < payload.count, payload[separator + 1] == 0 else {
+            throw block("Malformed PNG ICC profile envelope before decode", operation: ["sha256": pngSHA256])
+        }
+        let compressed = Array(payload[(separator + 2)...])
+        // Apple's public system zlib module links libz. uncompress2 admits
+        // caller-sized storage and reports consumed input, so neither an ICC
+        // bomb nor a trailing/concatenated stream reaches ImageIO.
+        var output = [UInt8](repeating: 0, count: 4097)
+        var outputCount = uLongf(output.count)
+        var inputCount = uLong(compressed.count)
+        let status = output.withUnsafeMutableBufferPointer { destination in
+            compressed.withUnsafeBufferPointer { source in
+                uncompress2(destination.baseAddress, &outputCount, source.baseAddress, &inputCount)
+            }
+        }
+        guard status == Z_OK, outputCount > 0, outputCount <= 4096, inputCount == uLong(compressed.count) else {
+            throw block("PNG ICC bounded decompression/profile admission failed before decode",
+                operation: ["sha256": pngSHA256, "zlib_status": status, "decoded_bytes": Int(outputCount), "consumed_bytes": Int(inputCount)])
+        }
+        let actual = Data(output.prefix(Int(outputCount)))
+        let srgb = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        let reference = try XCTUnwrap(srgb.copyICCData()) as Data
+        guard !reference.isEmpty, reference.count <= 4096, actual == reference else {
+            throw block("PNG ICC bytes differ from independent sRGB reference; pixels were not compared",
+                operation: ["sha256": pngSHA256, "icc_sha256": digest(actual)])
+        }
+        lifecycleICC = ["bytes": reference.count, "sha256": digest(reference)]
+        _ = try remainingTime(1)
+    }
+    private func bitmap() throws -> CGContext {
+        try XCTUnwrap(CGContext(data: nil, width: 1200, height: 800, bitsPerComponent: 8, bytesPerRow: 1200 * 4,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue))
+    }
+    private func lifecycleRaster(_ data: Data, expectedFormat: String) throws -> LifecycleRaster {
+        _ = try remainingTime(1)
+        let header = try pngHeader(data)
+        let imageSource = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary))
+        guard CGImageSourceGetCount(imageSource) == 1,
+              CGImageSourceGetType(imageSource) as String? == expectedFormat,
+              let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],
+              properties[kCGImagePropertyPixelWidth] as? Int == 1200,
+              properties[kCGImagePropertyPixelHeight] as? Int == 800,
+              (properties[kCGImagePropertyOrientation] as? Int ?? 1) == 1,
+              properties[kCGImagePropertyDepth] as? Int == 8,
+              let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil), image.width == 1200, image.height == 800,
+              image.bitsPerComponent == 8, image.colorSpace?.model == .rgb else {
+            throw block("Export format/dimensions/orientation/depth mismatch", operation: ["sha256": digest(data), "bytes": data.count])
+        }
+        let context = try bitmap()
+        context.interpolationQuality = .none
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 1200, height: 800))
+        let rgba = Data(bytes: try XCTUnwrap(context.data), count: 1200 * 800 * 4)
+        guard stride(from: 3, to: rgba.count, by: 4).allSatisfy({ rgba[$0] == 255 }) else { throw block("Export alpha mismatch; opaque source required") }
+        let metadata: [String: Any] = ["bytes": data.count, "sha256": digest(data), "rgba_sha256": digest(rgba),
+            "format": expectedFormat, "width": 1200, "height": 800, "bit_depth": 8,
+            "color_type": header.colorType, "interlace": 0, "orientation": 1, "profile": "sRGB",
+            "profile_encoding": header.profileEncoding, "alpha": "opaque"]
+        return LifecycleRaster(bytes: data, rgba: rgba, metadata: metadata)
+    }
+    private func retainLifecycleImage(_ image: LifecycleRaster, named name: String) throws {
+        let names: Set<String> = ["lifecycle-source.png", "lifecycle-expected-save.png", "lifecycle-saved.png", "lifecycle-cancelled.png", "lifecycle-reverted.png"]
+        guard names.contains(name), lifecycleImages[name] == nil, !image.bytes.isEmpty, image.bytes.count <= 128 * 1024,
+              lifecyclePNGBytes + image.bytes.count <= 640 * 1024 else { throw block("Required lifecycle PNG admission failed") }
+        lifecyclePNGBytes += image.bytes.count
+        lifecycleImages[name] = image.metadata
+        let attachment = XCTAttachment(data: image.bytes, uniformTypeIdentifier: "public.png")
+        attachment.name = "celluloid-host-lifecycle-" + name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+    private func expectedFade(_ original: LifecycleRaster) throws -> (raster: LifecycleRaster, jpegSHA256: String) {
+        _ = try remainingTime(1)
+        // Deliberately independent from production filter maps, renderer and codec.
+        // Match only their published sRGB/opaque/ImageIO JPEG-quality contract.
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(original.bytes as CFData,
+            [kCGImageSourceShouldCache: false, kCGImageSourceShouldCacheImmediately: false] as CFDictionary))
+        let cg = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary))
+        let input = CIImage(cgImage: cg)
+        let filter = try XCTUnwrap(CIFilter(name: "CIPhotoEffectInstant", parameters: [kCIInputImageKey: input]))
+        let filtered = try XCTUnwrap(filter.outputImage).cropped(to: CGRect(x: 0, y: 0, width: 1200, height: 800))
+        let srgb = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        let ci = CIContext(options: [.outputColorSpace: srgb, .cacheIntermediates: false])
+        defer { ci.clearCaches() }
+        let output = try XCTUnwrap(ci.createCGImage(filtered, from: filtered.extent, format: .RGBA8, colorSpace: srgb))
+        let composition = try bitmap()
+        composition.interpolationQuality = .high
+        composition.draw(output, in: CGRect(x: 0, y: 0, width: 1200, height: 800))
+        let flattened = try bitmap()
+        flattened.interpolationQuality = .high
+        flattened.setFillColor(CGColor(gray: 1, alpha: 1))
+        flattened.fill(CGRect(x: 0, y: 0, width: 1200, height: 800))
+        flattened.draw(try XCTUnwrap(composition.makeImage()), in: CGRect(x: 0, y: 0, width: 1200, height: 800))
+        let jpeg = NSMutableData()
+        let encoder = try XCTUnwrap(CGImageDestinationCreateWithData(jpeg, UTType.jpeg.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(encoder, try XCTUnwrap(flattened.makeImage()), [kCGImageDestinationLossyCompressionQuality: 0.95] as CFDictionary)
+        guard CGImageDestinationFinalize(encoder), jpeg.length > 0, jpeg.length <= 16 * 1024 * 1024 else { throw block("Independent JPEG reference encode failed") }
+        let decoded = try XCTUnwrap(CGImageSourceCreateWithData(jpeg as CFData, nil))
+        let decodedImage = try XCTUnwrap(CGImageSourceCreateImageAtIndex(decoded, 0, nil))
+        guard decodedImage.width == 1200, decodedImage.height == 800 else { throw block("Independent JPEG reference dimensions changed") }
+        let png = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(png, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, decodedImage,
+            [kCGImagePropertyPNGDictionary: [kCGImagePropertyPNGInterlaceType: 0]] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { throw block("Independent PNG reference encode failed") }
+        return (try lifecycleRaster(png as Data, expectedFormat: UTType.png.identifier), digest(jpeg as Data))
+    }
+    private func maximumDelta(_ lhs: Data, _ rhs: Data) throws -> Int {
+        guard lhs.count == 1200 * 800 * 4, lhs.count == rhs.count else { throw block("Pixel comparison size mismatch") }
+        var maximum = 0
+        for index in lhs.indices { maximum = max(maximum, abs(Int(lhs[index]) - Int(rhs[index]))) }
+        return maximum
+    }
+
     private func value(_ key: String) throws -> String { try XCTUnwrap(context[key] as? String, "Missing bound context: " + key) }
     private func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
     private func digest(_ url: URL) throws -> String { digest(try Data(contentsOf: url)) }
@@ -429,7 +1118,7 @@ final class MacPhotosHostUITests: XCTestCase {
     private func proof(_ bytes: Data, named name: String) throws {
         let names = ["transport.json", "containing-process.json", "photos-process.json", "fixture.json", "fixture-ownership.json",
                      "host-selection.json", "host-editor-before-process.json", "extension-self-identity.json",
-                     "host-editor-after-process.json", "prerequisite.json", "outcome.json"]
+                     "host-editor-after-process.json", "prerequisite.json", "lifecycle.json", "outcome.json"]
         let limit = name.hasSuffix(".txt") || name == "fixture.json" ? 120_000 : 16_000
         guard names.contains(name), !emittedProofs.contains(name), !bytes.isEmpty, bytes.count <= limit,
               proofBytes + bytes.count <= 160_000 else { throw block("Unexpected or oversized proof receipt") }

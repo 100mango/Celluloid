@@ -21,6 +21,8 @@ import math
 from mac_host_transport import load_json,HOST_CONTRACT
 from validation_route import current_route,validate_route
 from mac_host_self_identity import validate as validate_self_identity
+from mac_host_lifecycle import validate as validate_lifecycle
+from mac_host_lifecycle_pixels import NAMES as LIFECYCLE_IMAGES,PNG_LIMIT,read_owned_png
 
 # Mandatory acceptance/source/product assertions must never be optimized away.
 # Reject before parsing an action, reading receipts, or creating any evidence.
@@ -34,6 +36,12 @@ BRANCH = 'codex/apple-platforms'
 APP_ID = 'Mango.Celluloid'
 EXT_ID = APP_ID + '.CelluloidPhotoExtension'
 ALLOWED = {
+    'Scripts/test_mac_host_lifecycle_source.py',
+    'Scripts/test_mac_host_lifecycle_transport.py',
+    'Scripts/test_mac_host_lifecycle_pixels.py',
+    'Scripts/test_mac_host_lifecycle.py',
+    'Scripts/mac_host_lifecycle_pixels.py',
+    'Scripts/mac_host_lifecycle.py',
     'Scripts/test_native_text_release_guard.py',
     'Platforms/MacExtensionTests/MacPhotoSelfIdentityTests.swift',
     'Platforms/macOSExtension/MacPhotoSelfIdentity.swift',
@@ -328,7 +336,8 @@ def extract_transport():
         target=observed/name
         assert not target.exists() and not target.is_symlink(), 'Duplicate materialized host proof'
         target.write_bytes(data)
-    # Attachments are diagnostic only, but their namespace and export ownership
+    # Lifecycle PNGs are required raw stored-pixel proof; other attachments are
+    # diagnostic only. Their namespaces and export ownership
     # are strict. A malformed selected attachment is never silently accepted.
     from mac_host_transport import attachment_candidates
     with tempfile.TemporaryDirectory(prefix='celluloid-host-attachments-',dir=root) as folder:
@@ -506,9 +515,17 @@ def verify_acceptance(root, source_sha):
     assert prerequisite['production_source_base'] == BASE
     assert outcome['complete_host_e2e'] is False
     assert 'first_blocked_operation' not in outcome, 'A blocked operation cannot grant host-entry acceptance'
-    assert outcome['last_stage'] == 'host-entry-prerequisite-passed', 'Host did not reach final prerequisite stage'
-    assert outcome['save_reopen_cancel_revert'] == 'not executed in prerequisite phase'
+    assert outcome['last_stage'] == 'photos-filter-lifecycle-passed', 'Host did not reach final lifecycle stage'
+    assert outcome['save_reopen_cancel_revert'] == 'PhotosFilterLifecycle.1 complete'
     actual=validate_self_identity(self_identity,c,photos,ownership)
+    assert sum(line.startswith('MAC_HOST_FILTER_LIFECYCLE_PASSED ') for line in log.splitlines())==1,'Missing/duplicate filter lifecycle completion'
+    lifecycle=read_receipt(observed/'lifecycle.json')
+    image_bytes={}
+    for name in LIFECYCLE_IMAGES:
+        path=observed/name
+        assert path.is_file() and not path.is_symlink() and 0<path.stat().st_size<=PNG_LIMIT,'Missing/invalid required lifecycle PNG: '+name
+        image_bytes[name]=read_owned_png(path)
+    lifecycle_proof=validate_lifecycle(lifecycle,c,photos,ownership,actual,image_bytes,sha(root/'mac-host-context.json'))
     product = read_receipt(root / 'mac-host-product-after.json')
     assert product['installed_bytes_unchanged'] is True and product['strict_signatures_unchanged'] is True
     for key in ['app_executable_sha256', 'extension_executable_sha256','extension_debug_dylib_sha256']:
@@ -534,7 +551,8 @@ def verify_acceptance(root, source_sha):
                 'mac-host-product-after.json', 'mac-host-source-before.json', 'mac-host-source-after.json', 'mac-host-transport-replay.json']]
     receipts += [observed / name for name in ['prerequisite.json', 'outcome.json', 'host-selection.json', 'host-editor-before-process.json', 'host-editor-after-process.json', 'extension-self-identity.json', 'fixture-ownership.json', 'fixture.json']]
     receipts += [observed/name for name in ['transport.json','containing-process.json','photos-process.json']]
-    return {'validation_route':route,'host_entry_contract':HOST_CONTRACT,'source_sha': source_sha, 'prerequisite_accepted': True, 'complete_host_e2e': False,
+    receipts += [observed/'lifecycle.json']+[observed/name for name in LIFECYCLE_IMAGES]
+    return {'filter_lifecycle':lifecycle_proof,'validation_route':route,'host_entry_contract':HOST_CONTRACT,'source_sha': source_sha, 'prerequisite_accepted': True, 'complete_host_e2e': False,
             'proof_claim':'Real Photos UI entry bound to own-bundle hashes and editing generation self-observed by the extension; OS-wide process uniqueness, registry inventory, audit-token view attribution, exact delivered-byte equality and full lifecycle are not claimed',
             'identity_kind':'in-process-self-observation-via-photos-ui','os_wide_process_uniqueness':False,
             'expected_testcase': '/'.join(EXPECTED_CASE), 'exactly_one_passed_zero_skipped': True,
@@ -623,6 +641,8 @@ PROOF_LIMITS = {
     'mac-host-observed/extension-self-identity.json':160_000,
     'mac-host-observed/fixture-ownership.json':160_000,
     'mac-host-observed/fixture.json':250_000,
+    'mac-host-observed/lifecycle.json':16_000,
+    **{'mac-host-observed/'+name:PNG_LIMIT for name in LIFECYCLE_IMAGES},
 }
 
 def verify_collected(folder, source_sha):

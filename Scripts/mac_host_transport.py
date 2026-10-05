@@ -9,11 +9,13 @@ CASE=('CelluloidMacUITests.MacPhotosHostUITests','testInstalledExtensionIsInvoke
 LABEL='actual-mac-photos-host-prerequisite'
 ORDER=['transport.json','containing-process.json','photos-process.json','fixture.json','fixture-ownership.json',
        'host-selection.json','host-editor-before-process.json','extension-self-identity.json',
-       'host-editor-after-process.json','prerequisite.json','outcome.json']
+       'host-editor-after-process.json','prerequisite.json','lifecycle.json','outcome.json']
 LIMITS={name:120_000 if name.endswith('.txt') or name=='fixture.json' else 16_000 for name in ORDER}
 TOTAL=160_000
 DIAGNOSTIC_NAMES={name+'.txt' for name in ['initial','imported','single-photo','editing','extensions','manage-observed','host-editor','last-observed','missing-control-edit','missing-control-extensions']}|{'extensions.jpg','last-observed.jpg'}
 ATTACHMENT_PREFIX='celluloid-host-diagnostic-'
+LIFECYCLE_PREFIX='celluloid-host-lifecycle-'
+from mac_host_lifecycle_pixels import NAMES as LIFECYCLE_IMAGES,PNG_LIMIT
 
 def require(value,message):
     if not value:raise ValueError(message)
@@ -110,6 +112,17 @@ def attachment_candidates(folder,manifest):
             require(type(exported) is str and Path(exported).name==exported and exported not in {'','.','..'} and exported not in seen,'Unexpected/duplicate attachment path')
             seen.add(exported);path=folder/exported
             require(path.is_file() and not path.is_symlink() and path.resolve().parent==folder.resolve(),'Unowned attachment path')
+            if type(name) is str and name.startswith(LIFECYCLE_PREFIX):
+                suffix=re.fullmatch(re.escape(LIFECYCLE_PREFIX)+r'(lifecycle-(?:source|expected-save|saved|cancelled|reverted))_(0)_([0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})\.png',name)
+                require(suffix is not None,'Unexpected lifecycle attachment display name')
+                selected=suffix[1]+'.png'
+                require(selected in LIFECYCLE_IMAGES and selected not in result,'Duplicate lifecycle attachment')
+                require(record.get('testIdentifier')=='MacPhotosHostUITests/'+CASE[1]+'()','Lifecycle attachment belongs to another test')
+                from mac_host_lifecycle_pixels import read_owned_png
+                data=read_owned_png(path)
+                require(data.startswith(b'\x89PNG\r\n\x1a\n'),'Wrong lifecycle PNG type')
+                result[selected]=data
+                continue
             if type(name) is not str or not name.startswith(ATTACHMENT_PREFIX):continue
             # Observed Xcode27 exports remove the declared extension before
             # appending iteration/UUID/type. Reconstruct only a fixed stem/type

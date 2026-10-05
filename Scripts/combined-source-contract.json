@@ -2,7 +2,7 @@
   "schema": "Celluloid.CombinedSource.1",
   "native_base": "59fca5a8dda30d497715b592966c02310606d743",
   "uikit_base": "c5875ee7586611c28879b5030e5e575a9f33fcbd",
-  "reviewed_source_tree": "d90f5fcd7a6c00f64f1f6e9d5c639b8d980320b0",
+  "reviewed_source_tree": "bc62f6ee808546f7abcf4855fd7b3693a6ecea34",
   "roots": [
     "Celluloid",
     "CelluloidKit",
@@ -1906,7 +1906,7 @@
     ],
     [
       "Platforms/UITests/MacPhotosHostUITests.swift",
-      "f671a350518218d3b72f5d803dc266b5396369f086050be1e70fc447ad5f8c00"
+      "a9aed7a7568ee0fd77192a0653731dfc5b9f1266f600232cd551743d154e21ed"
     ],
     [
       "Platforms/UITests/NativeEditorUITests.swift",
@@ -2205,7 +2205,7 @@
       "f7603c1c1175e32b5146b43d9e1f03bd6e839416510109795eb942cf7223579a"
     ]
   ],
-  "fingerprint": "24ae3beaec7adf23beb55959a8ce73ad74fecf9f4ae3b3386dedc76983e5fffe",
+  "fingerprint": "08da654f4c6518d63d45e5b372099d199559f1249d39064580ebc610a120a144",
   "appearance_cancel_patch_sha256": "a3f6810452a5d2d3475a4bf0a921cda863f431c0660c7d8b7616f484e019f15f",
   "expected_UIKit_executions": {
     "original_qualified": 400,
