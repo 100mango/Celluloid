@@ -5,7 +5,7 @@ import mac_host_transport as t
 
 class HostTransportTests(unittest.TestCase):
     def setUp(self):
-        self.context={'source_sha':'a'*40,'test_source_sha256':'b'*64,'script_sha256':'c'*64,'app_executable_sha256':'d'*64,'extension_executable_sha256':'e'*64}
+        self.context={'host_entry_contract':t.HOST_CONTRACT,'source_sha':'a'*40,'test_source_sha256':'b'*64,'script_sha256':'c'*64,'app_executable_sha256':'d'*64,'extension_executable_sha256':'e'*64}
         self.context_hash='f'*64
         self.rows=[]
         for index,name in enumerate(t.ORDER):
@@ -70,6 +70,16 @@ class HostTransportTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError,'Nonfinite JSON'):self.parse(log)
                 with self.assertRaisesRegex(ValueError,'Nonfinite JSON'):t.load_json('{"nested":[{"x":'+literal+'}]}')
 
+    def test_v1_context_transport_and_relabelled_first_payload_reject(self):
+        original=self.context['host_entry_contract'];self.context['host_entry_contract']='Celluloid.PhotosHostEntry.1'
+        with self.assertRaisesRegex(ValueError,'host-entry contract'):self.parse(self.transcript())
+        self.context['host_entry_contract']=original
+        rows=copy.deepcopy(self.rows);rows[0]['schema']='Celluloid.MacHostProof.1'
+        with self.assertRaises(ValueError):self.parse(self.transcript(rows))
+        rows=copy.deepcopy(self.rows);value=json.loads(base64.b64decode(rows[0]['base64']));value['schema']='Celluloid.HostTransport.1'
+        data=json.dumps(value).encode();rows[0].update(base64=base64.b64encode(data).decode(),bytes=len(data),sha256=t.sha(data))
+        with self.assertRaises(ValueError):self.parse(self.transcript(rows))
+
     def test_partial_failed_execution_is_diagnostic_only(self):
         rows=copy.deepcopy(self.rows[:2]);outcome=copy.deepcopy(self.rows[-1]);outcome['sequence']=2;rows.append(outcome)
         log=self.transcript(rows).replace(' passed (1.0 seconds).',' failed (1.0 seconds).').replace('"exit_code": 0','"exit_code": 65').replace('** TEST EXECUTE SUCCEEDED **','** TEST EXECUTE FAILED **')
@@ -80,8 +90,9 @@ class HostTransportTests(unittest.TestCase):
         rows=copy.deepcopy(self.rows);payload(rows[1],b'x'*16001)
         with self.assertRaises(ValueError):self.parse(self.transcript(rows))
         rows=copy.deepcopy(self.rows)
-        for row in rows:
-            if row['name'].endswith('.txt'):payload(row,b'x'*100000)
+        for row in rows[1:]:
+            count=110000 if row['name']=='fixture.json' else 15900
+            payload(row,json.dumps({'padding':'x'*count}).encode())
         with self.assertRaisesRegex(ValueError,'total byte'):self.parse(self.transcript(rows))
         with self.assertRaises(ValueError):self.parse(self.transcript()+'x'*20_000_001)
     def attachment(self,folder,name='initial.txt',data=b'actual AX'):

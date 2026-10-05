@@ -11,6 +11,9 @@ import CelluloidDomain
 import CelluloidRendering
 
 final class MacPhotoRendererTests: XCTestCase {
+    private var observedOracleLines: [[String: Any]] = []
+    private var observedOracleBacking: CGImage?
+
     private func source(width: Int = 240, height: Int = 320) throws -> (SourceImage, Data, CGImage) {
         let bitmap = try RasterCodec.bitmap(width: width, height: height)
         bitmap.setFillColor(CGColor(srgbRed: 0.1, green: 0.3, blue: 0.6, alpha: 1)); bitmap.fill(CGRect(x: 0, y: 0, width: width, height: height))
@@ -303,6 +306,7 @@ final class MacPhotoRendererTests: XCTestCase {
     /// from the original UIKit appearance and independent 52bf native evidence,
     /// never from the candidate layout, raster, or computed destination.
     private func independentLegacyTextBacking() throws -> CGImage {
+        observedOracleLines = []; observedOracleBacking = nil
         let bitmap = try RasterCodec.bitmap(width: 56, height: 88)
         bitmap.translateBy(x: 0, y: 88); bitmap.scaleBy(x: 2, y: -2)
         NSGraphicsContext.saveGraphicsState()
@@ -314,16 +318,23 @@ final class MacPhotoRendererTests: XCTestCase {
             let paragraph = NSMutableParagraphStyle(); paragraph.alignment = .left
             let storage = NSTextStorage(string: text, attributes: [.font: NSFont.systemFont(ofSize: 10),
                 .foregroundColor: NSColor.black, .paragraphStyle: paragraph])
-            let manager = NSLayoutManager(), container = NSTextContainer(containerSize: CGSize(width: 1000, height: 1000))
+            let manager = NativeOracleGlyphObserver(), container = NSTextContainer(containerSize: CGSize(width: 1000, height: 1000))
             container.lineFragmentPadding = 0
             storage.addLayoutManager(manager); manager.addTextContainer(container); manager.ensureLayout(for: container)
             let glyphRange = manager.glyphRange(for: container)
             XCTAssertEqual(manager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil), NSRange(location: 0, length: text.utf16.count))
             XCTAssertEqual(manager.usedRect(for: container).height, 12)
-            let lineBaseline = manager.location(forGlyphAt: glyphRange.location).y
-            manager.drawGlyphs(forGlyphRange: glyphRange, at: CGPoint(x: 0, y: baseline - lineBaseline))
+            let firstGlyphLocation = manager.location(forGlyphAt: glyphRange.location)
+            let lineBaseline = firstGlyphLocation.y
+            let drawOrigin = CGPoint(x: 0, y: baseline - lineBaseline)
+            manager.drawGlyphs(forGlyphRange: glyphRange, at: drawOrigin)
+            observedOracleLines.append(["text": text, "declaredLocalBaseline": baseline,
+                "firstGlyphLocation": [firstGlyphLocation.x, firstGlyphLocation.y],
+                "drawOrigin": [drawOrigin.x, drawOrigin.y], "glyphRuns": manager.observations])
         }
-        return try XCTUnwrap(bitmap.makeImage())
+        let image = try XCTUnwrap(bitmap.makeImage())
+        observedOracleBacking = image
+        return image
     }
 
     private func independentManufacturedComposite(source: CGImage) throws -> CGImage {
@@ -401,6 +412,14 @@ final class MacPhotoRendererTests: XCTestCase {
         let layout = try MacPhotoTextLayout.make(qualifiedText, rect: qualifiedRect)
         let metadata = try geometry(layout, text: qualifiedText, rect: qualifiedRect)
         XCTAssertTrue(matchesIndependent52Geometry(metadata))
+        // Observation only: retain the exact oracle backing used above and a
+        // replay of the production helper at its actual computed text bounds.
+        // Neither these observations nor a different renderer grants acceptance.
+        let asset = try NativeResources.legacyPhotosBubbleImage(named: bubble.asset)
+        let actualTextRect = try XCTUnwrap(MacPhotoRenderer.bubbleTextRect(bounds: bubble.bounds,
+            imageWidth: asset.width, imageHeight: asset.height, area: NativeResources.bubbleArea(named: bubble.asset)))
+        try observeGlyphBaselines(text: bubble.text, rect: actualTextRect, sourcePNG: sourcePNG,
+            actualComposite: actualImage, oracle: XCTUnwrap(observedOracleBacking))
         var mutations: [[String: Any]] = []
         for name in ["shift-down-one-point", "squeeze-to-logical-bounds", "remove-wrapped-space", "clip-right-half"] {
             let renderer = MacPhotoRenderer()
@@ -445,6 +464,83 @@ final class MacPhotoRendererTests: XCTestCase {
         XCTFail("The required production-path fault-injection qualification must run in Debug")
         #endif
     }
+    private func observeGlyphBaselines(text: String, rect: CGRect, sourcePNG: Data,
+                                       actualComposite: CGImage, oracle: CGImage) throws {
+        let layout = try MacPhotoTextLayout.make(text, rect: rect)
+        let replay = try MacPhotoTextRaster.make(layout, bounds: rect.size)
+        let lines = CTFrameGetLines(layout.frame) as! [CTLine]
+        var origins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(layout.frame, CFRange(location: 0, length: 0), &origins)
+        func matrix(_ t: CGAffineTransform) -> [CGFloat] { [t.a, t.b, t.c, t.d, t.tx, t.ty] }
+        func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+        var nativeLines: [[String: Any]] = []
+        for (index, line) in lines.enumerated() {
+            var runs: [[String: Any]] = []
+            for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+                let count = CTRunGetGlyphCount(run)
+                guard count > 0, count <= 32 else { continue }
+                var glyphs = [CGGlyph](repeating: 0, count: count)
+                var positions = [CGPoint](repeating: .zero, count: count)
+                var indices = [CFIndex](repeating: 0, count: count)
+                CTRunGetGlyphs(run, CFRange(location: 0, length: 0), &glyphs)
+                CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
+                CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
+                let attributes = CTRunGetAttributes(run) as NSDictionary
+                let font = attributes[kCTFontAttributeName] as! CTFont
+                var baselineAttributes: [String: String] = [:]
+                for key in attributes.allKeys {
+                    let name = String(describing: key)
+                    if name.lowercased().contains("baseline"), let value = attributes[key] {
+                        baselineAttributes[name] = String(String(describing: value).prefix(1000))
+                    }
+                }
+                let range = CTRunGetStringRange(run)
+                runs.append(["font": CTFontCopyPostScriptName(font) as String, "size": CTFontGetSize(font),
+                    "ascent": CTFontGetAscent(font), "descent": CTFontGetDescent(font),
+                    "fontMatrix": matrix(CTFontGetMatrix(font)), "runTextMatrix": matrix(CTRunGetTextMatrix(run)),
+                    "range": [range.location, range.length], "glyphs": glyphs.map(Int.init),
+                    "positionsFromCTRunGetPositions": positions.map { [$0.x, $0.y] },
+                    "stringIndices": indices, "baselineAttributes": baselineAttributes])
+            }
+            let range = CTLineGetStringRange(line)
+            nativeLines.append(["range": [range.location, range.length],
+                "frameLineOrigin": [origins[index].x, origins[index].y], "runs": runs])
+        }
+        func imageRecord(_ image: CGImage, role: String) throws -> [String: Any] {
+            let png = try RasterCodec.encode(image, as: .png)
+            guard png.count <= 30_000 else { throw NSError(domain: "NativeGlyphObservation", code: 1) }
+            return ["role": role, "width": image.width, "height": image.height,
+                "bitsPerComponent": image.bitsPerComponent, "bitsPerPixel": image.bitsPerPixel,
+                "alphaInfo": image.alphaInfo.rawValue, "bitmapInfo": image.bitmapInfo.rawValue,
+                "colorSpace": String(describing: image.colorSpace?.name),
+                "pngSHA256": digest(png), "pngBase64": png.base64EncodedString()]
+        }
+        let a = try pixels(replay), b = try pixels(oracle)
+        XCTAssertEqual(a.count, b.count)
+        var rgbMaximum = 0, alphaMaximum = 0, rgbPixels = 0, alphaPixels = 0
+        for index in stride(from: 0, to: min(a.count, b.count), by: 4) {
+            let alpha = abs(Int(a[index + 3]) - Int(b[index + 3]))
+            let rgb = (0..<3).map { abs(Int(a[index + $0]) - Int(b[index + $0])) }.max() ?? 0
+            alphaMaximum = max(alphaMaximum, alpha); rgbMaximum = max(rgbMaximum, rgb)
+            if alpha > 2 { alphaPixels += 1 }; if rgb > 2 { rgbPixels += 1 }
+        }
+        let record: [String: Any] = ["schema": "Celluloid.NativeGlyphObservation.1", "acceptance": false,
+            "text": text, "sourcePNG_SHA256": digest(sourcePNG),
+            "actualCompositePNG_SHA256": digest(try RasterCodec.encode(actualComposite, as: .png)),
+            "actualTextRect": [rect.minX, rect.minY, rect.width, rect.height],
+            "frameAllocationHeight": layout.height, "naturalBlockHeight": layout.typographicHeight,
+            "fontSize": layout.fontSize, "lineHeight": layout.lineHeight, "backingScale": MacPhotoTextRaster.scale,
+            "coreTextLines": nativeLines, "oracleLines": observedOracleLines,
+            "images": [try imageRecord(replay, role: "replayed-production-backing"),
+                       try imageRecord(oracle, role: "exact-appkit-oracle-backing")],
+            "isolatedMetrics": ["premultipliedRGBMaximum": rgbMaximum, "alphaMaximum": alphaMaximum,
+                "premultipliedRGBPixelsAbove2": rgbPixels, "alphaPixelsAbove2": alphaPixels],
+            "scope": "Diagnostic only. Exact oracle backing; production helper replay at actual computed bounds. Frame origins, glyph offsets and draw-hook locations are distinct observations, not interchangeable baselines."]
+        let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
+        guard data.count <= 100_000 else { throw NSError(domain: "NativeGlyphObservation", code: 2) }
+        print("MAC_NATIVE_GLYPH_OBSERVATION " + String(decoding: data, as: UTF8.self))
+    }
+
     @MainActor func testPrincipalControllerHostsRealEditorAndPureFormatNegotiation() throws {
         let controller = MacPhotoEditingController()
         _ = controller.view
@@ -457,5 +553,23 @@ final class MacPhotoRendererTests: XCTestCase {
         var callbacks = 0
         controller.cancelContentEditing(); controller.finishContentEditing { _ in callbacks += 1 }
         XCTAssertEqual(callbacks, 0)
+    }
+}
+
+/// Passive public draw-hook observation; always forwards the original arguments.
+private final class NativeOracleGlyphObserver: NSLayoutManager {
+    var observations: [[String: Any]] = []
+    override func showCGGlyphs(_ glyphs: UnsafePointer<CGGlyph>, positions: UnsafePointer<CGPoint>,
+        count glyphCount: Int, font: NSFont, textMatrix: CGAffineTransform,
+        attributes: [NSAttributedString.Key: Any], in context: CGContext) {
+        let ctm = context.ctm
+        observations.append(["font": font.fontName, "size": font.pointSize,
+            "ascender": font.ascender, "descender": font.descender,
+            "glyphs": Array(UnsafeBufferPointer(start: glyphs, count: glyphCount)).map(Int.init),
+            "positions": Array(UnsafeBufferPointer(start: positions, count: glyphCount)).map { [$0.x, $0.y] },
+            "textMatrix": [textMatrix.a, textMatrix.b, textMatrix.c, textMatrix.d, textMatrix.tx, textMatrix.ty],
+            "contextCTM": [ctm.a, ctm.b, ctm.c, ctm.d, ctm.tx, ctm.ty]])
+        super.showCGGlyphs(glyphs, positions: positions, count: glyphCount, font: font,
+            textMatrix: textMatrix, attributes: attributes, in: context)
     }
 }

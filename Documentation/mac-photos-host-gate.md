@@ -1,9 +1,17 @@
 # Actual macOS Photos host prerequisite in the existing Mac job
 
-Integration draft based on public `9c9e7fc9c12df342c883e8a1e4462f796469842c`,
-tree `f53aa262fb56d31cd0b2f03f3836147c26ff2858`. Rebase the frozen source
-snapshot before combining with a later source. This is host registration and
-entry coverage only. Every acceptance report retains `complete_host_e2e: false`.
+Current contract: `Celluloid.PhotosHostEntry.2`. This explicitly versioned test
+qualifies real Photos UI entry and a contemporaneous exact executable observation.
+It retires registry inventory claims; it does not reinterpret a failed v1 probe.
+Every acceptance report retains `complete_host_e2e: false`. The immutable source
+baseline remains `9c9e7fc9c12df342c883e8a1e4462f796469842c`, tree
+`f53aa262fb56d31cd0b2f03f3836147c26ff2858`, with individually reviewed changes.
+
+Public run [37259889783](https://github.com/100mango/Celluloid/actions/runs/37259889783)
+at `43b07f01c635dccc97593136d33ef055b4d26a2c` reached the sandboxed v1 discovery
+query and received `PKDiscoverAll` unauthorized-discovery failure before Photos
+launch. That failed result remains failed. V2 neither repeats nor relocates that
+query and performs no forced registration, election, or permission change.
 
 ## Execution and ownership
 
@@ -26,7 +34,7 @@ and materializes/verifies exact-source native icons. It rebuilds the external UI
 bundle and ordinary sandbox app locally with600-second and300-second owned-command
 bounds. The previously reviewed minimal ephemeral ad-hoc signature and app/extension
 entitlement checks are copied unchanged. No binary, Photos library, or user data
-is transferred from another job. Only this one app copy is launched and registered.
+is transferred from another job. Only this one app copy is launched through its normal application entry.
 
 The job retains its45-minute limit and conservative41-minute first-step clock.
 Before preparation and immediately before the host process it still requires
@@ -36,7 +44,7 @@ explicit incomplete stop. Owned xcodebuild timeout cleanup uses the existing
 bounded helper; no unrelated process is terminated. This prerequisite does not
 claim completed Photos UI teardown or full lifecycle cleanup. The VM is ephemeral.
 
-Host discovery does not require a successful layer-pixel comparison. Exact source,
+Host entry does not require a successful layer-pixel comparison. Exact source,
 rebuilt product signatures and child identity are prerequisites. Layered edits
 remain protected; this phase never saves, cancels a modified photo, or invokes Revert.
 
@@ -71,11 +79,32 @@ and independent resource/pixel expectations for that target.
 
 ## Unchanged safety and acceptance requirements
 
-The prior reviewed probe's installed app/extension identities, strict signatures,
-minimal entitlements, bundle inventories, unique exact PluginKit path, real Photos
-editor controls, and live extension PID/executable hash checks remain mandatory.
-The Photos UI test invokes the actual extension; it never instantiates its
-controller as a substitute. Missing or ambiguous controls stop with AX evidence.
+The installed app/extension identities, strict signatures, minimal entitlements,
+bundle inventories, and live extension PID/executable hash checks remain mandatory.
+V2 observes the real Photos menu and editor instead of querying PluginKit:
+
+1. Verify the fixed system Photos bundle/executable and retain its PID. Select
+   only the sole owned synthetic asset with its exact observed label and hash.
+2. Require one exact `Celluloid` menu item that is enabled and hittable. Require
+   zero `Celluloid photo editor` elements before clicking that exact menu item.
+3. Require one editor containing exactly one `Edited photo preview`, one enabled
+   `photos-extension.filter`, no placeholder, no preparing indicator, no read-only
+   state and no error. Initial absence/loading may wait up to30 seconds before the
+   process probe; any observed ambiguous controls, read-only or error state is
+   latched as failure instead of being forgotten when the UI later changes. Each
+   readiness poll also rejects a changed or ambiguous Photos identity.
+4. Observe the mandatory live extension PID, canonical executable and actual hash
+   with the existing read-only child. Immediately observe the ready editor again,
+   without a recovery wait, and reverify the same Photos PID/executable on both
+   sides of the child observation. Missing/ambiguous/replaced/loading state rejects.
+
+This is an observational association of UI and executable, not an OS audit-token
+attribution of the view, exhaustive global registry inventory, or proof of exact
+`PHContentEditingInput` resource bytes. The two ready snapshots do not detect an
+unobserved disappear/reappear interval during the process helper. The Photos UI
+test invokes the actual
+extension; it never instantiates its controller as a substitute. Missing or
+ambiguous controls stop with AX evidence.
 
 Unknown permission, account, legal, Gatekeeper, authentication or other system
 interruptions abort before XCTest's default handler. Only the previously observed
@@ -84,7 +113,7 @@ state, but no extension election, checkbox, security preference, TCC database,
 Apple account or real signing key is changed.
 
 The verifier requires one finalized, passed, unskipped exact XCTest and all
-same-source product/registration/live-process/fixture-ownership receipts. It
+same-source product/UI-transition/live-process/fixture-ownership receipts. It
 rejects optimized Python before any action. Source verification freezes the base
 files except the reviewed project membership, ordinary test receipt addition,
 two explicitly SHA-pinned diagnostic-only test files, and separately reviewed
@@ -104,7 +133,7 @@ prefix is explicitly listed in omissions. Runtime markers and failure assertions
 are not relaxed. Any further screenshot omission remains explicit in its manifest.
 
 The dedicated host collector retains mandatory outcome, source, product,
-finalized-test, fixture, registration and live-process receipts before optional
+finalized-test, fixture, UI-transition and live-process receipts before optional
 screenshots/AX dumps. Both complete combined-source receipts are mandatory and
 must agree with host source tree/workflow, candidate SHA and current contract
 fingerprint. They are verified after host execution before acceptance and upload.
@@ -136,16 +165,29 @@ source commit, actual test-source/verifier hashes and expected product hashes
 before any host UI action. Each subsequent proof record has a fixed name,
 strictly ordered sequence, byte count, content hash and the same context binding.
 The stdout transport is capped at 160,000 decoded bytes total; individual records
-are capped at 16,000 bytes, or 120,000 for registration text and the fixture.
+are capped at 16,000 bytes, or 120,000 for the fixture.
 
 Only the outer runner writes the allowlisted receipt files. It waits for the
 bounded xcodebuild process to finish, parses the exact testcase enclosure, and
 replays all bytes before acceptance. Acceptance additionally requires exactly one
 passed testcase, the successful xcodebuild terminal, bounded-process exit zero,
 the finalized xcresult summary, actual live-process/executable receipts, unchanged
-source/product checks and the existing fixture/registration checks. Echoed source
+source/product checks and the fixture/UI-transition checks. Echoed source
 values or a transport-success flag alone cannot grant acceptance. Every collected
 accepted packet reruns the complete transport and host proof.
+
+The context, first payload, proof envelopes, replay report, acceptance and collected
+manifest carry the v2 identity. The exact ordered stdout names are `transport.json`,
+`containing-process.json`, `photos-process.json`, `fixture.json`,
+`fixture-ownership.json`, `host-selection.json`, `host-editor-before-process.json`,
+`extension-process.json`, `host-editor-after-process.json`, `prerequisite.json`,
+`outcome.json`. A v1 or registry-only packet cannot qualify as v2. The collector
+requires exact UI schema keys, primitive types, expected counts, labels, phases,
+Photos PID/path, fixture and source identity, and independently replays these
+checks from the actual transport bytes. Nonfinite JSON, duplicate keys and
+contradictory timeout/success evidence reject even after payload rehashing.
+A structured first blocked operation also vetoes acceptance even if a textual
+failure marker is missing.
 
 The Python live-process child is read-only and returns its JSON receipt on stdout;
 it never writes the external evidence directory. Bounded AX text and the two
@@ -154,7 +196,13 @@ known host diagnostic names from the exact host test, with Xcode's observed
 iteration/UUID suffix, direct owned export files, no symlinks, correct file types
 and the existing size caps. Transport completion is published only after this
 export is finished and validated. Missing, malformed, duplicate, out-of-order,
-truncated, over-budget or wrong-context records remain red.
+truncated, over-budget or wrong-context records remain red. On an attachment
+manifest parse/matching failure, a fixed optional diagnostic may retain the
+manifest hash, original bounded error and the first16 metadata items (160 characters
+per field, at most16KB). It reads no metadata-reported paths and cannot grant
+transport completion. Omitted metadata is explicit and the total host cap is unchanged.
+The outcome is emitted before optional screenshot work; Photos screenshots are
+attempted only after its identity has been verified.
 
 This changes neither entitlements nor permissions, privacy settings, registration
 preferences, production serialization, rendering goldens or the guarded Photos

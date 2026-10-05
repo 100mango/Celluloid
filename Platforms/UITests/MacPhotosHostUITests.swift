@@ -5,9 +5,10 @@ import ImageIO
 import UniformTypeIdentifiers
 import CryptoKit
 
-/// Opt-in, real Apple Photos host discovery. This test never instantiates the
+/// Opt-in, real Apple Photos host-entry v2. This test never instantiates the
 /// extension controller and deliberately cannot certify the complete host E2E.
 final class MacPhotosHostUITests: XCTestCase {
+    private static let hostEntryContract = "Celluloid.PhotosHostEntry.2"
     private var interruption: NSObjectProtocol?
     private var contextHash = ""
     private var proofSequence = 0
@@ -16,6 +17,7 @@ final class MacPhotosHostUITests: XCTestCase {
     private var emittedDiagnostics = Set<String>()
     private var context: [String: Any] = [:]
     private var stage = "not-started"
+    private var firstBlockedOperation: [String: Any]?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -33,6 +35,7 @@ final class MacPhotosHostUITests: XCTestCase {
         context = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(context["app_id"] as? String, "Mango.Celluloid")
         XCTAssertEqual(context["extension_id"] as? String, "Mango.Celluloid.CelluloidPhotoExtension")
+        XCTAssertEqual(context["host_entry_contract"] as? String, Self.hostEntryContract)
         contextHash = digest(data)
         XCTAssertEqual(try digest(URL(fileURLWithPath: value("script_path"))), try value("script_sha256"))
         XCTAssertEqual(try digest(URL(fileURLWithPath: value("test_source_path"))), try value("test_source_sha256"))
@@ -45,18 +48,26 @@ final class MacPhotosHostUITests: XCTestCase {
     @MainActor func testInstalledExtensionIsInvokedByActualPhotos() throws {
         // Validate the exact read-only input before any host UI action. Only
         // XCTest stdout/attachments carry data back across the sandbox boundary.
-        try report(["schema": "Celluloid.HostTransport.1", "source_sha": try value("source_sha"),
+        try report(["schema": "Celluloid.HostTransport.2", "host_entry_contract": Self.hostEntryContract, "source_sha": try value("source_sha"),
                     "context_sha256": contextHash, "test_source_sha256": try value("test_source_sha256"),
                     "verifier_sha256": try value("script_sha256"),
                     "app_executable_sha256": try value("app_executable_sha256"),
                     "extension_executable_sha256": try value("extension_executable_sha256"),
                     "external_writes": false, "context_validated": true], named: "transport.json")
         let photos = XCUIApplication(bundleIdentifier: "com.apple.Photos")
+        var photosIdentityVerified = false
         defer {
-            try? checkpoint(photos, "last-observed", screenshot: true)
-            try? report(["source_sha": context["source_sha"] as? String ?? "missing",
-                         "last_stage": stage, "complete_host_e2e": false,
-                         "save_reopen_cancel_revert": "not executed in prerequisite phase"], named: "outcome.json")
+            // Preserve the original failure before any optional AX/screenshot
+            // request can itself fail. This record grants no host acceptance.
+            var outcome: [String: Any] = ["source_sha": context["source_sha"] as? String ?? "missing",
+                "last_stage": stage, "host_entry_contract": Self.hostEntryContract, "complete_host_e2e": false,
+                "save_reopen_cancel_revert": "not executed in prerequisite phase"]
+            if let firstBlockedOperation { outcome["first_blocked_operation"] = firstBlockedOperation }
+            try? report(outcome, named: "outcome.json")
+            if photosIdentityVerified {
+                do { try checkpoint(photos, "last-observed", screenshot: true) }
+                catch { print("MAC_HOST_DIAGNOSTIC_FAILED " + String(error.localizedDescription.prefix(1000))) }
+            }
         }
         stage = "launch-exact-installed-containing-app"
         let appURL = URL(fileURLWithPath: try value("app_path")).standardizedFileURL.resolvingSymlinksInPath()
@@ -74,11 +85,8 @@ final class MacPhotosHostUITests: XCTestCase {
         if startupCancel.waitForExistence(timeout: 3) { startupCancel.click() }
         app.terminate()
 
-        stage = "observe-registration"
-        let registered = try command("/usr/bin/pluginkit", ["-m", "-v", "-i", try value("extension_id")])
-        try text(registered, named: "registration-before.txt")
-        // Do not add or elect an extension with pluginkit. The normal app install
-        // and Photos Manage UI must reveal registration and selection themselves.
+        // Host-entry v2 tests documented Photos UI behavior. No registry query
+        // is retried or relocated; the historical denied operation stays failed.
 
         stage = "photos-first-use-and-synthetic-import"
         photos.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
@@ -88,6 +96,8 @@ final class MacPhotosHostUITests: XCTestCase {
         let host = try XCTUnwrap(hosts.first)
         XCTAssertEqual(host.bundleURL?.path, "/System/Applications/Photos.app")
         try report(["bundle": host.bundleURL!.path, "executable": host.executableURL?.path ?? "", "pid": host.processIdentifier], named: "photos-process.json")
+        photosIdentityVerified = true
+        let photosPID = host.processIdentifier
         // The sole first-use action already observed and qualified in the base
         // Photos27 synthetic-library lane. No account/permission alert is accepted.
         let started = photos.buttons["Get Started"]
@@ -120,9 +130,10 @@ final class MacPhotosHostUITests: XCTestCase {
         XCTAssertTrue(assets.firstMatch.waitForExistence(timeout: 20))
         XCTAssertEqual(assets.count, 1, "Only the freshly imported owned synthetic asset may be opened")
         XCTAssertTrue(assets.firstMatch.isHittable)
+        let selectedAssetLabel = assets.firstMatch.label
         try report(["source_sha": try value("source_sha"), "mode": mode,
                     "initial_count": 0, "selected_count": assets.count,
-                    "asset_label": assets.firstMatch.label, "fixture_sha256": fixtureHash,
+                    "asset_label": selectedAssetLabel, "fixture_sha256": fixtureHash,
                     "app_executable_sha256": try value("app_executable_sha256"),
                     "width": 1200, "height": 800], named: "fixture-ownership.json")
         assets.firstMatch.doubleClick()
@@ -138,7 +149,7 @@ final class MacPhotosHostUITests: XCTestCase {
         try clickNamed("Extensions", in: photos)
         try checkpoint(photos, "extensions", screenshot: true)
         let celluloid = photos.menuItems.matching(NSPredicate(format: "label == %@", "Celluloid"))
-        if celluloid.count != 1 || !celluloid.firstMatch.isHittable {
+        if celluloid.count != 1 || !celluloid.firstMatch.isEnabled || !celluloid.firstMatch.isHittable {
             stage = "extension-not-selectable-observe-manage"
             let manage = namedControls("Manage", in: photos) + namedControls("Manage…", in: photos)
             if manage.count == 1 && manage[0].isHittable {
@@ -151,13 +162,19 @@ final class MacPhotosHostUITests: XCTestCase {
             }
             throw block("Celluloid is not uniquely selectable; actual Manage state captured, enablement not guessed")
         }
-        try assertUniqueRegistration(beforeInvocation: true)
+        let editorCountBefore = editorMatches(in: photos).count
+        XCTAssertEqual(editorCountBefore, 0, "An already-present editor cannot prove this host transition")
+        var selection = try hostObservation(expectedPID: photosPID, fixtureHash: fixtureHash, assetLabel: selectedAssetLabel)
+        selection.merge(["schema": "Celluloid.HostSelection.2", "menu_label": "Celluloid",
+            "menu_count": celluloid.count, "menu_enabled": celluloid.element(boundBy: 0).isEnabled,
+            "menu_hittable": celluloid.element(boundBy: 0).isHittable,
+            "editor_count_before": editorCountBefore]) { _, new in new }
+        try report(selection, named: "host-selection.json")
         stage = "invoke-real-photos-extension"
-        celluloid.firstMatch.click()
-        let editor = photos.descendants(matching: .any)["photos-extension.filter"].firstMatch
-        XCTAssertTrue(editor.waitForExistence(timeout: 30), "Actual extension editor did not appear in Photos")
-        XCTAssertFalse(photos.descendants(matching: .any)["photos-extension.error"].firstMatch.exists)
-        XCTAssertFalse(photos.descendants(matching: .any)["photos-extension.read-only"].firstMatch.exists)
+        celluloid.element(boundBy: 0).click()
+        stage = "observe-ready-editor-before-process"
+        try report(readyEditorObservation(in: photos, expectedPID: photosPID, fixtureHash: fixtureHash,
+            assetLabel: selectedAssetLabel, phase: "before-process"), named: "host-editor-before-process.json")
         try checkpoint(photos, "host-editor")
         stage = "bind-running-extension-executable"
         let script = URL(fileURLWithPath: try value("script_path"))
@@ -165,9 +182,11 @@ final class MacPhotosHostUITests: XCTestCase {
         let processes = try command("/usr/bin/env", ["python3", script.path, "processes"])
         let processReceipt = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(processes.utf8)) as? [String: Any])
         try report(processReceipt, named: "extension-process.json")
-        try assertUniqueRegistration()
+        stage = "observe-ready-editor-after-process"
+        try report(readyEditorObservation(in: photos, expectedPID: photosPID, fixtureHash: fixtureHash,
+            assetLabel: selectedAssetLabel, phase: "after-process"), named: "host-editor-after-process.json")
         stage = "host-entry-prerequisite-passed"
-        try report(["prerequisite_passed": true, "complete_host_e2e": false,
+        try report(["host_entry_contract": Self.hostEntryContract, "prerequisite_passed": true, "complete_host_e2e": false,
                     "production_source_base": try value("base_sha"), "source_sha": try value("source_sha"),
                     "pending": ["exact host save/cancel/revert/export UI", "resource and geometry readback", "complete lifecycle pixel oracle"]], named: "prerequisite.json")
         print("MAC_HOST_PREREQUISITE_PASSED actual Photos invocation and exact running extension identity; full lifecycle unexecuted")
@@ -206,21 +225,89 @@ final class MacPhotosHostUITests: XCTestCase {
         }
         controls[0].click()
     }
-    private func assertUniqueRegistration(beforeInvocation: Bool = false) throws {
-        let stem = beforeInvocation ? "registration-before-invoke" : "registration-selected"
-        let listing = try command("/usr/bin/pluginkit", ["-m", "-v", "-i", try value("extension_id")])
-        try proof(Data(listing.utf8), named: stem + ".txt")
-        let expected = URL(fileURLWithPath: try value("extension_path")).resolvingSymlinksInPath().path
-        // -v returns matching bundle paths. An unfamiliar output format is a
-        // blocker; never interpret a menu label or identity as path evidence.
-        let paths = listing.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { $0.hasPrefix("/") && $0.hasSuffix(".appex") }
-            .map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
-        guard paths == [expected] else { throw block("Missing/ambiguous registered extension path: " + paths.joined(separator: "; ")) }
-        try report(["source_sha": try value("source_sha"), "extension_id": try value("extension_id"),
-                    "expected_extension_path": expected, "registered_paths": paths,
-                    "registration_text_sha256": digest(Data(listing.utf8))],
-                   named: stem + ".json")
+    @MainActor private func editorMatches(in photos: XCUIApplication) -> XCUIElementQuery {
+        photos.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Celluloid photo editor"))
+    }
+    @MainActor private func hostObservation(expectedPID: pid_t, fixtureHash: String, assetLabel: String) throws -> [String: Any] {
+        let matches = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Photos")
+        XCTAssertEqual(matches.count, 1)
+        let host = try XCTUnwrap(matches.first)
+        XCTAssertEqual(host.processIdentifier, expectedPID, "Photos changed during the host-entry observation")
+        XCTAssertEqual(host.bundleURL?.path, "/System/Applications/Photos.app")
+        XCTAssertEqual(host.executableURL?.path, "/System/Applications/Photos.app/Contents/MacOS/Photos")
+        return ["host_entry_contract": Self.hostEntryContract, "source_sha": try value("source_sha"),
+            "photos_pid": host.processIdentifier, "photos_bundle": host.bundleURL!.path,
+            "photos_executable": host.executableURL!.path, "fixture_sha256": fixtureHash, "asset_label": assetLabel]
+    }
+    @MainActor private func readyEditorObservation(in photos: XCUIApplication, expectedPID: pid_t,
+        fixtureHash: String, assetLabel: String, phase: String) throws -> [String: Any] {
+        let matches = editorMatches(in: photos)
+        func observations() -> [String: Any] {
+            // Each dynamic count is sampled once and reused for all decisions.
+            // An observed duplicate must not disappear into a later query.
+            let editorCount = matches.count
+            var row: [String: Any] = ["schema": "Celluloid.HostEditor.2", "phase": phase,
+                "editor_label": "Celluloid photo editor", "editor_count": editorCount]
+            guard editorCount == 1 else { return row }
+            let editor = matches.element(boundBy: 0)
+            func labelled(_ label: String) -> XCUIElementQuery {
+                editor.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label))
+            }
+            let filter = editor.descendants(matching: .any).matching(identifier: "photos-extension.filter")
+            let filterCount = filter.count
+            row.merge(["preview_label": "Edited photo preview", "preview_count": labelled("Edited photo preview").count,
+                "placeholder_count": labelled("Current photo from Photos").count,
+                "preparing_count": labelled("Preparing photo").count,
+                "filter_identifier": "photos-extension.filter", "filter_count": filterCount,
+                "filter_enabled": filterCount == 1 && filter.element(boundBy: 0).isEnabled,
+                "read_only_count": editor.descendants(matching: .any).matching(identifier: "photos-extension.read-only").count,
+                "error_count": editor.descendants(matching: .any).matching(identifier: "photos-extension.error").count]) { _, new in new }
+            return row
+        }
+        func ready(_ row: [String: Any]) -> Bool {
+            return row["editor_count"] as? Int == 1 && row["preview_count"] as? Int == 1 && row["placeholder_count"] as? Int == 0
+                && row["preparing_count"] as? Int == 0 && row["filter_count"] as? Int == 1
+                && row["filter_enabled"] as? Bool == true && row["read_only_count"] as? Int == 0
+                && row["error_count"] as? Int == 0
+        }
+        if phase == "before-process" {
+            var contradiction: String?
+            let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                let hosts = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Photos")
+                guard hosts.count == 1, let host = hosts.first,
+                      host.processIdentifier == expectedPID,
+                      host.bundleURL?.path == "/System/Applications/Photos.app",
+                      host.executableURL?.path == "/System/Applications/Photos.app/Contents/MacOS/Photos" else {
+                    contradiction = "Photos identity changed during host-entry readiness"; return true
+                }
+                let row = observations()
+                if (row["editor_count"] as? Int ?? 0) > 1 {
+                    contradiction = "Ambiguous Celluloid editor during host entry"; return true
+                }
+                for key in ["preview_count", "placeholder_count", "preparing_count", "filter_count"] {
+                    if (row[key] as? Int ?? 0) > 1 {
+                        contradiction = "Ambiguous editor control during host entry: " + key; return true
+                    }
+                }
+                if (row["read_only_count"] as? Int ?? 0) > 0 || (row["error_count"] as? Int ?? 0) > 0 {
+                    contradiction = "Read-only or error state during host entry"; return true
+                }
+                return ready(row)
+            }, object: nil)
+            guard XCTWaiter.wait(for: [expectation], timeout: 30) == .completed else {
+                throw block("Actual Celluloid editor did not become ready")
+            }
+            if let contradiction { throw block(contradiction) }
+        }
+        // The post-process observation must already be ready; no recovery wait
+        // can turn a disappeared/loading editor into a successful bracket.
+        let observed = observations()
+        guard ready(observed) else {
+            throw block("Actual Celluloid editor is missing, ambiguous, still loading, read-only or not ready")
+        }
+        var record = try hostObservation(expectedPID: expectedPID, fixtureHash: fixtureHash, assetLabel: assetLabel)
+        record.merge(observed) { _, new in new }
+        return record
     }
     @MainActor private func checkpoint(_ app: XCUIApplication, _ name: String, screenshot: Bool = false) throws {
         try text(app.debugDescription, named: name + ".txt")
@@ -272,7 +359,10 @@ final class MacPhotosHostUITests: XCTestCase {
         let bytes = pipe.fileHandleForReading.readDataToEndOfFile()
         guard bytes.count <= 120_000 else { throw block("Read-only command exceeded output budget") }
         let result = String(decoding: bytes, as: UTF8.self)
-        guard p.terminationStatus == 0 else { throw block("Read-only command failed: " + result) }
+        guard p.terminationStatus == 0 else {
+            throw block("Read-only command failed: " + result,
+                        operation: ["executable": executable, "arguments": args, "exit_code": p.terminationStatus])
+        }
         return result
     }
     private func value(_ key: String) throws -> String { try XCTUnwrap(context[key] as? String, "Missing bound context: " + key) }
@@ -287,13 +377,13 @@ final class MacPhotosHostUITests: XCTestCase {
     }
     private func proof(_ bytes: Data, named name: String) throws {
         let names = ["transport.json", "containing-process.json", "photos-process.json", "fixture.json", "fixture-ownership.json",
-                     "registration-before-invoke.txt", "registration-before-invoke.json", "extension-process.json",
-                     "registration-selected.txt", "registration-selected.json", "prerequisite.json", "outcome.json"]
+                     "host-selection.json", "host-editor-before-process.json", "extension-process.json",
+                     "host-editor-after-process.json", "prerequisite.json", "outcome.json"]
         let limit = name.hasSuffix(".txt") || name == "fixture.json" ? 120_000 : 16_000
         guard names.contains(name), !emittedProofs.contains(name), !bytes.isEmpty, bytes.count <= limit,
               proofBytes + bytes.count <= 160_000 else { throw block("Unexpected or oversized proof receipt") }
         emittedProofs.insert(name); proofBytes += bytes.count
-        let record: [String: Any] = ["schema": "Celluloid.MacHostProof.1", "sequence": proofSequence,
+        let record: [String: Any] = ["schema": "Celluloid.MacHostProof.2", "sequence": proofSequence,
             "name": name, "bytes": bytes.count, "sha256": digest(bytes), "base64": bytes.base64EncodedString(),
             "source_sha": try value("source_sha"), "context_sha256": contextHash,
             "test_source_sha256": try value("test_source_sha256"), "verifier_sha256": try value("script_sha256")]
@@ -301,7 +391,7 @@ final class MacPhotosHostUITests: XCTestCase {
         print("MAC_HOST_PROOF " + String(decoding: serialized, as: UTF8.self)); proofSequence += 1
     }
     private func diagnostic(_ bytes: Data, named name: String, type: String) throws {
-        let names: Set<String> = ["registration-before.txt", "initial.txt", "imported.txt", "single-photo.txt", "editing.txt", "extensions.txt",
+        let names: Set<String> = ["initial.txt", "imported.txt", "single-photo.txt", "editing.txt", "extensions.txt",
             "manage-observed.txt", "host-editor.txt", "last-observed.txt", "missing-control-edit.txt", "missing-control-extensions.txt",
             "extensions.jpg", "last-observed.jpg"]
         guard names.contains(name), !emittedDiagnostics.contains(name), !bytes.isEmpty,
@@ -310,7 +400,12 @@ final class MacPhotosHostUITests: XCTestCase {
         let attachment = XCTAttachment(data: bytes, uniformTypeIdentifier: type)
         attachment.name = "celluloid-host-diagnostic-" + name; attachment.lifetime = .keepAlways; add(attachment)
     }
-    private func block(_ reason: String) -> NSError {
+    private func block(_ reason: String, operation: [String: Any]? = nil) -> NSError {
+        if firstBlockedOperation == nil {
+            var record: [String: Any] = ["stage": stage, "reason": String(reason.prefix(2000))]
+            if let operation { record["operation"] = operation }
+            firstBlockedOperation = record
+        }
         print("MAC_HOST_BLOCKED stage=" + stage + " reason=" + reason)
         return NSError(domain: "MacPhotosHostPrerequisite", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
     }

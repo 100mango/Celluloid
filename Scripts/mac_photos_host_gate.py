@@ -19,7 +19,7 @@ import sys
 import tempfile
 import time
 import math
-from mac_host_transport import load_json
+from mac_host_transport import load_json,HOST_CONTRACT
 
 # Mandatory acceptance/source/product assertions must never be optimized away.
 # Reject before parsing an action, reading receipts, or creating any evidence.
@@ -92,7 +92,7 @@ ALLOWED = {
 CAP = 1_000_000
 BASE_FILE_COUNT = 544
 REVIEWED_TEST_FILES = {'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': 'f4c7a7a16bf5414e6c2a2716bc146bdc216f7ea966a80207acce8a7667584890', 'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift': 'ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034'}
-REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': 'b015030234b7399d9908c20852efe44f880ba68a0cabe01492a95fd274ae2df1', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': 'ba3199901afda2065323e67ba53ad27cd3cd95d047c81508c5045ad177993b58', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
+REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': '89a25b0c29302850c829f8a86d8e6d29b22ed84cd7addbd3a48aa4bf127231e0', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': 'ba3199901afda2065323e67ba53ad27cd3cd95d047c81508c5045ad177993b58', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
 UNCHANGED_BASE_FILES = BASE_FILE_COUNT - 2 - len(REVIEWED_TEST_FILES) - len(REVIEWED_CANDIDATE_FILES)
 
 def run(*args):
@@ -201,7 +201,7 @@ def prepare():
         assert entitlement(bundle) == permissions, (identity, entitlement(bundle))
         run('/usr/bin/codesign', '--verify', '--strict', '--deep', str(bundle))
     # Reuse the exact already signed same-job app. Copying a second same-ID
-    # app after ordinary UI launch would make PluginKit registration ambiguous.
+    # app after ordinary UI launch would make runtime product identity ambiguous.
     debug_permissions = app_permissions
     installed = source
     embedded = installed / 'Contents/PlugIns/CelluloidMacPhotosExtension.appex'
@@ -210,7 +210,7 @@ def prepare():
         assert entitlement(bundle) == permissions
     evidence = temp() / 'mac-host-observed'
     evidence.mkdir(exist_ok=False)
-    context = {'source_sha': os.environ['GITHUB_SHA'], 'base_sha': BASE, 'app_path': str(installed),
+    context = {'host_entry_contract':HOST_CONTRACT, 'source_sha': os.environ['GITHUB_SHA'], 'base_sha': BASE, 'app_path': str(installed),
                'extension_path': str(embedded), 'app_executable': str(installed / 'Contents/MacOS/CelluloidMac'),
                'extension_executable': str(embedded / 'Contents/MacOS/CelluloidMacPhotosExtension'),
                'app_id': APP_ID, 'extension_id': EXT_ID, 'evidence_path': str(evidence),
@@ -231,6 +231,7 @@ def prepare():
 def context():
     p = temp() / 'mac-host-context.json'
     c = load_json(p.read_text())
+    assert c['host_entry_contract']==HOST_CONTRACT
     assert c['source_sha'] == os.environ['GITHUB_SHA']
     assert c['app_id'] == APP_ID and c['extension_id'] == EXT_ID
     assert c['script_sha256'] == sha(__file__)
@@ -310,7 +311,7 @@ def transport_records(root, c, complete=False):
     return parse(path.read_text(),c,sha(root/'mac-host-context.json'),complete=complete)
 
 def transport_report(root, c, records):
-    return {'schema':'Celluloid.HostTransportReplay.1','source_sha':c['source_sha'],
+    return {'schema':'Celluloid.HostTransportReplay.2','host_entry_contract':HOST_CONTRACT,'source_sha':c['source_sha'],
         'context_sha256':sha(Path(root)/'mac-host-context.json'), 'test_source_sha256':c['test_source_sha256'],
         'transcript_sha256':sha(Path(root)/'mac-host-test.log'),
         'records':[{'name':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()} for name,data in records.items()],
@@ -335,7 +336,39 @@ def extract_transport():
         assert exported.returncode==0, 'Required bounded host attachment export failed'
         manifest=folder/'manifest.json'
         assert manifest.is_file() and not manifest.is_symlink() and manifest.stat().st_size<=200_000
-        diagnostics=attachment_candidates(folder,load_json(manifest.read_text()))
+        raw=manifest.read_bytes(); parsed=None
+        try:
+            parsed=load_json(raw)
+            diagnostics=attachment_candidates(folder,parsed)
+        except (AssertionError,ValueError,UnicodeError) as error:
+            # Metadata only, never an alternate attachment-matching path. Keep
+            # the original error and raw manifest identity under the same cap.
+            rows=[]; count=0
+            for record in parsed if type(parsed) is list else []:
+                if type(record) is not dict:continue
+                for item in record.get('attachments',[]) if type(record.get('attachments')) is list else []:
+                    count+=1
+                    if len(rows)<16 and type(item) is dict:
+                        rows.append({key:str(value)[:160] for key,value in {
+                            'testIdentifier':record.get('testIdentifier'),
+                            'suggestedHumanReadableName':item.get('suggestedHumanReadableName'),
+                            'exportedFileName':item.get('exportedFileName')}.items()})
+            failure={'schema':'Celluloid.HostAttachmentFailure.1','acceptance':False,
+                'source_sha':c['source_sha'],'context_sha256':sha(root/'mac-host-context.json'),
+                'manifest_sha256':hashlib.sha256(raw).hexdigest(),
+                'error':type(error).__name__+': '+str(error)[:1000],
+                'metadata_field_limit':160,'attachment_count':count,'retained_first_items':rows,
+                'omitted_items':count-len(rows)}
+            target=observed/'attachment-export-failure.json'
+            if not target.exists() and not target.is_symlink():
+                data=(json.dumps(failure,sort_keys=True)+'\n').encode()
+                if len(data)>16_000:
+                    failure.update(retained_first_items=[],omitted_items=count)
+                    data=(json.dumps(failure,sort_keys=True)+'\n').encode()
+                try:
+                    if len(data)<=16_000:target.write_bytes(data)
+                except OSError:pass  # Optional retention cannot replace the original failure.
+            raise
         for name,data in diagnostics.items():
             target=observed/name
             assert not target.exists() and not target.is_symlink(), 'Attachment collides with a host receipt'
@@ -343,6 +376,27 @@ def extract_transport():
     # Publish the mandatory transport completion only after the actual export
     # finished and every selected name/path/type/size was validated.
     write(root/'mac-host-transport-replay.json',transport_report(root,c,records))
+
+def validate_host_ui(selection,before,after,photos,ownership,source_sha):
+    common={'schema','host_entry_contract','source_sha','photos_pid','photos_bundle','photos_executable','fixture_sha256','asset_label'}
+    selection_keys={'menu_label','menu_count','menu_enabled','menu_hittable','editor_count_before'}
+    editor_keys={'phase','editor_label','editor_count','preview_label','preview_count','placeholder_count','preparing_count','filter_identifier','filter_count','filter_enabled','read_only_count','error_count'}
+    for name,row,keys,schema in [('selection',selection,selection_keys,'Celluloid.HostSelection.2'),('before',before,editor_keys,'Celluloid.HostEditor.2'),('after',after,editor_keys,'Celluloid.HostEditor.2')]:
+        assert type(row) is dict and set(row)==common|keys, 'Unknown/missing host UI receipt: '+name
+        assert row['schema']==schema and row['host_entry_contract']==HOST_CONTRACT
+        assert row['source_sha']==source_sha
+        assert type(row['photos_pid']) is int and row['photos_pid']==photos['pid'] and row['photos_pid']>0
+        assert row['photos_bundle']==photos['bundle']=='/System/Applications/Photos.app'
+        assert row['photos_executable']==photos['executable']=='/System/Applications/Photos.app/Contents/MacOS/Photos'
+        assert row['fixture_sha256']==ownership['fixture_sha256'] and row['asset_label']==ownership['asset_label']
+    assert selection['menu_label']=='Celluloid'
+    for key,wanted in [('menu_count',1),('editor_count_before',0)]:assert type(selection[key]) is int and selection[key]==wanted
+    assert selection['menu_enabled'] is True and selection['menu_hittable'] is True
+    for phase,row in [('before-process',before),('after-process',after)]:
+        assert row['phase']==phase and row['editor_label']=='Celluloid photo editor' and row['preview_label']=='Edited photo preview'
+        assert row['filter_identifier']=='photos-extension.filter' and row['filter_enabled'] is True
+        for key,wanted in [('editor_count',1),('preview_count',1),('placeholder_count',0),('preparing_count',0),('filter_count',1),('read_only_count',0),('error_count',0)]:
+            assert type(row[key]) is int and row[key]==wanted, 'Unready/ambiguous host editor: '+key
 
 def verify_acceptance(root, source_sha):
     """Require finalized XCTest execution plus same-candidate live-host receipts.
@@ -358,6 +412,7 @@ def verify_acceptance(root, source_sha):
     assert budget_report['clock_sha256']==sha(root/'mac-job-clock.json')
     c = read_receipt(root / 'mac-host-context.json')
     assert re.fullmatch(r'[0-9a-f]{40}', source_sha), 'Invalid candidate identity'
+    assert c['host_entry_contract']==HOST_CONTRACT
     assert c['source_sha'] == source_sha and c['base_sha'] == BASE
     assert c['app_id'] == APP_ID and c['extension_id'] == EXT_ID
     assert c['complete_host_e2e'] is False
@@ -423,25 +478,22 @@ def verify_acceptance(root, source_sha):
         assert ownership['fixture_sha256'] == fixture['sha256']
     prerequisite = read_receipt(observed / 'prerequisite.json')
     outcome = read_receipt(observed / 'outcome.json')
-    registration = read_receipt(observed / 'registration-selected.json')
+    selection=read_receipt(observed/'host-selection.json')
+    editor_before=read_receipt(observed/'host-editor-before-process.json')
+    editor_after=read_receipt(observed/'host-editor-after-process.json')
+    validate_host_ui(selection,editor_before,editor_after,photos,ownership,source_sha)
     process = read_receipt(observed / 'extension-process.json')
-    for name, receipt in [('prerequisite', prerequisite), ('outcome', outcome), ('registration', registration), ('process', process)]:
+    for name, receipt in [('prerequisite', prerequisite), ('outcome', outcome), ('process', process)]:
         assert receipt['source_sha'] == source_sha, 'Wrong candidate: ' + name
+    assert prerequisite['host_entry_contract']==outcome['host_entry_contract']==HOST_CONTRACT
     assert prerequisite['prerequisite_passed'] is True
     assert prerequisite['complete_host_e2e'] is False
     assert prerequisite['production_source_base'] == BASE
     assert outcome['complete_host_e2e'] is False
+    assert 'first_blocked_operation' not in outcome, 'A blocked operation cannot grant host-entry acceptance'
     assert outcome['last_stage'] == 'host-entry-prerequisite-passed', 'Host did not reach final prerequisite stage'
     assert outcome['save_reopen_cancel_revert'] == 'not executed in prerequisite phase'
-    assert registration['extension_id'] == EXT_ID and process['extension_id'] == EXT_ID
-    assert registration['expected_extension_path'] == expected_extension
-    assert registration['registered_paths'] == [expected_extension], 'Missing/wrong/duplicate registered path'
-    raw_path = observed / 'registration-selected.txt'
-    assert raw_path.is_file() and not raw_path.is_symlink() and raw_path.stat().st_size <= 120_000
-    assert sha(raw_path) == registration['registration_text_sha256'], 'Registration receipt/raw mismatch'
-    registered_paths = [str(Path(line.strip()).resolve()) for line in raw_path.read_text().splitlines()
-                        if line.strip().startswith('/') and line.strip().endswith('.appex')]
-    assert registered_paths == [expected_extension], 'Raw registration is missing/ambiguous'
+    assert process['extension_id']==EXT_ID
     assert process['unique_exact_process'] is True
     assert process['expected_executable'] == expected_executable
     assert process['expected_executable_sha256'] == c['extension_executable_sha256']
@@ -470,10 +522,10 @@ def verify_acceptance(root, source_sha):
         assert combined['source_fingerprint']==contract['fingerprint']
     receipts = [root / name for name in ['combined-source-before.json','combined-source-after.json','mac-job-clock.json', 'mac-host-budget.json', 'mac-host-context.json', 'mac-host-summary.json', 'mac-host-test.log',
                 'mac-host-product-after.json', 'mac-host-source-before.json', 'mac-host-source-after.json', 'mac-host-transport-replay.json']]
-    receipts += [observed / name for name in ['prerequisite.json', 'outcome.json', 'registration-selected.json',
-                 'registration-selected.txt', 'extension-process.json', 'fixture-ownership.json', 'fixture.json']]
-    receipts += [observed/name for name in ['transport.json','containing-process.json','photos-process.json','registration-before-invoke.txt','registration-before-invoke.json']]
-    return {'source_sha': source_sha, 'prerequisite_accepted': True, 'complete_host_e2e': False,
+    receipts += [observed / name for name in ['prerequisite.json', 'outcome.json', 'host-selection.json', 'host-editor-before-process.json', 'host-editor-after-process.json', 'extension-process.json', 'fixture-ownership.json', 'fixture.json']]
+    receipts += [observed/name for name in ['transport.json','containing-process.json','photos-process.json']]
+    return {'host_entry_contract':HOST_CONTRACT,'source_sha': source_sha, 'prerequisite_accepted': True, 'complete_host_e2e': False,
+            'proof_claim':'Real Photos UI entry with contemporaneously observed exact extension executable; registry inventory, audit-token view attribution, exact delivered-byte equality and full lifecycle are not claimed',
             'expected_testcase': '/'.join(EXPECTED_CASE), 'exactly_one_passed_zero_skipped': True,
             'last_stage': outcome['last_stage'], 'extension_executable': expected_executable,
             'extension_executable_sha256': actual['sha256'], 'extension_pid': actual['pid'],
@@ -536,7 +588,7 @@ def accept():
     try:
         result = verify_acceptance(temp(), os.environ['GITHUB_SHA'])
     except Exception as error:
-        result = {'source_sha': os.environ.get('GITHUB_SHA'), 'prerequisite_accepted': False,
+        result = {'host_entry_contract':HOST_CONTRACT,'source_sha': os.environ.get('GITHUB_SHA'), 'prerequisite_accepted': False,
                   'complete_host_e2e': False, 'error': type(error).__name__ + ': ' + str(error)}
     write(temp() / 'mac-host-acceptance.json', result)
     print('MAC_HOST_ACCEPTANCE ' + json.dumps(result, sort_keys=True))
@@ -553,10 +605,9 @@ PROOF_LIMITS = {
     'mac-host-summary.json':160_000, 'mac-host-test.log':300_000,
     'mac-host-transport-replay.json':16_000, 'mac-host-observed/transport.json':16_000,
     'mac-host-observed/containing-process.json':16_000, 'mac-host-observed/photos-process.json':16_000,
-    'mac-host-observed/registration-before-invoke.txt':120_000, 'mac-host-observed/registration-before-invoke.json':16_000,
+    'mac-host-observed/host-selection.json':16_000, 'mac-host-observed/host-editor-before-process.json':16_000,
+    'mac-host-observed/host-editor-after-process.json':16_000,
     'mac-host-observed/outcome.json':160_000, 'mac-host-observed/prerequisite.json':160_000,
-    'mac-host-observed/registration-selected.json':160_000,
-    'mac-host-observed/registration-selected.txt':120_000,
     'mac-host-observed/extension-process.json':160_000,
     'mac-host-observed/fixture-ownership.json':160_000,
     'mac-host-observed/fixture.json':250_000,
@@ -567,6 +618,7 @@ def verify_collected(folder, source_sha):
     manifest=read_receipt(index)
     assert index.stat().st_size<=50_000
     assert manifest['source_sha']==source_sha and manifest['cap_bytes']==CAP and manifest['retention_days']==1
+    assert manifest['host_entry_contract']==HOST_CONTRACT
     assert manifest['complete_host_e2e'] is False
     assert type(manifest['prerequisite_accepted']) is bool
     names=set(); sources={}; total=index.stat().st_size
@@ -585,6 +637,7 @@ def verify_collected(folder, source_sha):
     assert total<=CAP and names=={p.name for p in folder.iterdir() if p.name!='manifest.json'}
     assert 'mac-host-acceptance.json' in sources
     status=read_receipt(sources['mac-host-acceptance.json'])
+    assert status['host_entry_contract']==HOST_CONTRACT
     assert status['source_sha']==source_sha and status['complete_host_e2e'] is False
     assert status['prerequisite_accepted'] is manifest['prerequisite_accepted']
     missing=sorted(set(PROOF_LIMITS)-set(sources))
@@ -595,7 +648,7 @@ def verify_collected(folder, source_sha):
             root=Path(temporary)
             for relative,path in sources.items():
                 target=root/relative;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(path,target)
-            # Re-execute all finalized-test/source/product/registration/live-PID/
+            # Re-execute all finalized-test/source/product/host-UI/live-PID/
             # fixture rules. A JSON acceptance boolean never grants acceptance.
             actual=verify_acceptance(root,source_sha)
             assert actual==status, 'Collected acceptance differs from independently replayed proof'
@@ -608,6 +661,7 @@ def collect():
     root=temp(); source_sha=os.environ['GITHUB_SHA'];destination=root/'mac-host-evidence'
     destination.mkdir(exist_ok=False)
     status=read_receipt(root/'mac-host-acceptance.json')
+    assert status['host_entry_contract']==HOST_CONTRACT
     assert status['source_sha']==source_sha and status['complete_host_e2e'] is False
     assert type(status['prerequisite_accepted']) is bool
     accepted=status['prerequisite_accepted']
@@ -639,7 +693,7 @@ def collect():
         assert not (destination/path.name).exists(), 'Optional diagnostic collides with required proof'
         shutil.copyfile(path,destination/path.name);used+=count
         entries.append({'path':path.name,'source_relative':str(path.relative_to(root)), 'kind':'optional-diagnostic','bytes':count,'sha256':sha(path)})
-    write(destination/'manifest.json',{'source_sha':source_sha,'cap_bytes':CAP,'retention_days':1,'files':entries,
+    write(destination/'manifest.json',{'host_entry_contract':HOST_CONTRACT,'source_sha':source_sha,'cap_bytes':CAP,'retention_days':1,'files':entries,
           'omitted':omitted,'missing_required_proof':missing,'prerequisite_accepted':accepted,
           'proof_state':'complete-accepted-prerequisite' if accepted else 'diagnostic-only-incomplete',
           'complete_host_e2e':False})

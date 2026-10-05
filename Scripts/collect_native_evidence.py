@@ -165,6 +165,13 @@ if PLATFORM=='mac':
     if text_observations is not None and not retain_bytes('text-observations.json',text_observations,'bounded independent public-API typography diagnostics'):
         raise RuntimeError('Required typography observation packet exceeds shared Mac cap')
 
+# Preserve exact-oracle and production-replay glyph data before optional images.
+if PLATFORM=='mac':
+    from text_observation_evidence import collect_glyphs
+    glyph_observations=collect_glyphs(TEMP,os.environ.get('GITHUB_SHA'))
+    if glyph_observations is not None and not retain_bytes('native-glyph-observation.json',glyph_observations,'exact-case public glyph origins and transparent isolated backings; diagnostic only'):
+        raise RuntimeError('Required glyph observation exceeds Mac evidence cap')
+
 # Mandatory source/host/consumer/fixture/text packets above reserve space first.
 # Optional exporter time cannot consume the final two-minute job tail.
 from optional_export_budget import OptionalExportBudget,OptionalExportError

@@ -21,6 +21,54 @@ spec = importlib.util.spec_from_file_location('gate', ROOT / 'Scripts/mac_photos
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
+def replay_ready_editor_snapshots(swift, snapshots):
+    """Source-tied control-flow model, not Swift compilation or Apple execution.
+
+    Inputs represent successive actual count observations, not unseen UI changes.
+    One input is consumed per poll/final resample; later clean inputs cannot erase
+    an observed contradiction. The explicit traces show exactly what was read.
+    """
+    body=swift.split('@MainActor private func readyEditorObservation',1)[1].split('@MainActor private func checkpoint',1)[0]
+    required=['let editorCount = matches.count','"editor_count": editorCount',
+        'guard editorCount == 1 else { return row }','let filterCount = filter.count',
+        '"filter_count": filterCount','"filter_enabled": filterCount == 1 && filter.element(boundBy: 0).isEnabled',
+        'return row["editor_count"] as? Int == 1','if (row["editor_count"] as? Int ?? 0) > 1',
+        'if let contradiction { throw block(contradiction) }','let observed = observations()',
+        'guard ready(observed) else {']
+    if body.count('matches.count')!=1 or body.count('filter.count')!=1 or any(item not in body for item in required):
+        raise AssertionError('Readiness model no longer matches single-count Swift invariants')
+    pending=list(snapshots);trace={'editor_counts_observed':[],'filter_counts_observed':[],
+        'poll_rows':[],'final_row':None,'failure':None,'accepted':False}
+    def observations():
+        if not pending:raise AssertionError('Model needs an explicit next observation')
+        sample=pending.pop(0);editor_count=sample.get('editor_count',1)
+        trace['editor_counts_observed'].append(editor_count);row={'editor_count':editor_count}
+        if editor_count!=1:return row
+        filter_count=sample.get('filter_count',1);trace['filter_counts_observed'].append(filter_count)
+        row.update(preview_count=sample.get('preview_count',1),placeholder_count=sample.get('placeholder_count',0),
+            preparing_count=sample.get('preparing_count',0),filter_count=filter_count,
+            filter_enabled=filter_count==1 and sample.get('filter_enabled',True),
+            read_only_count=sample.get('read_only_count',0),error_count=sample.get('error_count',0))
+        return row
+    def ready(row):
+        return all(row.get(k)==v for k,v in [('editor_count',1),('preview_count',1),('placeholder_count',0),
+            ('preparing_count',0),('filter_count',1),('read_only_count',0),('error_count',0)]) and row.get('filter_enabled') is True
+    while pending:
+        row=observations();trace['poll_rows'].append(row)
+        if row['editor_count']>1:trace['failure']='observed duplicate editor';break
+        if any(row.get(k,0)>1 for k in ['preview_count','placeholder_count','preparing_count','filter_count']):
+            trace['failure']='observed duplicate control';break
+        if row.get('read_only_count',0)>0 or row.get('error_count',0)>0:
+            trace['failure']='observed read-only/error';break
+        if ready(row):
+            trace['final_row']=observations()
+            trace['accepted']=ready(trace['final_row'])
+            if not trace['accepted']:trace['failure']='final resample not ready'
+            break
+    if not trace['accepted'] and trace['failure'] is None:trace['failure']='readiness timeout'
+    trace['unobserved_remaining']=pending
+    return trace
+
 class MacPhotosHostGateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -129,6 +177,19 @@ class MacPhotosHostGateTests(unittest.TestCase):
         self.assertEqual(budgets['BUDGETS']['mac'],2_000_000)
         self.assertEqual(sum(budgets['BUDGETS'].values()),19_500_000)
 
+    def test_primary_failure_is_recorded_before_optional_confirmed_photos_capture(self):
+        body=self.swift.split('@MainActor func testInstalledExtensionIsInvokedByActualPhotos()',1)[1]
+        cleanup=body.split('        defer {',1)[1].split('        stage = "launch-exact-installed-containing-app"',1)[0]
+        self.assertLess(cleanup.index('named: "outcome.json"'),cleanup.index('checkpoint(photos'))
+        self.assertIn('if photosIdentityVerified {',cleanup)
+        self.assertIn('MAC_HOST_DIAGNOSTIC_FAILED',cleanup)
+        self.assertLess(body.index('named: "photos-process.json"'),body.index('photosIdentityVerified = true'))
+        self.assertIn('if firstBlockedOperation == nil',self.swift)
+        self.assertIn('"exit_code": p.terminationStatus',self.swift)
+        self.assertIn('"reason": String(reason.prefix(2000))',self.swift)
+        self.assertIn('outcome["first_blocked_operation"] = firstBlockedOperation',cleanup)
+        self.assertIn('print("MAC_HOST_BLOCKED stage=" + stage + " reason=" + reason)',self.swift)
+
     def test_unknown_interruptions_abort_without_alert_action(self):
         handler = self.swift.split('addUIInterruptionMonitor', 1)[1].split('let input', 1)[0]
         self.assertIn('fatalError("MAC_HOST_FAIL_CLOSED_ABORT")', handler)
@@ -147,11 +208,86 @@ class MacPhotosHostGateTests(unittest.TestCase):
     def test_production_ids_and_live_path_hash_are_both_required(self):
         self.assertEqual(gate.APP_ID, 'Mango.Celluloid')
         self.assertEqual(gate.EXT_ID, 'Mango.Celluloid.CelluloidPhotoExtension')
-        self.assertIn('assertUniqueRegistration()', self.swift)
+        self.assertNotIn('pluginkit',self.swift)
+        self.assertIn('host-selection.json',self.swift)
+        self.assertIn('host-editor-before-process.json',self.swift)
+        self.assertIn('host-editor-after-process.json',self.swift)
         source = (ROOT / 'Scripts/mac_photos_host_gate.py').read_text()
         self.assertIn('lib.proc_pidpath(pid', source)
         self.assertIn("len(found) == 1 and found[0]['executable'] == expected", source)
         self.assertIn("found[0]['sha256'] == c['extension_executable_sha256']", source)
+
+    def test_v2_source_observes_enabled_selection_and_ready_editor_around_live_process(self):
+        self.assertNotIn('pluginkit',self.swift)
+        self.assertNotIn('assertUniqueRegistration',self.swift)
+        self.assertIn('!celluloid.firstMatch.isEnabled',self.swift)
+        self.assertIn('XCTAssertEqual(editorCountBefore, 0',self.swift)
+        self.assertLess(self.swift.index('named: "host-selection.json"'),self.swift.index('celluloid.element(boundBy: 0).click()'))
+        self.assertLess(self.swift.index('named: "host-editor-before-process.json"'),self.swift.index('named: "extension-process.json"'))
+        self.assertLess(self.swift.index('named: "extension-process.json"'),self.swift.index('named: "host-editor-after-process.json"'))
+        for label in ['Celluloid photo editor','Edited photo preview','Current photo from Photos','Preparing photo']:
+            self.assertIn(label,self.swift)
+        self.assertIn('XCTAssertEqual(host.processIdentifier, expectedPID',self.swift)
+        self.assertIn('XCTNSPredicateExpectation',self.swift)
+        self.assertIn('if phase == "before-process" {',self.swift)
+        self.assertIn('if (row["editor_count"] as? Int ?? 0) > 1 {',self.swift)
+        self.assertIn('if let contradiction { throw block(contradiction) }',self.swift)
+        self.assertIn('Read-only or error state during host entry',self.swift)
+        self.assertIn('Photos identity changed during host-entry readiness',self.swift)
+        self.assertIn('guard ready(observed)',self.swift)
+        self.assertIn('guard editorCount == 1 else { return row }',self.swift)
+        self.assertNotIn('coordinate(',self.swift)
+
+    def test_ready_editor_counts_are_single_snapshots_used_by_every_decision(self):
+        body=self.swift.split('@MainActor private func readyEditorObservation',1)[1].split('@MainActor private func checkpoint',1)[0]
+        self.assertEqual(body.count('matches.count'),1)
+        self.assertEqual(body.count('filter.count'),1)
+        self.assertIn('let editorCount = matches.count',body)
+        self.assertIn('"editor_count": editorCount',body)
+        self.assertIn('guard editorCount == 1 else { return row }',body)
+        self.assertIn('let filterCount = filter.count',body)
+        self.assertIn('"filter_count": filterCount',body)
+        self.assertIn('"filter_enabled": filterCount == 1 && filter.element(boundBy: 0).isEnabled',body)
+        self.assertIn('return row["editor_count"] as? Int == 1',body)
+        self.assertIn('if (row["editor_count"] as? Int ?? 0) > 1',body)
+        self.assertNotIn('return nil',body)
+
+    def test_ready_snapshot_loading_then_ready_has_explicit_single_read_traces(self):
+        cases=[
+            ([{'editor_count':0},{'preview_count':0,'placeholder_count':1,'preparing_count':1,'filter_enabled':False},{},{}],[0,1,1,1],[1,1,1]),
+            ([{'filter_count':0},{},{}],[1,1,1],[0,1,1])]
+        for snapshots,editors,filters in cases:
+            with self.subTest(snapshots=snapshots):
+                trace=replay_ready_editor_snapshots(self.swift,snapshots)
+                self.assertTrue(trace['accepted']);self.assertIsNone(trace['failure'])
+                self.assertEqual(trace['editor_counts_observed'],editors)
+                self.assertEqual(trace['filter_counts_observed'],filters)
+
+    def test_observed_duplicate_cannot_be_erased_by_later_clean_snapshot(self):
+        for duplicate,key in [({'editor_count':2},'editor_counts_observed'),({'filter_count':2},'filter_counts_observed')]:
+            for loading in [[],[{'preview_count':0,'preparing_count':1}]]:
+                with self.subTest(duplicate=duplicate,loading=loading):
+                    trace=replay_ready_editor_snapshots(self.swift,loading+[duplicate,{},{}])
+                    self.assertFalse(trace['accepted']);self.assertIn('observed duplicate',trace['failure'])
+                    self.assertEqual(trace[key][-1],2);self.assertEqual(trace['unobserved_remaining'],[{},{}])
+                    self.assertIsNone(trace['final_row'])
+
+    def test_final_snapshot_duplicate_is_fatal_without_recovery_wait(self):
+        for duplicate,key in [({'editor_count':2},'editor_counts_observed'),({'filter_count':2},'filter_counts_observed')]:
+            with self.subTest(duplicate=duplicate):
+                trace=replay_ready_editor_snapshots(self.swift,[{},duplicate,{}])
+                self.assertFalse(trace['accepted']);self.assertEqual(trace['failure'],'final resample not ready')
+                self.assertEqual(trace[key],[1,2]);self.assertEqual(trace['unobserved_remaining'],[{}])
+
+    def test_snapshot_model_never_invents_an_unobserved_ui_contradiction(self):
+        trace=replay_ready_editor_snapshots(self.swift,[{},{},{'editor_count':2}])
+        self.assertTrue(trace['accepted']);self.assertEqual(trace['editor_counts_observed'],[1,1])
+        self.assertEqual(trace['unobserved_remaining'],[{'editor_count':2}])
+        # A mutation back to a second dynamic count read breaks the source tie.
+        for old,new in [('"editor_count": editorCount','"editor_count": matches.count'),
+                        ('"filter_enabled": filterCount == 1','"filter_enabled": filter.count == 1')]:
+            with self.assertRaisesRegex(AssertionError,'single-count Swift invariants'):
+                replay_ready_editor_snapshots(self.swift.replace(old,new),[{},{}])
 
     def test_bundle_manifest_detects_bytes_membership_and_symlinks(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -165,7 +301,7 @@ class MacPhotosHostGateTests(unittest.TestCase):
 
     def test_collection_stays_bounded_and_excludes_raw_payloads(self):
         with tempfile.TemporaryDirectory() as folder, mock.patch.dict(os.environ, {'RUNNER_TEMP': folder, 'GITHUB_SHA': 'a'*40}):
-            root = Path(folder); gate.write(root/'mac-host-acceptance.json', {'source_sha':'a'*40,'prerequisite_accepted':False,'complete_host_e2e':False,'error':'AssertionError: discovery failed'}); observed = root / 'mac-host-observed'; observed.mkdir()
+            root = Path(folder); gate.write(root/'mac-host-acceptance.json', {'host_entry_contract':gate.HOST_CONTRACT,'source_sha':'a'*40,'prerequisite_accepted':False,'complete_host_e2e':False,'error':'AssertionError: discovery failed'}); observed = root / 'mac-host-observed'; observed.mkdir()
             (observed / 'extensions.jpg').write_bytes(b'a' * 600_000)
             (observed / 'last-observed.jpg').write_bytes(b'b' * 600_000)
             for index in range(22): (observed / f'phase-{index:02d}.txt').write_bytes(b'x' * 140_000)
@@ -282,7 +418,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
         app = str(root / 'Applications/CelluloidHost-test.app')
         extension = app + '/Contents/PlugIns/CelluloidMacPhotosExtension.appex'
         executable = extension + '/Contents/MacOS/CelluloidMacPhotosExtension'
-        context = {'source_sha': self.SOURCE, 'base_sha': gate.BASE, 'app_path': app,
+        context = {'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'base_sha': gate.BASE, 'app_path': app,
                    'extension_path': extension, 'extension_executable': executable,
                    'app_id': gate.APP_ID, 'extension_id': gate.EXT_ID, 'complete_host_e2e': False,
                    'script_sha256': gate.sha(gate.__file__), 'test_source_sha256': gate.sha(ROOT/'Platforms/UITests/MacPhotosHostUITests.swift'),
@@ -310,25 +446,27 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
                 'app_executable_sha256': 'd' * 64, 'extension_executable_sha256': 'e' * 64},
             'mac-host-source-before.json': dict(source, phase='before'),
             'mac-host-source-after.json': dict(source, phase='after'),
-            'mac-host-observed/prerequisite.json': {'source_sha': self.SOURCE, 'prerequisite_passed': True,
+            'mac-host-observed/prerequisite.json': {'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'prerequisite_passed': True,
                 'complete_host_e2e': False, 'production_source_base': gate.BASE},
-            'mac-host-observed/outcome.json': {'source_sha': self.SOURCE, 'complete_host_e2e': False,
+            'mac-host-observed/outcome.json': {'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'complete_host_e2e': False,
                 'last_stage': 'host-entry-prerequisite-passed', 'save_reopen_cancel_revert': 'not executed in prerequisite phase'},
-            'mac-host-observed/registration-selected.json': {'source_sha': self.SOURCE, 'extension_id': gate.EXT_ID,
-                'expected_extension_path': extension, 'registered_paths': [extension]},
             'mac-host-observed/extension-process.json': {'source_sha': self.SOURCE, 'extension_id': gate.EXT_ID,
                 'expected_executable': executable, 'expected_executable_sha256': 'e' * 64,
                 'unique_exact_process': True,
                 'extension_processes': [{'pid': 123, 'executable': executable, 'sha256': 'e' * 64}]}}
-        raw = observed / 'registration-selected.txt'
-        raw.write_text('  ' + gate.EXT_ID + '(1.1)\n    ' + extension + '\n')
-        documents['mac-host-observed/registration-selected.json']['registration_text_sha256'] = gate.sha(raw)
+        common={'host_entry_contract':gate.HOST_CONTRACT,'source_sha':self.SOURCE,'photos_pid':122,
+            'photos_bundle':'/System/Applications/Photos.app','photos_executable':'/System/Applications/Photos.app/Contents/MacOS/Photos',
+            'fixture_sha256':'f'*64,'asset_label':'synthetic sole asset'}
+        documents['mac-host-observed/host-selection.json']=dict(common,schema='Celluloid.HostSelection.2',menu_label='Celluloid',menu_count=1,menu_enabled=True,menu_hittable=True,editor_count_before=0)
+        for phase in ['before','after']:
+            documents['mac-host-observed/host-editor-'+phase+'-process.json']=dict(common,schema='Celluloid.HostEditor.2',phase=phase+'-process',
+                editor_label='Celluloid photo editor',editor_count=1,preview_label='Edited photo preview',preview_count=1,placeholder_count=0,preparing_count=0,
+                filter_identifier='photos-extension.filter',filter_count=1,filter_enabled=True,read_only_count=0,error_count=0)
         for name, data in documents.items(): gate.write(root / name, data)
         from mac_host_transport import ORDER,expected_transport
         gate.write(observed/'transport.json',expected_transport(context,gate.sha(root/'mac-host-context.json')))
         gate.write(observed/'containing-process.json',{'bundle':app,'executable':context['app_executable'],'pid':121})
         gate.write(observed/'photos-process.json',{'bundle':'/System/Applications/Photos.app','executable':'/System/Applications/Photos.app/Contents/MacOS/Photos','pid':122})
-        for suffix in ['txt','json']:(observed/('registration-before-invoke.'+suffix)).write_bytes((observed/('registration-selected.'+suffix)).read_bytes())
         RuntimeAcceptanceTests.write_transport_log(self,root,context)
         return documents
 
@@ -367,7 +505,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             self.assertTrue(accepted['prerequisite_accepted'])
             self.assertTrue(accepted['exactly_one_passed_zero_skipped'])
             self.assertFalse(accepted['complete_host_e2e'])
-            self.assertEqual(len(accepted['receipts']), 23)
+            self.assertEqual(len(accepted['receipts']), 22)
 
     def test_rehashed_nonfinite_proof_and_timeout_contradictions_reject_at_transport(self):
         from mac_host_transport import PREFIX
@@ -404,6 +542,57 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
                 with mock.patch.object(gate,'require_runner'),mock.patch.object(gate,'temp',return_value=root),mock.patch.object(gate,'context',return_value=context),mock.patch.object(gate.subprocess,'run',side_effect=export):
                     with self.assertRaisesRegex(ValueError,'Nonfinite JSON'):gate.extract_transport()
                 self.assertFalse((root/'mac-host-transport-replay.json').exists())
+                report=gate.read_receipt(root/'mac-host-observed/attachment-export-failure.json')
+                self.assertFalse(report['acceptance']);self.assertIn('Nonfinite JSON',report['error'])
+
+    def test_rejected_attachment_metadata_is_bounded_and_never_transport_completion(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self.seed(root);context=gate.read_receipt(root/'mac-host-context.json')
+            (root/'mac-host-transport-replay.json').unlink()
+            for path in (root/'mac-host-observed').iterdir():path.unlink()
+            name='celluloid-host-diagnostic-unexpected.txt_0_12345678-1234-1234-1234-123456789ABC.txt'
+            manifest=[{'testIdentifier':'MacPhotosHostUITests/testInstalledExtensionIsInvokedByActualPhotos()',
+                       'attachments':[{'suggestedHumanReadableName':name,'exportedFileName':'owned.txt'}]}]
+            raw=json.dumps(manifest).encode()
+            def export(command,**kwargs):
+                destination=Path(command[command.index('--output-path')+1])
+                (destination/'manifest.json').write_bytes(raw);(destination/'owned.txt').write_text('diagnostic')
+                return subprocess.CompletedProcess(command,0,b'',b'')
+            with mock.patch.object(gate,'require_runner'),mock.patch.object(gate,'temp',return_value=root),mock.patch.object(gate,'context',return_value=context),mock.patch.object(gate.subprocess,'run',side_effect=export):
+                with self.assertRaisesRegex(ValueError,'Unexpected/duplicate named host attachment'):gate.extract_transport()
+            self.assertFalse((root/'mac-host-transport-replay.json').exists())
+            path=root/'mac-host-observed/attachment-export-failure.json';report=gate.read_receipt(path)
+            self.assertFalse(report['acceptance']);self.assertEqual(report['manifest_sha256'],hashlib.sha256(raw).hexdigest())
+            self.assertEqual(report['retained_first_items'][0]['suggestedHumanReadableName'],name)
+            self.assertLessEqual(path.stat().st_size,16_000)
+            self.assertFalse((root/'mac-host-observed/unexpected.txt').exists())
+
+    def test_attachment_error_metadata_caps_unicode_and_preserves_original_write_failure(self):
+        for fail_write in [False,True]:
+            with self.subTest(fail_write=fail_write),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);self.seed(root);context=gate.read_receipt(root/'mac-host-context.json')
+                (root/'mac-host-transport-replay.json').unlink()
+                for path in (root/'mac-host-observed').iterdir():path.unlink()
+                manifest=[{'testIdentifier':'界'*160,'attachments':[
+                    {'suggestedHumanReadableName':'celluloid-host-diagnostic-'+('界'*160),
+                     'exportedFileName':'owned.txt'} for _ in range(40)]}]
+                def export(command,**kwargs):
+                    destination=Path(command[command.index('--output-path')+1])
+                    (destination/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False))
+                    return subprocess.CompletedProcess(command,0,b'',b'')
+                original_write=Path.write_bytes
+                def guarded_write(path,data):
+                    if fail_write and path.name=='attachment-export-failure.json':raise OSError('optional retention failed')
+                    return original_write(path,data)
+                with mock.patch.object(gate,'require_runner'),mock.patch.object(gate,'temp',return_value=root),mock.patch.object(gate,'context',return_value=context),mock.patch.object(gate.subprocess,'run',side_effect=export),mock.patch.object(Path,'write_bytes',guarded_write):
+                    with self.assertRaisesRegex(ValueError,'Unowned attachment path'):gate.extract_transport()
+                self.assertFalse((root/'mac-host-transport-replay.json').exists())
+                path=root/'mac-host-observed/attachment-export-failure.json'
+                if fail_write:self.assertFalse(path.exists())
+                else:
+                    report=gate.read_receipt(path);self.assertFalse(report['acceptance'])
+                    self.assertEqual(report['attachment_count'],40);self.assertEqual(report['omitted_items'],40)
+                    self.assertEqual(report['retained_first_items'],[]);self.assertLessEqual(path.stat().st_size,16_000)
 
     def test_explicitly_reviewed_candidate_hashes_cannot_be_removed_or_substituted(self):
         for name in ['mac-host-source-before.json','mac-host-source-after.json']:
@@ -423,23 +612,23 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             self.seed(alias)
             accepted=gate.verify_acceptance(alias,self.SOURCE)
             self.assertTrue(accepted['prerequisite_accepted'])
-            registration=gate.read_receipt(alias/'mac-host-observed/registration-selected.json')
-            expected=str(real.resolve()/'Applications/CelluloidHost-test.app/Contents/PlugIns/CelluloidMacPhotosExtension.appex')
-            self.assertEqual(registration['expected_extension_path'],expected)
+            containing=gate.read_receipt(alias/'mac-host-observed/containing-process.json')
+            expected=str(real.resolve()/'Applications/CelluloidHost-test.app')
+            self.assertEqual(containing['bundle'],expected)
             gate.write(alias/'mac-host-acceptance.json',accepted)
             with mock.patch.dict(os.environ,RUNNER_TEMP=str(alias),GITHUB_SHA=self.SOURCE):gate.collect()
             self.assertTrue(gate.verify_collected(alias/'mac-host-evidence',self.SOURCE)['prerequisite_accepted'])
-            # Canonicalize only synthetic producer setup; the production verifier
-            # must still reject a noncanonical claimed registration receipt.
-            registration['expected_extension_path']=str(alias/'Applications/CelluloidHost-test.app/Contents/PlugIns/CelluloidMacPhotosExtension.appex')
-            gate.write(alias/'mac-host-observed/registration-selected.json',registration)
+            # Only fixture setup canonicalizes. A claimed noncanonical product
+            # path still fails, independently of registry inventory.
+            containing['bundle']=str(alias/'Applications/CelluloidHost-test.app')
+            gate.write(alias/'mac-host-observed/containing-process.json',containing)
             with self.assertRaises(AssertionError):gate.verify_acceptance(alias,self.SOURCE)
 
     def test_each_missing_mandatory_record_rejects(self):
         paths = ['combined-source-before.json','combined-source-after.json','mac-job-clock.json', 'mac-host-budget.json', 'mac-host-context.json', 'mac-host-summary.json', 'mac-host-test.log',
                  'mac-host-product-after.json', 'mac-host-source-before.json', 'mac-host-source-after.json',
                  'mac-host-observed/prerequisite.json', 'mac-host-observed/outcome.json',
-                 'mac-host-observed/registration-selected.json', 'mac-host-observed/registration-selected.txt',
+                 'mac-host-observed/host-selection.json', 'mac-host-observed/host-editor-before-process.json', 'mac-host-observed/host-editor-after-process.json',
                  'mac-host-observed/extension-process.json', 'mac-host-observed/fixture-ownership.json', 'mac-host-observed/fixture.json']
         for name in paths:
             with self.subTest(missing=name):
@@ -473,7 +662,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
     def test_wrong_candidate_or_duplicate_json_key_in_any_identity_receipt_rejects(self):
         paths = ['mac-host-context.json', 'mac-host-source-before.json', 'mac-host-source-after.json',
                  'mac-host-observed/prerequisite.json', 'mac-host-observed/outcome.json',
-                 'mac-host-observed/registration-selected.json', 'mac-host-observed/extension-process.json', 'mac-host-observed/fixture-ownership.json', 'mac-host-observed/fixture.json']
+                 'mac-host-observed/host-selection.json', 'mac-host-observed/host-editor-before-process.json', 'mac-host-observed/host-editor-after-process.json', 'mac-host-observed/extension-process.json', 'mac-host-observed/fixture-ownership.json', 'mac-host-observed/fixture.json']
         for name in paths:
             with self.subTest(wrong_source=name):
                 self.check_mutation_rejected(lambda root: self.edit(root / name, source_sha='f' * 40))
@@ -493,20 +682,63 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             with self.subTest(name=name, updates=updates):
                 self.check_mutation_rejected(lambda root: self.edit(root / 'mac-host-observed' / name, **updates))
 
-    def test_wrong_missing_duplicate_raw_or_claimed_registration_rejects(self):
-        for update in [{'registered_paths': []}, {'registered_paths': ['/wrong.appex']},
-                       {'extension_id': 'Other.Extension'}, {'expected_extension_path': '/wrong.appex'},
-                       {'registration_text_sha256': '0' * 64}]:
-            self.check_mutation_rejected(lambda root: self.edit(root / 'mac-host-observed/registration-selected.json', **update))
-        def duplicate_claim(root):
-            path = root / 'mac-host-observed/registration-selected.json'; data = json.loads(path.read_text())
-            data['registered_paths'] *= 2; gate.write(path, data)
-        self.check_mutation_rejected(duplicate_claim)
-        def duplicate_raw(root):
-            raw = root / 'mac-host-observed/registration-selected.txt'
-            raw.write_text(raw.read_text() * 2)
-            self.edit(root / 'mac-host-observed/registration-selected.json', registration_text_sha256=gate.sha(raw))
-        self.check_mutation_rejected(duplicate_raw)
+    def test_structured_blocked_operation_vetoes_rehashed_success_without_text_marker(self):
+        for blocked in [{},{'reason':'denied'},None,False]:
+            with self.subTest(blocked=blocked),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);self.seed(root)
+                self.edit(root/'mac-host-observed/outcome.json',first_blocked_operation=blocked)
+                self.write_transport_log(root)
+                self.assertNotIn('MAC_HOST_BLOCKED', (root/'mac-host-test.log').read_text())
+                with self.assertRaisesRegex(AssertionError,'blocked operation'):gate.verify_acceptance(root,self.SOURCE)
+
+    def test_wrong_ambiguous_unready_or_replaced_host_ui_rejects_after_rehashing(self):
+        variants={
+            'host-selection.json':[{'menu_count':0},{'menu_count':2},{'menu_count':True},{'menu_enabled':False},{'menu_hittable':False},{'editor_count_before':1},{'menu_label':'Other'}],
+            'host-editor-before-process.json':[{'editor_count':0},{'editor_count':2},{'preview_count':0},{'placeholder_count':1},{'preparing_count':1},{'filter_enabled':False},{'read_only_count':1},{'error_count':1}],
+            'host-editor-after-process.json':[{'photos_pid':124},{'phase':'before-process'},{'preview_count':2},{'filter_count':0},{'filter_enabled':1},{'source_sha':'f'*40},{'fixture_sha256':'e'*64},{'asset_label':'other asset'}]}
+        for name,mutations in variants.items():
+            for update in mutations:
+                with self.subTest(name=name,update=update),tempfile.TemporaryDirectory() as folder:
+                    root=Path(folder);self.seed(root);self.edit(root/'mac-host-observed'/name,**update)
+                    self.write_transport_log(root)
+                    with self.assertRaises(AssertionError):gate.verify_acceptance(root,self.SOURCE)
+
+    def test_v2_claim_requires_real_ui_evidence_and_never_registry_inventory(self):
+        from mac_host_transport import ORDER
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self.seed(root);record=gate.verify_acceptance(root,self.SOURCE)
+            self.assertEqual(record['host_entry_contract'],'Celluloid.PhotosHostEntry.2')
+            self.assertFalse(record['complete_host_e2e'])
+            self.assertFalse(any('registration' in path for path in gate.PROOF_LIMITS))
+            self.assertFalse(any('registration' in name for name in ORDER))
+            # A registry-only record cannot stand in for the removed UI receipt.
+            (root/'mac-host-observed/host-selection.json').unlink()
+            gate.write(root/'mac-host-observed/registration-selected.json',{'registered_paths':['/owned.appex'],'source_sha':self.SOURCE})
+            with self.assertRaises(AssertionError):gate.verify_acceptance(root,self.SOURCE)
+
+    def test_ui_receipts_wrong_type_unknown_field_old_version_or_host_identity_reject_after_rehash(self):
+        for name in ['host-selection.json','host-editor-before-process.json','host-editor-after-process.json']:
+            for change in [{'host_entry_contract':'Celluloid.PhotosHostEntry.1'},{'schema':'legacy'},{'photos_pid':True},
+                           {'photos_bundle':'/tmp/Photos.app'},{'photos_executable':'/tmp/Photos'},{'extra':'unbound'}]:
+                with self.subTest(name=name,change=change),tempfile.TemporaryDirectory() as folder:
+                    root=Path(folder);self.seed(root);self.edit(root/'mac-host-observed'/name,**change);self.write_transport_log(root)
+                    with self.assertRaises(AssertionError):gate.verify_acceptance(root,self.SOURCE)
+
+    def test_passed_ready_ui_cannot_hide_wrong_live_executable_after_rehash(self):
+        for fields in [{'unique_exact_process':False},{'expected_executable':'/other/extension'},
+                       {'extension_processes':[]},{'extension_processes':[{'pid':123,'executable':'/other','sha256':'e'*64}]}]:
+            with self.subTest(fields=fields),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);self.seed(root);self.edit(root/'mac-host-observed/extension-process.json',**fields);self.write_transport_log(root)
+                with self.assertRaises(AssertionError):gate.verify_acceptance(root,self.SOURCE)
+
+    def test_v1_context_and_collected_manifest_are_not_accepted_as_v2(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self.seed(root);self.edit(root/'mac-host-context.json',host_entry_contract='Celluloid.PhotosHostEntry.1')
+            with self.assertRaises((AssertionError,ValueError)):gate.verify_acceptance(root,self.SOURCE)
+        with tempfile.TemporaryDirectory() as folder,mock.patch.dict(os.environ,RUNNER_TEMP=folder,GITHUB_SHA=self.SOURCE):
+            root=Path(folder);self.seed(root);gate.write(root/'mac-host-acceptance.json',gate.verify_acceptance(root,self.SOURCE));gate.collect()
+            self.edit(root/'mac-host-evidence/manifest.json',host_entry_contract='Celluloid.PhotosHostEntry.1')
+            with self.assertRaises(AssertionError):gate.verify_collected(root/'mac-host-evidence',self.SOURCE)
 
     def test_wrong_missing_duplicate_or_contradictory_live_process_rejects(self):
         for update in [{'unique_exact_process': False}, {'unique_exact_process': 1}, {'extension_processes': []},
@@ -560,7 +792,7 @@ class CollectedProofTests(SyntheticHostFixtureCase):
             (root/'mac-host-observed').mkdir()
             gate.write(root/'mac-host-source-before.json',{'source_sha':self.SOURCE,'observed':'source-bound diagnostic'})
             gate.write(root/'mac-host-observed/outcome.json',{'source_sha':self.SOURCE,'last_stage':'discovery failed'})
-            status={'source_sha':self.SOURCE,'prerequisite_accepted':False,'complete_host_e2e':False,'error':'AssertionError: extension not registered'}
+            status={'host_entry_contract':gate.HOST_CONTRACT,'source_sha':self.SOURCE,'prerequisite_accepted':False,'complete_host_e2e':False,'error':'AssertionError: extension not registered'}
         gate.write(root/'mac-host-acceptance.json',status)
     def collect(self,root):
         with mock.patch.dict(os.environ,RUNNER_TEMP=str(root),GITHUB_SHA=self.SOURCE):gate.collect()
@@ -666,7 +898,7 @@ class CollectedProofTests(SyntheticHostFixtureCase):
             with self.assertRaisesRegex(AssertionError,'reserved host allocation'):self.collect(root)
     def test_missing_diagnostic_failure_or_oversized_available_proof_rejects(self):
         for mutate in [lambda r:(r/'mac-host-acceptance.json').unlink(),
-                       lambda r:gate.write(r/'mac-host-acceptance.json',{'source_sha':self.SOURCE,'prerequisite_accepted':False,'complete_host_e2e':False,'error':''}),
+                       lambda r:gate.write(r/'mac-host-acceptance.json',{'host_entry_contract':gate.HOST_CONTRACT,'source_sha':self.SOURCE,'prerequisite_accepted':False,'complete_host_e2e':False,'error':''}),
                        lambda r:(r/'mac-host-source-before.json').write_bytes(b' '*160_001)]:
             with tempfile.TemporaryDirectory() as tmp:
                 root=Path(tmp);self.packet(root,False);mutate(root)
