@@ -229,13 +229,19 @@ final class PhoneCompanionUITests: XCTestCase {
         for down in [false, true] {
             for step in 0..<6 {
                 if element.exists && element.isHittable { return }
-                print("PHONE_COMPANION_REVEAL target=\(element.identifier) direction=\(down ? "down" : "up") step=\(step) exists=\(element.exists) frame=\(element.exists ? String(describing: element.frame) : "unmaterialized")")
+                // Resolving identifier/frame itself asks XCTest for a snapshot.
+                // A diagnostic must not abort before the real lazy-row scroll.
+                if element.exists {
+                    print("PHONE_COMPANION_REVEAL target=\(element.identifier) direction=\(down ? "down" : "up") step=\(step) exists=true frame=\(element.frame)")
+                } else {
+                    print("PHONE_COMPANION_REVEAL target=not-yet-materialized direction=\(down ? "down" : "up") step=\(step) exists=false")
+                }
                 if down { app.swipeDown() } else { app.swipeUp() }
             }
         }
         print("PHONE_COMPANION_REVEAL_FAILURE_AX " + String(app.debugDescription.prefix(18000)))
         capture(app, name: "native-phone-unreachable-control")
-        XCTFail("Companion control remained outside the visible scroll area: " + element.identifier)
+        XCTFail("The requested companion control remained outside the visible scroll area after bounded traversal")
     }
     @MainActor private func audit(_ app: XCUIApplication, state: String) throws {
         guard #available(iOS 27.0, *) else { return }

@@ -25,7 +25,7 @@ class RequiredExecutionTests(unittest.TestCase):
         for contents in [self.log(delta=3),self.log().replace('a'*64,'d'*64),self.log().split('MAC_LAYER')[0],self.log()+'MAC_LAYER'+self.log().split('MAC_LAYER')[1]]:
             self.assertFalse(all(self.inspect(contents)['checks'].values()))
     def test_exact_declared_required_counts_and_real_shipping_modules(self):
-        self.assertEqual({k:len(v) for k,v in required('mac').items()},{'CelluloidMacPhotosExtensionTests':33})
+        self.assertEqual({k:len(v) for k,v in required('mac').items()},{'CelluloidMacPhotosExtensionTests':39})
         self.assertEqual({k:len(v) for k,v in required('phone').items()},{'CelluloidCompanionTests':14,'CelluloidCompanionUITests':2})
         self.assertEqual(sum(map(len,required('uikit').values())),1)
     def test_shipping_markers_do_not_substitute_for_missing_ui_case(self):
@@ -51,7 +51,7 @@ class CombinedRetentionTests(unittest.TestCase):
             markers=json.loads((output/'shipping-consumer-markers.json').read_text());self.assertEqual(len(markers),3)
             self.assertLessEqual(sum(p.stat().st_size for p in output.iterdir()),BUDGETS['phone'])
             self.assertEqual(sum(BUDGETS.values()),19_500_000);self.assertLess(sum(BUDGETS.values()),WHOLE_RUN)
-    def test_workflow_shipping_routes_and_all_eleven_serial_jobs_are_retained(self):
+    def test_workflow_shipping_routes_and_all_twelve_serial_jobs_are_retained(self):
         text=(ROOT/'.github/workflows/apple-platforms.yml').read_text()
         self.assertIn('python3 Scripts/run_native_phone.py --shipping',text)
         self.assertIn('-project Celluloid.xcodeproj -scheme CelluloidCompanion',text)
@@ -62,6 +62,6 @@ class CombinedRetentionTests(unittest.TestCase):
         for key in ['compact-phone','large-phone','small-ipad','large-ipad']:self.assertIn('key: '+key,text)
         for scope in ['mac','phone','uikit']:self.assertIn('verify_required_interoperability.py '+scope,text)
         self.assertNotIn('ARCHS=',text);self.assertNotIn('SDKROOT=',text)
-        self.assertNotIn('retention-days: 14',text);self.assertEqual(text.count('retention-days: 1'),5)
+        self.assertNotIn('retention-days: 14',text);self.assertEqual(text.count('retention-days: 1'),6)
 
 if __name__=='__main__':unittest.main()

@@ -37,31 +37,57 @@ ALLOWED = {
     'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift',
     'Documentation/interop-continuation.md',
     'Documentation/mac-photos-host-gate.md',
+    'Documentation/platform-rendering-contract.md',
     'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift',
+    'Platforms/MacExtensionTests/MacPhotoRendererTests.swift',
+    'Platforms/PhoneUITests/PhoneCompanionUITests.swift',
+    'Platforms/TVUITests/NativeTVUITests.swift',
     'Platforms/UITests/MacPhotosHostUITests.swift',
     'Platforms/UITests/NativeEditorUITests.swift',
+    'Platforms/WatchUITests/NativeWatchUITests.swift',
+    'Platforms/macOSExtension/MacPhotoRenderer.swift',
+    'Platforms/tvOS/CelluloidTVApp.swift',
     'Scripts/collect_native_evidence.py',
     'Scripts/combined-source-contract.json',
+    'Scripts/combined_evidence_budget.py',
+    'Scripts/consumer_runtime_binding.py',
     'Scripts/file_open_observation.py',
+    'Scripts/fixtures/native-text-expectations.json',
+    'Scripts/fixtures/platform-rendering-controls.json',
     'Scripts/mac-photos-host-source-base.json',
     'Scripts/mac_photos_host_gate.py',
+    'Scripts/native_text_release_guard.py',
     'Scripts/optional_export_budget.py',
+    'Scripts/platform_rendering_contract.py',
     'Scripts/run_early_uikit_interop.py',
     'Scripts/run_mac_photos_host_gate.sh',
+    'Scripts/stage_uikit_layer_fixture.py',
+    'Scripts/test_combined_preflight.py',
+    'Scripts/test_combined_validation.py',
+    'Scripts/test_consumer_runtime_binding.py',
     'Scripts/test_early_uikit_interop.py',
     'Scripts/test_file_open_observation.py',
     'Scripts/test_interop_continuation.py',
     'Scripts/test_mac_photos_host_gate.py',
+    'Scripts/test_native_evidence.py',
+    'Scripts/test_native_phone_fixture.py',
+    'Scripts/test_native_watch_profiles.py',
     'Scripts/test_optional_export_budget.py',
+    'Scripts/test_platform_rendering_contract.py',
     'Scripts/test_text_observation_evidence.py',
+    'Scripts/test_uikit_installed_identity.py',
     'Scripts/text_observation_evidence.py',
+    'Scripts/uikit_installed_identity.py',
     'Scripts/verify_interop_continuation.py',
+    'Scripts/verify_native_release.py',
+    'Scripts/verify_required_interoperability.py',
 }
 
 CAP = 1_000_000
 BASE_FILE_COUNT = 544
-REVIEWED_TEST_FILES = {'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': '54357d35157e7b792c04cda3e3cb3d778419a9dedf279210b66540cf243ed4c8', 'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift': 'ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034'}
-UNCHANGED_BASE_FILES = BASE_FILE_COUNT - 2 - len(REVIEWED_TEST_FILES)
+REVIEWED_TEST_FILES = {'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': '49cbcaf384b4e3667b9bf4d725e152564dffd82a4c52166b3697437787007354', 'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift': 'ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034'}
+REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': 'adb85afed8add5d9dd1de549f44b54b8ef0bec51a5baf12b8bb7db02d84ee928', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': '94da429bfec3275ce0687a0465658da4f0dc8f7a55b92ab1a36f02ace5f3d54f', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
+UNCHANGED_BASE_FILES = BASE_FILE_COUNT - 2 - len(REVIEWED_TEST_FILES) - len(REVIEWED_CANDIDATE_FILES)
 
 def run(*args):
     return subprocess.check_output(args, cwd=ROOT, text=True, stderr=subprocess.STDOUT, timeout=20).strip()
@@ -99,13 +125,16 @@ def verify_source(phase):
     for path, digest in contract['files']:
         if path in {'CelluloidNative.xcodeproj/project.pbxproj', 'Platforms/UITests/NativeEditorUITests.swift'}:
             continue
+        if path in REVIEWED_CANDIDATE_FILES:
+            assert sha(ROOT/path)==REVIEWED_CANDIDATE_FILES[path], 'Reviewed candidate source changed: '+path
+            continue
         if path in REVIEWED_TEST_FILES:
             assert sha(ROOT/path)==REVIEWED_TEST_FILES[path], 'Reviewed diagnostic test changed: '+path
             continue
         assert sha(ROOT / path) == digest, 'Base source changed: ' + path
         checked.append([path, digest])
     report = {'phase': phase, 'source_sha': expected, 'tree': run('git', 'rev-parse', 'HEAD^{tree}'),
-              'base_sha': BASE, 'base_tree': BASE_TREE, 'unchanged_bound_files': len(checked), 'reviewed_diagnostic_test_files': REVIEWED_TEST_FILES,
+              'base_sha': BASE, 'base_tree': BASE_TREE, 'unchanged_bound_files': len(checked), 'reviewed_diagnostic_test_files': REVIEWED_TEST_FILES, 'reviewed_candidate_files': REVIEWED_CANDIDATE_FILES,
               'allowed_changed_paths': sorted(changed), 'workflow_sha256': sha(ROOT / '.github/workflows/apple-platforms.yml'),
               'complete_host_e2e': False}
     write(temp() / ('mac-host-source-' + phase + '.json'), report)
@@ -363,9 +392,16 @@ def verify_acceptance(root, source_sha):
     for phase, receipt in [('before', before), ('after', after)]:
         assert receipt['source_sha'] == source_sha and receipt['phase'] == phase
         assert receipt['base_sha'] == BASE and receipt['base_tree'] == BASE_TREE
-        assert receipt['unchanged_bound_files'] == UNCHANGED_BASE_FILES and receipt['reviewed_diagnostic_test_files']==REVIEWED_TEST_FILES and receipt['complete_host_e2e'] is False
+        assert receipt['unchanged_bound_files'] == UNCHANGED_BASE_FILES and receipt['reviewed_diagnostic_test_files']==REVIEWED_TEST_FILES and receipt['reviewed_candidate_files']==REVIEWED_CANDIDATE_FILES and receipt['complete_host_e2e'] is False
     assert before['tree'] == after['tree'] and before['workflow_sha256'] == after['workflow_sha256']
-    receipts = [root / name for name in ['mac-job-clock.json', 'mac-host-budget.json', 'mac-host-context.json', 'mac-host-summary.json', 'mac-host-test.log',
+    contract=json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())
+    for phase in ['before','after']:
+        combined=read_receipt(root/('combined-source-'+phase+'.json'))
+        assert combined['source_sha']==source_sha and combined['phase']==phase
+        assert combined['tree']==before['tree'] and combined['workflow_sha256']==before['workflow_sha256']
+        assert type(combined['file_count']) is int and combined['file_count']==len(contract['files'])
+        assert combined['source_fingerprint']==contract['fingerprint']
+    receipts = [root / name for name in ['combined-source-before.json','combined-source-after.json','mac-job-clock.json', 'mac-host-budget.json', 'mac-host-context.json', 'mac-host-summary.json', 'mac-host-test.log',
                 'mac-host-product-after.json', 'mac-host-source-before.json', 'mac-host-source-after.json']]
     receipts += [observed / name for name in ['prerequisite.json', 'outcome.json', 'registration-selected.json',
                  'registration-selected.txt', 'extension-process.json', 'fixture-ownership.json', 'fixture.json']]
@@ -441,6 +477,7 @@ def accept():
 
 
 PROOF_LIMITS = {
+    'combined-source-before.json':160_000, 'combined-source-after.json':160_000,
     'mac-job-clock.json':160_000, 'mac-host-budget.json':160_000,
     'mac-host-acceptance.json':160_000,
     'mac-host-source-before.json':160_000, 'mac-host-source-after.json':160_000,

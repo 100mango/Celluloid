@@ -26,6 +26,9 @@ check('no_test_bundles',not any(app.rglob('*.xctest')))
 bytes_=executable.read_bytes()
 markers=[b'CELLULOID_TV_LARGEST_TRAIT_STRESS',b'tv.instruction.accessibility5',b'tv.instruction.ordinary',b'CELLULOID_PHONE_LAYOUT_FIXTURE',b'WatchProcessingLargeTextUI',b'--celluloid-sandbox-diagnostics',b'sandbox.probe',b'CELLULOID_AX_REPORT',b'CELLULOID_NATIVE_AUDIT_CONTROL',b'CELLULOID_PHONE_OUTPUT_PROOF',b'CELLULOID_UNDO_DIAGNOSTICS',b'TV_PHOTOS_BUTTON_ACTION',b'TV_PHOTOS_AUTH',b'CELLULOID_TV_OUTPUT_PROOF',b'CELLULOID_TV_COMPOSITION_PROOF',b'Celluloid synthetic container readback']
 check('debug_seams_absent',not any(marker in bytes_ for marker in markers))
+if platform=='mac':
+    from native_text_release_guard import qualified_extension_has_no_hooks
+    check('native_text_hooks_absent_from_extension',qualified_extension_has_no_hooks(app))
 archs=subprocess.check_output(['xcrun','lipo','-archs',str(executable)],text=True).strip().split()
 check('native_arm_device_slice',any(arch.startswith('arm64') for arch in archs))
 # arm64 watchOS was introduced with watchOS26; legacy arm64_32 retains

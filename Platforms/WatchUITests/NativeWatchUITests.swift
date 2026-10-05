@@ -141,7 +141,11 @@ final class NativeWatchUITests: XCTestCase {
     @MainActor private func reveal(_ element: XCUIElement, in app: XCUIApplication, scrollContainer: XCUIElement? = nil) throws {
         XCTAssertTrue(element.waitForExistence(timeout: 10))
         for step in 0..<12 {
-            if element.isHittable { return }
+            // Native confirmation rows can be hittable while partly below the
+            // small Watch viewport. Match the caller's full-containment gate
+            // before returning; otherwise keep the same bounded real scrolling.
+            let contained = scrollContainer.map { $0.frame.contains(element.frame) } ?? true
+            if element.isHittable && contained { return }
             let owner = app.scrollViews.containing(.any, identifier: element.identifier).firstMatch
             let viewport = scrollContainer ?? (owner.exists ? owner : app.scrollViews.firstMatch)
             guard viewport.exists else {

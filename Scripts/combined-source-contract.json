@@ -1378,7 +1378,7 @@
     ],
     [
       "CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift",
-      "54357d35157e7b792c04cda3e3cb3d778419a9dedf279210b66540cf243ed4c8"
+      "49cbcaf384b4e3667b9bf4d725e152564dffd82a4c52166b3697437787007354"
     ],
     [
       "CelluloidTests/OverlayResizeTests.swift",
@@ -1778,7 +1778,7 @@
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoRendererTests.swift",
-      "6122cd0162a9bd8326800f7187e2b2e241076baf60a166f4c832a638e8707f4a"
+      "adb85afed8add5d9dd1de549f44b54b8ef0bec51a5baf12b8bb7db02d84ee928"
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoSessionTests.swift",
@@ -1806,7 +1806,7 @@
     ],
     [
       "Platforms/PhoneUITests/PhoneCompanionUITests.swift",
-      "3257040d98b3e7c4fc689b3268166eede4db78c92e6066ae8962d5a7685ad7cd"
+      "c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0"
     ],
     [
       "Platforms/Resources/PrivacyPolicy.txt",
@@ -1866,7 +1866,7 @@
     ],
     [
       "Platforms/TVUITests/NativeTVUITests.swift",
-      "5cf077081e64f3563d5d2191fb87c8d6730538370fe38b65e2db559a90324e99"
+      "80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276"
     ],
     [
       "Platforms/Tests/LaunchProvenanceTests.swift",
@@ -1926,7 +1926,7 @@
     ],
     [
       "Platforms/WatchUITests/NativeWatchUITests.swift",
-      "787d9bf51627e24b789ff3020591218a9fb1e3b0a4af5355768f4153411ba54d"
+      "7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca"
     ],
     [
       "Platforms/macOS/Assets.xcassets/AppIcon.appiconset/Contents.json",
@@ -2042,7 +2042,7 @@
     ],
     [
       "Platforms/macOSExtension/MacPhotoRenderer.swift",
-      "d3d2265e53c3e245f7bbe87d1960986ee80757f58d1e8289a7e6aba2ea929038"
+      "94da429bfec3275ce0687a0465658da4f0dc8f7a55b92ab1a36f02ace5f3d54f"
     ],
     [
       "Platforms/macOSExtension/MacPhotoSession.swift",
@@ -2106,7 +2106,7 @@
     ],
     [
       "Platforms/tvOS/CelluloidTVApp.swift",
-      "eb6c3d53642344a62e5c0f58ab3fdf813cddf3ce7b1523d0dbbc5f20166075fa"
+      "86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f"
     ],
     [
       "Platforms/tvOS/Info.plist",
@@ -2197,7 +2197,7 @@
       "f7603c1c1175e32b5146b43d9e1f03bd6e839416510109795eb942cf7223579a"
     ]
   ],
-  "fingerprint": "50a722a3b0cc6f4d0e5d619f6d67ac93d0f693ad446bc9466204f675e1ff7fd5",
+  "fingerprint": "b2ca3dfbabf947f250459dacf97f9c1ddefa0a4c901f76d1d6ea1186c678dd25",
   "appearance_cancel_patch_sha256": "a3f6810452a5d2d3475a4bf0a921cda863f431c0660c7d8b7616f484e019f15f",
   "expected_UIKit_executions": {
     "original_qualified": 400,

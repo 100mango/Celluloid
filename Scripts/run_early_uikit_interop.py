@@ -3,6 +3,7 @@
 import hashlib,json,os,re,subprocess,sys,time,uuid
 from pathlib import Path
 from native_process import run
+from uikit_installed_identity import readback as readback_installation
 from file_open_observation import capture as capture_file_open_observation
 from native_fixture_handoff import layer_from_log,LAYER_FILE
 from verify_required_interoperability import verify,CONSUMER
@@ -59,14 +60,26 @@ def main():
                 log='early-uikit-'+profile+'-interop.log'
                 result=bounded(common+['-destination',f'platform=iOS Simulator,id={udid}','-resultBundlePath',temp/('CelluloidEarlyUIKit'+profile+'.xcresult'),'-parallel-testing-enabled','NO','-collect-test-diagnostics','never','-only-testing:CelluloidTests/'+CONSUMER.replace('.','/'),'test-without-building'],timeout=300,check=False,log_name=log)
                 row['test_exit_code']=result.returncode
-                row['consumer']=verify('uikit',temp/log,fixtures,source)
+                summary_result=bounded(['xcrun','xcresulttool','get','test-results','summary','--path',temp/('CelluloidEarlyUIKit'+profile+'.xcresult')],timeout=30,echo=False)
+                summary=json.loads(summary_result.stdout)
+                (temp/('CelluloidEarlyUIKit'+profile+'.xcresult.summary.json')).write_text(json.dumps(summary,indent=2)+'\n')
+                row['consumer']=verify('uikit',temp/log,fixtures,source,platform_contract=True,runtime_summary=summary,expected_device={'id':udid,'model':name})
                 displays=DISPLAY.findall((temp/log).read_text());row['actual_scales']=displays
                 row['actual_scale_verified']=len(displays)==1 and float(displays[0])==scale
-                row['pixel_passed']=result.returncode==0 and all(row['consumer']['checks'].values()) and row['actual_scale_verified']
-                if not row['pixel_passed']:raise RuntimeError('Early UIKit strict pixel/scale consumer failed; full matrix withheld, not accepted')
-            except Exception as error:row['pixel_passed']=False;row['error']=str(error)
+                row['pixel_passed']=row['consumer']['historical_strict_pixel_passed'] is True
+                row['platform_contract_passed']=result.returncode==0 and all(row['consumer']['checks'].values()) and row['actual_scale_verified']
+                if not row['platform_contract_passed']:raise RuntimeError('Early UIKit platform contract/scale consumer failed; full matrix withheld, not accepted')
+            except Exception as error:row.setdefault('pixel_passed',False);row['platform_contract_passed']=False;row['error']=str(error)
             finally:
                 if udid is not None:
+                    if 'staging' in row and 'test_exit_code' in row:
+                        try:
+                            row['post_test_installation']=readback_installation(bounded,udid,row['staging'])
+                        except Exception as error:
+                            # Keep the original consumer diagnosis and always
+                            # execute the owned shutdown/delete below.
+                            row['post_test_installation_error']=type(error).__name__+': '+str(error)
+                            row['platform_contract_passed']=False
                     try:
                         if time.monotonic()+40 < deadline and 'staging' in row:
                             observation=capture_file_open_observation(bounded,udid,source,row['staging']['binary_sha256'])
@@ -84,18 +97,19 @@ def main():
                             row['cleanup'].append({'action':action,'exit_code':result.returncode})
                         except Exception as error:row['cleanup'].append({'action':action,'error':str(error)})
                 row['cleanup_passed']=len(row['cleanup'])==2 and all(c.get('exit_code')==0 for c in row['cleanup'])
-                row['passed']=row.get('pixel_passed',False) and row['cleanup_passed']
+                row['passed']=row.get('platform_contract_passed',False) and row['cleanup_passed']
                 (temp/'early-uikit-interop.json').write_text(json.dumps(report,indent=2)+'\n')
             # A pixel mismatch still runs the other genuine display control. An
             # unresolved device teardown must not start another owned device.
-            if not row['cleanup_passed']:break
+            if not row['cleanup_passed'] or 'post_test_installation_error' in row:break
         hashes=[p.get('staging',{}).get('binary_sha256') for p in report['profiles']]
         report['same_built_app_verified']=len(hashes)==2 and None not in hashes and len(set(hashes))==1
     except Exception as error:report['setup_error']=str(error)
     finally:
         report['pixel_passed']=len(report['profiles'])==2 and all(p.get('pixel_passed',False) for p in report['profiles'])
         report['cleanup_passed']=len(report['profiles'])==2 and all(p.get('cleanup_passed',False) for p in report['profiles'])
-        report['passed']=report['pixel_passed'] and report['cleanup_passed'] and report.get('same_built_app_verified',False) and 'setup_error' not in report
+        report['platform_contract_passed']=report.get('same_built_app_verified',False) and len(report['profiles'])==2 and all(p.get('platform_contract_passed',False) for p in report['profiles'])
+        report['passed']=report['platform_contract_passed'] and report['cleanup_passed'] and report.get('same_built_app_verified',False) and 'setup_error' not in report
         (temp/'early-uikit-interop.json').write_text(json.dumps(report,indent=2)+'\n')
         print('REQUIRED_INTEROPERABILITY_EARLY '+json.dumps(report,sort_keys=True))
     if not report['passed']:raise RuntimeError('Early UIKit pixel/scale/binary/cleanup gate failed; full matrix withheld; inspect preserved per-device diagnoses')

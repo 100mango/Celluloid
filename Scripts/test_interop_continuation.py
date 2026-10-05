@@ -108,7 +108,7 @@ class ContinuationTests(unittest.TestCase):
                 args=list(map(str,args))
                 value={'devices':devices or {}} if 'simctl' in args else summaries['2x' if '2x' in args[-1] else '3x']
                 return subprocess.CompletedProcess(args,0,json.dumps(value),'')
-            with patch.object(gate.subprocess,'check_output',side_effect=[('b'*40 if source_mismatch else self.SOURCE)+'\n','dirty' if dirty else '']),patch.object(gate,'frozen_uikit_fingerprint',return_value=fingerprint or gate.FROZEN_UIKIT_FINGERPRINT),patch.object(gate,'run',side_effect=command):return gate.verify(temp,self.SOURCE)
+            with patch.object(gate.subprocess,'check_output',side_effect=[('b'*40 if source_mismatch else self.SOURCE)+'\n','dirty' if dirty else '']),patch.object(gate,'frozen_uikit_fingerprint',return_value=fingerprint or gate.FROZEN_UIKIT_FINGERPRINT),patch.object(gate,'run',side_effect=command):return gate.verify(temp,self.SOURCE,platform_contract=False)
     def test_full_source_binary_fixture_result_and_cleanup_proof_continues_but_blocks_archive(self):
         report=self.exercise_packet();self.assertTrue(report['continuation_safe']);self.assertFalse(report['strict_pixel_passed']);self.assertFalse(report['final_archive_accepted'])
     def test_checkout_fingerprint_setup_or_live_device_blocks(self):

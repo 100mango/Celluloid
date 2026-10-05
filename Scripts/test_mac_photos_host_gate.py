@@ -34,6 +34,8 @@ class MacPhotosHostGateTests(unittest.TestCase):
         count = 0
         for path, digest in contract['files']:
             if path in {'CelluloidNative.xcodeproj/project.pbxproj', 'Platforms/UITests/NativeEditorUITests.swift'}: continue
+            if path in gate.REVIEWED_CANDIDATE_FILES:
+                self.assertEqual(gate.sha(ROOT/path),gate.REVIEWED_CANDIDATE_FILES[path]);continue
             if path in gate.REVIEWED_TEST_FILES:
                 self.assertEqual(gate.sha(ROOT/path),gate.REVIEWED_TEST_FILES[path]);continue
             self.assertEqual(gate.sha(ROOT / path), digest, path)
@@ -55,14 +57,14 @@ class MacPhotosHostGateTests(unittest.TestCase):
 
     def test_existing_serial_workflow_and_independent_host_prerequisite(self):
         self.assertIn('    branches: [' + gate.BRANCH + ']', self.workflow)
-        self.assertEqual(re.findall(r'^  ([a-z-]+):$',self.workflow.split('jobs:\n',1)[1],re.M), ['build-preflight','native-mac','native-simulator','uikit-regression','archive'])
+        self.assertEqual(re.findall(r'^  ([a-z-]+):$',self.workflow.split('jobs:\n',1)[1],re.M), ['build-preflight','native-mac','native-mac-host','native-simulator','uikit-regression','archive'])
         host=self.workflow.split('- name: Actual Photos host discovery',1)[1].split('- name:',1)[0]
         self.assertIn("steps.sandbox_child.outcome == 'success'",host)
         self.assertNotIn('early_interop',host)
         self.assertIn('  cancel-in-progress: false',self.workflow)
         self.assertEqual(self.workflow.count('max-parallel: 1'),2)
     def test_mac_checkout_fetches_immutable_base_without_deepening_current_head(self):
-        mac=self.workflow.split('  native-mac:',1)[1].split('  native-simulator:',1)[0]
+        mac=self.workflow.split('  native-mac-host:',1)[1].split('  native-simulator:',1)[0]
         self.assertEqual(mac.count('fetch-depth: 1'),1)
         fetch=mac.split('- name: Fetch and verify immutable Photos host source base',1)[1].split('- name:',1)[0]
         self.assertIn("base='"+gate.BASE+"'",fetch);self.assertIn("tree='"+gate.BASE_TREE+"'",fetch)
@@ -89,6 +91,26 @@ class MacPhotosHostGateTests(unittest.TestCase):
             self.assertEqual(git('-C',clone,'rev-parse',commits[0]+'^{tree}'),git('-C',seed,'rev-parse',commits[0]+'^{tree}'))
             self.assertEqual(git('-C',clone,'rev-parse','HEAD').strip(),commits[-1]);self.assertEqual(git('-C',clone,'rev-list','--count','HEAD').strip(),'1')
 
+    def test_fresh_host_row_rebuilds_exact_product_without_pixel_or_seed_dependency(self):
+        host=self.workflow.split('  native-mac-host:',1)[1].split('  native-simulator:',1)[0]
+        mac=self.workflow.split('  native-mac:',1)[1].split('  native-mac-host:',1)[0]
+        sim=self.workflow.split('  native-simulator:',1)[1].split('  uikit-regression:',1)[0]
+        self.assertIn('needs: [build-preflight, native-mac]',host)
+        self.assertIn("if: always() && needs.build-preflight.result == 'success'",host)
+        self.assertNotIn('continuation_safe',host)
+        self.assertIn('needs: [build-preflight, native-mac, native-mac-host]',sim)
+        self.assertNotIn('needs.native-mac-host.result',sim)
+        self.assertNotIn('run_mac_photos_host_gate.sh',mac)
+        self.assertNotIn('download-artifact',host)
+        self.assertNotIn('TEST_RUNNER_CELLULOID_HOST_SEED_SOURCE_SHA',host)
+        self.assertIn('--seconds 600 --label fresh-host-ui-build',host)
+        self.assertIn('--seconds 300 --label fresh-host-app-build',host)
+        self.assertIn('CODE_SIGN_IDENTITY=-',host)
+        self.assertIn("'execution_budget_seconds':41*60",host)
+        self.assertEqual(host.count('verify_combined_source.py --phase'),2)
+        self.assertLess(host.index('verify_combined_source.py --phase after'),host.index('mac_photos_host_gate.py accept'))
+        self.assertEqual(host.count('retention-days: 1'),1)
+
     def test_existing_runtime_and_caps_reuse_compiled_product(self):
         self.assertIn('    timeout-minutes: 45',self.workflow)
         self.assertIn('        timeout-minutes: 14',self.workflow)
@@ -97,14 +119,14 @@ class MacPhotosHostGateTests(unittest.TestCase):
         self.assertNotIn('CODE_SIGN_IDENTITY',self.shell)
         self.assertIn('celluloid-sandbox',self.shell)
     def test_artifacts_share_existing_mac_allocation(self):
-        self.assertEqual(self.workflow.count('uses: actions/upload-artifact@'),5)
-        self.assertNotIn('path: ${{ runner.temp }}/mac-host-evidence/',self.workflow)
+        self.assertEqual(self.workflow.count('uses: actions/upload-artifact@'),6)
+        self.assertIn('path: ${{ runner.temp }}/mac-host-evidence/',self.workflow)
         self.assertEqual(gate.CAP,1_000_000)
         collector=(ROOT/'Scripts/collect_native_evidence.py').read_text()
         self.assertIn("record=verify_collected(folder,os.environ['GITHUB_SHA'])",collector)
         self.assertIn('independently replayed host proof manifest',collector)
         budgets=runpy.run_path(str(ROOT/'Scripts/combined_evidence_budget.py'))
-        self.assertEqual(budgets['BUDGETS']['mac'],3_000_000)
+        self.assertEqual(budgets['BUDGETS']['mac'],2_000_000)
         self.assertEqual(sum(budgets['BUDGETS'].values()),19_500_000)
 
     def test_unknown_interruptions_abort_without_alert_action(self):
@@ -260,12 +282,14 @@ class RuntimeAcceptanceTests(unittest.TestCase):
                        {'passedTests': 1, 'failedTests': 0, 'skippedTests': 0, 'expectedFailures': 0,
                         'device': {'platform': 'macOS', 'osVersion': '27.0'}}]}
         source = {'source_sha': self.SOURCE, 'base_sha': gate.BASE, 'base_tree': gate.BASE_TREE,
-                  'unchanged_bound_files': gate.UNCHANGED_BASE_FILES, 'reviewed_diagnostic_test_files': gate.REVIEWED_TEST_FILES, 'complete_host_e2e': False, 'tree': 'b' * 40,
+                  'unchanged_bound_files': gate.UNCHANGED_BASE_FILES, 'reviewed_diagnostic_test_files': gate.REVIEWED_TEST_FILES, 'reviewed_candidate_files': gate.REVIEWED_CANDIDATE_FILES, 'complete_host_e2e': False, 'tree': 'b' * 40,
                   'workflow_sha256': 'c' * 64}
         clock={'source_sha':self.SOURCE,'started_monotonic':100.0,'started_unix':10000.0,'execution_budget_seconds':gate.JOB_EXECUTION_SECONDS}
         gate.write(root/'mac-job-clock.json',clock)
         checks=[{'phase':phase,'observed_monotonic':now,'deadline_monotonic':2560.0,'remaining_seconds':2560.0-now,'required_seconds':1020,'admitted':True} for phase,now in [('before-prepare',101.0),('before-host',110.0)]]
         documents = {
+            'combined-source-before.json': dict(source,phase='before',file_count=len(json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['files']),source_fingerprint=json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['fingerprint']),
+            'combined-source-after.json': dict(source,phase='after',file_count=len(json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['files']),source_fingerprint=json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['fingerprint']),
             'mac-host-budget.json':{'source_sha':self.SOURCE,'checks':checks,'admitted':True,'clock_sha256':gate.sha(root/'mac-job-clock.json'),'host_process_seconds':720,'evidence_reserve_seconds':300,'complete_host_e2e':False},
             'mac-host-observed/fixture.json': {'source_sha': self.SOURCE, 'sha256': 'f' * 64},
             'mac-host-observed/fixture-ownership.json': {'source_sha': self.SOURCE, 'app_executable_sha256': 'd' * 64, 'initial_count': 0, 'selected_count': 1, 'width': 1200, 'height': 800, 'asset_label': 'synthetic sole asset', 'fixture_sha256': 'f' * 64, 'mode': 'require-empty-library'},
@@ -311,7 +335,19 @@ class RuntimeAcceptanceTests(unittest.TestCase):
             self.assertTrue(accepted['prerequisite_accepted'])
             self.assertTrue(accepted['exactly_one_passed_zero_skipped'])
             self.assertFalse(accepted['complete_host_e2e'])
-            self.assertEqual(len(accepted['receipts']), 15)
+            self.assertEqual(len(accepted['receipts']), 17)
+
+    def test_explicitly_reviewed_candidate_hashes_cannot_be_removed_or_substituted(self):
+        for name in ['mac-host-source-before.json','mac-host-source-after.json']:
+            for mapping in [{},{path:'f'*64 for path in gate.REVIEWED_CANDIDATE_FILES}]:
+                with self.subTest(name=name,mapping=mapping):
+                    self.check_mutation_rejected(lambda root:self.edit(root/name,reviewed_candidate_files=mapping))
+
+    def test_combined_candidate_receipts_cannot_be_stale_or_unbound(self):
+        for name in ['combined-source-before.json','combined-source-after.json']:
+            for fields in [{'source_sha':'f'*40},{'tree':'f'*40},{'workflow_sha256':'f'*64},{'phase':'wrong'},{'file_count':True},{'file_count':0},{'source_fingerprint':'f'*64}]:
+                with self.subTest(name=name,fields=fields):
+                    self.check_mutation_rejected(lambda root:self.edit(root/name,**fields))
 
     def test_synthetic_packet_uses_canonical_paths_through_temporary_directory_alias(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -332,7 +368,7 @@ class RuntimeAcceptanceTests(unittest.TestCase):
             with self.assertRaises(AssertionError):gate.verify_acceptance(alias,self.SOURCE)
 
     def test_each_missing_mandatory_record_rejects(self):
-        paths = ['mac-job-clock.json', 'mac-host-budget.json', 'mac-host-context.json', 'mac-host-summary.json', 'mac-host-test.log',
+        paths = ['combined-source-before.json','combined-source-after.json','mac-job-clock.json', 'mac-host-budget.json', 'mac-host-context.json', 'mac-host-summary.json', 'mac-host-test.log',
                  'mac-host-product-after.json', 'mac-host-source-before.json', 'mac-host-source-after.json',
                  'mac-host-observed/prerequisite.json', 'mac-host-observed/outcome.json',
                  'mac-host-observed/registration-selected.json', 'mac-host-observed/registration-selected.txt',
@@ -487,7 +523,7 @@ class CollectedProofTests(unittest.TestCase):
             outer_names={r['name'] for r in outer['files']}
             for row in record['files']:
                 name=row['path'];self.assertIn(name if name.startswith('mac-host-') else 'mac-host-'+name,outer_names)
-            self.assertLessEqual(sum(p.stat().st_size for p in (root/'celluloid-bounded-evidence').iterdir()),3_000_000)
+            self.assertLessEqual(sum(p.stat().st_size for p in (root/'celluloid-bounded-evidence').iterdir()),2_000_000)
     def test_missing_accepted_proof_rejected_by_both_collectors(self):
         for missing in gate.PROOF_LIMITS:
             with self.subTest(missing=missing),tempfile.TemporaryDirectory() as tmp:
@@ -618,10 +654,10 @@ class HostTimeBudgetTests(unittest.TestCase):
             gate.write(root/'mac-host-budget.json',r)
             with self.assertRaises(AssertionError):gate.verify_acceptance(root,'a'*40)
     def test_workflow_reserves_first_step_clock_and_finishes_compiles_before_host(self):
-        workflow=(ROOT/'.github/workflows/apple-platforms.yml').read_text().split('  native-mac:',1)[1].split('  native-simulator:',1)[0]
+        workflow=(ROOT/'.github/workflows/apple-platforms.yml').read_text().split('  native-mac-host:',1)[1].split('  native-simulator:',1)[0]
         self.assertLess(workflow.index('Reserve Mac job collection time'),workflow.index('uses: actions/checkout@'))
-        self.assertLess(workflow.index('Unsigned native Mac Release packaging'),workflow.index('Actual Photos host discovery'))
-        self.assertLess(workflow.index('Actual Photos host discovery'),workflow.index('Export bounded synthetic evidence'))
+        self.assertLess(workflow.index('Verify actual embedded sandbox extension before UI'),workflow.index('Actual Photos host discovery'))
+        self.assertLess(workflow.index('Actual Photos host discovery'),workflow.index('Bound and replay the dedicated host proof'))
         shell=(ROOT/'Scripts/run_mac_photos_host_gate.sh').read_text()
         self.assertLess(shell.index('budget-before-prepare'),shell.index('source-before'))
         self.assertLess(shell.index('budget-before-host'),shell.index('TEST_RUNNER_CELLULOID_MAC_PHOTOS_HOST_PREREQUISITE'))

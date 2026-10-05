@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export bounded synthetic evidence under the fixed eleven-job 20 MB allocation; no xcresults."""
+"""Export bounded synthetic evidence under the fixed twelve-job 20 MB allocation; no xcresults."""
 from pathlib import Path
 import base64,hashlib,json,os,re,shutil,subprocess,tempfile
 from collections import deque
@@ -39,9 +39,25 @@ def retain_file(name,path,source):
 required=['combined-source-before.json','combined-source-after.json']
 if PLATFORM=='preflight':required+=['combined-preflight.json','preflight-phone-embedded-watch.json','preflight-phone-embedded-watch-release.json']
 if PLATFORM=='mac':required+=['interop-continuation.json','CelluloidEarlyUIKit2x.xcresult.summary.json','CelluloidEarlyUIKit3x.xcresult.summary.json','early-uikit-2x-file-open-observation.json','early-uikit-3x-file-open-observation.json','early-uikit-interop.json','early-uikit-2x-staging.json','early-uikit-3x-staging.json','mac-required-tests.json','sandbox-extension-entitlements-before.plist','sandbox-extension-entitlements.plist']
-if PLATFORM=='phone':required+=['phone-embedded-watch.json','phone-embedded-watch-release.json','phone-required-tests.json']
-if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'}:required+=['uikit-layer-staging.json','uikit-required-tests.json']
+if PLATFORM=='phone':required+=['phone-embedded-watch.json','phone-embedded-watch-release.json','phone-required-tests.json','phone-required-tests.runtime-summary.json']
+if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'}:required+=['uikit-layer-staging.json','uikit-required-tests.json','uikit-required-tests.runtime-summary.json']
 if PLATFORM=='archive':required+=['archive-embedded-watch.json']
+# A claimed versioned consumer cannot be uploaded without the actual summary
+#it was bound to. Diagnostic-only failures still retain available evidence.
+consumer_name='phone-required-tests' if PLATFORM=='phone' else 'uikit-required-tests' if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'} else None
+if consumer_name and (TEMP/(consumer_name+'.json')).is_file():
+    consumer=json.loads((TEMP/(consumer_name+'.json')).read_text())
+    if isinstance(consumer.get('platform_contract'),dict) and consumer['platform_contract'].get('schema')=='Celluloid.PlatformRendering.1':
+        checks=consumer.get('checks')
+        if not isinstance(checks,dict) or not checks or not all(type(v) is bool for v in checks.values()):raise RuntimeError('Malformed versioned consumer acceptance checks')
+        if all(checks.values()):
+            from consumer_runtime_binding import validate as validate_runtime
+            summary_path=TEMP/(consumer_name+'.runtime-summary.json')
+            if not summary_path.is_file() or summary_path.is_symlink() or summary_path.stat().st_size>MAX_FILE:raise RuntimeError('Missing/oversized accepted runtime summary')
+            binding=consumer['runtime_binding']
+            replay=validate_runtime(json.loads(summary_path.read_text()),consumer['platform_contract'],{'id':binding['device_id'],'model':binding['model']})
+            if replay!=binding or consumer['source_sha']!=os.environ.get('GITHUB_SHA'):raise RuntimeError('Accepted consumer/runtime summary identity changed')
+
 for name in required:
     path=TEMP/name
     if path.is_file():
@@ -58,8 +74,8 @@ if PLATFORM=='preflight':
                     if len(issues)<8:issues.append(line[:1200].rstrip())
         diagnostics.append({'log':path.name,'issues':issues,'tail':list(tail)})
     if not retain_bytes('preflight-diagnostics.json',(json.dumps(diagnostics,indent=2)+'\n').encode(),'bounded all-stage compiler/copy-operation diagnostics'):raise RuntimeError('Prerequisite diagnostics exceeded reserved allocation')
-# The real host probe shares this Mac row's allocation. Its own1MB subset is
-# admitted before optional tails/screenshots, never uploaded as a second artifact.
+# Replay older same-row packets if invoked on historical evidence. The current
+# workflow uploads the dedicated host row directly within its reallocated1MB.
 if PLATFORM == 'mac' and (TEMP/'mac-host-evidence').exists():
     from mac_photos_host_gate import verify_collected
     folder=TEMP/'mac-host-evidence';index=folder/'manifest.json'
@@ -120,6 +136,16 @@ if PLATFORM=='mac' and (TEMP/'mac.log').is_file():
     except (ValueError,KeyError) as error:
         manifest['omissions'].append({'name':LAYER_FILE,'reason':str(error)})
 
+# Preserve the bounded actual native-oracle observation even when a red native
+#assertion prevents a complete accepted producer receipt. This is diagnostic.
+if PLATFORM=='mac' and (TEMP/'mac.log').is_file():
+    native_lines=[line for line in (TEMP/'mac.log').read_text(errors='replace').splitlines() if line.startswith('MAC_NATIVE_TEXT_CONTRACT ')]
+    if native_lines:
+        if len(native_lines)!=1 or len(native_lines[0])>20_000:raise RuntimeError('Ambiguous/oversized native text observation')
+        observation={'source_sha':os.environ.get('GITHUB_SHA'),'acceptance':False,'raw_line_sha256':hashlib.sha256(native_lines[0].encode()).hexdigest(),'observation':json.loads(native_lines[0].split(' ',1)[1])}
+        if not retain_bytes('native-text-contract-observation.json',(json.dumps(observation,indent=2)+'\n').encode(),'actual native test observation; acceptance requires complete producer replay'):
+            raise RuntimeError('Required native text observation exceeds Mac evidence cap')
+
 # Small source/archive-bound text observations precede optional logs/screenshots.
 if PLATFORM=='mac':
     from text_observation_evidence import collect as collect_text_observations
@@ -145,9 +171,15 @@ logs += [f'watch-{profile}-runtime-tests.log' for profile in ['small','large']]
 for name in logs:
     path=TEMP/name
     if not path.is_file():continue
+    # The1MB host allocation moved to its serial fresh-VM row. Keep Mac runtime
+    # and raw AX tails at200KB; trim only optional compiler chatter, explicitly.
+    build_logs={'early-uikit-build.log','mac-release.log','sandbox-build.log','sandbox-app-build.log','mac-photos-build.log'}
+    tail_limit=20_000 if PLATFORM=='mac' and name in build_logs else 200_000
+    if tail_limit<200_000 and path.stat().st_size>tail_limit:
+        manifest['omissions'].append({'name':name,'reason':'optional compiler tail shortened for fixed host budget reallocation','omitted_prefix_bytes':path.stat().st_size-tail_limit,'retained_tail_limit':tail_limit})
     with path.open('rb') as handle:
-        handle.seek(max(0,path.stat().st_size-200_000))
-        retain_bytes(name+'.tail.txt',handle.read(200_000),name+' (last200000 bytes)')
+        handle.seek(max(0,path.stat().st_size-tail_limit))
+        retain_bytes(name+'.tail.txt',handle.read(tail_limit),name+' (last'+str(tail_limit)+' bytes)')
     selected=deque(maxlen=1500)
     with path.open('rb') as handle:
         while part:=handle.readline(256_000):
@@ -188,7 +220,7 @@ for name in bundles:
             if result.returncode==0:retain_bytes(name+'.summary.json',result.stdout,name+' structured summary')
             else:manifest['omissions'].append({'name':name,'reason':'summary exporter exit'+str(result.returncode)})
         except (subprocess.TimeoutExpired,OptionalExportError) as error:manifest['omissions'].append({'name':name,'reason':'summary exporter unavailable; cleanup not assumed: '+str(error)})
-    if name=='CelluloidMac.xcresult' or name.startswith('TestResults'):continue
+    if name.startswith('TestResults'):continue
     with tempfile.TemporaryDirectory(prefix='celluloid-attachments-',dir=TEMP) as folder:
         folder=Path(folder)
         try:
@@ -207,6 +239,7 @@ for name in bundles:
                 extension='.png' if magic.startswith(b'\x89PNG\r\n\x1a\n') else '.jpg' if magic.startswith(b'\xff\xd8\xff') else None
                 if extension is None:continue
                 human=item.get('suggestedHumanReadableName','screenshot')
+                if name=='CelluloidMac.xcresult' and not human.startswith('native-text-production-'):continue
                 priority=0 if 'failure' in human.lower() else 1 if human.startswith(('native-', 'vision-', 'tv-', 'watch-')) else 2 if item.get('isAssociatedWithFailure') else 3
                 candidates.append((priority,human,path,extension))
         # Audit failures can attach the same full screen dozens of times. Keep

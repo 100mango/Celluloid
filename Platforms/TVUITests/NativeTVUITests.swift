@@ -114,8 +114,20 @@ final class NativeTVUITests: XCTestCase {
                 try select(allow, in: system)
             }
             if large { try panelDiagnostic(app, state: "large-text-photos", image: true) }
+            let panel = app.otherElements["tv.editor.panel"].firstMatch
+            XCTAssertTrue(panel.waitForExistence(timeout: 15))
+            XCTAssertEqual(panel.staticTexts.matching(NSPredicate(format: "label == %@", "选择照片")).count, 1,
+                           "Keep one localized sheet title without a duplicate scroll-content heading")
+            XCTAssertTrue(panel.staticTexts["显示最近的 200 张照片。请按需要的顺序选择 1–4 张。"].exists,
+                          "Photo-count and ordered-selection guidance must remain accessible")
             let photo = try revealPhoto("CelluloidSource-1.png", in: app)
-            try select(photo, in: app); try select(app.buttons["tv.edit-selected"], in: app)
+            XCTAssertTrue(photo.identifier.hasPrefix("tv.photo."))
+            XCTAssertTrue(photo.label.hasPrefix("CelluloidSource-1.png,"))
+            try select(photo, in: app)
+            XCTAssertTrue(photo.hasFocus); XCTAssertTrue(photo.isHittable)
+            XCTAssertEqual(photo.value as? String, "已选 1", "The exact reachable source must be selected, not a substitute")
+            print("TV_PHOTO_LOCALIZED_REACHABILITY requestedLarge=\(large) identifier=\(photo.identifier) frame=\(photo.frame) selected=\(photo.value as? String ?? "missing")")
+            try select(app.buttons["tv.edit-selected"], in: app)
             XCTAssertTrue(app.images["tv.preview"].waitForExistence(timeout: 20))
             XCTAssertEqual(app.buttons["tv.filters"].label, "原片")
             try select(app.buttons["tv.filters"], in: app)

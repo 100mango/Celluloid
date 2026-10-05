@@ -41,9 +41,9 @@ class CombinedPreflightTests(unittest.TestCase):
     def test_every_long_job_is_gated_on_preflight_and_allocation_stays_bounded(self):
         source=(ROOT/'.github/workflows/apple-platforms.yml').read_text()
         self.assertIn('needs: build-preflight',source)
-        self.assertEqual(source.count("if: always() && needs.build-preflight.result == 'success'"),2)
+        self.assertEqual(source.count("if: always() && needs.build-preflight.result == 'success'"),3)
         self.assertIn('needs: [build-preflight, native-mac, native-simulator, uikit-regression]',source)
-        self.assertEqual(BUDGETS['preflight'],500_000);self.assertEqual(len(BUDGETS),11)
+        self.assertEqual(BUDGETS['preflight'],500_000);self.assertEqual(len(BUDGETS),12)
         self.assertEqual(sum(BUDGETS.values()),19_500_000);self.assertLess(sum(BUDGETS.values()),WHOLE_RUN)
         self.assertNotIn('COPY_PHASE_STRIP=',source)
     def test_preflight_failure_receipts_and_strip_diagnostics_survive_export(self):

@@ -4,7 +4,7 @@ from unittest.mock import patch
 import run_early_uikit_interop as early
 
 class EarlyUIKitInteropTests(unittest.TestCase):
-    def exercise(self, *, pixels=None,statuses=None,cleanup_status=0,cleanup_timeout=False,scales=None,binaries=None):
+    def exercise(self, *, pixels=None,statuses=None,cleanup_status=0,cleanup_timeout=False,scales=None,binaries=None,post_test_error=False):
         pixels=pixels or {};statuses=statuses or {};scales=scales or {};binaries=binaries or {}
         commands=[];devices={};active=[None]
         def invoke(args, **kwargs):
@@ -18,6 +18,7 @@ class EarlyUIKitInteropTests(unittest.TestCase):
                 devices[identifier]=profile;active[0]=profile;result=identifier+'\n'
             elif len(args)>1 and args[1].endswith('stage_uikit_layer_fixture.py'):
                 Path(args[-1]).write_text(json.dumps({'binary_sha256':binaries.get(active[0],'a'*64)}))
+            elif 'xcresulttool' in args:result='{}'
             elif 'test-without-building' in args:
                 profile=active[0];result='MAC_LAYER_UIKIT_COMPOSITOR_DISPLAY scale='+str(scales.get(profile,float(profile[0])))+'\n'
                 (Path(os.environ['RUNNER_TEMP'])/kwargs['log_name']).write_text(result);status=statuses.get(profile,0)
@@ -25,18 +26,18 @@ class EarlyUIKitInteropTests(unittest.TestCase):
                 if args[2]=='shutdown' and cleanup_timeout:raise TimeoutError('owned shutdown timed out')
                 status=cleanup_status
             return subprocess.CompletedProcess(args,status,result,'')
-        def verify(*args):return {'checks':{'one_source_bound_strict_pixel_oracle':pixels.get(active[0],True)}}
-        expected=not any(v is False for v in pixels.values()) and not any(statuses.values()) and not cleanup_status and not cleanup_timeout and all(scales.get(p,float(p[0]))==v for p,_,v in early.PROFILES) and len({binaries.get(p,'a'*64) for p,_,_ in early.PROFILES})==1
-        with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,RUNNER_TEMP=folder,GITHUB_SHA='a'*40),patch.object(early,'frozen_uikit_fingerprint',return_value=early.FROZEN_UIKIT_FINGERPRINT),patch.object(early,'layer_from_log',return_value=b'{"fixture":"source-bound-by-producer"}'),patch.object(early,'run',side_effect=invoke),patch.object(early,'verify',side_effect=verify),contextlib.redirect_stdout(io.StringIO()):
+        def verify(*args,**kwargs):return {'historical_strict_pixel_passed':pixels.get(active[0],True),'checks':{'versioned_per_runtime_platform_contract':pixels.get(active[0],True)}}
+        expected=not post_test_error and not any(v is False for v in pixels.values()) and not any(statuses.values()) and not cleanup_status and not cleanup_timeout and all(scales.get(p,float(p[0]))==v for p,_,v in early.PROFILES) and len({binaries.get(p,'a'*64) for p,_,_ in early.PROFILES})==1
+        with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,RUNNER_TEMP=folder,GITHUB_SHA='a'*40),patch.object(early,'frozen_uikit_fingerprint',return_value=early.FROZEN_UIKIT_FINGERPRINT),patch.object(early,'layer_from_log',return_value=b'{"fixture":"source-bound-by-producer"}'),patch.object(early,'run',side_effect=invoke),patch.object(early,'verify',side_effect=verify),patch.object(early,'readback_installation',side_effect=ValueError('post-test hash mismatch') if post_test_error else None,return_value={'synthetic':'post-test binding fixture'}),contextlib.redirect_stdout(io.StringIO()):
             if expected:early.main()
             else:
                 with self.assertRaisesRegex(RuntimeError,'full matrix withheld'):early.main()
             report=json.loads((Path(folder)/'early-uikit-interop.json').read_text());self.assertEqual(report['passed'],expected)
-            expected_profiles=1 if cleanup_status or cleanup_timeout else 2
+            expected_profiles=1 if cleanup_status or cleanup_timeout or post_test_error else 2
             self.assertEqual(len(report['profiles']),expected_profiles)
             for row in report['profiles']:
                 self.assertEqual([c['action'] for c in row['cleanup']],['shutdown','delete'])
-                if pixels.get(row['profile']) is False or statuses.get(row['profile']):self.assertIn('strict pixel',row['error'])
+                if pixels.get(row['profile']) is False or statuses.get(row['profile']):self.assertIn('platform contract',row['error'])
             self.assertEqual(len([a for a,k in commands if 'build-for-testing' in a]),1)
             tests=[a for a,k in commands if 'test-without-building' in a];self.assertEqual(len(tests),expected_profiles)
             for args in tests:
@@ -45,12 +46,20 @@ class EarlyUIKitInteropTests(unittest.TestCase):
             self.assertFalse(any('privacy' in a or 'addmedia' in a for a,k in commands))
             self.assertTrue(all(k.get('timeout',180)<=600 for a,k in commands))
             return report
+    def test_post_test_binding_failure_preserves_primary_diagnosis_and_always_cleans(self):
+        report=self.exercise(post_test_error=True,pixels={'2x':False})
+        row=report['profiles'][0]
+        self.assertIn('platform contract',row['error'])
+        self.assertIn('post-test hash mismatch',row['post_test_installation_error'])
+        self.assertEqual(row['cleanup'],[{'action':'shutdown','exit_code':0},{'action':'delete','exit_code':0}])
+        self.assertFalse(report['passed'])
+
     def test_optional_file_open_capture_failure_cannot_skip_owned_cleanup(self):
         with patch.object(early,'capture_file_open_observation',side_effect=RuntimeError('optional read failed')):
             report=self.exercise(pixels={'2x':False})
         self.assertTrue(report['cleanup_passed'])
         self.assertTrue(all('optional read failed' in r['file_open_observation_error'] for r in report['profiles']))
-        self.assertIn('strict pixel',report['profiles'][0]['error'])
+        self.assertIn('platform contract',report['profiles'][0]['error'])
     def test_one_build_two_real_displays_and_cleanup_on_success(self):self.exercise()
     def test_first_pixel_failure_still_runs_other_display_and_never_passes(self):
         self.exercise(pixels={'2x':False});self.exercise(statuses={'3x':65})

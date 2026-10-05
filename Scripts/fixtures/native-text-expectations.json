@@ -1,0 +1,171 @@
+{
+  "schema": "Celluloid.NativeTextContract.1",
+  "keys": [
+    "schema",
+    "case",
+    "sourcePNG_SHA256",
+    "actualPNG_SHA256",
+    "actualRGBA_SHA256",
+    "controlRGBA_SHA256",
+    "maximumChannelDifference",
+    "differentPixels",
+    "comparedBytes",
+    "text",
+    "utf16",
+    "filter",
+    "referenceCanvas",
+    "bubble",
+    "sticker",
+    "sourceSpans",
+    "baselines",
+    "fontSize",
+    "lineHeight",
+    "textRect",
+    "backingPixels",
+    "backingScale",
+    "destination",
+    "control",
+    "mutations"
+  ],
+  "fixed": {
+    "case": "manufactured-affine",
+    "comparedBytes": 1228800,
+    "text": "Hello, 世界 🎬",
+    "utf16": [
+      72,
+      101,
+      108,
+      108,
+      111,
+      44,
+      32,
+      19990,
+      30028,
+      32,
+      55356,
+      57260
+    ],
+    "filter": "Fade",
+    "referenceCanvas": [
+      480,
+      640
+    ],
+    "bubble": {
+      "asset": "say1",
+      "center": [
+        240,
+        320
+      ],
+      "bounds": [
+        0,
+        0,
+        180,
+        96
+      ],
+      "affine": [
+        1.5,
+        0.25,
+        -0.25,
+        1.5,
+        10,
+        -4
+      ]
+    },
+    "sticker": {
+      "asset": "32",
+      "center": [
+        44,
+        -12
+      ],
+      "bounds": [
+        2,
+        3,
+        72,
+        80
+      ],
+      "affine": [
+        0.5,
+        0,
+        0,
+        0.75,
+        0,
+        0
+      ]
+    },
+    "sourceSpans": [
+      [
+        0,
+        6
+      ],
+      [
+        6,
+        4
+      ],
+      [
+        10,
+        2
+      ]
+    ],
+    "baselines": [
+      40,
+      52,
+      64
+    ],
+    "fontSize": 10,
+    "lineHeight": 12,
+    "textRect": [
+      77.231,
+      26.24,
+      27.875,
+      43.52
+    ],
+    "backingPixels": [
+      56,
+      88
+    ],
+    "backingScale": 2,
+    "destination": [
+      77.231,
+      26.24,
+      28,
+      44
+    ],
+    "control": {
+      "kind": "independent-appkit-per-line-and-literal-affine",
+      "provenance": "52bf natural AppKit metrics plus frozen original UIKit whitespace placement",
+      "api": "NSLayoutManager.drawGlyphs",
+      "fontSize": 10,
+      "lineText": [
+        "Hello,",
+        " 世界 ",
+        "🎬"
+      ],
+      "localBaselines": [
+        13.76,
+        25.76,
+        37.76
+      ],
+      "backingPixels": [
+        56,
+        88
+      ],
+      "backingScale": 2
+    }
+  },
+  "mutation_names": [
+    "shift-down-one-point",
+    "squeeze-to-logical-bounds",
+    "remove-wrapped-space",
+    "clip-right-half"
+  ],
+  "mutation_keys": [
+    "name",
+    "hookCalls",
+    "rgbaSHA256",
+    "maximumDifferenceFromControl",
+    "maximumDifferenceFromUnmutated",
+    "differentPixelsFromControl",
+    "differentPixelsFromUnmutated"
+  ],
+  "required_test": "MacPhotoRendererTests.testProductionTextMatchesIndependentNativeControlAndRejectsPathMutations"
+}

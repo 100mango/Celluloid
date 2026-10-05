@@ -1,0 +1,82 @@
+# Versioned platform rendering qualification
+
+This is a replacement fixture-specific acceptance contract for the contradictory
+universal Mac-to-UIKit pixel comparison. It is not a claim that the candidate has
+passed Apple execution, Photos-host preservation, or all-platform acceptance.
+The layered Photos safety guard and disabled final archive remain in force.
+
+## Immutable independent controls
+
+`Scripts/fixtures/platform-rendering-controls.json` retains original UIKit full,
+bubble-artwork and all-artwork PNGs at genuine2x and3x, plus their exact archive
+and source image inputs. These bytes came from public52bf7a9, run37220588828,
+artifact11311410428, with recorded source tree, original production fingerprint,
+models, iOS27.0 build24A434 and arm64 provenance. The full PNG hashes also match
+historical9c. The controls are never regenerated from candidate output.
+
+The packet is staged only beside the synthetic adjustment in an owned disposable
+app Documents directory. No shipping UIKit source, resource bundle or project
+changes are necessary. Both staging and XCTest verify the exact packet SHA.
+
+## Separate oracles
+
+- Literal decoded archive/content/geometry checks remain, including the original
+  text, spaces, reference canvas and full affine components.
+- Each current UIKit output must match the immutable control for its own runtime
+  and display-scale profile within the original2-channel bound. Unknown profiles
+  or runtime builds are not accepted. Additional device models at a known scale
+  must still pass their own actual execution against that fixed control.
+- Filtered base and sticker components must match each other and the independently
+  witnessed original component bytes exactly in normalized sRGB RGBA.
+- Artwork placement uses only the union of fixed2x/3x control gradients above2,
+  expanded by one output pixel. Outside this fixed band, every RGBA value is exact.
+  Every candidate/control gradient edge must have a counterpart within one pixel.
+  Inside the band, each channel must stay within the controls' one-pixel-neighbor
+  envelope plus the existing2-level quantization bound. Opacity remains255.
+  No candidate-derived mask, fitted translation, recoloring or broad image tolerance
+  is permitted. Recoloring, transparency and removed-artwork image mutations must
+  be rejected by this same oracle.
+- Native text requires an actual text-bearing `MacPhotoRenderer.render` result
+  against an independent AppKit per-line glyph and literal affine oracle. Its
+  source and final PNG hashes must match the separately manufactured fixture.
+  Natural baseline, original whitespace spans, intrinsic backing mapping,
+  multilingual same-path clipping and live production-path mutation tests remain
+  required. Expected pixels do not call candidate text helpers.
+
+The old full/component maximum differences and diagnostic images are still
+recorded. Historical failures remain historical failures. A new contract can pass
+while `strict_pixel_passed` remains false; these are deliberately separate facts.
+
+## Execution and evidence
+
+The live verifier requires schema `Celluloid.PlatformRendering.1`, a complete
+`Celluloid.NativeTextContract.1` producer record, both actually executed consumers,
+exact source/binary/fixture/control/runtime bindings, one consistent finalized
+XCTest outcome, finite consistent timing and verified owned-device cleanup.
+Every current consumer must pass; the later phone and full UIKit routes also read
+their actual finalized xcresult summary and bind its owned device/model,27.0 build24A434
+and arm64 architecture. Complete raw testcase/suite/terminal/error accounting must
+agree with that summary. A consistently failed unrelated case retains a separately
+passed renderer-consumer result, but the enclosing aggregate and CLI step stay red.
+A Passed summary contradicted by any failed raw record is rejected, not excused.
+Known-scale additional approved iPad models retain separate
+actual execution checks. The accepted summary is mandatory before optional evidence.
+Every completed early consumer also receives one bounded post-test installed-app
+readback, because Xcode can relocate the app during test-without-building. Current
+product identity/executable must match the built/staged bytes, and a failed readback
+preserves its primary test diagnosis while always cleaning up and withholding acceptance.
+ the former exception for known failed pixel
+assertions is used only by explicit historical parser regression tests, never by
+the live CLI. Unrelated assertions, failures, crashes, timeouts, unknown outcomes,
+missing records and unverified cleanup reject continuation.
+
+Native and consumer records must occur inside their named executed test cases.
+Required source/producer receipts and raw native text observation are retained
+before optional logs/images. At most the two named native oracle failure images
+are added to bounded Mac evidence; existing aggregate exporter and workflow byte
+limits remain. Release packaging separately checks the actual embedded extension
+binary for absence of Debug-only text fault hooks.
+
+Passing this fixed fixture does not qualify arbitrary typography, physical-device
+transport or actual Photos save/reopen/cancel/Revert and resource preservation.
+Those remain separate required gates before removing the protection or release.

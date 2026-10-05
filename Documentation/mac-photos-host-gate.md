@@ -7,35 +7,38 @@ entry coverage only. Every acceptance report retains `complete_host_e2e: false`.
 
 ## Execution and ownership
 
-There is no new workflow or runner. The existing serial native Mac job remains
-bounded to 45 minutes. After its ordinary UI stages, sandbox child checks, and
-Release compile/package prerequisites,
-a 14-minute step reuses the exact minimally signed `celluloid-sandbox` app and
-external UI bundle. The actual Photos test retains its 12-minute bound. No
-second app copy or re-sign occurs: that would risk duplicate same-ID extension
-registration after ordinary UI already launched the original product.
+The `native-mac-host` row uses a fresh ephemeral standard Mac VM, serialized
+between `native-mac` and the native simulator matrix. It waits for Mac diagnostics
+to finish, but admission depends on the same successful preflight, not the known
+cross-display pixel comparison. Subsequent functional rows wait for host completion
+without requiring host success. There is still at most one Celluloid Mac job
+running at once. No new current run is launched by this draft.
 
-The existing Mac pixel probe uses one build and sequential 2x/3x devices, with
-an 18-minute active budget inside a 20-minute step. Observed prior Mac stages
-outside that probe took about 16.5 minutes; the first pixel probe took 5.5 minutes,
-including a 50.6-second build and a 38.4-second consumer. Two such device cycles
-plus the 12-minute host cap fit approximately 39 minutes. These are measured
-planning inputs, not a guarantee. A timeout remains a failed gate. The first job step records a source-bound
-monotonic clock with a conservative 41-minute execution budget, leaving four
-minutes outside that clock for runner/action setup. Before preparation and again
-immediately before the host process, the gate requires at least 17 minutes:
-12 for host execution plus five reserved for teardown, proof collection and
-artifact upload. Optional Mac evidence exporters share at most three minutes,
-shortened further if the source-bound job clock requires preserving the final
-two minutes. Required source/host/consumer/fixture/diagnostic records are admitted
-first; timeout or unknown exporter cleanup is an explicit omission and stops
-later optional exporters. A missing/invalid clock or insufficient remaining time stops
-before launch with explicit incomplete/false evidence. It does not shorten the
-required host scenario or manufacture a prerequisite pass.
+This separation follows actual evidence from run37220588828 at source52bf7a9:
+the Mac row had707.187529333 seconds left when host admission required1020.
+It correctly stopped before preparation or host launch. The2x/3x producer/consumer
+step had consumed about13m51, so the old same-job planning estimate was insufficient.
+The failed budget receipt remains incomplete; it is not retroactively accepted.
 
-Host discovery does not require a successful layer-pixel comparison, but its
-signed sandbox product and child must pass first. Layered edits remain protected;
-this phase never saves, cancels a modified photo, or invokes Revert.
+The fresh row checks out exact `github.sha`, fetches/verifies the immutable9c
+source base with the existing bounded read-only command, verifies combined source,
+and materializes/verifies exact-source native icons. It rebuilds the external UI
+bundle and ordinary sandbox app locally with600-second and300-second owned-command
+bounds. The previously reviewed minimal ephemeral ad-hoc signature and app/extension
+entitlement checks are copied unchanged. No binary, Photos library, or user data
+is transferred from another job. Only this one app copy is launched and registered.
+
+The job retains its45-minute limit and conservative41-minute first-step clock.
+Before preparation and immediately before the host process it still requires
+12 minutes for host execution plus5 minutes for evidence/upload. The host step
+retains14 minutes and actual process720 seconds. Insufficient/invalid time is an
+explicit incomplete stop. Owned xcodebuild timeout cleanup uses the existing
+bounded helper; no unrelated process is terminated. This prerequisite does not
+claim completed Photos UI teardown or full lifecycle cleanup. The VM is ephemeral.
+
+Host discovery does not require a successful layer-pixel comparison. Exact source,
+rebuilt product signatures and child identity are prerequisites. Layered edits
+remain protected; this phase never saves, cancels a modified photo, or invokes Revert.
 
 ## Exact synthetic asset selection
 
@@ -84,23 +87,34 @@ The verifier requires one finalized, passed, unskipped exact XCTest and all
 same-source product/registration/live-process/fixture-ownership receipts. It
 rejects optimized Python before any action. Source verification freezes the base
 files except the reviewed project membership, ordinary test receipt addition,
-and two explicitly SHA-pinned diagnostic-only test files;
+two explicitly SHA-pinned diagnostic-only test files, and separately reviewed
+native text renderer/tests, TV picker/title/tests, and Watch/phone traversal test
+files (six individually SHA-pinned candidate files);
 the full combined source contract independently binds the resulting candidate.
 
-## Shared evidence budget and remaining work
+## Fixed evidence budget and remaining work
 
-Host evidence is a bounded 1,000,000-byte subset of the existing Mac 3,000,000-byte
-allocation, merged before optional logs and screenshots. Overall eleven-job
-allocation stays 19,500,000 bytes, retained one day. Hash mismatches or required
-host evidence exceeding the shared cap fail collection. Mandatory outcome, source,
-product, finalized-test, fixture, registration and live-process receipts reserve
-space before optional screenshots or AX dumps. Both collectors replay complete
-accepted proof and verify every hash; a JSON acceptance flag alone is insufficient.
-Missing or oversized required proof fails collection of a claimed acceptance.
-Failed-discovery bundles may retain incomplete diagnostics, explicitly marked
-`prerequisite_accepted: false` and `diagnostic-only-incomplete`, including the
-observed failure and every available source/ownership receipt. No extra artifact,
-raw xcresult, Photos library, build product or account data is uploaded.
+The existing1,000,000-byte host subset is moved to a dedicated artifact from its
+new row. Mac diagnostics now receive2,000,000 bytes; whole-workflow allocation
+remains19,500,000 bytes across12 serial jobs, all retained one day. The historical
+52bf evidence remains unchanged. Future Mac packets retain typography, exact
+consumer/source/fixture receipts and200KB raw runtime/AX tails ahead of optional
+screens. Only five optional compiler tails are shortened to20KB; each truncated
+prefix is explicitly listed in omissions. Runtime markers and failure assertions
+are not relaxed. Any further screenshot omission remains explicit in its manifest.
+
+The dedicated host collector retains mandatory outcome, source, product,
+finalized-test, fixture, registration and live-process receipts before optional
+screenshots/AX dumps. Both complete combined-source receipts are mandatory and
+must agree with host source tree/workflow, candidate SHA and current contract
+fingerprint. They are verified after host execution before acceptance and upload.
+The1MB limit includes its manifest; there is no nested second allocation.
+
+The collector replays complete accepted proof and verifies every hash. A JSON
+acceptance flag alone is insufficient. Missing or oversized required proof fails
+collection of a claimed acceptance. Diagnostic-only incomplete packets preserve
+the observed failure and available source/ownership evidence. No raw xcresult,
+Photos library, build product or account data is uploaded.
 
 A passed prerequisite is followed by separately reviewed real save/reopen/cancel/
 Revert, exact original/current/adjustment resource preservation, filter/layer/text/

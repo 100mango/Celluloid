@@ -51,7 +51,7 @@ class TextObservationTests(unittest.TestCase):
             lines[0]=gate.PREFIX+encoded;p.write_text('\n'.join(lines)+'\n')
         for kind in ['missing','nested','duplicate']:
             with self.subTest(kind=kind),self.assertRaises(ValueError):self.exercise(lambda r:malformed(r,kind))
-    def test_source_instrumentation_is_test_only_public_and_preserves_strict_assertions(self):
+    def test_source_instrumentation_is_test_only_public_and_preserves_strict_own_runtime_assertions(self):
         root=Path(__file__).resolve().parents[1]
         native=(root/'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift').read_text()
         uikit=(root/'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift').read_text()
@@ -68,7 +68,11 @@ class TextObservationTests(unittest.TestCase):
         self.assertIn('observedPositiveOrderedAnchors',uikit)
         self.assertIn('boundingRect(forCGGlyph:',control);self.assertIn('contextCTM',control)
         self.assertIn('Fixed 10pt system-font observation',control)
-        self.assertIn('XCTAssertLessThanOrEqual(maximum, 2,',uikit);self.assertIn('XCTAssertLessThanOrEqual(difference, 2,',uikit)
+        self.assertIn('XCTAssertLessThanOrEqual(try XCTUnwrap(sameRuntime["full"]), 2,',uikit)
+        self.assertIn('XCTAssertLessThanOrEqual(try XCTUnwrap(sameRuntime[component.name]), 2,',uikit)
+        self.assertIn('XCTAssertEqual(exact, 0,',uikit)
+        self.assertIn('MAC_LAYER_UIKIT_COMPOSITOR archiveSHA256=',uikit)
+        self.assertIn('MAC_PLATFORM_RENDERING_CONTRACT ',uikit)
         self.assertIn('internalLineSpans',uikit)
 
 if __name__=='__main__':unittest.main()

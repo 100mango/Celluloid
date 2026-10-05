@@ -86,19 +86,6 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
           fetch-depth: 1
-      - name: Fetch and verify immutable Photos host source base
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import subprocess, sys
-          sys.path.insert(0, 'Scripts')
-          from native_process import run
-          base='9c9e7fc9c12df342c883e8a1e4462f796469842c'
-          tree='f53aa262fb56d31cd0b2f03f3836147c26ff2858'
-          run(['git','fetch','--no-tags','--depth=1','origin',base],timeout=60)
-          assert subprocess.check_output(['git','rev-parse',base+'^{commit}'],text=True,timeout=10).strip()==base
-          assert subprocess.check_output(['git','rev-parse',base+'^{tree}'],text=True,timeout=10).strip()==tree
-          PY
       - name: Verify source and stable SDKs
         shell: bash
         run: |
@@ -148,8 +135,8 @@ jobs:
         if: success() || failure()
         shell: bash
         run: |
-          python3 Scripts/verify_required_interoperability.py mac --log "$RUNNER_TEMP/mac.log" --output "$RUNNER_TEMP/mac-required-tests.json"
-      - name: Fail early on original UIKit layered rendering mismatch
+          python3 Scripts/verify_required_interoperability.py mac --platform-contract --log "$RUNNER_TEMP/mac.log" --output "$RUNNER_TEMP/mac-required-tests.json"
+      - name: Qualify native text and frozen per-runtime UIKit controls
         id: early_interop
         if: (success() || failure()) && steps.mac_producer.outcome == 'success'
         timeout-minutes: 20
@@ -234,25 +221,6 @@ jobs:
           set -euo pipefail
           xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMac -configuration Release -destination 'generic/platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-release" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$RUNNER_TEMP/mac-release.log"
           python3 Scripts/verify_native_release.py mac "$RUNNER_TEMP/celluloid-release/Build/Products/Release/CelluloidMac.app"
-      - name: Actual Photos host discovery using the qualified sandbox product
-        id: mac_host
-        if: (success() || failure()) && steps.sandbox_child.outcome == 'success'
-        timeout-minutes: 14
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 Scripts/test_mac_photos_host_gate.py
-          /bin/bash Scripts/run_mac_photos_host_gate.sh
-      - name: Require exact executed case and same-candidate host receipts
-        if: always() && steps.sandbox_child.outcome == 'success'
-        shell: bash
-        run: |
-          python3 Scripts/mac_photos_host_gate.py accept
-      - name: Bound actual Photos host evidence within the Mac allocation
-        if: always() && steps.sandbox_child.outcome == 'success'
-        shell: bash
-        run: |
-          python3 Scripts/mac_photos_host_gate.py collect
       - name: Verify unchanged combined source
         if: always()
         shell: bash
@@ -274,8 +242,127 @@ jobs:
           path: ${{ runner.temp }}/celluloid-bounded-evidence/
           retention-days: 1
           if-no-files-found: error
-  native-simulator:
+  native-mac-host:
+    # A new ephemeral VM, serialized behind Mac diagnostics. Host registration is
+    # independent of cross-display pixels; neither result grants release acceptance.
     needs: [build-preflight, native-mac]
+    if: always() && needs.build-preflight.result == 'success'
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      CELLULOID_EVIDENCE_PLATFORM: mac-host
+    steps:
+      - name: Reserve Mac job collection time
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          # Four minutes remain outside this conservative first-step clock for
+          # runner/action setup; final proof/upload gets a separate five minutes.
+          Path(os.environ['RUNNER_TEMP'],'mac-job-clock.json').write_text(json.dumps({
+            'source_sha':os.environ['GITHUB_SHA'], 'started_monotonic':time.monotonic(),
+            'started_unix':time.time(), 'execution_budget_seconds':41*60}))
+          PY
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - name: Fetch and verify immutable Photos host source base
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess, sys
+          sys.path.insert(0, 'Scripts')
+          from native_process import run
+          base='9c9e7fc9c12df342c883e8a1e4462f796469842c'
+          tree='f53aa262fb56d31cd0b2f03f3836147c26ff2858'
+          run(['git','fetch','--no-tags','--depth=1','origin',base],timeout=60)
+          assert subprocess.check_output(['git','rev-parse',base+'^{commit}'],text=True,timeout=10).strip()==base
+          assert subprocess.check_output(['git','rev-parse',base+'^{tree}'],text=True,timeout=10).strip()==tree
+          PY
+      - name: Verify exact host source and stable SDK before building
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          sw_vers
+          xcodebuild -version | grep -Fx 'Xcode 27.0'
+          python3 Scripts/verify_combined_source.py --phase before
+          python3 Scripts/mac_photos_host_gate.py source-before
+          swift -swift-version 5 Scripts/materialize_native_icons.swift
+          python3 Scripts/verify_native_icon_inputs.py
+      - name: Build and verify minimally entitled sandbox app
+        id: sandbox_build
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Scripts/run_bounded.py --seconds 600 --label fresh-host-ui-build xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacUI -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-sandbox" CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual CELLULOID_EXPECT_SANDBOX=YES build-for-testing 2>&1 | tee "$RUNNER_TEMP/sandbox-build.log"
+          # The test build instruments its target with broad temporary exceptions.
+          # Rebuild the app for ordinary execution, while keeping the external UI bundle.
+          python3 Scripts/run_bounded.py --seconds 300 --label fresh-host-app-build xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMac -configuration Debug -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-sandbox" CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual ENABLE_TESTABILITY=NO build 2>&1 | tee "$RUNNER_TEMP/sandbox-app-build.log"
+          APP="$RUNNER_TEMP/celluloid-sandbox/Build/Products/Debug/CelluloidMac.app"
+          codesign --verify --strict --deep "$APP"
+          codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/sandbox-entitlements.plist"
+          python3 -c 'import plistlib,sys; p=plistlib.load(open(sys.argv[1],"rb")); assert p == {"com.apple.security.app-sandbox":True,"com.apple.security.files.user-selected.read-write":True}' "$RUNNER_TEMP/sandbox-entitlements.plist"
+          # XCUI's injected debugging support needs this ephemeral Debug permission.
+          # The Release/source contract above stays exactly the two app permissions.
+          python3 -c 'import plistlib,sys; p=plistlib.load(open(sys.argv[1],"rb")); p["com.apple.security.get-task-allow"]=True; plistlib.dump(p,open(sys.argv[2],"wb"))' "$RUNNER_TEMP/sandbox-entitlements.plist" "$RUNNER_TEMP/sandbox-debug-entitlements.plist"
+          codesign --force --sign - --entitlements "$RUNNER_TEMP/sandbox-debug-entitlements.plist" --timestamp=none "$APP"
+          codesign --verify --strict --deep "$APP"
+          codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/sandbox-debug-actual.plist"
+          python3 -c 'import plistlib,sys; assert plistlib.load(open(sys.argv[1],"rb")) == plistlib.load(open(sys.argv[2],"rb"))' "$RUNNER_TEMP/sandbox-debug-entitlements.plist" "$RUNNER_TEMP/sandbox-debug-actual.plist"
+      - name: Verify actual embedded sandbox extension before UI
+        id: sandbox_child
+        if: (success() || failure()) && steps.sandbox_build.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHILD="$RUNNER_TEMP/celluloid-sandbox/Build/Products/Debug/CelluloidMac.app/Contents/PlugIns/CelluloidMacPhotosExtension.appex"
+          codesign --verify --strict --deep "$CHILD"
+          codesign -d --entitlements :- "$CHILD" > "$RUNNER_TEMP/sandbox-extension-entitlements-before.plist"
+          python3 -c 'import plistlib,sys; assert plistlib.load(open(sys.argv[1],"rb")) == {"com.apple.security.app-sandbox":True}' "$RUNNER_TEMP/sandbox-extension-entitlements-before.plist"
+      - name: Actual Photos host discovery using the qualified sandbox product
+        id: mac_host
+        if: (success() || failure()) && steps.sandbox_child.outcome == 'success'
+        timeout-minutes: 14
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Scripts/test_mac_photos_host_gate.py
+          /bin/bash Scripts/run_mac_photos_host_gate.sh
+      - name: Verify unchanged rebuilt host source and icon inputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Scripts/verify_combined_source.py --phase after
+          python3 Scripts/verify_native_icon_inputs.py
+      - name: Require exact executed case and same-candidate host receipts
+        if: always() && steps.sandbox_child.outcome == 'success'
+        shell: bash
+        run: |
+          python3 Scripts/mac_photos_host_gate.py accept
+      - name: Bound and replay the dedicated host proof
+        id: bounded_host_evidence
+        if: always() && steps.sandbox_child.outcome == 'success'
+        shell: bash
+        run: |
+          python3 Scripts/mac_photos_host_gate.py collect
+      - name: Upload bounded actual Photos host evidence
+        if: always() && steps.bounded_host_evidence.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: celluloid-mac-host-${{ github.sha }}
+          path: ${{ runner.temp }}/mac-host-evidence/
+          retention-days: 1
+          if-no-files-found: error
+  native-simulator:
+    needs: [build-preflight, native-mac, native-mac-host]
     if: always() && needs.build-preflight.result == 'success' && needs.native-mac.outputs.continuation_safe == 'true'
     runs-on: xcode-27
     timeout-minutes: ${{ matrix.platform == 'watch' && 45 || 30 }}
@@ -374,7 +461,7 @@ jobs:
         if: matrix.platform == 'phone' && (success() || failure())
         shell: bash
         run: |
-          python3 Scripts/verify_required_interoperability.py phone --log "$RUNNER_TEMP/phone-runtime-tests.log" --fixtures "$RUNNER_TEMP/mac-fixture-evidence" --output "$RUNNER_TEMP/phone-required-tests.json"
+          python3 Scripts/verify_required_interoperability.py phone --platform-contract --result-bundle "$RUNNER_TEMP/CelluloidPhoneCompanion.xcresult" --runtime-evidence "$RUNNER_TEMP/phone-runtime-evidence.json" --log "$RUNNER_TEMP/phone-runtime-tests.log" --fixtures "$RUNNER_TEMP/mac-fixture-evidence" --output "$RUNNER_TEMP/phone-required-tests.json"
       - name: Native Vision build
         id: vision_build
         if: matrix.platform == 'vision' && (success() || failure())
@@ -541,7 +628,7 @@ jobs:
     - name: Require actual original UIKit manufactured-layer consumer
       if: ${{ !cancelled() && steps.prepare.conclusion == 'success' }}
       run: |
-        python3 Scripts/verify_required_interoperability.py uikit --log "$RUNNER_TEMP/units.log" --fixtures "$RUNNER_TEMP/mac-fixture-evidence" --output "$RUNNER_TEMP/uikit-required-tests.json"
+        python3 Scripts/verify_required_interoperability.py uikit --platform-contract --result-bundle TestResults-units.xcresult --device-id-file /tmp/current-celluloid-simulator --expected-model "$DEVICE_NAME" --log "$RUNNER_TEMP/units.log" --fixtures "$RUNNER_TEMP/mac-fixture-evidence" --output "$RUNNER_TEMP/uikit-required-tests.json"
     - name: Verify PhotoKit readiness and reconcile pristine fixtures
       id: photos
       if: ${{ !cancelled() && steps.prepare.conclusion == 'success' }}

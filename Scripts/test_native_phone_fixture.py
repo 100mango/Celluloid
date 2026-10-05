@@ -8,6 +8,21 @@ from native_phone_fixture import seed, REQUEST_IDS
 
 
 class NativePhoneFixtureTests(unittest.TestCase):
+    def test_lazy_reveal_logging_never_resolves_a_missing_element(self):
+        source=(Path(__file__).resolve().parents[1]/'Platforms/PhoneUITests/PhoneCompanionUITests.swift').read_text()
+        reveal=source.split('private func reveal(',1)[1].split('private func audit(',1)[0]
+        self.assertIn('if element.exists && element.isHittable { return }',reveal)
+        self.assertIn('if element.exists {\n                    print("PHONE_COMPANION_REVEAL target=',reveal)
+        absent=reveal.split('} else {',1)[1].split('                }',1)[0]
+        self.assertIn('target=not-yet-materialized',absent)
+        for attribute in ['identifier','frame','label']:
+            self.assertNotIn('element.'+attribute,absent)
+        self.assertIn('for down in [false, true]',reveal);self.assertIn('for step in 0..<6',reveal)
+        self.assertIn('if down { app.swipeDown() } else { app.swipeUp() }',reveal)
+        failure=reveal.split('XCTFail(',1)[1]
+        self.assertNotIn('element.',failure)
+        self.assertIn('try app.performAccessibilityAudit(for: .all)',source)
+
     def test_seeds_only_two_bounded_hash_bound_requests(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); container = root / 'container'; container.mkdir()

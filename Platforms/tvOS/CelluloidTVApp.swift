@@ -175,7 +175,9 @@ private struct TVPhotoPicker: View {
     @State private var selected: [String] = []
     var body: some View {
         VStack(alignment: .leading, spacing: 30) {
-            Text("Choose Photos").font(.title)
+            // The enclosing sheet already names this picker. Repeating the
+            // large title consumes the first lazy photo row's viewport at the
+            // largest text size, leaving only Done available to remote focus.
             Text("Up to 200 recent photos. Select one to four in the order you want.").font(.callout)
             Button("Edit Selected Photos (\(selected.count))") { choose(selected) }.disabled(selected.isEmpty).accessibilityIdentifier("tv.edit-selected")
             if library.assets.isEmpty { Text("No pictures are available. Add photos to Photos, then choose Photos again.") }

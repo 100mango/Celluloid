@@ -12,9 +12,11 @@ from native_process import run
 from run_early_uikit_interop import (ROOT, PROFILES, FROZEN_UIKIT_SHA,
     FROZEN_UIKIT_FINGERPRINT, frozen_uikit_fingerprint)
 from verify_required_interoperability import CONSUMER, PIXELS, verify as verify_required
+from uikit_installed_identity import validate as validate_installation
+from platform_rendering_contract import from_log as platform_from_log,CONTROL_SHA,RUNTIME_BUILD,PREFIX as PLATFORM_PREFIX
 
 TEST_SOURCE='CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift'
-TEST_SOURCE_SHA='54357d35157e7b792c04cda3e3cb3d778419a9dedf279210b66540cf243ed4c8'
+TEST_SOURCE_SHA='49cbcaf384b4e3667b9bf4d725e152564dffd82a4c52166b3697437787007354'
 OWNER,METHOD=CONSUMER.split('.')
 CASE=re.compile(r"^Test Case '-\[([\w.]+) (test\w+)\]' (started|passed|failed|skipped)\b",re.M)
 COMPONENT=re.compile(r'^MAC_LAYER_UIKIT_COMPOSITOR_COMPONENT name=([\w-]+) nativeSHA256=([0-9a-f]{64}) maximumChannelDifference=(\d+)$',re.M)
@@ -49,13 +51,13 @@ def failure_key(text):
     require(message==FULL_MESSAGE or message=='Independent UIKit component: '+name,'Unexpected assertion message')
     return name,int(value)
 
-def inspect_profile(row,log,summary,timing,fixture):
+def inspect_profile(row,log,summary,timing,fixture,platform_contract=False):
     profile,name,scale=next((p,n,s) for p,n,s in PROFILES if p==row['profile'])
     require(row['device_type']==name and row['expected_scale']==scale,'Wrong intended device')
     uuid.UUID(row['udid']);require(row['runtime']=='com.apple.CoreSimulator.SimRuntime.iOS-27-0','Wrong intended runtime')
     require(all(type(c.get('exit_code')) is int for c in row['cleanup']),'Invalid cleanup status type')
     require(row['cleanup']==[{'action':'shutdown','exit_code':0},{'action':'delete','exit_code':0}] and row['cleanup_passed'] is True,'Unverified cleanup')
-    require(row.get('error') in (None,STRICT_ERROR),'Unexpected setup/process failure')
+    require(row.get('error') in ((None,) if platform_contract else (None,STRICT_ERROR)),'Unexpected setup/process failure')
     case_lines=[line for line in log.splitlines() if line.lstrip().lower().startswith('test case ')]
     for line in case_lines:
         require(re.fullmatch(r"Test Case '-\[[\w.]+ test\w+\]' (?:started\.|(?:passed|failed|skipped) \([0-9]+(?:\.[0-9]+)? seconds\)\.)",line) is not None,'Malformed testcase execution record')
@@ -84,7 +86,14 @@ def inspect_profile(row,log,summary,timing,fixture):
     for component,digest,delta in components:
         require(digest==expected_hash[component] and 0<=int(delta)<=255,'Wrong component fixture binding');deltas[component]=int(delta)
     require(deltas['filtered-base']==deltas['sticker-artwork']==0,'Previously exact base/sticker changed')
-    wanted=Counter((k,v) for k,v in deltas.items() if v>2)
+    historical_strict=all(v<=2 for v in deltas.values())
+    contract=None
+    if platform_contract:
+        contract=platform_from_log(log,fixture,profile)
+        require(contract['historicalFullMaximum']==deltas['full'],'Historical/contract diagnostic disagreement')
+        markers=list(re.finditer(r'^MAC_PLATFORM_RENDERING_CONTRACT ',log,re.M))
+        require(len(markers)==1 and begin<markers[0].start()<end,'Platform contract outside intended execution')
+    wanted=Counter() if platform_contract else Counter((k,v) for k,v in deltas.items() if v>2)
     # One canonical parser owns every suite line, including whitespace variants.
     suites={};suite_positions=[];failure_headers=[]
     suite_pattern=re.compile(r"Test Suite '(Selected tests|CelluloidTests.xctest|MacPhotosManufacturedAdjustmentTests)' (started|passed|failed) at [0-9-]+ [0-9:.]+\.")
@@ -115,8 +124,9 @@ def inspect_profile(row,log,summary,timing,fixture):
     failed=bool(wanted);status='failed' if failed else 'passed';exit_code=65 if failed else 0
     require(all(events==['started',status] for events in suites.values()),'Duplicate/incomplete/contradictory suite outcome')
     require(cases[-1][2]==status and type(row['test_exit_code']) is int and row['test_exit_code']==exit_code,'Exit/test outcome inconsistent')
-    require(row['pixel_passed'] is (not failed) and row['passed'] is (not failed),'Pixel diagnostic flags inconsistent')
-    require((row.get('error')==STRICT_ERROR) is failed,'Unexpected absent/present primary error')
+    require(row['pixel_passed'] is (historical_strict if platform_contract else not failed) and row['passed'] is (not failed),'Pixel diagnostic flags inconsistent')
+    if platform_contract:require(row.get('platform_contract_passed') is True,'Platform contract did not pass')
+    require(row.get('error') is None if platform_contract else (row.get('error')==STRICT_ERROR) is failed,'Unexpected absent/present primary error')
     totals=re.findall(r'Executed (\d+) test(?:s)?, with (\d+) failure(?:s)? \((\d+) unexpected\)',log)
     require(totals and all(r==('1',str(len(errors)),'0') for r in totals),'Unexplained XCTest failure counts')
     terminals=list(re.finditer(r'^[ \t]*\*\* TEST EXECUTE\b.*$',log,re.M|re.I))
@@ -148,14 +158,15 @@ def inspect_profile(row,log,summary,timing,fixture):
     conf=configurations[0]
     for key in ['passedTests','failedTests','skippedTests','expectedFailures']:require(type(conf[key]) is int and conf[key]==counts[key],'Device count mismatch')
     dev=conf['device'];require((dev['platform'],dev['osVersion'],dev['deviceId'],dev['modelName'],dev['deviceName'])==('iOS Simulator','27.0',row['udid'],name,'Celluloid Early UIKit '+profile),'Actual result device binding failed')
+    if platform_contract:require(dev.get('osBuildNumber')==RUNTIME_BUILD and dev.get('architecture')=='arm64','Unqualified actual runtime build/architecture')
     failures=summary['testFailures'];require(bool(failures)==failed,'Finalized failure details missing/contradictory')
     seen=set()
     for item in failures:
         require(item['targetName']=='CelluloidTests' and item['testIdentifierString']==OWNER+'/'+METHOD+'()' and item['testName']==METHOD+'()','Unknown finalized failure owner')
         key=failure_key(item['failureText']);require(key in wanted and key not in seen,'Unknown/duplicate finalized failure');seen.add(key)
-    return {'profile':profile,'device_id':row['udid'],'scale':scale,'strict_pixel_passed':not failed,'deltas':deltas,'known_pixel_failures':errors,'unclassified_console_diagnostics':unclassified,'unclassified_console_count':len(unclassified),'console_diagnostics_classified':False,'process_start':start,'process_finish':finish}
+    return {'profile':profile,'device_id':row['udid'],'scale':scale,'platform_contract':contract,'strict_pixel_passed':historical_strict if platform_contract else not failed,'deltas':deltas,'known_pixel_failures':errors,'unclassified_console_diagnostics':unclassified,'unclassified_console_count':len(unclassified),'console_diagnostics_classified':False,'process_start':start,'process_finish':finish}
 
-def verify(temp,source):
+def verify(temp,source,platform_contract=True):
     temp=Path(temp);require(re.fullmatch(r'[0-9a-f]{40}',source),'Invalid source')
     require(subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()==source,'Wrong checkout source')
     require(not subprocess.check_output(['git','status','--porcelain','--untracked-files=all'],cwd=ROOT,text=True).strip(),'Dirty source checkout')
@@ -167,7 +178,7 @@ def verify(temp,source):
     require(len({r['udid'] for r in rows})==2,'Same device reused as another display')
     directory=temp/'early-uikit-fixtures';payload=load_layer_exact(directory,source);fixture=payload['fixture']
     require((directory/LAYER_FILE).read_bytes()==layer_from_log(temp/'mac.log',source),'Fixture differs from actual native producer')
-    producer=verify_required('mac',temp/'mac.log',None,source);require(all(producer['checks'].values()),'Native producer cases incomplete')
+    producer=verify_required('mac',temp/'mac.log',None,source,platform_contract=platform_contract);require(all(producer['checks'].values()),'Native producer cases incomplete')
     app=(temp/'celluloid-early-uikit/Build/Products/Debug-iphonesimulator/Celluloid.app').resolve()
     info=plistlib.loads((app/'Info.plist').read_bytes());require((info['CFBundleIdentifier'],info['CFBundleExecutable'],info['DTPlatformName'])==('Mango.Celluloid','Celluloid','iphonesimulator'),'Built product identity')
     digest=sha(app/'Celluloid');owned_digest=hashlib.sha256(json.dumps(fixture).encode()).hexdigest();result=[]
@@ -178,19 +189,26 @@ def verify(temp,source):
         installed=Path(staging['installed_app']);require(installed.is_absolute() and tuple(installed.parts[-4:-2])==('Bundle','Application') and installed.name=='Celluloid.app','Unexpected installed app path')
         require('/Devices/'+row['udid']+'/data/Containers/Bundle/Application/' in str(installed),'Installed app belongs to another device')
         require(staging['layer_archive_sha256']==fixture['sha256'] and staging['owned_fixture_sha256']==owned_digest,'Owned fixture bytes mismatch')
+        if platform_contract:
+            require(staging.get('control_file_sha256')==CONTROL_SHA,'Staged control bytes unbound')
+            require('post_test_installation_error' not in row,'Post-test installation lookup/hash failed')
+            validate_installation(row.get('post_test_installation'),row['udid'],staging)
         logpath=temp/('early-uikit-'+profile+'-interop.log');log=logpath.read_text()
-        require(json.loads(json.dumps(verify_required('uikit',logpath,directory,source)))==row['consumer'],'Raw consumer receipt mismatch')
         timing=read(temp/(logpath.name+'.timing.json'))
         bundle=temp/('CelluloidEarlyUIKit'+profile+'.xcresult')
         exported=run(['xcrun','xcresulttool','get','test-results','summary','--path',bundle],timeout=30,echo=False)
         summary=json.loads(exported.stdout,object_pairs_hook=unique);summarypath=temp/(bundle.name+'.summary.json');summarypath.write_text(json.dumps(summary,indent=2)+'\n')
-        proof=inspect_profile(row,log,summary,timing,fixture);proof.update(log_sha256=sha(logpath),summary_sha256=sha(summarypath),staging_sha256=sha(temp/('early-uikit-'+profile+'-staging.json')));result.append(proof)
+        require(json.loads(json.dumps(verify_required('uikit',logpath,directory,source,platform_contract=platform_contract,runtime_summary=summary,expected_device={'id':row['udid'],'model':row['device_type']})))==row['consumer'],'Raw consumer/runtime receipt mismatch')
+        proof=inspect_profile(row,log,summary,timing,fixture,platform_contract=platform_contract);proof.update(log_sha256=sha(logpath),summary_sha256=sha(summarypath),staging_sha256=sha(temp/('early-uikit-'+profile+'-staging.json')));result.append(proof)
     require(result[0]['process_finish']<result[1]['process_start'],'Concurrent/contradictory consumer processes')
     devices=json.loads(run(['xcrun','simctl','list','devices','-j'],timeout=30,echo=False).stdout)['devices']
     remaining={d['udid'] for entries in devices.values() for d in entries}
     require(not remaining.intersection(r['udid'] for r in rows),'Owned simulator remains after cleanup')
-    strict=all(r['strict_pixel_passed'] for r in result);require(packet['pixel_passed'] is strict and packet['passed'] is strict,'Aggregate strict result mismatch')
-    return {'source_sha':source,'continuation_safe':True,'strict_pixel_passed':strict,'final_archive_accepted':False,'binary_sha256':digest,'fixture_sha256':sha(directory/LAYER_FILE),'uikit_fingerprint':FROZEN_UIKIT_FINGERPRINT,'consumer_source_sha256':TEST_SOURCE_SHA,'profiles':result,'scope':'Independent functional coverage only. Historical pixel failures remain red; renderer and final archive remain unqualified.'}
+    strict=all(r['strict_pixel_passed'] for r in result)
+    require(packet['pixel_passed'] is strict,'Aggregate historical strict result mismatch')
+    if platform_contract:require(packet.get('platform_contract_passed') is True and packet['passed'] is True,'Aggregate platform contract failed')
+    else:require(packet['passed'] is strict,'Aggregate historical pass mismatch')
+    return {'source_sha':source,'continuation_safe':True,'platform_contract_accepted':platform_contract,'native_text_contract':producer.get('native_text_contract'),'strict_pixel_passed':strict,'final_archive_accepted':False,'binary_sha256':digest,'fixture_sha256':sha(directory/LAYER_FILE),'uikit_fingerprint':FROZEN_UIKIT_FINGERPRINT,'consumer_source_sha256':TEST_SOURCE_SHA,'profiles':result,'scope':'Versioned fixture-specific rendering proof with actual consumers and cleanup. Historical universal results remain diagnostics; all-platform and Photos-host lifecycle acceptance remain incomplete.' if platform_contract else 'Historical scheduling-only replay, not replacement acceptance.'}
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--github-output',type=Path,required=True);args=parser.parse_args()

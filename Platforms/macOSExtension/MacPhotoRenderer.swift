@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import CoreGraphics
 import CoreText
 import UniformTypeIdentifiers
@@ -30,6 +31,16 @@ actor MacPhotoRenderQueue {
 /// per-bubble text area. No lossy decomposition to rotation/normalized widths.
 final class MacPhotoRenderer {
     private let filters = RecipeRenderer()
+    #if DEBUG
+    /// Test-only fault injection at the actual text compositing operations.
+    /// Default nil; neither this seam nor its calls exist in Release builds.
+    struct TextRenderProbe {
+        var content: ((String) -> String)?
+        var destination: ((CGRect, CGRect) -> CGRect)?
+        var clip: ((CGRect) -> CGRect)?
+    }
+    var textRenderProbe: TextRenderProbe?
+    #endif
 
     /// Keep the experimental layer compositor available to the independent
     /// UIKit qualification tests, but never replace a Photos raster with it.
@@ -52,7 +63,7 @@ final class MacPhotoRenderer {
         canvas.scaleBy(x: CGFloat(filtered.width) / reference.width, y: CGFloat(filtered.height) / reference.height)
         for layer in adjustment.layers {
             try Task.checkCancellation()
-            try Self.draw(layer, in: canvas)
+            try draw(layer, in: canvas)
         }
         try Task.checkCancellation()
         guard let result = canvas.makeImage() else { throw RenderError.renderFailed }
@@ -82,11 +93,11 @@ final class MacPhotoRenderer {
                       width: rect.width * (area[3] - area[2]) / 100 - 4,
                       height: rect.height * (area[1] - area[0]) / 100)
     }
-    private static func draw(_ layer: MacPhotoLayer, in canvas: CGContext) throws {
+    private func draw(_ layer: MacPhotoLayer, in canvas: CGContext) throws {
         let image: CGImage
         if layer.kind == .bubble { image = try NativeResources.legacyPhotosBubbleImage(named: layer.asset) }
         else { image = try NativeResources.image(named: layer.asset) }
-        guard let rect = artworkRect(bounds: layer.bounds, imageWidth: image.width, imageHeight: image.height) else { return }
+        guard let rect = Self.artworkRect(bounds: layer.bounds, imageWidth: image.width, imageHeight: image.height) else { return }
         canvas.saveGState(); defer { canvas.restoreGState() }
         canvas.translateBy(x: layer.center.x, y: layer.center.y)
         canvas.concatenate(layer.transform)
@@ -97,17 +108,32 @@ final class MacPhotoRenderer {
         canvas.restoreGState()
         if layer.kind == .bubble && !layer.text.isEmpty {
             let area = try NativeResources.bubbleArea(named: layer.asset)
-            guard let textRect = bubbleTextRect(bounds: layer.bounds, imageWidth: image.width,
+            guard let textRect = Self.bubbleTextRect(bounds: layer.bounds, imageWidth: image.width,
                                                imageHeight: image.height, area: area) else { throw RecipeError.invalidGeometry }
-            let layout = try MacPhotoTextLayout.make(layer.text, rect: textRect)
+            #if DEBUG
+            let content = textRenderProbe?.content?(layer.text) ?? layer.text
+            #else
+            let content = layer.text
+            #endif
+            let layout = try MacPhotoTextLayout.make(content, rect: textRect)
             let text = try MacPhotoTextRaster.make(layout, bounds: textRect.size)
+            let intrinsic = MacPhotoTextRaster.destinationRect(for: text, origin: textRect.origin)
+            #if DEBUG
+            let destination = textRenderProbe?.destination?(intrinsic, textRect) ?? intrinsic
+            #else
+            let destination = intrinsic
+            #endif
             canvas.saveGState(); defer { canvas.restoreGState() }
-            // UILabel has a 2x backing raster before the containing BubbleView
-            // affine is applied. Drawing glyph outlines after that affine gives
-            // different coverage, particularly for rotated/skewed small text.
-            canvas.translateBy(x: textRect.minX, y: textRect.maxY)
+            #if DEBUG
+            if let clip = textRenderProbe?.clip { canvas.clip(to: clip(destination)) }
+            #endif
+            // Allocation rounds outward to whole backing pixels. Preserve their
+            // intrinsic point size: fitting 28x44pt into 27.875x43.52pt would add
+            // an unrequested scale and compress every subsequent baseline.
+            // The layout was already centered in its logical text rectangle.
+            canvas.translateBy(x: destination.minX, y: destination.maxY)
             canvas.scaleBy(x: 1, y: -1)
-            canvas.draw(text, in: CGRect(origin: .zero, size: textRect.size))
+            canvas.draw(text, in: CGRect(origin: .zero, size: destination.size))
         }
     }
 }
@@ -126,12 +152,19 @@ struct MacPhotoTextLayout {
     let height: CGFloat
     let fontSize: CGFloat
     let font: CTFont
+    let lineHeight: CGFloat
     static func make(_ text: String, rect: CGRect) throws -> Self {
         guard text.utf8.count <= 16_384, rect.width > 0, rect.height > 0 else { throw RenderError.textDoesNotFit }
+        let nativeMetrics = NSLayoutManager()
         for size in stride(from: 16, through: 2, by: -1) {
             try Task.checkCancellation()
             let font = CTFontCreateUIFontForLanguage(.system, CGFloat(size), nil) ?? CTFontCreateWithName("Helvetica" as CFString, CGFloat(size), nil)
-            let lineHeight = CTFontGetAscent(font) + CTFontGetDescent(font) + CTFontGetLeading(font)
+            // Use the native typesetter's natural pitch rather than adding raw
+            // font ascent/descent. Independent AppKit evidence reports 12pt at
+            // 10pt; the raw 11.77734375 sum visibly crowded later lines/emoji.
+            // Keep CoreText's legacy character wrapping and whitespace spans.
+            let lineHeight = nativeMetrics.defaultLineHeight(for: NSFont.systemFont(ofSize: CGFloat(size)))
+            guard lineHeight.isFinite, lineHeight > 0 else { throw RenderError.textDoesNotFit }
             func setter(centered: Bool) -> CTFramesetter {
                 var wrap = CTLineBreakMode.byCharWrapping
                 var alignment: CTTextAlignment = centered ? .center : .left
@@ -162,7 +195,7 @@ struct MacPhotoTextLayout {
             if floor(measured.height / lineHeight) == 1 { framesetter = setter(centered: true) }
             let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), CGPath(rect: CGRect(x: 0, y: 0, width: rect.width, height: height), transform: nil), nil)
             guard CTFrameGetVisibleStringRange(frame).length == (text as NSString).length else { throw RenderError.textDoesNotFit }
-            return Self(frame: frame, height: height, fontSize: CGFloat(size), font: font)
+            return Self(frame: frame, height: height, fontSize: CGFloat(size), font: font, lineHeight: lineHeight)
         }
         throw RenderError.textDoesNotFit
     }
@@ -170,15 +203,22 @@ struct MacPhotoTextLayout {
 
 enum MacPhotoTextRaster {
     static let scale: CGFloat = 2
-    static func make(_ layout: MacPhotoTextLayout, bounds: CGSize) throws -> CGImage {
-        let width = ceil(bounds.width * scale), height = ceil(bounds.height * scale)
+    static func destinationRect(for image: CGImage, origin: CGPoint) -> CGRect {
+        CGRect(origin: origin, size: CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale))
+    }
+    /// Optional padding exercises the identical drawing path to expose any ink
+    /// outside the normal backing. The shipping compositor always uses zero.
+    static func make(_ layout: MacPhotoTextLayout, bounds: CGSize, padding: CGFloat = 0) throws -> CGImage {
+        guard padding.isFinite, padding >= 0, padding <= 64,
+              bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else { throw RecipeError.resourceLimit }
+        let width = ceil((bounds.width + 2 * padding) * scale), height = ceil((bounds.height + 2 * padding) * scale)
         guard width.isFinite, height.isFinite, width > 0, height > 0,
               width <= 4096, height <= 4096, width * height <= 4_194_304 else { throw RecipeError.resourceLimit }
         let bitmap = try RasterCodec.bitmap(width: Int(width), height: Int(height))
         bitmap.scaleBy(x: scale, y: scale)
         // Keep the label's logical bounds separate from its outward-rounded
         // pixel backing. UIKit centers the text in the logical label rectangle.
-        bitmap.translateBy(x: 0, y: height / scale - (bounds.height + layout.height) / 2)
+        bitmap.translateBy(x: padding, y: height / scale - padding - (bounds.height + layout.height) / 2)
         bitmap.textMatrix = .identity
         CTFrameDraw(layout.frame, bitmap)
         guard let image = bitmap.makeImage() else { throw RenderError.renderFailed }
