@@ -2,7 +2,7 @@
   "schema": "Celluloid.CombinedSource.1",
   "native_base": "59fca5a8dda30d497715b592966c02310606d743",
   "uikit_base": "c5875ee7586611c28879b5030e5e575a9f33fcbd",
-  "reviewed_source_tree": "6ed281c7a1c3a4b57c368fa82ddc52c738443b8e",
+  "reviewed_source_tree": "7e143d43a8a8db64bd7a0029e42b5cf5daf1ba55",
   "roots": [
     "Celluloid",
     "CelluloidKit",
@@ -945,7 +945,7 @@
       "313a087fc274bb74e1728a0dcf389774743867b21e8883bd1ce2714bc9d93bea"
     ],
     [
-      "CelluloidKit/CelluloidKit.xcassets/filter/CrystalFilter.imageset/碎片 - Assistor.jpg",
+      "CelluloidKit/CelluloidKit.xcassets/filter/CrystalFilter.imageset/\u788e\u7247 - Assistor.jpg",
       "24791b56942407456210d34fb9d4f1c9a94a3315423b4160cd7f2557cb7e4d6b"
     ],
     [
@@ -957,7 +957,7 @@
       "d6434d70b7496f3af8829fc3d9911112503638da00d3856ad8d61ff4b2470999"
     ],
     [
-      "CelluloidKit/CelluloidKit.xcassets/filter/OldPictureFilter.imageset/老照片 - Assistor.jpg",
+      "CelluloidKit/CelluloidKit.xcassets/filter/OldPictureFilter.imageset/\u8001\u7167\u7247 - Assistor.jpg",
       "b75e80ea5b089e1ce7e9b6f86e133c0f0e59a2d110b41718c13b163fcdd4d3f3"
     ],
     [
@@ -969,7 +969,7 @@
       "378e569e25716ffc36c3e7622708ae1fab41ce99c870ae02f5874bb8aec45bfb"
     ],
     [
-      "CelluloidKit/CelluloidKit.xcassets/filter/OriginalFilter.imageset/原图 - Assistor.jpg",
+      "CelluloidKit/CelluloidKit.xcassets/filter/OriginalFilter.imageset/\u539f\u56fe - Assistor.jpg",
       "905e2e71569a1ce533111057b98e160392dad6f867af52ead735c87b6a70e244"
     ],
     [
@@ -981,7 +981,7 @@
       "9b028d2fcc79b18fec01265cce0c9bfd0f921287d51f5abf6867018e521d1c32"
     ],
     [
-      "CelluloidKit/CelluloidKit.xcassets/filter/PixellateFaceFilter.imageset/人脸马赛克 - Assistor.jpg",
+      "CelluloidKit/CelluloidKit.xcassets/filter/PixellateFaceFilter.imageset/\u4eba\u8138\u9a6c\u8d5b\u514b - Assistor.jpg",
       "55180004fea90a19c4ceb689fdd609272b1567b23e651dd9ceaebd86f8f954ab"
     ],
     [
@@ -993,7 +993,7 @@
       "8a3cdae2df10e823c08ce23ba855b9348bf277adc52aa4559def5cd86c4948cf"
     ],
     [
-      "CelluloidKit/CelluloidKit.xcassets/filter/PosterizeFilter.imageset/色调分离 - Assistor.jpg",
+      "CelluloidKit/CelluloidKit.xcassets/filter/PosterizeFilter.imageset/\u8272\u8c03\u5206\u79bb - Assistor.jpg",
       "3d6c2f75f81bf64ecd58bfc8251891e49879ad44d025100b33f112d3a8cd7560"
     ],
     [
@@ -1378,7 +1378,7 @@
     ],
     [
       "CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift",
-      "49cbcaf384b4e3667b9bf4d725e152564dffd82a4c52166b3697437787007354"
+      "f4c7a7a16bf5414e6c2a2716bc146bdc216f7ea966a80207acce8a7667584890"
     ],
     [
       "CelluloidTests/OverlayResizeTests.swift",
@@ -1778,7 +1778,7 @@
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoRendererTests.swift",
-      "adb85afed8add5d9dd1de549f44b54b8ef0bec51a5baf12b8bb7db02d84ee928"
+      "b015030234b7399d9908c20852efe44f880ba68a0cabe01492a95fd274ae2df1"
     ],
     [
       "Platforms/MacExtensionTests/MacPhotoSessionTests.swift",
@@ -1902,7 +1902,7 @@
     ],
     [
       "Platforms/UITests/MacPhotosHostUITests.swift",
-      "3e6b88664eb7b1dd798d3f8758f2f56aa0531903e5e9cc03eb3909b5abae7ab9"
+      "515d0fc75157f3a76c63b00c7ed92651bab65ba38927a3c4965a9be3572aa528"
     ],
     [
       "Platforms/UITests/NativeEditorUITests.swift",
@@ -2042,7 +2042,7 @@
     ],
     [
       "Platforms/macOSExtension/MacPhotoRenderer.swift",
-      "94da429bfec3275ce0687a0465658da4f0dc8f7a55b92ab1a36f02ace5f3d54f"
+      "ba3199901afda2065323e67ba53ad27cd3cd95d047c81508c5045ad177993b58"
     ],
     [
       "Platforms/macOSExtension/MacPhotoSession.swift",
@@ -2197,7 +2197,7 @@
       "f7603c1c1175e32b5146b43d9e1f03bd6e839416510109795eb942cf7223579a"
     ]
   ],
-  "fingerprint": "b2ca3dfbabf947f250459dacf97f9c1ddefa0a4c901f76d1d6ea1186c678dd25",
+  "fingerprint": "ca752a7a95fd28fa1c40405441ca80d5e933382d5fe767d0d9c5ba5a4c039a5a",
   "appearance_cancel_patch_sha256": "a3f6810452a5d2d3475a4bf0a921cda863f431c0660c7d8b7616f484e019f15f",
   "expected_UIKit_executions": {
     "original_qualified": 400,

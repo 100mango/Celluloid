@@ -9,7 +9,11 @@ import CryptoKit
 /// extension controller and deliberately cannot certify the complete host E2E.
 final class MacPhotosHostUITests: XCTestCase {
     private var interruption: NSObjectProtocol?
-    private var reportFolder: URL?
+    private var contextHash = ""
+    private var proofSequence = 0
+    private var proofBytes = 0
+    private var emittedProofs = Set<String>()
+    private var emittedDiagnostics = Set<String>()
     private var context: [String: Any] = [:]
     private var stage = "not-started"
 
@@ -29,7 +33,9 @@ final class MacPhotosHostUITests: XCTestCase {
         context = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(context["app_id"] as? String, "Mango.Celluloid")
         XCTAssertEqual(context["extension_id"] as? String, "Mango.Celluloid.CelluloidPhotoExtension")
-        reportFolder = URL(fileURLWithPath: try value("evidence_path"))
+        contextHash = digest(data)
+        XCTAssertEqual(try digest(URL(fileURLWithPath: value("script_path"))), try value("script_sha256"))
+        XCTAssertEqual(try digest(URL(fileURLWithPath: value("test_source_path"))), try value("test_source_sha256"))
     }
     override func tearDownWithError() throws {
         defer { if let interruption { removeUIInterruptionMonitor(interruption) }; interruption = nil }
@@ -37,6 +43,14 @@ final class MacPhotosHostUITests: XCTestCase {
     }
 
     @MainActor func testInstalledExtensionIsInvokedByActualPhotos() throws {
+        // Validate the exact read-only input before any host UI action. Only
+        // XCTest stdout/attachments carry data back across the sandbox boundary.
+        try report(["schema": "Celluloid.HostTransport.1", "source_sha": try value("source_sha"),
+                    "context_sha256": contextHash, "test_source_sha256": try value("test_source_sha256"),
+                    "verifier_sha256": try value("script_sha256"),
+                    "app_executable_sha256": try value("app_executable_sha256"),
+                    "extension_executable_sha256": try value("extension_executable_sha256"),
+                    "external_writes": false, "context_validated": true], named: "transport.json")
         let photos = XCUIApplication(bundleIdentifier: "com.apple.Photos")
         defer {
             try? checkpoint(photos, "last-observed", screenshot: true)
@@ -137,7 +151,7 @@ final class MacPhotosHostUITests: XCTestCase {
             }
             throw block("Celluloid is not uniquely selectable; actual Manage state captured, enablement not guessed")
         }
-        try assertUniqueRegistration()
+        try assertUniqueRegistration(beforeInvocation: true)
         stage = "invoke-real-photos-extension"
         celluloid.firstMatch.click()
         let editor = photos.descendants(matching: .any)["photos-extension.filter"].firstMatch
@@ -149,7 +163,8 @@ final class MacPhotosHostUITests: XCTestCase {
         let script = URL(fileURLWithPath: try value("script_path"))
         XCTAssertEqual(try digest(script), try value("script_sha256"))
         let processes = try command("/usr/bin/env", ["python3", script.path, "processes"])
-        print("MAC_HOST_PROCESS_PROVENANCE " + processes)
+        let processReceipt = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(processes.utf8)) as? [String: Any])
+        try report(processReceipt, named: "extension-process.json")
         try assertUniqueRegistration()
         stage = "host-entry-prerequisite-passed"
         try report(["prerequisite_passed": true, "complete_host_e2e": false,
@@ -191,9 +206,10 @@ final class MacPhotosHostUITests: XCTestCase {
         }
         controls[0].click()
     }
-    private func assertUniqueRegistration() throws {
+    private func assertUniqueRegistration(beforeInvocation: Bool = false) throws {
+        let stem = beforeInvocation ? "registration-before-invoke" : "registration-selected"
         let listing = try command("/usr/bin/pluginkit", ["-m", "-v", "-i", try value("extension_id")])
-        try text(listing, named: "registration-selected.txt")
+        try proof(Data(listing.utf8), named: stem + ".txt")
         let expected = URL(fileURLWithPath: try value("extension_path")).resolvingSymlinksInPath().path
         // -v returns matching bundle paths. An unfamiliar output format is a
         // blocker; never interpret a menu label or identity as path evidence.
@@ -203,8 +219,8 @@ final class MacPhotosHostUITests: XCTestCase {
         guard paths == [expected] else { throw block("Missing/ambiguous registered extension path: " + paths.joined(separator: "; ")) }
         try report(["source_sha": try value("source_sha"), "extension_id": try value("extension_id"),
                     "expected_extension_path": expected, "registered_paths": paths,
-                    "registration_text_sha256": try digest(folder().appendingPathComponent("registration-selected.txt"))],
-                   named: "registration-selected.json")
+                    "registration_text_sha256": digest(Data(listing.utf8))],
+                   named: stem + ".json")
     }
     @MainActor private func checkpoint(_ app: XCUIApplication, _ name: String, screenshot: Bool = false) throws {
         try text(app.debugDescription, named: name + ".txt")
@@ -220,7 +236,7 @@ final class MacPhotosHostUITests: XCTestCase {
             CGImageDestinationAddImage(destination, thumb, [kCGImageDestinationLossyCompressionQuality: 0.62] as CFDictionary)
             XCTAssertTrue(CGImageDestinationFinalize(destination)); XCTAssertLessThan(bytes.length, 700_000)
             // Only two fixed still names are used throughout this phase.
-            try (bytes as Data).write(to: try folder().appendingPathComponent(name == "extensions" ? "extensions.jpg" : "last-observed.jpg"))
+            try diagnostic(bytes as Data, named: name == "extensions" ? "extensions.jpg" : "last-observed.jpg", type: "public.jpeg")
         }
     }
     private func makeFixture() throws -> URL {
@@ -260,14 +276,39 @@ final class MacPhotosHostUITests: XCTestCase {
         return result
     }
     private func value(_ key: String) throws -> String { try XCTUnwrap(context[key] as? String, "Missing bound context: " + key) }
-    private func folder() throws -> URL { try XCTUnwrap(reportFolder) }
-    private func digest(_ url: URL) throws -> String { SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined() }
+    private func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+    private func digest(_ url: URL) throws -> String { digest(try Data(contentsOf: url)) }
     private func text(_ string: String, named name: String) throws {
         let bytes = Data(string.utf8.prefix(120_000))
-        try bytes.write(to: try folder().appendingPathComponent(name))
+        try diagnostic(bytes, named: name, type: "public.utf8-plain-text")
     }
     private func report(_ object: [String: Any], named name: String) throws {
-        try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]).write(to: try folder().appendingPathComponent(name))
+        try proof(JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]), named: name)
+    }
+    private func proof(_ bytes: Data, named name: String) throws {
+        let names = ["transport.json", "containing-process.json", "photos-process.json", "fixture.json", "fixture-ownership.json",
+                     "registration-before-invoke.txt", "registration-before-invoke.json", "extension-process.json",
+                     "registration-selected.txt", "registration-selected.json", "prerequisite.json", "outcome.json"]
+        let limit = name.hasSuffix(".txt") || name == "fixture.json" ? 120_000 : 16_000
+        guard names.contains(name), !emittedProofs.contains(name), !bytes.isEmpty, bytes.count <= limit,
+              proofBytes + bytes.count <= 160_000 else { throw block("Unexpected or oversized proof receipt") }
+        emittedProofs.insert(name); proofBytes += bytes.count
+        let record: [String: Any] = ["schema": "Celluloid.MacHostProof.1", "sequence": proofSequence,
+            "name": name, "bytes": bytes.count, "sha256": digest(bytes), "base64": bytes.base64EncodedString(),
+            "source_sha": try value("source_sha"), "context_sha256": contextHash,
+            "test_source_sha256": try value("test_source_sha256"), "verifier_sha256": try value("script_sha256")]
+        let serialized = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
+        print("MAC_HOST_PROOF " + String(decoding: serialized, as: UTF8.self)); proofSequence += 1
+    }
+    private func diagnostic(_ bytes: Data, named name: String, type: String) throws {
+        let names: Set<String> = ["registration-before.txt", "initial.txt", "imported.txt", "single-photo.txt", "editing.txt", "extensions.txt",
+            "manage-observed.txt", "host-editor.txt", "last-observed.txt", "missing-control-edit.txt", "missing-control-extensions.txt",
+            "extensions.jpg", "last-observed.jpg"]
+        guard names.contains(name), !emittedDiagnostics.contains(name), !bytes.isEmpty,
+              bytes.count <= (name.hasSuffix(".jpg") ? 700_000 : 120_000) else { throw block("Unexpected or oversized diagnostic attachment") }
+        emittedDiagnostics.insert(name)
+        let attachment = XCTAttachment(data: bytes, uniformTypeIdentifier: type)
+        attachment.name = "celluloid-host-diagnostic-" + name; attachment.lifetime = .keepAlways; add(attachment)
     }
     private func block(_ reason: String) -> NSError {
         print("MAC_HOST_BLOCKED stage=" + stage + " reason=" + reason)

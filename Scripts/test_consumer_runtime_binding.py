@@ -126,14 +126,33 @@ class GenericRuntimeTests(unittest.TestCase):
 
     def test_accepted_runtime_summary_is_mandatory_and_replayed_before_optional_pressure(self):
         import consumer_runtime_binding as runtime
-        helper=fixtures.PlatformContractTests();row,log,summary,timing,fixture=helper.profile('2x');receipt=helper.receipt('2x')
+        helper=fixtures.PlatformContractTests();row,log,summary,timing,fixture=helper.profile('2x')
+        receipt=fixtures.contract.validate_receipt(helper.receipt('2x'),fixture)
         binding=runtime.validate(summary,receipt,{'id':row['udid'],'model':row['device_type']})
         root=Path(__file__).resolve().parents[1]
         for platform,stem in [('phone','phone-required-tests'),('compact-phone','uikit-required-tests')]:
-            for mutation in ['valid','missing','changed','oversized']:
+            for mutation in ['valid','missing','changed','oversized','missing-archive','changed-archive','forged-graph']:
                 with self.subTest(platform=platform,mutation=mutation),tempfile.TemporaryDirectory() as folder:
                     temp=Path(folder);packet={'source_sha':self.SOURCE,'checks':{'runtime_and_consumer_passed':True},'platform_contract':receipt,'runtime_binding':binding}
                     (temp/(stem+'.json')).write_text(json.dumps(packet));path=temp/(stem+'.runtime-summary.json')
+                    native=temp/'native.log';native.write_text('MAC_LAYER_ADJUSTMENT_FIXTURE '+json.dumps(fixture)+'\n')
+                    data=layer_from_log(native,self.SOURCE);directory=temp/'mac-fixture-evidence';directory.mkdir()
+                    if mutation!='missing-archive':(directory/LAYER_FILE).write_bytes(data)
+                    (directory/'manifest.json').write_text(json.dumps({'source_sha':self.SOURCE,'files':[{'name':LAYER_FILE,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}]}))
+                    if mutation=='changed-archive':
+                        import base64,plistlib
+                        payload=json.loads(data);archive=plistlib.loads(base64.b64decode(payload['fixture']['base64']))
+                        transform=next(x for x in archive['$objects'] if isinstance(x,dict) and 'NS.atval.tx' in x);transform['NS.atval.tx']=123.0
+                        raw=plistlib.dumps(archive,fmt=plistlib.FMT_BINARY);digest=hashlib.sha256(raw).hexdigest()
+                        payload['fixture'].update(base64=base64.b64encode(raw).decode(),sha256=digest)
+                        data=json.dumps(payload).encode();(directory/LAYER_FILE).write_bytes(data)
+                        (directory/'manifest.json').write_text(json.dumps({'source_sha':self.SOURCE,'files':[{'name':LAYER_FILE,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}]}))
+                        packet=copy.deepcopy(packet);packet['platform_contract']['archiveSHA256']=digest
+                        packet['platform_contract']['archiveGraphProof']['candidate_raw_sha256']=digest
+                        (temp/(stem+'.json')).write_text(json.dumps(packet))
+                    if mutation=='forged-graph':
+                        packet=copy.deepcopy(packet);packet['platform_contract']['archiveGraphProof']['canonical_graph_sha256']='f'*64
+                        (temp/(stem+'.json')).write_text(json.dumps(packet))
                     if mutation!='missing':path.write_text(json.dumps(summary))
                     if mutation=='changed':
                         bad=copy.deepcopy(summary);bad['devicesAndConfigurations'][0]['device']['osBuildNumber']='24Z999';path.write_text(json.dumps(bad))
@@ -141,7 +160,32 @@ class GenericRuntimeTests(unittest.TestCase):
                     (temp/'domain.log').write_text('optional pressure\n'*150_000)
                     result=subprocess.run(['python3',str(root/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=str(temp),GITHUB_SHA=self.SOURCE,CELLULOID_EVIDENCE_PLATFORM=platform),text=True,capture_output=True,timeout=15)
                     self.assertEqual(result.returncode==0,mutation=='valid',result.stderr)
-                    if mutation=='valid':self.assertEqual((temp/'celluloid-bounded-evidence'/path.name).read_bytes(),path.read_bytes())
+                    if mutation=='valid':
+                        self.assertEqual((temp/'celluloid-bounded-evidence'/path.name).read_bytes(),path.read_bytes())
+                        self.assertEqual((temp/'celluloid-bounded-evidence'/'consumer-mac-layer-fixture.json').read_bytes(),data)
+
+    def test_both_routes_replay_complete_archive_graph_with_distinct_raw_hashes(self):
+        import base64,plistlib
+        from unittest.mock import patch
+        helper=fixtures.PlatformContractTests();original=helper.fixture()
+        witness=json.loads((Path(__file__).resolve().parent/'fixtures/archive-ordering-witness.json').read_text())
+        current=base64.b64decode(witness['base64'])
+        for scope in ['uikit','phone']:
+            for changed in [False,True]:
+                archive=plistlib.loads(current)
+                if changed:
+                    transform=next(x for x in archive['$objects'] if isinstance(x,dict) and 'NS.atval.tx' in x)
+                    transform['NS.atval.tx']=int(transform['NS.atval.tx']) # Same numeric value, wrong archived type.
+                raw=plistlib.dumps(archive,fmt=plistlib.FMT_BINARY,sort_keys=False) if changed else current
+                fixture=copy.deepcopy(original);fixture.update(base64=base64.b64encode(raw).decode(),sha256=hashlib.sha256(raw).hexdigest())
+                with self.subTest(scope=scope,changed=changed),patch.object(fixtures.PlatformContractTests,'fixture',return_value=fixture):
+                    if changed:
+                        with self.assertRaisesRegex(ValueError,'semantic graph'):self.exercise(scope)
+                    else:
+                        report=self.exercise(scope);proof=report['platform_contract']['archiveGraphProof']
+                        self.assertTrue(report['renderer_consumer_passed']);self.assertFalse(proof['raw_bytes_equal'])
+                        self.assertEqual(proof['candidate_raw_sha256'],witness['sha256'])
+                        self.assertEqual(proof['control_raw_sha256'],original['sha256'])
 
     def test_cli_routes_supply_exact_result_bundle_and_owned_identity(self):
         text=(Path(__file__).resolve().parents[1]/'.github/workflows/apple-platforms.yml').read_text()

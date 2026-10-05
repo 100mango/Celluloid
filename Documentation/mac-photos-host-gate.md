@@ -126,3 +126,36 @@ Primary references:
 - [Apple extension creation and testing](https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/ExtensionCreation.html)
 - [Edit in Photos with extensions](https://support.apple.com/en-euro/guide/photos/pht820c5ba8a/mac)
 - [See photo information in Photos](https://support.apple.com/en-euro/guide/photos/phta8b25fa42/mac)
+
+## Sandboxed proof transport
+
+The sandboxed XCTest can read its exact bound input context but cannot write to
+an external `RUNNER_TEMP` evidence folder. Receipts therefore use the existing
+XCTest stdout path. The first record validates the complete context-byte hash,
+source commit, actual test-source/verifier hashes and expected product hashes
+before any host UI action. Each subsequent proof record has a fixed name,
+strictly ordered sequence, byte count, content hash and the same context binding.
+The stdout transport is capped at 160,000 decoded bytes total; individual records
+are capped at 16,000 bytes, or 120,000 for registration text and the fixture.
+
+Only the outer runner writes the allowlisted receipt files. It waits for the
+bounded xcodebuild process to finish, parses the exact testcase enclosure, and
+replays all bytes before acceptance. Acceptance additionally requires exactly one
+passed testcase, the successful xcodebuild terminal, bounded-process exit zero,
+the finalized xcresult summary, actual live-process/executable receipts, unchanged
+source/product checks and the existing fixture/registration checks. Echoed source
+values or a transport-success flag alone cannot grant acceptance. Every collected
+accepted packet reruns the complete transport and host proof.
+
+The Python live-process child is read-only and returns its JSON receipt on stdout;
+it never writes the external evidence directory. Bounded AX text and the two
+fixed screenshot names use XCTest attachments. The outer exporter accepts only
+known host diagnostic names from the exact host test, with Xcode's observed
+iteration/UUID suffix, direct owned export files, no symlinks, correct file types
+and the existing size caps. Transport completion is published only after this
+export is finished and validated. Missing, malformed, duplicate, out-of-order,
+truncated, over-budget or wrong-context records remain red.
+
+This changes neither entitlements nor permissions, privacy settings, registration
+preferences, production serialization, rendering goldens or the guarded Photos
+save path. Portable parser tests are not an Apple runtime or host-entry pass.

@@ -18,6 +18,7 @@ TEST_RUNNER_CELLULOID_MAC_HOST_CONTEXT="$RUNNER_TEMP/mac-host-context.json" \
   CODE_SIGNING_ALLOWED=NO CELLULOID_EXPECT_SANDBOX=YES test-without-building \
   2>&1 | tee "$RUNNER_TEMP/mac-host-test.log" || status=$?
 python3 -c 'import os,subprocess; from pathlib import Path; p=Path(os.environ["RUNNER_TEMP"]); subprocess.run(["xcrun","xcresulttool","get","test-results","summary","--path",str(p/"MacPhotosHost.xcresult")],stdout=open(p/"mac-host-summary.json","w"),check=True,timeout=30)' || status=$?
+python3 Scripts/mac_photos_host_gate.py transport || status=$?
 python3 Scripts/mac_photos_host_gate.py product-after || status=$?
 python3 Scripts/mac_photos_host_gate.py source-after || status=$?
 exit "$status"

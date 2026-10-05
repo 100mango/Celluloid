@@ -160,7 +160,7 @@ final class MacPhotoRendererTests: XCTestCase {
         let destination = MacPhotoTextRaster.destinationRect(for: image, origin: rect.origin)
         // Convert CT bottom-left frame baselines into the logical label. No
         // backing-size fit or inferred UIKit baseline anchor enters this math.
-        let baselines = origins.map { destination.minY + (rect.height + layout.height) / 2 - $0.y }
+        let baselines = origins.map { destination.minY + (rect.height - layout.typographicHeight) / 2 + layout.height - $0.y }
         return QualifiedGeometry(text: text, ranges: ranges, baselines: baselines, destination: destination, fontSize: layout.fontSize)
     }
 
@@ -179,7 +179,9 @@ final class MacPhotoRendererTests: XCTestCase {
 
     func testNaturalNativePitchKeepsIndependentObservedBaselinesAndLegacySpans() throws {
         let layout = try MacPhotoTextLayout.make(qualifiedText, rect: qualifiedRect)
-        XCTAssertEqual(layout.fontSize, 10); XCTAssertEqual(layout.height, 36)
+        XCTAssertEqual(layout.fontSize, 10); XCTAssertEqual(layout.typographicHeight, 36)
+        XCTAssertGreaterThanOrEqual(layout.height, layout.typographicHeight,
+            "CT fitting allocation must remain available instead of clipping it to the natural block")
         XCTAssertEqual(layout.lineHeight, 12)
         XCTAssertTrue(matchesIndependent52Geometry(try geometry(layout, text: qualifiedText, rect: qualifiedRect)))
 
@@ -213,6 +215,8 @@ final class MacPhotoRendererTests: XCTestCase {
 
     private var fittingCases: [(String, CGSize)] { [
         (qualifiedText, qualifiedRect.size),
+        ("\nHello\n\n世界\n", CGSize(width: 120.125, height: 120.5)),
+        ("\n\n", CGSize(width: 80.125, height: 88.75)),
         ("gypq j\u{0301} café", CGSize(width: 120.125, height: 56.25)),
         ("第一行\n第二行\n👩🏽‍💻", CGSize(width: 96.125, height: 88.75)),
         ("👨‍👩‍👧‍👦 👩🏽‍💻 🎬", CGSize(width: 140.25, height: 64.5)),
@@ -250,6 +254,8 @@ final class MacPhotoRendererTests: XCTestCase {
             let layout = try MacPhotoTextLayout.make(text, rect: CGRect(origin: .zero, size: bounds))
             XCTAssertTrue((2...16).contains(Int(layout.fontSize))); XCTAssertEqual(layout.fontSize.rounded(), layout.fontSize)
             let (ranges, _) = frameLines(layout)
+            XCTAssertEqual(layout.typographicHeight, CGFloat(ranges.count) * layout.lineHeight)
+            XCTAssertLessThanOrEqual(layout.typographicHeight, bounds.height)
             var boundaries: Set<Int> = [0], count = 0
             for character in text { count += String(character).utf16.count; boundaries.insert(count) }
             var next = 0, replay = ""
@@ -321,7 +327,10 @@ final class MacPhotoRendererTests: XCTestCase {
     }
 
     private func independentManufacturedComposite(source: CGImage) throws -> CGImage {
-        let graph = CIImage(cgImage: source).applyingFilter("CIPhotoEffectFade")
+        // Historical UIKit FilterFactory.fade and the independent domain tests
+        // specify Instant for the preset named Fade. Keep this literal oracle
+        // independent of the candidate's filter-dispatch implementation.
+        let graph = CIImage(cgImage: source).applyingFilter("CIPhotoEffectInstant")
         let context = CIContext(options: [.outputColorSpace: RasterCodec.colorSpace])
         let filtered = try XCTUnwrap(context.createCGImage(graph, from: CGRect(x: 0, y: 0, width: 480, height: 640),
             format: .RGBA8, colorSpace: RasterCodec.colorSpace))

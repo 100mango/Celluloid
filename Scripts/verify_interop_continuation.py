@@ -16,7 +16,7 @@ from uikit_installed_identity import validate as validate_installation
 from platform_rendering_contract import from_log as platform_from_log,CONTROL_SHA,RUNTIME_BUILD,PREFIX as PLATFORM_PREFIX
 
 TEST_SOURCE='CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift'
-TEST_SOURCE_SHA='49cbcaf384b4e3667b9bf4d725e152564dffd82a4c52166b3697437787007354'
+TEST_SOURCE_SHA='f4c7a7a16bf5414e6c2a2716bc146bdc216f7ea966a80207acce8a7667584890'
 OWNER,METHOD=CONSUMER.split('.')
 CASE=re.compile(r"^Test Case '-\[([\w.]+) (test\w+)\]' (started|passed|failed|skipped)\b",re.M)
 COMPONENT=re.compile(r'^MAC_LAYER_UIKIT_COMPOSITOR_COMPONENT name=([\w-]+) nativeSHA256=([0-9a-f]{64}) maximumChannelDifference=(\d+)$',re.M)

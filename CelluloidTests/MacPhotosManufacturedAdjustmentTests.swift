@@ -33,7 +33,10 @@ import CryptoKit
         let profile = UIScreen.main.scale == 2 ? "2x" : UIScreen.main.scale == 3 ? "3x" : "unsupported"
         let ownControl = try XCTUnwrap(controls.profiles[profile])
         XCTAssertEqual(UIScreen.main.scale, CGFloat(ownControl.scale))
-        XCTAssertEqual(fixture.sha256, controls.archiveSHA256); XCTAssertEqual(fixture.sourceSHA256, controls.sourcePNG_SHA256)
+        XCTAssertEqual(fixture.sourceSHA256, controls.sourcePNG_SHA256)
+        // Fresh NSKeyedArchiver dictionaries can renumber/reorder their object
+        // tables. The required source-bound verifier compares their complete
+        // typed/aliased graphs; retain both distinct raw identities here.
         var sameRuntime: [String: Int] = [:], exactComponents: [String: Int] = [:]
         var artwork: [String: [String: Int]] = [:]
         var rejectedArtworkMutations = 0
@@ -45,6 +48,8 @@ import CryptoKit
             return data
         }
         let archive = try data(fixture.base64, fixture.sha256)
+        XCTAssertEqual(controls.inputArchive.sha256, controls.archiveSHA256)
+        _ = try data(controls.inputArchive.base64, controls.archiveSHA256)
         let decoded = try AdjustmentData.decode(archive)
         XCTAssertEqual(decoded.filterType, .Fade); XCTAssertEqual(decoded.referenceCanvasSize, CGSize(width: 480, height: 640))
         XCTAssertEqual(decoded.bubbles.count, 1); XCTAssertEqual(decoded.stickers.count, 1)
@@ -135,10 +140,10 @@ import CryptoKit
         XCTAssertEqual(Set(exactComponents.keys), Set(["filtered-base", "sticker-artwork"]))
         XCTAssertEqual(Set(artwork.keys), Set(["bubble-artwork", "all-artwork"]))
         XCTAssertEqual(rejectedArtworkMutations, 6)
-        let contract: [String: Any] = ["schema": "Celluloid.PlatformRendering.1", "profile": profile,
+        let contract: [String: Any] = ["schema": "Celluloid.PlatformRendering.2", "profile": profile,
             "runtimeVersion": UIDevice.current.systemVersion, "scale": Double(UIScreen.main.scale),
             "controlFileSHA256": Self.controlFileHash, "controlSourceSHA": controls.sourceSHA,
-            "archiveSHA256": fixture.sha256, "sourceSHA256": fixture.sourceSHA256, "nativeSHA256": fixture.renderedSHA256,
+            "archiveSHA256": fixture.sha256, "controlArchiveSHA256": controls.archiveSHA256, "sourceSHA256": fixture.sourceSHA256, "nativeSHA256": fixture.renderedSHA256,
             "historicalFullMaximum": maximum, "sameRuntimeMaximums": sameRuntime,
             "exactComponentMaximums": exactComponents, "artworkMetrics": artwork,
             "rejectedArtworkMutations": rejectedArtworkMutations]
@@ -150,6 +155,7 @@ import CryptoKit
         let schema: String, sourceSHA: String, runtimeVersion: String, runtimeBuild: String
         let archiveSHA256: String, sourcePNG_SHA256: String, uikitProductionFingerprint: String
         let profiles: [String: PlatformProfile], common: [String: PlatformImage]
+        let inputArchive: PlatformImage
     }
     private static let controlFileHash = "7b03cc5efba3a4bfdf40f1be5e33ff67d94eb6166d9659f2f8acc114540cb7b1"
     private func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }

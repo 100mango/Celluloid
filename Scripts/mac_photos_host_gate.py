@@ -19,6 +19,7 @@ import sys
 import tempfile
 import time
 import math
+from mac_host_transport import load_json
 
 # Mandatory acceptance/source/product assertions must never be optimized away.
 # Reject before parsing an action, reading receipts, or creating any evidence.
@@ -52,9 +53,12 @@ ALLOWED = {
     'Scripts/combined_evidence_budget.py',
     'Scripts/consumer_runtime_binding.py',
     'Scripts/file_open_observation.py',
+    'Scripts/fixtures/archive-ordering-witness.json',
     'Scripts/fixtures/native-text-expectations.json',
     'Scripts/fixtures/platform-rendering-controls.json',
     'Scripts/mac-photos-host-source-base.json',
+    'Scripts/keyed_archive_graph.py',
+    'Scripts/mac_host_transport.py',
     'Scripts/mac_photos_host_gate.py',
     'Scripts/native_text_release_guard.py',
     'Scripts/optional_export_budget.py',
@@ -68,6 +72,8 @@ ALLOWED = {
     'Scripts/test_early_uikit_interop.py',
     'Scripts/test_file_open_observation.py',
     'Scripts/test_interop_continuation.py',
+    'Scripts/test_keyed_archive_graph.py',
+    'Scripts/test_mac_host_transport.py',
     'Scripts/test_mac_photos_host_gate.py',
     'Scripts/test_native_evidence.py',
     'Scripts/test_native_phone_fixture.py',
@@ -85,8 +91,8 @@ ALLOWED = {
 
 CAP = 1_000_000
 BASE_FILE_COUNT = 544
-REVIEWED_TEST_FILES = {'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': '49cbcaf384b4e3667b9bf4d725e152564dffd82a4c52166b3697437787007354', 'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift': 'ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034'}
-REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': 'adb85afed8add5d9dd1de549f44b54b8ef0bec51a5baf12b8bb7db02d84ee928', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': '94da429bfec3275ce0687a0465658da4f0dc8f7a55b92ab1a36f02ace5f3d54f', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
+REVIEWED_TEST_FILES = {'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': 'f4c7a7a16bf5414e6c2a2716bc146bdc216f7ea966a80207acce8a7667584890', 'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift': 'ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034'}
+REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': 'b015030234b7399d9908c20852efe44f880ba68a0cabe01492a95fd274ae2df1', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': 'ba3199901afda2065323e67ba53ad27cd3cd95d047c81508c5045ad177993b58', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
 UNCHANGED_BASE_FILES = BASE_FILE_COUNT - 2 - len(REVIEWED_TEST_FILES) - len(REVIEWED_CANDIDATE_FILES)
 
 def run(*args):
@@ -120,7 +126,7 @@ def verify_source(phase):
     assert changed <= ALLOWED, sorted(changed - ALLOWED)
     frozen = ROOT / 'Scripts/mac-photos-host-source-base.json'
     assert frozen.read_bytes() == subprocess.check_output(['git', 'show', BASE + ':Scripts/combined-source-contract.json'], cwd=ROOT, timeout=20), 'Frozen base snapshot differs from the actual base commit'
-    contract = json.loads(frozen.read_text())
+    contract = load_json(frozen.read_text())
     checked = []
     for path, digest in contract['files']:
         if path in {'CelluloidNative.xcodeproj/project.pbxproj', 'Platforms/UITests/NativeEditorUITests.swift'}:
@@ -161,7 +167,7 @@ def seed_receipt(path, source_sha, app_hash):
     if not path.exists(): return {'mode': 'require-empty-library'}
     assert not path.is_symlink() and path.stat().st_size <= 20_000_000
     text = path.read_text()
-    rows = [json.loads(line.split('MAC_HOST_SEED_RECEIPT ', 1)[1]) for line in text.splitlines() if line.startswith('MAC_HOST_SEED_RECEIPT ')]
+    rows = [load_json(line.split('MAC_HOST_SEED_RECEIPT ', 1)[1]) for line in text.splitlines() if line.startswith('MAC_HOST_SEED_RECEIPT ')]
     events = [row for row in CASE_RESULT.findall(text) if row[:2] == SEED_CASE]
     if not events and not rows: return {'mode': 'require-empty-library'}
     assert events == [(*SEED_CASE, 'started'), (*SEED_CASE, 'passed')], 'Seed test did not pass exactly once'
@@ -209,6 +215,8 @@ def prepare():
                'extension_executable': str(embedded / 'Contents/MacOS/CelluloidMacPhotosExtension'),
                'app_id': APP_ID, 'extension_id': EXT_ID, 'evidence_path': str(evidence),
                'script_path': str(Path(__file__).resolve()), 'script_sha256': sha(__file__),
+               'test_source_path': str(ROOT/'Platforms/UITests/MacPhotosHostUITests.swift'),
+               'test_source_sha256': sha(ROOT/'Platforms/UITests/MacPhotosHostUITests.swift'),
                'app_entitlements': debug_permissions, 'extension_entitlements': ext_permissions,
                'bundle_manifest': bundle_manifest(installed), 'complete_host_e2e': False,
                'installation_method': 'reuse exact same-job sandbox product without copy or re-sign',
@@ -222,7 +230,7 @@ def prepare():
 
 def context():
     p = temp() / 'mac-host-context.json'
-    c = json.loads(p.read_text())
+    c = load_json(p.read_text())
     assert c['source_sha'] == os.environ['GITHUB_SHA']
     assert c['app_id'] == APP_ID and c['extension_id'] == EXT_ID
     assert c['script_sha256'] == sha(__file__)
@@ -267,7 +275,8 @@ def process_provenance():
               'expected_executable_sha256': c['extension_executable_sha256'],
               'unique_exact_process': len(found) == 1 and found[0]['executable'] == expected
               and found[0]['sha256'] == c['extension_executable_sha256']}
-    write(Path(c['evidence_path']) / 'extension-process.json', result)
+    # This process inherits the XCTest sandbox. Return the actual live-process
+    # receipt through stdout; only the outer runner may materialize evidence.
     print(json.dumps(result, sort_keys=True))
     assert result['unique_exact_process'], 'Missing or ambiguous actual extension executable'
 
@@ -286,9 +295,54 @@ def read_receipt(path):
     path = Path(path)
     assert path.is_file() and not path.is_symlink(), 'Missing/invalid receipt: ' + path.name
     assert 0 < path.stat().st_size <= 2_000_000, 'Receipt size: ' + path.name
-    result = json.loads(path.read_text(), object_pairs_hook=unique_object)
+    result = load_json(path.read_text())
     assert isinstance(result, dict), 'Receipt must be an object: ' + path.name
     return result
+
+def transport_records(root, c, complete=False):
+    from mac_host_transport import parse
+    root=Path(root)
+    assert c['source_sha']==os.environ.get('GITHUB_SHA',c['source_sha'])
+    assert c['script_sha256']==sha(__file__)
+    assert c['test_source_sha256']==sha(ROOT/'Platforms/UITests/MacPhotosHostUITests.swift'), 'Changed actual host test source'
+    path=root/'mac-host-test.log'
+    assert path.is_file() and not path.is_symlink() and path.stat().st_size<=20_000_000
+    return parse(path.read_text(),c,sha(root/'mac-host-context.json'),complete=complete)
+
+def transport_report(root, c, records):
+    return {'schema':'Celluloid.HostTransportReplay.1','source_sha':c['source_sha'],
+        'context_sha256':sha(Path(root)/'mac-host-context.json'), 'test_source_sha256':c['test_source_sha256'],
+        'transcript_sha256':sha(Path(root)/'mac-host-test.log'),
+        'records':[{'name':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()} for name,data in records.items()],
+        'complete_host_e2e':False}
+
+def extract_transport():
+    require_runner()
+    root=temp();c=context();records=transport_records(root,c)
+    observed=root/'mac-host-observed'
+    assert observed.is_dir() and not observed.is_symlink()
+    # The allowlisted parser returns names, never reported output paths.
+    for name,data in records.items():
+        target=observed/name
+        assert not target.exists() and not target.is_symlink(), 'Duplicate materialized host proof'
+        target.write_bytes(data)
+    # Attachments are diagnostic only, but their namespace and export ownership
+    # are strict. A malformed selected attachment is never silently accepted.
+    from mac_host_transport import attachment_candidates
+    with tempfile.TemporaryDirectory(prefix='celluloid-host-attachments-',dir=root) as folder:
+        folder=Path(folder)
+        exported=subprocess.run(['xcrun','xcresulttool','export','attachments','--path',str(root/'MacPhotosHost.xcresult'),'--output-path',str(folder)],capture_output=True,timeout=60)
+        assert exported.returncode==0, 'Required bounded host attachment export failed'
+        manifest=folder/'manifest.json'
+        assert manifest.is_file() and not manifest.is_symlink() and manifest.stat().st_size<=200_000
+        diagnostics=attachment_candidates(folder,load_json(manifest.read_text()))
+        for name,data in diagnostics.items():
+            target=observed/name
+            assert not target.exists() and not target.is_symlink(), 'Attachment collides with a host receipt'
+            target.write_bytes(data)
+    # Publish the mandatory transport completion only after the actual export
+    # finished and every selected name/path/type/size was validated.
+    write(root/'mac-host-transport-replay.json',transport_report(root,c,records))
 
 def verify_acceptance(root, source_sha):
     """Require finalized XCTest execution plus same-candidate live-host receipts.
@@ -308,6 +362,11 @@ def verify_acceptance(root, source_sha):
     assert c['app_id'] == APP_ID and c['extension_id'] == EXT_ID
     assert c['complete_host_e2e'] is False
     assert c['script_sha256'] == sha(__file__), 'Wrong verifier/product context'
+    records=transport_records(root,c,complete=True)
+    assert read_receipt(root/'mac-host-transport-replay.json')==transport_report(root,c,records), 'Transport replay receipt changed'
+    for name,data in records.items():
+        path=observed/name
+        assert path.is_file() and not path.is_symlink() and path.read_bytes()==data, 'Materialized host receipt differs from actual XCTest stdout: '+name
     expected_extension = str(Path(c['extension_path']).resolve())
     expected_executable = str(Path(c['extension_executable']).resolve())
     assert expected_extension == str(Path(c['app_path']).resolve() / 'Contents/PlugIns/CelluloidMacPhotosExtension.appex')
@@ -335,6 +394,14 @@ def verify_acceptance(root, source_sha):
     assert executions == [(*EXPECTED_CASE, 'started'), (*EXPECTED_CASE, 'passed')], 'Missing/wrong/duplicate/skipped testcase: ' + repr(executions)
     assert sum(line.startswith('MAC_HOST_PREREQUISITE_PASSED ') for line in log.splitlines()) == 1, 'Missing/duplicate host-entry completion marker'
     assert 'MAC_HOST_BLOCKED' not in log and 'MAC_HOST_FAIL_CLOSED_ABORT' not in log, 'Contradictory host interruption/failure'
+
+    containing=read_receipt(observed/'containing-process.json')
+    assert containing['bundle']==str(Path(c['app_path']).resolve()) and containing['executable']==c['app_executable']
+    assert type(containing['pid']) is int and containing['pid']>0
+    photos=read_receipt(observed/'photos-process.json')
+    assert photos['bundle']=='/System/Applications/Photos.app'
+    assert photos['executable']=='/System/Applications/Photos.app/Contents/MacOS/Photos'
+    assert type(photos['pid']) is int and photos['pid']>0
 
     ownership = read_receipt(observed / 'fixture-ownership.json')
     assert ownership['source_sha'] == source_sha
@@ -394,7 +461,7 @@ def verify_acceptance(root, source_sha):
         assert receipt['base_sha'] == BASE and receipt['base_tree'] == BASE_TREE
         assert receipt['unchanged_bound_files'] == UNCHANGED_BASE_FILES and receipt['reviewed_diagnostic_test_files']==REVIEWED_TEST_FILES and receipt['reviewed_candidate_files']==REVIEWED_CANDIDATE_FILES and receipt['complete_host_e2e'] is False
     assert before['tree'] == after['tree'] and before['workflow_sha256'] == after['workflow_sha256']
-    contract=json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())
+    contract=load_json((ROOT/'Scripts/combined-source-contract.json').read_text())
     for phase in ['before','after']:
         combined=read_receipt(root/('combined-source-'+phase+'.json'))
         assert combined['source_sha']==source_sha and combined['phase']==phase
@@ -402,9 +469,10 @@ def verify_acceptance(root, source_sha):
         assert type(combined['file_count']) is int and combined['file_count']==len(contract['files'])
         assert combined['source_fingerprint']==contract['fingerprint']
     receipts = [root / name for name in ['combined-source-before.json','combined-source-after.json','mac-job-clock.json', 'mac-host-budget.json', 'mac-host-context.json', 'mac-host-summary.json', 'mac-host-test.log',
-                'mac-host-product-after.json', 'mac-host-source-before.json', 'mac-host-source-after.json']]
+                'mac-host-product-after.json', 'mac-host-source-before.json', 'mac-host-source-after.json', 'mac-host-transport-replay.json']]
     receipts += [observed / name for name in ['prerequisite.json', 'outcome.json', 'registration-selected.json',
                  'registration-selected.txt', 'extension-process.json', 'fixture-ownership.json', 'fixture.json']]
+    receipts += [observed/name for name in ['transport.json','containing-process.json','photos-process.json','registration-before-invoke.txt','registration-before-invoke.json']]
     return {'source_sha': source_sha, 'prerequisite_accepted': True, 'complete_host_e2e': False,
             'expected_testcase': '/'.join(EXPECTED_CASE), 'exactly_one_passed_zero_skipped': True,
             'last_stage': outcome['last_stage'], 'extension_executable': expected_executable,
@@ -483,6 +551,9 @@ PROOF_LIMITS = {
     'mac-host-source-before.json':160_000, 'mac-host-source-after.json':160_000,
     'mac-host-product-after.json':160_000, 'mac-host-context.json':500_000,
     'mac-host-summary.json':160_000, 'mac-host-test.log':300_000,
+    'mac-host-transport-replay.json':16_000, 'mac-host-observed/transport.json':16_000,
+    'mac-host-observed/containing-process.json':16_000, 'mac-host-observed/photos-process.json':16_000,
+    'mac-host-observed/registration-before-invoke.txt':120_000, 'mac-host-observed/registration-before-invoke.json':16_000,
     'mac-host-observed/outcome.json':160_000, 'mac-host-observed/prerequisite.json':160_000,
     'mac-host-observed/registration-selected.json':160_000,
     'mac-host-observed/registration-selected.txt':120_000,
@@ -578,13 +649,13 @@ def collect():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['budget-before-prepare', 'budget-before-host', 'source-before', 'source-after', 'prepare', 'product-after', 'processes', 'accept', 'collect'])
+    parser.add_argument('action', choices=['budget-before-prepare', 'budget-before-host', 'source-before', 'source-after', 'prepare', 'transport', 'product-after', 'processes', 'accept', 'collect'])
     args = parser.parse_args()
     if args.action.startswith('budget-'):
         budget(args.action.removeprefix('budget-'))
     elif args.action.startswith('source-'):
         require_runner(); verify_source(args.action.removeprefix('source-'))
     else:
-        {'prepare': prepare, 'product-after': verify_product, 'processes': process_provenance, 'accept': accept, 'collect': collect}[args.action]()
+        {'prepare': prepare, 'transport': extract_transport, 'product-after': verify_product, 'processes': process_provenance, 'accept': accept, 'collect': collect}[args.action]()
 
 if __name__ == '__main__': main()

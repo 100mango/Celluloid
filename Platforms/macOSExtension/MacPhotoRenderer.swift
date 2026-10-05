@@ -149,7 +149,8 @@ enum MacPhotoRenderQualificationError: Error, LocalizedError {
 /// rasterization/UILabel vertical metrics remain an independent UIKit oracle gate.
 struct MacPhotoTextLayout {
     let frame: CTFrame
-    let height: CGFloat
+    let height: CGFloat // Core Text frame allocation, including its fitting margin.
+    let typographicHeight: CGFloat // Natural line block; independent of frame allocation.
     let fontSize: CGFloat
     let font: CTFont
     let lineHeight: CGFloat
@@ -195,7 +196,10 @@ struct MacPhotoTextLayout {
             if floor(measured.height / lineHeight) == 1 { framesetter = setter(centered: true) }
             let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), CGPath(rect: CGRect(x: 0, y: 0, width: rect.width, height: height), transform: nil), nil)
             guard CTFrameGetVisibleStringRange(frame).length == (text as NSString).length else { throw RenderError.textDoesNotFit }
-            return Self(frame: frame, height: height, fontSize: CGFloat(size), font: font, lineHeight: lineHeight)
+            let typographicHeight = CGFloat(CFArrayGetCount(CTFrameGetLines(frame))) * lineHeight
+            guard typographicHeight.isFinite, typographicHeight > 0, typographicHeight <= rect.height else { continue }
+            return Self(frame: frame, height: height, typographicHeight: typographicHeight,
+                        fontSize: CGFloat(size), font: font, lineHeight: lineHeight)
         }
         throw RenderError.textDoesNotFit
     }
@@ -218,7 +222,11 @@ enum MacPhotoTextRaster {
         bitmap.scaleBy(x: scale, y: scale)
         // Keep the label's logical bounds separate from its outward-rounded
         // pixel backing. UIKit centers the text in the logical label rectangle.
-        bitmap.translateBy(x: padding, y: height / scale - padding - (bounds.height + layout.height) / 2)
+        // The CT frame may need extra fitting room for descenders. Center the
+        // natural line block, keeping that allocation and all CT origins intact.
+        // Do not move the first baseline by half the frame's rounding margin.
+        bitmap.translateBy(x: padding, y: height / scale - padding - layout.height
+                           - (bounds.height - layout.typographicHeight) / 2)
         bitmap.textMatrix = .identity
         CTFrameDraw(layout.frame, bitmap)
         guard let image = bitmap.makeImage() else { throw RenderError.renderFailed }

@@ -20,9 +20,9 @@ class PlatformContractTests(unittest.TestCase):
         return row
     def receipt(self,profile='2x'):
         f=self.fixture()
-        return {'schema':'Celluloid.PlatformRendering.1','profile':profile,'runtimeVersion':'27.0','scale':int(profile[0]),
+        return {'schema':'Celluloid.PlatformRendering.2','profile':profile,'runtimeVersion':'27.0','scale':int(profile[0]),
             'controlFileSHA256':contract.CONTROL_SHA,'controlSourceSHA':contract.CONTROL_SOURCE,
-            'archiveSHA256':f['sha256'],'sourceSHA256':f['sourceSHA256'],'nativeSHA256':f['renderedSHA256'],
+            'archiveSHA256':f['sha256'],'controlArchiveSHA256':json.loads(contract.control_bytes())['archiveSHA256'],'sourceSHA256':f['sourceSHA256'],'nativeSHA256':f['renderedSHA256'],
             'historicalFullMaximum':202 if profile=='2x' else 132,
             'sameRuntimeMaximums':{'full':0,'bubble-artwork':0,'all-artwork':0},
             'exactComponentMaximums':{'filtered-base':0,'sticker-artwork':0},

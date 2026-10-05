@@ -47,16 +47,28 @@ if PLATFORM=='archive':required+=['archive-embedded-watch.json']
 consumer_name='phone-required-tests' if PLATFORM=='phone' else 'uikit-required-tests' if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'} else None
 if consumer_name and (TEMP/(consumer_name+'.json')).is_file():
     consumer=json.loads((TEMP/(consumer_name+'.json')).read_text())
-    if isinstance(consumer.get('platform_contract'),dict) and consumer['platform_contract'].get('schema')=='Celluloid.PlatformRendering.1':
+    if isinstance(consumer.get('platform_contract'),dict):
         checks=consumer.get('checks')
         if not isinstance(checks,dict) or not checks or not all(type(v) is bool for v in checks.values()):raise RuntimeError('Malformed versioned consumer acceptance checks')
         if all(checks.values()):
+            if consumer['platform_contract'].get('schema')!='Celluloid.PlatformRendering.2':raise RuntimeError('Unknown accepted platform-contract version')
             from consumer_runtime_binding import validate as validate_runtime
+            from platform_rendering_contract import validate_receipt
+            from native_fixture_handoff import load_layer_exact,LAYER_FILE
+            # Recompute from the fixed actual handoff, never from a claimed
+            # graph digest/boolean or a receipt-provided filesystem path.
+            fixture_directory=TEMP/'mac-fixture-evidence'
+            fixture=load_layer_exact(fixture_directory,os.environ['GITHUB_SHA'])['fixture']
+            recorded=consumer['platform_contract']
+            replay_contract=validate_receipt({k:v for k,v in recorded.items() if k!='archiveGraphProof'},fixture)
+            if replay_contract!=recorded:raise RuntimeError('Accepted archive graph/contract proof changed')
             summary_path=TEMP/(consumer_name+'.runtime-summary.json')
             if not summary_path.is_file() or summary_path.is_symlink() or summary_path.stat().st_size>MAX_FILE:raise RuntimeError('Missing/oversized accepted runtime summary')
             binding=consumer['runtime_binding']
             replay=validate_runtime(json.loads(summary_path.read_text()),consumer['platform_contract'],{'id':binding['device_id'],'model':binding['model']})
             if replay!=binding or consumer['source_sha']!=os.environ.get('GITHUB_SHA'):raise RuntimeError('Accepted consumer/runtime summary identity changed')
+            for source_name,output_name in [(LAYER_FILE,'consumer-mac-layer-fixture.json'),('manifest.json','consumer-mac-layer-manifest.json')]:
+                if not retain_file(output_name,fixture_directory/source_name,'mandatory actual archive handoff for complete graph replay'):raise RuntimeError('Actual consumer archive proof exceeded bounded allocation')
 
 for name in required:
     path=TEMP/name

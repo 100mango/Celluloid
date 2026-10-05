@@ -274,7 +274,8 @@ class RuntimeAcceptanceTests(unittest.TestCase):
         context = {'source_sha': self.SOURCE, 'base_sha': gate.BASE, 'app_path': app,
                    'extension_path': extension, 'extension_executable': executable,
                    'app_id': gate.APP_ID, 'extension_id': gate.EXT_ID, 'complete_host_e2e': False,
-                   'script_sha256': gate.sha(gate.__file__), 'extension_executable_sha256': 'e' * 64,
+                   'script_sha256': gate.sha(gate.__file__), 'test_source_sha256': gate.sha(ROOT/'Platforms/UITests/MacPhotosHostUITests.swift'),
+                   'app_executable': app+'/Contents/MacOS/CelluloidMac', 'extension_executable_sha256': 'e' * 64,
                    'app_executable_sha256': 'd' * 64, 'seed': {'mode': 'require-empty-library'}}
         summary = {'result': 'Passed', 'totalTestCount': 1, 'passedTests': 1, 'failedTests': 0,
                    'skippedTests': 0, 'expectedFailures': 0, 'startTime': 10, 'finishTime': 20,
@@ -312,12 +313,32 @@ class RuntimeAcceptanceTests(unittest.TestCase):
         raw.write_text('  ' + gate.EXT_ID + '(1.1)\n    ' + extension + '\n')
         documents['mac-host-observed/registration-selected.json']['registration_text_sha256'] = gate.sha(raw)
         for name, data in documents.items(): gate.write(root / name, data)
-        owner, method = gate.EXPECTED_CASE
-        (root / 'mac-host-test.log').write_text(
-            "Test Case '-[" + owner + ' ' + method + "]' started.\n"
-            'MAC_HOST_PREREQUISITE_PASSED synthetic verifier fixture\n'
-            "Test Case '-[" + owner + ' ' + method + "]' passed (1.0 seconds).\n")
+        from mac_host_transport import ORDER,expected_transport
+        gate.write(observed/'transport.json',expected_transport(context,gate.sha(root/'mac-host-context.json')))
+        gate.write(observed/'containing-process.json',{'bundle':app,'executable':context['app_executable'],'pid':121})
+        gate.write(observed/'photos-process.json',{'bundle':'/System/Applications/Photos.app','executable':'/System/Applications/Photos.app/Contents/MacOS/Photos','pid':122})
+        for suffix in ['txt','json']:(observed/('registration-before-invoke.'+suffix)).write_bytes((observed/('registration-selected.'+suffix)).read_bytes())
+        RuntimeAcceptanceTests.write_transport_log(self,root,context)
         return documents
+
+    def write_transport_log(self,root,context=None):
+        from mac_host_transport import ORDER,SCHEMA,PREFIX,LABEL,expected_transport
+        context=context or gate.read_receipt(root/'mac-host-context.json')
+        gate.write(root/'mac-host-observed/transport.json',expected_transport(context,gate.sha(root/'mac-host-context.json')))
+        owner,method=gate.EXPECTED_CASE
+        command=['xcodebuild','-only-testing:'+owner.replace('.', '/')+'/'+method,'test-without-building']
+        lines=['BOUNDED_COMMAND_BEGIN '+json.dumps({'label':LABEL,'seconds':720,'command':command}),
+            "Test Case '-["+owner+' '+method+"]' started."]
+        for index,name in enumerate(ORDER):
+            data=(root/'mac-host-observed'/name).read_bytes()
+            lines.append(PREFIX+json.dumps({'schema':SCHEMA,'sequence':index,'name':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),
+                'base64':base64.b64encode(data).decode(),'source_sha':self.SOURCE,'context_sha256':gate.sha(root/'mac-host-context.json'),
+                'test_source_sha256':context['test_source_sha256'],'verifier_sha256':context['script_sha256']}))
+        lines+=['MAC_HOST_PREREQUISITE_PASSED synthetic verifier fixture',"Test Case '-["+owner+' '+method+"]' passed (1.0 seconds).",
+            '** TEST EXECUTE SUCCEEDED **','BOUNDED_COMMAND_END '+json.dumps({'label':LABEL,'exit_code':0,'elapsed_seconds':1})]
+        (root/'mac-host-test.log').write_text('\n'.join(lines)+'\n')
+        records=gate.transport_records(root,context,complete=True)
+        gate.write(root/'mac-host-transport-replay.json',gate.transport_report(root,context,records))
 
     def check_mutation_rejected(self, mutation):
         with tempfile.TemporaryDirectory() as folder:
@@ -335,7 +356,43 @@ class RuntimeAcceptanceTests(unittest.TestCase):
             self.assertTrue(accepted['prerequisite_accepted'])
             self.assertTrue(accepted['exactly_one_passed_zero_skipped'])
             self.assertFalse(accepted['complete_host_e2e'])
-            self.assertEqual(len(accepted['receipts']), 17)
+            self.assertEqual(len(accepted['receipts']), 23)
+
+    def test_rehashed_nonfinite_proof_and_timeout_contradictions_reject_at_transport(self):
+        from mac_host_transport import PREFIX
+        for literal in ['NaN','Infinity','-Infinity','1e999']:
+            with self.subTest(literal=literal),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);self.seed(root);path=root/'mac-host-test.log';lines=path.read_text().splitlines()
+                for index,line in enumerate(lines):
+                    if not line.startswith(PREFIX):continue
+                    row=json.loads(line[len(PREFIX):])
+                    if row['name']!='prerequisite.json':continue
+                    data=base64.b64decode(row['base64']).rstrip();data=data[:-1]+b',"malformed_nonfinite":'+literal.encode()+b'}'
+                    row.update(base64=base64.b64encode(data).decode(),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+                    lines[index]=PREFIX+json.dumps(row);(root/'mac-host-observed/prerequisite.json').write_bytes(data)
+                path.write_text('\n'.join(lines)+'\n')
+                with self.assertRaisesRegex(ValueError,'Nonfinite JSON'):gate.verify_acceptance(root,self.SOURCE)
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);self.seed(root);path=root/'mac-host-test.log'
+            path.write_text(path.read_text().replace('** TEST EXECUTE SUCCEEDED **','BOUNDED_COMMAND_TIMEOUT actual-mac-photos-host-prerequisite\n** TEST EXECUTE SUCCEEDED **'))
+            with self.assertRaisesRegex(ValueError,'process timeout'):gate.verify_acceptance(root,self.SOURCE)
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'receipt.json';path.write_text('{"nested":{"bad":NaN}}')
+            with self.assertRaisesRegex(ValueError,'Nonfinite JSON'):gate.read_receipt(path)
+
+    def test_nonfinite_attachment_export_never_publishes_transport_completion(self):
+        for literal in ['NaN','Infinity','-Infinity','1e999']:
+            with self.subTest(literal=literal),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);self.seed(root);context=gate.read_receipt(root/'mac-host-context.json')
+                (root/'mac-host-transport-replay.json').unlink()
+                for path in (root/'mac-host-observed').iterdir():path.unlink()
+                def export(command,**kwargs):
+                    destination=Path(command[command.index('--output-path')+1])
+                    (destination/'manifest.json').write_text('[{"attachments":[],"bad":'+literal+'}]')
+                    return subprocess.CompletedProcess(command,0,b'',b'')
+                with mock.patch.object(gate,'require_runner'),mock.patch.object(gate,'temp',return_value=root),mock.patch.object(gate,'context',return_value=context),mock.patch.object(gate.subprocess,'run',side_effect=export):
+                    with self.assertRaisesRegex(ValueError,'Nonfinite JSON'):gate.extract_transport()
+                self.assertFalse((root/'mac-host-transport-replay.json').exists())
 
     def test_explicitly_reviewed_candidate_hashes_cannot_be_removed_or_substituted(self):
         for name in ['mac-host-source-before.json','mac-host-source-after.json']:
@@ -588,9 +645,12 @@ class CollectedProofTests(unittest.TestCase):
             with self.assertRaisesRegex(AssertionError,'collides'):self.collect(root)
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);self.packet(root)
-            for name,size in [('mac-host-context.json',480_000),('mac-host-observed/fixture.json',240_000)]:
+            for name,size in [('mac-host-context.json',480_000),('mac-host-summary.json',140_000),('mac-host-product-after.json',140_000)]:
                 p=root/name;record=json.loads(p.read_text());record['diagnostic_padding']='x'*(size-p.stat().st_size);gate.write(p,record)
+            RuntimeAcceptanceTests.write_transport_log(self,root)
             p=root/'mac-host-test.log';p.write_text(p.read_text()+' '*(299_000-p.stat().st_size))
+            context=gate.read_receipt(root/'mac-host-context.json');records=gate.transport_records(root,context,complete=True)
+            gate.write(root/'mac-host-transport-replay.json',gate.transport_report(root,context,records))
             gate.write(root/'mac-host-acceptance.json',gate.verify_acceptance(root,self.SOURCE))
             with self.assertRaisesRegex(AssertionError,'reserved host allocation'):self.collect(root)
     def test_missing_diagnostic_failure_or_oversized_available_proof_rejects(self):
@@ -631,7 +691,7 @@ class HostTimeBudgetTests(unittest.TestCase):
         for value in [-1000,0,False,True,float('nan'),float('inf')]:
             with self.subTest(value=value),tempfile.TemporaryDirectory() as folder,mock.patch.dict(os.environ,RUNNER_TEMP=folder,GITHUB_SHA='a'*40),mock.patch.object(gate,'require_runner'),mock.patch.object(gate.time,'monotonic',return_value=1000.0):
                 root=Path(folder);self.prepare(root);clock=gate.read_receipt(root/'mac-job-clock.json');clock['started_monotonic']=value;gate.write(root/'mac-job-clock.json',clock)
-                with self.assertRaises(AssertionError):gate.budget('before-prepare')
+                with self.assertRaises((AssertionError,ValueError)):gate.budget('before-prepare')
                 with self.assertRaises(AssertionError):gate.validate_clock(clock,'a'*40)
             with self.subTest(replay=value),tempfile.TemporaryDirectory() as folder:
                 root=Path(folder);RuntimeAcceptanceTests().seed(root)
@@ -640,19 +700,19 @@ class HostTimeBudgetTests(unittest.TestCase):
                 for row in report['checks']:
                     row['deadline_monotonic']=value+gate.JOB_EXECUTION_SECONDS;row['remaining_seconds']=row['deadline_monotonic']-row['observed_monotonic']
                 gate.write(root/'mac-host-budget.json',report)
-                with self.assertRaises(AssertionError):gate.verify_acceptance(root,'a'*40)
+                with self.assertRaises((AssertionError,ValueError)):gate.verify_acceptance(root,'a'*40)
     def test_clock_constants_phase_types_and_replay_order_are_strict(self):
         def mutate_budget(root,key,value):
             p=root/'mac-host-budget.json';r=gate.read_receipt(p);r['checks'][1][key]=value;gate.write(p,r)
         for key,value in [('observed_monotonic',True),('observed_monotonic',float('inf')),('deadline_monotonic',float('nan')),('remaining_seconds',True),('required_seconds',True),('phase','before-prepare'),('admitted',1)]:
             with self.subTest(key=key,value=value),tempfile.TemporaryDirectory() as folder:
                 root=Path(folder);RuntimeAcceptanceTests().seed(root);mutate_budget(root,key,value)
-                with self.assertRaises(AssertionError):gate.verify_acceptance(root,'a'*40)
+                with self.assertRaises((AssertionError,ValueError)):gate.verify_acceptance(root,'a'*40)
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);RuntimeAcceptanceTests().seed(root);r=gate.read_receipt(root/'mac-host-budget.json')
             for row,now in zip(r['checks'],[1500.0,1100.0]):row['observed_monotonic']=now;row['remaining_seconds']=2560-now
             gate.write(root/'mac-host-budget.json',r)
-            with self.assertRaises(AssertionError):gate.verify_acceptance(root,'a'*40)
+            with self.assertRaises((AssertionError,ValueError)):gate.verify_acceptance(root,'a'*40)
     def test_workflow_reserves_first_step_clock_and_finishes_compiles_before_host(self):
         workflow=(ROOT/'.github/workflows/apple-platforms.yml').read_text().split('  native-mac-host:',1)[1].split('  native-simulator:',1)[0]
         self.assertLess(workflow.index('Reserve Mac job collection time'),workflow.index('uses: actions/checkout@'))

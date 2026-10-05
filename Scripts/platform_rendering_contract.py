@@ -45,15 +45,25 @@ def control_bytes():
 
 def integer(value,maximum):return type(value) is int and 0<=value<=maximum
 
+def validate_archive_fixture(fixture,controls=None):
+    from keyed_archive_graph import prove_equivalent
+    controls=json.loads(control_bytes()) if controls is None else controls
+    candidate=base64.b64decode(fixture['base64'],validate=True)
+    frozen=base64.b64decode(controls['inputArchive']['base64'],validate=True)
+    require(sha(candidate)==fixture['sha256'],'Current archive bytes/hash changed')
+    require(sha(frozen)==controls['archiveSHA256'],'Frozen archive bytes/hash changed')
+    return prove_equivalent(candidate,frozen)
+
 def validate_receipt(record,fixture,profile=None):
     controls=json.loads(control_bytes())
-    keys={'schema','profile','runtimeVersion','scale','controlFileSHA256','controlSourceSHA','archiveSHA256','sourceSHA256','nativeSHA256','historicalFullMaximum','sameRuntimeMaximums','exactComponentMaximums','artworkMetrics','rejectedArtworkMutations'}
+    keys={'schema','profile','runtimeVersion','scale','controlFileSHA256','controlSourceSHA','archiveSHA256','controlArchiveSHA256','sourceSHA256','nativeSHA256','historicalFullMaximum','sameRuntimeMaximums','exactComponentMaximums','artworkMetrics','rejectedArtworkMutations'}
     require(isinstance(record,dict) and set(record)==keys,'Unknown/missing rendering contract fields')
-    require(record['schema']=='Celluloid.PlatformRendering.1','Wrong rendering contract schema')
+    require(record['schema']=='Celluloid.PlatformRendering.2','Wrong rendering contract schema')
     require(record['profile'] in controls['profiles'] and (profile is None or record['profile']==profile),'Wrong rendering profile')
     require(type(record['scale']) in (int,float) and record['scale']==int(record['profile'][0]),'Actual display mismatch')
     require(record['runtimeVersion']=='27.0' and record['controlFileSHA256']==CONTROL_SHA and record['controlSourceSHA']==CONTROL_SOURCE,'Wrong runtime/control provenance')
-    require(record['archiveSHA256']==fixture['sha256']==controls['archiveSHA256'],'Wrong semantic archive fixture')
+    require(record['archiveSHA256']==fixture['sha256'] and record['controlArchiveSHA256']==controls['archiveSHA256'],'Wrong archive byte provenance')
+    graph_proof=validate_archive_fixture(fixture,controls)
     require(record['sourceSHA256']==fixture['sourceSHA256']==controls['sourcePNG_SHA256'],'Wrong original image fixture')
     require(record['nativeSHA256']==fixture['renderedSHA256'] and re.fullmatch('[0-9a-f]{64}',record['nativeSHA256']),'Wrong native output binding')
     require(integer(record['historicalFullMaximum'],255),'Invalid retained historical delta')
@@ -68,7 +78,7 @@ def validate_receipt(record,fixture,profile=None):
         require(metrics['controlBandPixels']==BANDS[name],'Edge mask no longer matches independent frozen controls')
         require(all(metrics[k]==0 for k in metrics if k!='controlBandPixels'),'Artwork placement/interior/edge failure')
     require(type(record['rejectedArtworkMutations']) is int and record['rejectedArtworkMutations']==6,'Artwork mutation oracle not exercised')
-    return record
+    return dict(record,archiveGraphProof=graph_proof)
 
 def require_case_enclosure(log,prefix,owner,method,modules):
     pattern=re.compile(r"^Test Case '-\[([\w.]+) "+re.escape(method)+r"\]' (started|passed|failed|skipped)\b.*$",re.M)

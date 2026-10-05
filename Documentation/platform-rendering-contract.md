@@ -80,3 +80,37 @@ binary for absence of Debug-only text fault hooks.
 Passing this fixed fixture does not qualify arbitrary typography, physical-device
 transport or actual Photos save/reopen/cancel/Revert and resource preservation.
 Those remain separate required gates before removing the protection or release.
+
+## Complete archive graph identity (PlatformRendering.2)
+
+Fresh NSKeyedArchiver processes can emit identical semantic dictionaries with
+reordered object tables and different raw hashes. The preserved 52bf archive
+and 0685 witness demonstrate this directly. Both original raw archives and
+hashes remain retained; neither production serialization nor saved resources
+are rewritten.
+
+Before accepting the Mac producer or any UIKit/phone consumer, the required
+verifier compares the complete bounded typed archive graph with the immutable
+control archive. Only dictionary pair/field ordering and reference numbering
+are normalized. Class metadata, primitive types/values, array order, reference
+sharing and resource bytes remain exact. Duplicate physical plist or archived
+dictionary keys, missing fields, dangling references, cycles, unreachable
+objects, unknown classes and resource/type/value mutations fail closed. Each
+accepted receipt retains both raw hashes and the canonical graph hash.
+
+Physical binary-plist records are a separate namespace from `$objects` archive
+nodes. The two retained Apple archives each have 134 physical records, 35 archive
+nodes and 12 detached physical UID scalars pointing to already reachable archive
+nodes. The verifier preserves the entire detached UID target multiset after
+reference renumbering, including exact multiplicities. A changed, missing, extra
+or dangling detached UID fails; any detached non-UID payload fails. No exception
+depends on a filename or an archive hash, and no unreachable archive node is
+permitted (apart from the required `$null` sentinel).
+
+UIKit still hashes the actual input bytes and runs the existing legacy-reader
+content/geometry assertions and pixel oracles. Its record explicitly names the
+separate immutable control-archive hash. The mandatory final verifier computes
+graph equality from both actual byte strings; a reported boolean is not proof.
+The bounded consumer collector repeats this comparison from its fixed actual
+handoff directory, checks the complete derived receipt, and retains the actual
+archive handoff and manifest before optional evidence can use the byte budget.

@@ -84,7 +84,8 @@ def verify(scope, log, fixtures, source_sha, platform_contract=False, runtime_su
     if scope == 'mac':
         report.update(filter_fixture_count=len(filters['fixtures']), baked_fallback_fixture_count=1)
         if platform_contract:
-            from platform_rendering_contract import native_from_log
+            from platform_rendering_contract import native_from_log,validate_archive_fixture
+            report['archive_graph_proof']=validate_archive_fixture(layer['fixture'])
             report['native_text_contract']=native_from_log(Path(log).read_text(),layer['fixture'])
             report['checks']['independent_native_text_contract']=True
     return report
