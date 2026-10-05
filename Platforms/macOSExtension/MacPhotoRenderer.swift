@@ -271,12 +271,29 @@ enum MacPhotoTextRaster {
         return padding
     }
 
-    /// The owned bitmap is 8-bit premultiplied RGBA. Read its image rows directly
-    /// so the returned integral rectangle uses CGImage cropping coordinates.
+    /// Validate only bytes addressed by RGBA pixels, not unused trailing padding.
+    /// A cropped subimage may retain the parent's row stride without a complete
+    /// final padding row. No pixel access occurs until this checked span fits.
+    static func rgbaStorageSpan(width: Int, height: Int, bytesPerRow: Int, dataCount: Int) throws -> Int {
+        guard width > 0, height > 0, width <= 4096, height <= 4096,
+              width * height <= 4_194_304, bytesPerRow > 0, dataCount >= 0 else { throw RecipeError.resourceLimit }
+        let (pixelBytes, pixelOverflow) = width.multipliedReportingOverflow(by: 4)
+        guard !pixelOverflow, bytesPerRow >= pixelBytes else { throw RenderError.renderFailed }
+        let (prefix, prefixOverflow) = (height - 1).multipliedReportingOverflow(by: bytesPerRow)
+        let (span, spanOverflow) = prefix.addingReportingOverflow(pixelBytes)
+        guard !prefixOverflow, !spanOverflow, span <= 4_194_304 * 4, dataCount >= span else { throw RenderError.renderFailed }
+        return span
+    }
+
+    /// The owned bitmap is 8-bit integer premultiplied RGBA. Read image rows in
+    /// their declared stride so the result uses CGImage cropping coordinates.
     static func inkPixelBounds(_ image: CGImage) throws -> CGRect {
+        let order = image.bitmapInfo.intersection(.byteOrderMask)
         guard image.bitsPerComponent == 8, image.bitsPerPixel == 32, image.alphaInfo == .premultipliedLast,
-              let data = image.dataProvider?.data, let bytes = CFDataGetBytePtr(data),
-              CFDataGetLength(data) >= image.bytesPerRow * image.height else { throw RenderError.renderFailed }
+              !image.bitmapInfo.contains(.floatComponents), order == .byteOrderDefault || order == .byteOrder32Big,
+              let data = image.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else { throw RenderError.renderFailed }
+        _ = try rgbaStorageSpan(width: image.width, height: image.height, bytesPerRow: image.bytesPerRow,
+                                dataCount: CFDataGetLength(data))
         var left = image.width, top = image.height, right = 0, bottom = 0
         for row in 0..<image.height {
             try Task.checkCancellation()

@@ -407,3 +407,32 @@ and non-Mac build/package operations are deferred. Its receipt enumerates exactl
 those three selected prerequisites, reports their separate pass state, and always
 keeps `all_prerequisites_passed: false` and `long_matrix_allowed: false`. The
 canonical no-option fourteen-stage gate and canonical workflow remain unchanged.
+
+## Public framework-link hypothesis and bounded declared-dependency observation
+
+The UUID-bound/path-unverified diagnostic from run37334004001 records a
+SIGTRAP/EXC_BREAKPOINT in ExtensionFoundation's extension-context-class selection.
+Both exact owned main/debug UUIDs were loaded. There is no retained assertion
+message or evidence that an entitlement, actor isolation or missing debug dylib
+caused it. Apple's official Sample Photo Editing Extension explicitly links
+PhotosUI.framework and Photos.framework. The production extension now mirrors
+those two public SDKROOT framework links; other targets are unchanged. The
+linkage hypothesis remains unproven and this may be a runtime no-op.
+
+After the optional identity child has fully completed, the same outer preparation
+may inspect only its exact context-derived main/debug files with `/usr/bin/otool
+-L`. Current hashes must equal the already UUID-bound same-job identity before
+and after the observation. Only PhotosUI/Photos/AppKit declared-dependency
+presence, output hashes and bounded process results are retained. This is not
+proof that dyld loaded a framework or that context-class resolution succeeded.
+
+The existing20-second absolute preparation deadline is not renewed. Each tool
+uses at most two seconds plus one second for confirmed cleanup, all within that
+original deadline, and the existing8KiB streaming cap. Insufficient time skips
+new tools. A missing fixed otool executable or expiry at the runner’s exact
+pre-spawn deadline guard records a not-started observation and preserves the
+usable identity; no retry or alternate command is attempted. Other exceptions
+remain blocking. Unconfirmed process/pipe completion stops additional observations and
+marks preparation unfinalized, preventing later crash capture. No new process
+runner, host UI action, private context override, entitlement or permission is
+introduced. The same host invocation and acceptance gates still decide success.

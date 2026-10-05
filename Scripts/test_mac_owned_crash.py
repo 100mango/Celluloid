@@ -431,19 +431,79 @@ class OwnedCrashTests(unittest.TestCase):
                     (root/crash.IDENTITY).write_bytes(crash.encode(row))
                     return {'finalized':outcome in {'success','wrong-exit','timeout'},'output':b'bounded','return_code':1 if outcome=='wrong-exit' else 0,
                         'timed_out':outcome=='timeout','overflow':outcome=='oversize'}
-                with mock.patch.object(crash.time,'monotonic',return_value=1530 if outcome=='skip' else 200),mock.patch.object(crash,'bounded_optional_process',side_effect=command) as called:
+                with mock.patch.object(crash.time,'monotonic',return_value=1530 if outcome=='skip' else 200),mock.patch.object(crash,'observe_framework_links',return_value={'all_processes_finalized':True}),mock.patch.object(crash,'bounded_optional_process',side_effect=command) as called:
                     row=crash.optional_execute(root,context,'b'*64,'prepare')
                 self.assertEqual(called.call_count,0 if outcome=='skip' else 1)
                 self.assertEqual(row['optional_execution']['finalized'],outcome in {'success','wrong-exit','timeout'})
                 if outcome!='success':self.assertEqual(row['state'],'incomplete')
                 self.assertFalse(row['acceptance'])
 
+    def test_framework_dependency_parser_is_exact_bounded_and_public_only(self):
+        raw=(EXE+':\n\t/System/Library/Frameworks/PhotosUI.framework/Versions/A/PhotosUI (compatibility version 1.0.0, current version 1.0.0)\n\t/private/unrelated.dylib (compatibility version 1.0.0, current version 1.0.0)\n').encode()
+        self.assertEqual(crash.framework_dependencies(raw,EXE),{'PhotosUI':True,'Photos':False,'AppKit':False})
+        self.assertNotIn('private',json.dumps(crash.framework_dependencies(raw,EXE)))
+        for invalid in [raw.replace(EXE.encode(),DEBUG.encode(),1),raw+b'bad trailing record\n',raw+raw.splitlines(keepends=True)[1],b'x'*8193,raw+b'\xff']:
+            with self.assertRaises((ValueError,UnicodeError)):crash.framework_dependencies(invalid,EXE)
+
+    def test_framework_probe_binds_exact_owned_bytes_uuid_and_original_deadline(self):
+        actual={k:v for k,v in BINDING.items() if k.startswith(('expected_','executable_','debug_dylib_')) and not k.endswith('_uuid')}
+        actual.update(executable_bytes=10,debug_dylib_bytes=20);identity=dict(BINDING,**actual)
+        for outcome in ['success','unknown','overflow','bad-output','skip','late']:
+            calls=[];clock=[100.0]
+            def command(args,command_deadline,cleanup_deadline,cap):
+                self.assertIn(args[-1],[EXE,DEBUG]);self.assertEqual(args[:2],['/usr/bin/otool','-L']);self.assertEqual(cap,8192)
+                self.assertEqual((command_deadline,cleanup_deadline),(102,103));calls.append(args)
+                if outcome=='late':clock[0]=121
+                output=(args[-1]+':\n\t/System/Library/Frameworks/Photos.framework/Versions/A/Photos (compatibility version 1.0.0, current version 1.0.0)\n').encode()
+                return {'output':b'malformed' if outcome=='bad-output' else output,'finalized':outcome!='unknown','timed_out':False,'overflow':outcome=='overflow','return_code':0}
+            with mock.patch.object(crash,'bound_product',return_value=actual),mock.patch.object(crash,'bounded_optional_process',side_effect=command),mock.patch.object(crash.time,'monotonic',side_effect=lambda:clock[0]):
+                row=crash.observe_framework_links(Path('/synthetic'),{},identity,102 if outcome=='skip' else 120)
+            self.assertEqual(len(calls),2 if outcome=='success' else 0 if outcome=='skip' else 1)
+            self.assertEqual(row['complete'],outcome=='success');self.assertFalse(row['acceptance'])
+            self.assertEqual(row['all_processes_finalized'],outcome!='unknown')
+            for key,value in row['binaries'].items():
+                self.assertEqual(value['binary_sha256'],identity[key+'_sha256']);self.assertEqual(value['binary_uuid'],identity[key+'_uuid']);self.assertNotIn('output',value['process'])
+        for changed in [dict(identity,executable_sha256='0'*64),dict(identity,debug_dylib_uuid='invalid')]:
+            with mock.patch.object(crash,'bound_product',return_value=actual),mock.patch.object(crash,'bounded_optional_process') as command:
+                with self.assertRaises(ValueError):crash.observe_framework_links(Path('/synthetic'),{},changed,120)
+                command.assert_not_called()
+
+    def test_provably_unstarted_framework_probe_preserves_identity_without_launch_or_retry(self):
+        actual={k:v for k,v in BINDING.items() if k.startswith(('expected_','executable_','debug_dylib_')) and not k.endswith('_uuid')}
+        actual.update(executable_bytes=10,debug_dylib_bytes=20);identity=dict(BINDING,**actual)
+        for mode in ['missing-tool','expired-before-spawn']:
+            missing=FileNotFoundError(crash.errno.ENOENT,'No such file or directory','/usr/bin/otool')
+            clock=iter([100,103,103] if mode=='expired-before-spawn' else [100,100,100])
+            with mock.patch.object(crash,'bound_product',return_value=actual),mock.patch.object(crash.time,'monotonic',side_effect=lambda:next(clock,103.0)),mock.patch.object(crash.subprocess,'Popen',side_effect=missing) as spawn:
+                row=crash.observe_framework_links(Path('/synthetic'),{},identity,120)
+            self.assertEqual(spawn.call_count,1 if mode=='missing-tool' else 0)
+            self.assertFalse(row['complete']);self.assertTrue(row['all_processes_finalized'])
+            self.assertEqual(list(row['binaries']),['executable']);self.assertEqual(row['binaries']['executable']['execution_state'],'not-started')
+        # An unrelated filesystem failure is not evidence that this fixed tool
+        # failed before spawn; keep it blocking rather than generalize the catch.
+        with mock.patch.object(crash,'bound_product',return_value=actual),mock.patch.object(crash.time,'monotonic',return_value=100),mock.patch.object(crash,'bounded_optional_process',side_effect=FileNotFoundError(crash.errno.ENOENT,'unrelated','/other')):
+            with self.assertRaises(FileNotFoundError):crash.observe_framework_links(Path('/synthetic'),{},identity,120)
+
+    def test_unconfirmed_framework_child_marks_prepare_unfinalized_and_preserves_identity(self):
+        context={'source_sha':'a'*40};clock={'source_sha':'a'*40,'started_monotonic':100.0,'execution_budget_seconds':2460}
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder).resolve();(root/'mac-job-clock.json').write_bytes(crash.encode(clock))
+            (root/'mac-host-budget.json').write_bytes(crash.encode({'source_sha':'a'*40,'clock_sha256':crash.digest(crash.encode(clock))}))
+            def command(*args,**kwargs):
+                (root/crash.IDENTITY).write_bytes(crash.encode({'schema':'Celluloid.OwnedCrashIdentity.1','source_sha':'a'*40,'acceptance':False,'complete_host_e2e':False}))
+                return {'finalized':True,'output':b'identity child ended','timed_out':False,'overflow':False,'return_code':0}
+            with mock.patch.object(crash.time,'monotonic',return_value=200),mock.patch.object(crash,'bounded_optional_process',side_effect=command),mock.patch.object(crash,'observe_framework_links',return_value={'all_processes_finalized':False,'complete':False}):
+                row=crash.optional_execute(root,context,'b'*64,'prepare')
+            self.assertEqual(row['schema'],'Celluloid.OwnedCrashIdentity.1');self.assertFalse(row['optional_execution']['finalized'])
+            self.assertFalse(row['acceptance']);self.assertFalse(row['framework_link_observation']['complete'])
+
     def test_no_capture_child_after_unknown_host_or_prior_child_or_mandatory_work(self):
         fixture,log,summary=self.host_log()
-        for mode in ['success','identity-unfinalized','host-unfinalized','product-unfinalized','source-unfinalized']:
+        for mode in ['success','framework-not-started','identity-unfinalized','host-unfinalized','product-unfinalized','source-unfinalized']:
             with self.subTest(mode=mode),tempfile.TemporaryDirectory() as folder:
                 root=Path(folder).resolve();identity={'schema':'Celluloid.OwnedCrashIdentity.1','source_sha':fixture.context['source_sha'],
                     'acceptance':False,'complete_host_e2e':False,'optional_execution':{'finalized':mode!='identity-unfinalized'}}
+                if mode=='framework-not-started':identity['framework_link_observation']={'complete':False,'all_processes_finalized':True,'binaries':{'executable':{'execution_state':'not-started'}}}
                 (root/crash.IDENTITY).write_bytes(crash.encode(identity))
                 (root/'mac-host-test.log').write_text(log if mode!='host-unfinalized' else log.split('BOUNDED_COMMAND_END')[0])
                 (root/'mac-host-summary.json').write_bytes(crash.encode(summary))
@@ -461,8 +521,8 @@ class OwnedCrashTests(unittest.TestCase):
                     return {'finalized':True,'output':b'bounded','return_code':0,'timed_out':False,'overflow':False}
                 with mock.patch.object(crash.time,'monotonic',return_value=200),mock.patch.object(crash,'bounded_optional_process',side_effect=command) as called:
                     row=crash.optional_execute(root,fixture.context,fixture.context_hash,'capture')
-                self.assertEqual(called.call_count,1 if mode=='success' else 0)
-                self.assertEqual(row['state'],'complete' if mode=='success' else 'incomplete')
+                self.assertEqual(called.call_count,1 if mode in {'success','framework-not-started'} else 0)
+                self.assertEqual(row['state'],'complete' if mode in {'success','framework-not-started'} else 'incomplete')
 
     def test_real_optional_process_requires_pipe_eof_and_direct_child_completion(self):
         start=time.monotonic()

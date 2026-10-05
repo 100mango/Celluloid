@@ -100,6 +100,14 @@ for name,platform in settings_by_name.items():
         if name.startswith('CelluloidWatch') and package=='CelluloidRendering':continue
         dep=add('product:'+name+product,'XCSwiftPackageProductDependency',package=packages[package],productName=product)
         package_deps.append(dep);links.append(add('link:'+name+product,'PBXBuildFile',productRef=dep))
+    if name=='CelluloidMacPhotosExtension':
+        # Match Apple's public Photo Editing sample: the extension context is
+        # supplied by PhotosUI; retain standard target linkage explicitly.
+        for framework in ['PhotosUI','Photos']:
+            ref=add('system-framework:'+framework,'PBXFileReference',lastKnownFileType='wrapper.framework',
+                    name=framework+'.framework',path='System/Library/Frameworks/'+framework+'.framework',sourceTree='SDKROOT')
+            children.append(ref)
+            links.append(add('system-link:'+name+framework,'PBXBuildFile',fileRef=ref))
     if tests:
         host='CelluloidMacPhotosExtension' if name=='CelluloidMacPhotosExtensionTests' else 'CelluloidWatch' if name.startswith('CelluloidWatch') else 'CelluloidPhoneCompanion' if name.startswith('CelluloidPhoneCompanion') else 'CelluloidTV' if name.startswith('CelluloidTV') else 'CelluloidVision' if name.startswith('CelluloidVision') else 'CelluloidMac'
         proxy=add('proxy:'+name,'PBXContainerItemProxy',containerPortal=uid('project'),proxyType='1',remoteGlobalIDString=targets[host],remoteInfo=host)

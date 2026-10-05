@@ -5,6 +5,7 @@ No host acceptance, discovery, registration, permission or process mutation.
 from pathlib import Path
 import datetime as dt
 import hashlib
+import errno
 import json
 import math
 import os
@@ -424,6 +425,68 @@ def bounded_optional_process(command,command_deadline,cleanup_deadline,cap=8192)
         'finalized':eof and reaped and cleanup_error is None,'elapsed_seconds':finished-started,
         'command_deadline_monotonic':command_deadline,'cleanup_deadline_monotonic':cleanup_deadline}
 
+def framework_dependencies(raw,expected_path):
+    check(0<len(raw)<=8192,'Framework output cap')
+    lines=raw.decode('utf8',errors='strict').splitlines()
+    check(lines and lines[0]==expected_path+':' and len(lines)<=129,'Unexpected Mach-O dependency header/count')
+    paths=[]
+    for line in lines[1:]:
+        match=re.fullmatch(r'\s+(\S+) \(compatibility version [0-9.]+, current version [0-9.]+\)',line)
+        check(match is not None,'Malformed Mach-O dependency record')
+        value=match[1];check(len(value.encode())<=2048 and value not in paths,'Duplicate/oversized Mach-O dependency')
+        paths.append(value)
+    public={name:[] for name in ['PhotosUI','Photos','AppKit']}
+    for name in public:
+        pattern=r'/System/Library/Frameworks/'+name+r'\.framework/(?:Versions/[A-Za-z0-9]+/)?'+name
+        public[name]=[value for value in paths if re.fullmatch(pattern,value)]
+        check(len(public[name])<=1,'Ambiguous public framework dependency')
+    return {name:bool(values) for name,values in public.items()}
+
+def observe_framework_links(root,context,identity,deadline):
+    report={'schema':'Celluloid.OwnedFrameworkLinks.1','acceptance':False,'complete':False,
+        'all_processes_finalized':True,'binaries':{},
+        'scope':'Declared public framework dependencies only; not runtime load or extension-context qualification'}
+    # Same bytes imply the UUID already measured by this completed identity child.
+    # Recheck only exact context-derived files, never a report-provided path.
+    actual=bound_product(root,context)
+    for key,value in actual.items():check(identity.get(key)==value,'Changed framework-probe product '+key)
+    for label in ['executable','debug_dylib']:
+        check(uuid(identity[label+'_uuid'])==identity[label+'_uuid'],'Invalid framework-probe UUID')
+    for label in ['executable','debug_dylib']:
+        now=time.monotonic()
+        if now+3>deadline:
+            report['error']='Insufficient original prepare deadline';break
+        path=actual['expected_'+label]
+        try:result=bounded_optional_process(['/usr/bin/otool','-L',path],now+2,now+3,cap=8192)
+        except FileNotFoundError as error:
+            # Popen failed to exec this fixed tool and returned no child handle.
+            # Do not erase a valid identity for a provably unstarted observation.
+            if error.errno!=errno.ENOENT or error.filename!='/usr/bin/otool':raise
+            report['binaries'][label]={'binary_sha256':actual[label+'_sha256'],'binary_uuid':identity[label+'_uuid'],
+                'execution_state':'not-started','error':'Declared-dependency tool unavailable'}
+            break
+        except ValueError as error:
+            # This exact immutable runner guard executes before Popen. All other
+            # exceptions keep the conservative blocking behavior.
+            if str(error)!='Invalid/expired optional process deadlines':raise
+            report['binaries'][label]={'binary_sha256':actual[label+'_sha256'],'binary_uuid':identity[label+'_uuid'],
+                'execution_state':'not-started','error':'Original observation deadline expired before spawn'}
+            break
+        row={'binary_sha256':actual[label+'_sha256'],'binary_uuid':identity[label+'_uuid'],
+            'output_sha256':digest(result['output']),'process':{k:v for k,v in result.items() if k!='output'}}
+        report['binaries'][label]=row
+        report['all_processes_finalized']=report['all_processes_finalized'] and result['finalized']
+        if not result['finalized']:
+            row['error']='Framework process/pipe completion unconfirmed';break
+        if result['timed_out'] or result['overflow'] or result['return_code']!=0:
+            row['error']='Framework probe time/output/exit failure';break
+        try:row['public_frameworks']=framework_dependencies(result['output'],path)
+        except (ValueError,UnicodeError) as error:row['error']=str(error)[:128];break
+    if report['all_processes_finalized']:
+        for key,value in bound_product(root,context).items():check(identity.get(key)==value,'Changed post-probe product '+key)
+    report['complete']=time.monotonic()<=deadline and len(report['binaries'])==2 and all('public_frameworks' in value for value in report['binaries'].values())
+    return report
+
 def optional_execute(root,context,context_hash,action):
     source=context['source_sha'];output=root/(IDENTITY if action=='prepare' else OUTPUT);decision=None;finalized=False;process_record=None
     check(not output.exists() and not output.is_symlink(),'Duplicate optional diagnostic output')
@@ -457,6 +520,9 @@ def optional_execute(root,context,context_hash,action):
         check(finalized,'Optional process/pipe completion unconfirmed')
         check(not result['timed_out'] and not result['overflow'] and result['return_code']==0,'Optional diagnostic failed its absolute time/output bound')
         row=validate_diagnostic(safe_read(output,8192 if action=='prepare' else MAX_OUTPUT),source,output.name)
+        if action=='prepare':
+            row['framework_link_observation']=observe_framework_links(root,context,row,command_deadline)
+            finalized=finalized and row['framework_link_observation']['all_processes_finalized']
     except (ValueError,KeyError,TypeError,OSError,UnicodeError,subprocess.SubprocessError,RecursionError) as error:
         row=error_record(source,action,error)
     row['optional_execution']={'budget':decision,'finalized':finalized,'process':process_record}

@@ -333,7 +333,21 @@ final class MacPhotoRendererTests: XCTestCase {
         let ink = try MacPhotoTextRaster.inkPixelBounds(image)
         XCTAssertEqual(ink, CGRect(x: 2, y: 3, width: 8, height: 8))
         let crop = try XCTUnwrap(image.cropping(to: ink))
-        XCTAssertEqual(try MacPhotoTextRaster.inkPixelBounds(crop), CGRect(x: 0, y: 0, width: 8, height: 8))
+        let cropDataCount: Int
+        if let cropData = crop.dataProvider?.data { cropDataCount = CFDataGetLength(cropData) }
+        else { cropDataCount = -1 }
+        let cropStorage = "crop=\(crop.width)x\(crop.height) bpc=\(crop.bitsPerComponent) bpp=\(crop.bitsPerPixel) stride=\(crop.bytesPerRow) data=\(cropDataCount) bitmapInfo=\(crop.bitmapInfo.rawValue)"
+        XCTAssertEqual(try MacPhotoTextRaster.inkPixelBounds(crop), CGRect(x: 0, y: 0, width: 8, height: 8), cropStorage)
+        let subimage = try XCTUnwrap(crop.cropping(to: CGRect(x: 1, y: 1, width: 7, height: 7)))
+        XCTAssertEqual(try MacPhotoTextRaster.inkPixelBounds(subimage), CGRect(x: 0, y: 0, width: 7, height: 7), cropStorage)
+        XCTAssertEqual(try MacPhotoTextRaster.rgbaStorageSpan(width: 3, height: 2, bytesPerRow: 16, dataCount: 28), 28)
+        XCTAssertEqual(try MacPhotoTextRaster.rgbaStorageSpan(width: 3, height: 1, bytesPerRow: Int.max, dataCount: 12), 12)
+        for invalid in [(3, 2, 16, 27), (3, 2, 11, 28), (3, 2, Int.max, Int.max),
+                        (3, 3, Int.max, Int.max), (0, 2, 16, 32), (3, 0, 16, 32),
+                        (4097, 1, 16388, 16388), (4096, 4096, 16384, 67_108_864)] {
+            XCTAssertThrowsError(try MacPhotoTextRaster.rgbaStorageSpan(width: invalid.0, height: invalid.1,
+                bytesPerRow: invalid.2, dataCount: invalid.3), "Invalid/truncated storage must reject: \(invalid)")
+        }
         let backed = MacPhotoTextRaster.Backing(image: image, origin: CGPoint(x: -1.5, y: -2))
         XCTAssertEqual(MacPhotoTextRaster.destinationRect(for: backed, origin: CGPoint(x: 11.125, y: -4.75)),
                        CGRect(x: 9.625, y: -6.75, width: 5.5, height: 6.5))

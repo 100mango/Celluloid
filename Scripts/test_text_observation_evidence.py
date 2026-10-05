@@ -307,6 +307,24 @@ class AppKitShapedRunSourceTests(unittest.TestCase):
                       'let originalRect: CGRect', 'normal.image.cropping(to: originalRect)']:
             self.assertIn(token,swift)
 
+    def test_cropped_storage_checks_last_addressed_pixel_not_unused_row_padding(self):
+        source,swift=self.source()
+        span=source[source.index('    static func rgbaStorageSpan('):source.index('    /// The owned bitmap is 8-bit integer')]
+        for token in ['width.multipliedReportingOverflow(by: 4)','bytesPerRow >= pixelBytes',
+                      '(height - 1).multipliedReportingOverflow(by: bytesPerRow)',
+                      'prefix.addingReportingOverflow(pixelBytes)','!prefixOverflow, !spanOverflow',
+                      'dataCount >= span','span <= 4_194_304 * 4']:
+            self.assertIn(token,span)
+        reader=source[source.index('    static func inkPixelBounds('):source.index('    /// Raw same-path surface')]
+        self.assertNotIn('image.bytesPerRow * image.height',reader)
+        for token in ['intersection(.byteOrderMask)','!image.bitmapInfo.contains(.floatComponents)',
+                      'order == .byteOrderDefault || order == .byteOrder32Big','dataCount: CFDataGetLength(data)']:
+            self.assertIn(token,reader)
+        for token in ['cropStorage','let subimage = try XCTUnwrap(crop.cropping',
+                      'dataCount: 28), 28','(3, 2, 16, 27)','(3, 3, Int.max, Int.max)',
+                      'Invalid/truncated storage must reject']:
+            self.assertIn(token,swift)
+
     def test_only_crlf_control_interiors_relax_line_boundary_assertions(self):
         _,swift=self.source()
         helper=swift[swift.index('    private func isCRLFControlBoundary('):swift.index('    private func permitsLineBoundary(')]

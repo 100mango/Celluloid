@@ -447,6 +447,25 @@ class SeedReceiptTests(unittest.TestCase):
         self.assertIn('record=verify_collected(folder',collector)
         self.assertIn('Required host evidence exceeds shared Mac allocation',collector)
 
+class ProductionFrameworkGraphTests(unittest.TestCase):
+    def test_only_production_photos_extension_explicitly_links_public_sample_frameworks(self):
+        import runpy
+        project=ROOT/'CelluloidNative.xcodeproj/project.pbxproj';before=project.read_bytes()
+        generated=runpy.run_path(str(ROOT/'Scripts/generate_native_project.py'));objects=generated['objects']
+        self.assertEqual(project.read_bytes(),before,'Generated framework graph must be deterministic')
+        links=set()
+        for name in ['PhotosUI','Photos']:
+            ref=generated['uid']('system-framework:'+name);link=generated['uid']('system-link:CelluloidMacPhotosExtension'+name)
+            self.assertEqual(objects[ref]['sourceTree'],'SDKROOT')
+            self.assertEqual(objects[ref]['path'],'System/Library/Frameworks/'+name+'.framework')
+            self.assertEqual(objects[link],{'isa':'PBXBuildFile','fileRef':ref})
+            links.add(link)
+        for obj in objects.values():
+            if obj['isa']!='PBXNativeTarget':continue
+            actual={item for phase in obj['buildPhases'] if objects[phase]['isa']=='PBXFrameworksBuildPhase' for item in objects[phase]['files']}
+            self.assertEqual(actual&links,links if obj['name']=='CelluloidMacPhotosExtension' else set(),obj['name'])
+
+
 class SyntheticHostFixtureCase(unittest.TestCase):
     """Keep synthetic source receipts separate from the real invoking CI job."""
     SOURCE = 'a' * 40
