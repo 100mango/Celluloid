@@ -108,8 +108,7 @@ ambiguous controls stop with AX evidence.
 
 Unknown permission, account, legal, Gatekeeper, authentication or other system
 interruptions abort before XCTest's default handler. Only the previously observed
-synthetic first-use Get Started action is accepted. Manage can be opened to inspect
-state, but no extension election, checkbox, security preference, TCC database,
+synthetic first-use Get Started action is accepted. The current title-scoped probe opens no settings UI. No extension election, checkbox, security preference, TCC database,
 Apple account or real signing key is changed.
 
 The verifier requires one finalized, passed, unskipped exact XCTest and all
@@ -229,3 +228,24 @@ not observed for absent/ambiguous matches are null, never invented false values.
 No new host UI action is added. A claimed acceptance must agree with the successful
 selection receipt; a contradictory outcome cannot be discarded. Failure wording
 no longer claims that Manage was captured when that branch was not executed.
+
+## Exact observed Photos menu identity
+
+Run [37270219320](https://github.com/100mango/Celluloid/actions/runs/37270219320)
+retained the opened Extensions menu. Celluloid was visibly present; AX recorded a
+direct `MenuItem` with `title: Celluloid` and `identifier: editWithPlugin:` beneath
+the `Extensions` menu button's child menu. The old `label == Celluloid` predicate
+returned zero because title and label are distinct attributes. That is a predicate
+miss, not evidence of registration absence or disabled enablement.
+
+The test now requires exactly one Extensions menu button, exactly one nonempty
+opened child menu, and a direct item matching the observed title AND identifier.
+It repeats those scope checks immediately before the fresh enabled/hittable
+selection and click. No label-or-title fallback, global menu search, settings
+opening, registration query, or toggle action is added. `HostSelection.3` and
+`HostMenuObservation.2` bind the title, identifier, exact parent scope and counts.
+The real editor transition, same Photos PID, actual extension executable, source,
+owned input and finalized test/process evidence remain mandatory.
+
+[Apple's public XCTest attributes](https://developer.apple.com/documentation/xcuiautomation/xcuielementattributes)
+include distinct title and label values and support their use in query matching.

@@ -90,7 +90,7 @@ def collect_glyphs(temp,source):
     check(all(events[0][1]<position<events[1][1] for position,_ in rows+contracts),'Glyph observation outside actual testcase')
     row=rows[0][1];contract=contracts[0][1]
     keys={'schema','acceptance','text','sourcePNG_SHA256','actualCompositePNG_SHA256','actualTextRect','frameAllocationHeight','naturalBlockHeight','fontSize','lineHeight','backingScale','coreTextLines','oracleLines','images','isolatedMetrics','rasterExperiments','scope'}
-    check(type(row) is dict and set(row)==keys and row['schema']=='Celluloid.NativeGlyphObservation.2' and row['acceptance'] is False,'Unknown/accepted glyph observation')
+    check(type(row) is dict and set(row)==keys and row['schema']=='Celluloid.NativeGlyphObservation.3' and row['acceptance'] is False,'Unknown/accepted glyph observation')
     check(row['text']=='Hello, 世界 🎬' and row['sourcePNG_SHA256']==contract['sourcePNG_SHA256'] and row['actualCompositePNG_SHA256']==contract['actualPNG_SHA256'],'Glyph/composite image binding changed')
     check(contract['schema']=='Celluloid.NativeTextContract.1' and contract['case']=='manufactured-affine','Wrong native diagnostic contract')
     for key in ['sourcePNG_SHA256','actualCompositePNG_SHA256']:check(re.fullmatch('[0-9a-f]{64}',row[key]) is not None,'Invalid glyph image digest')
@@ -106,9 +106,10 @@ def collect_glyphs(temp,source):
         ('frame-position-on-quant-off','CTFrameDraw',{'positioning':True,'quantization':False}),
         ('frame-position-on-quant-on','CTFrameDraw',{'positioning':True,'quantization':True}),
         ('frame-smoothing-off','CTFrameDraw',{'smoothing':False}),
-        ('line-default','CTLineDraw',{}),('run-default','CTRunDraw',{}),('glyph-default','CTFontDrawGlyphs',{})]
+        ('line-default','CTLineDraw',{}),('run-default','CTRunDraw',{}),('glyph-default','CTFontDrawGlyphs',{}),
+        ('glyph-absolute-origin','CTFontDrawGlyphs',{}),('glyph-appkit-transform','CTFontDrawGlyphs',{})]
     check(type(experiments) is list and len(experiments)==len(expected),'Missing/duplicate raster experiment')
-    fields={'name','api','explicitFlagOverrides','initialCTM','initialTextMatrix','initialTextPosition',
+    fields={'name','api','explicitFlagOverrides','plannedCoordinateProof','initialCTM','initialTextMatrix','initialTextPosition',
         'finalCTM','finalTextMatrix','finalTextPosition','interpolationQuality','premultipliedRGBA_SHA256',
         'againstProductionReplay','againstExactOracle','width','height','pngSHA256','pngBase64'}
     for experiment,(name,api,flags) in zip(experiments,expected):
@@ -117,7 +118,43 @@ def collect_glyphs(temp,source):
         check(experiment['explicitFlagOverrides']==flags and all(type(v) is bool for v in experiment['explicitFlagOverrides'].values()),'Wrong raster flag overrides')
         for key,size in [('initialCTM',6),('initialTextMatrix',6),('initialTextPosition',2),('finalCTM',6),('finalTextMatrix',6),('finalTextPosition',2)]:
             check(type(experiment[key]) is list and len(experiment[key])==size and all(type(v) in (int,float) and math.isfinite(v) for v in experiment[key]),'Malformed raster transform')
-        check(experiment['initialCTM']==experiments[0]['initialCTM'] and experiment['initialTextMatrix']==[1,0,0,1,0,0] and experiment['initialTextPosition']==[0,0],'Changed raster experiment geometry')
+        wanted_ctm=[2,0,0,2,0,0] if name=='glyph-absolute-origin' else [2,0,0,-2,0,88] if name=='glyph-appkit-transform' else experiments[0]['initialCTM']
+        check(experiment['initialCTM']==wanted_ctm and experiment['initialTextMatrix']==[1,0,0,1,0,0] and experiment['initialTextPosition']==[0,0],'Changed raster experiment geometry')
+        proof=experiment['plannedCoordinateProof']
+        if name in {'glyph-absolute-origin','glyph-appkit-transform'}:
+            check(type(proof) is dict and set(proof)=={'glyphCount','maximumDeviceOriginDelta','maximumGlyphLinearDelta','drawInputs'},'Missing planned transform coordinate proof')
+            source_runs=[(i,j,line,run) for i,line in enumerate(row['coreTextLines']) for j,run in enumerate(line['runs'])]
+            glyph_count=sum(len(run['glyphs']) for _,_,_,run in source_runs)
+            check(type(proof['glyphCount']) is int and 0<proof['glyphCount']==glyph_count,'Wrong coordinate proof glyph count')
+            check(type(proof['drawInputs']) is list and len(proof['drawInputs'])==len(source_runs),'Missing exact draw inputs')
+            def vector(value,n):return type(value) is list and len(value)==n and all(type(v) in (int,float) and math.isfinite(v) for v in value)
+            def point(m,p):return [m[0]*p[0]+m[2]*p[1]+m[4],m[1]*p[0]+m[3]*p[1]+m[5]]
+            def linear(c,t):return [c[0]*t[0]+c[2]*t[1],c[1]*t[0]+c[3]*t[1],c[0]*t[2]+c[2]*t[3],c[1]*t[2]+c[3]*t[3]]
+            origin_delta=0;linear_delta=0;reference=experiments[0]['initialCTM']
+            for draw,(i,j,line,run) in zip(proof['drawInputs'],source_runs):
+                check(type(draw) is dict and set(draw)=={'lineIndex','runIndex','font','size','fontMatrix','inputCTM','glyphs','positions'},'Unknown/missing glyph draw input')
+                check(type(draw['lineIndex']) is int and type(draw['runIndex']) is int and (draw['lineIndex'],draw['runIndex'])==(i,j),'Changed glyph input order')
+                check(draw['font']==run['font'] and type(draw['font']) is str and type(draw['size']) in (int,float) and 0<draw['size']==run['size'],'Changed draw font/size')
+                check(draw['glyphs']==run['glyphs'] and all(type(g) is int and 0<=g<=65535 for g in draw['glyphs']),'Changed shaped glyph stream')
+                check(vector(draw['inputCTM'],6) and draw['inputCTM']==wanted_ctm and vector(draw['fontMatrix'],6) and vector(run['fontMatrix'],6),'Malformed input font/CTM matrix')
+                check(draw['fontMatrix'][4:]==run['fontMatrix'][4:]==[0,0],'Unexpected font matrix translation')
+                check(type(draw['positions']) is list and len(draw['positions'])==len(draw['glyphs'])==len(run['positionsFromCTRunGetPositions']),'Changed input position count')
+                check(vector(line['frameLineOrigin'],2),'Malformed frame line origin')
+                for actual_pos,relative in zip(draw['positions'],run['positionsFromCTRunGetPositions']):
+                    check(vector(actual_pos,2) and vector(relative,2),'Malformed supplied glyph position')
+                    original=[x+y for x,y in zip(line['frameLineOrigin'],relative)]
+                    expected=point(reference,original);actual=point(draw['inputCTM'],actual_pos)
+                    check(all(math.isfinite(v) for v in expected+actual),'Overflow in planned origin mapping')
+                    origin_delta=max(origin_delta,*[abs(a-b) for a,b in zip(expected,actual)])
+                expected=linear(reference,run['fontMatrix']);actual=linear(draw['inputCTM'],draw['fontMatrix'])
+                check(all(math.isfinite(v) for v in expected+actual),'Overflow in planned glyph mapping')
+                linear_delta=max(linear_delta,*[abs(a-b) for a,b in zip(expected,actual)])
+            for key in ['maximumDeviceOriginDelta','maximumGlyphLinearDelta']:
+                check(type(proof[key]) in (int,float) and math.isfinite(proof[key]) and 0<=proof[key]<=1e-9,'Planned device geometry changed')
+            check(origin_delta<=1e-9 and linear_delta<=1e-9,'Recomputed input geometry changed')
+        else:check(proof is None,'Unexpected coordinate proof')
+        # Final context matrices/positions are bounded observations only. No
+        # claim about undocumented post-call state can discard diagnostic pixels.
         check(type(experiment['interpolationQuality']) is int and experiment['interpolationQuality']==experiments[0]['interpolationQuality'],'Changed raster interpolation')
         check(re.fullmatch('[0-9a-f]{64}',experiment['premultipliedRGBA_SHA256']) is not None,'Malformed raster digest')
         check(type(experiment['width']) is int and type(experiment['height']) is int and (experiment['width'],experiment['height'])==(56,88),'Changed raster experiment backing')

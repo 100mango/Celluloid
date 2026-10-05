@@ -149,39 +149,33 @@ final class MacPhotosHostUITests: XCTestCase {
         try checkpoint(photos, "editing")
         stage = "observe-extensions-menu"
         try clickNamed("Extensions", in: photos)
-        let celluloid = photos.menuItems.matching(NSPredicate(format: "label == %@", "Celluloid"))
+        let celluloid = try openedExtensionItems(in: photos)
         let menuCount = celluloid.count
         let menuEnabled: Bool? = menuCount == 1 ? celluloid.element(boundBy: 0).isEnabled : nil
         let menuHittable: Bool? = menuCount == 1 ? celluloid.element(boundBy: 0).isHittable : nil
-        let classification = menuCount == 0 ? "absent" : menuCount != 1 ? "ambiguous"
+        let classification = menuCount == 0 ? "no-matching-item" : menuCount != 1 ? "ambiguous"
             : menuEnabled != true ? "disabled" : menuHittable != true ? "not-hittable" : "selectable"
         // Save bounded observations in the stdout outcome before optional AX or
         // screenshot export can fail. Missing properties are null, not false.
-        extensionMenuObservation = ["schema": "Celluloid.HostMenuObservation.1", "acceptance": false,
-            "menu_label": "Celluloid", "menu_count": menuCount,
+        extensionMenuObservation = ["schema": "Celluloid.HostMenuObservation.2", "acceptance": false,
+            "menu_title": "Celluloid", "menu_identifier": "editWithPlugin:",
+            "menu_scope": "Extensions.menuButton/childMenu/directMenuItem", "extension_menu_button_count": 1,
+            "opened_menu_count": 1, "menu_count": menuCount,
             "menu_enabled": menuEnabled.map { $0 as Any } ?? NSNull(),
             "menu_hittable": menuHittable.map { $0 as Any } ?? NSNull(), "classification": classification]
         try checkpoint(photos, "extensions", screenshot: true)
         if menuCount != 1 || menuEnabled != true || menuHittable != true {
-            stage = "extension-not-selectable-observe-manage"
-            let manage = namedControls("Manage", in: photos) + namedControls("Manage…", in: photos)
-            if manage.count == 1 && manage[0].isHittable {
-                manage[0].click()
-                let settings = XCUIApplication(bundleIdentifier: "com.apple.systempreferences")
-                _ = settings.windows.firstMatch.waitForExistence(timeout: 10)
-                try checkpoint(settings, "manage-observed")
-                // Do not guess a toggle or change any preference in this probe.
-                // The exact observed Photos Editing row must be reviewed first.
-            }
-            throw block("Celluloid is not uniquely selectable; no enablement action was taken")
+            stage = "extension-not-selectable"
+            throw block("Exact Celluloid item is not uniquely selectable in the opened Extensions menu; no settings action was taken")
         }
         let editorCountBefore = editorMatches(in: photos).count
         XCTAssertEqual(editorCountBefore, 0, "An already-present editor cannot prove this host transition")
         var selection = try hostObservation(expectedPID: photosPID, fixtureHash: fixtureHash, assetLabel: selectedAssetLabel)
         stage = "revalidate-extension-before-invoke"
-        let invocationMenuCount = celluloid.count
-        let invocationEnabled: Bool? = invocationMenuCount == 1 ? celluloid.element(boundBy: 0).isEnabled : nil
-        let invocationHittable: Bool? = invocationMenuCount == 1 ? celluloid.element(boundBy: 0).isHittable : nil
+        let invocationItems = try openedExtensionItems(in: photos)
+        let invocationMenuCount = invocationItems.count
+        let invocationEnabled: Bool? = invocationMenuCount == 1 ? invocationItems.element(boundBy: 0).isEnabled : nil
+        let invocationHittable: Bool? = invocationMenuCount == 1 ? invocationItems.element(boundBy: 0).isHittable : nil
         guard invocationMenuCount == menuCount, invocationMenuCount == 1,
               invocationEnabled == menuEnabled, invocationEnabled == true,
               invocationHittable == menuHittable, invocationHittable == true else {
@@ -190,13 +184,15 @@ final class MacPhotosHostUITests: XCTestCase {
                     "menu_enabled": invocationEnabled.map { $0 as Any } ?? NSNull(),
                     "menu_hittable": invocationHittable.map { $0 as Any } ?? NSNull()])
         }
-        selection.merge(["schema": "Celluloid.HostSelection.2", "menu_label": "Celluloid",
+        selection.merge(["schema": "Celluloid.HostSelection.3", "menu_title": "Celluloid",
+            "menu_identifier": "editWithPlugin:", "menu_scope": "Extensions.menuButton/childMenu/directMenuItem",
+            "extension_menu_button_count": 1, "opened_menu_count": 1,
             "menu_count": invocationMenuCount, "menu_enabled": invocationEnabled == true,
             "menu_hittable": invocationHittable == true,
             "editor_count_before": editorCountBefore]) { _, new in new }
         try report(selection, named: "host-selection.json")
         stage = "invoke-real-photos-extension"
-        celluloid.element(boundBy: 0).click()
+        invocationItems.element(boundBy: 0).click()
         stage = "observe-ready-editor-before-process"
         try report(readyEditorObservation(in: photos, expectedPID: photosPID, fixtureHash: fixtureHash,
             assetLabel: selectedAssetLabel, phase: "before-process"), named: "host-editor-before-process.json")
@@ -249,6 +245,19 @@ final class MacPhotosHostUITests: XCTestCase {
             throw block("Actual control is missing/ambiguous/not hittable: " + label)
         }
         controls[0].click()
+    }
+    @MainActor private func openedExtensionItems(in photos: XCUIApplication) throws -> XCUIElementQuery {
+        // Exact title/identifier and parent relationship observed in e723 AX.
+        // Title is a public macOS XCTest attribute, distinct from label.
+        let buttons = photos.descendants(matching: .menuButton).matching(NSPredicate(format: "label == %@", "Extensions"))
+        let buttonCount = buttons.count
+        guard buttonCount == 1 else { throw block("Missing or ambiguous Extensions menu button") }
+        let menus = buttons.element(boundBy: 0).children(matching: .menu)
+        let menuCount = menus.count
+        guard menuCount == 1 else { throw block("Missing or ambiguous opened Extensions menu") }
+        let menu = menus.element(boundBy: 0)
+        guard menu.exists, !menu.frame.isEmpty else { throw block("Extensions menu is not visibly open") }
+        return menu.children(matching: .menuItem).matching(NSPredicate(format: "title == %@ AND identifier == %@", "Celluloid", "editWithPlugin:"))
     }
     @MainActor private func editorMatches(in photos: XCUIApplication) -> XCUIElementQuery {
         photos.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Celluloid photo editor"))

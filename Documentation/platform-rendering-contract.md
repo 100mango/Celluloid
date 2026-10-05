@@ -145,3 +145,30 @@ Apple references:
 - [Font smoothing](https://developer.apple.com/documentation/coregraphics/cgcontext/setshouldsmoothfonts(_:))
 - [Public glyph drawing](https://developer.apple.com/documentation/coretext/ctfontdrawglyphs(_:_:_:_:_:))
 - [AppKit glyph draw hook](https://developer.apple.com/documentation/appkit/nslayoutmanager/showcgglyphs(_:positions:count:font:textmatrix:attributes:in:))
+
+### Invariant transform decomposition controls
+
+The nine e723 comparisons left the emoji pixels identical across CTFrame, CTLine,
+CTRun and CTFont drawing and all tested font flags. This does not yet prove an
+inherent AppKit/CoreText difference: their equivalent final geometry is represented
+by different CTM/text-position decompositions.
+
+`NativeGlyphObservation.3` adds only two CTFont controls, keeping the original
+shaped glyphs and fonts. `glyph-absolute-origin` moves the existing frame translation
+into the user-space glyph positions. `glyph-appkit-transform` uses the recorded
+AppKit flipped CTM and a reflected copy of each CTFont matrix, with reflected
+user-space positions. Each glyph's planned device origin and effective linear
+transform, derived from the input CTM, actual draw-font matrix and supplied positions, must differ by no more than floating-point roundoff (1e-9); this is a
+transform identity check, not a change to the pixel limit. There are no fitted
+baseline offsets. The collector independently recomputes the input transform proof from the retained
+per-run glyph/font/size/matrix/position records. Post-call CGContext matrices are
+observations only and are not used as evidence of the matrix active during drawing;
+PNGs permit independent emoji and Latin/CJK-region comparisons.
+
+[CTFontDrawGlyphs](https://developer.apple.com/documentation/coretext/ctfontdrawglyphs(_:_:_:_:_:))
+takes user-space glyph positions and installs size/matrix attributes from its font.
+Therefore the reflected case uses
+[CTFontCreateCopyWithAttributes](https://developer.apple.com/documentation/coretext/ctfontcreatecopywithattributes(_:_:_:_:)),
+preserving the font size and identity while specifying the reflection; it does not
+assume that a separately assigned CGContext text matrix survives the draw call.
+All original production/oracle geometry, data, thresholds and resource caps remain.

@@ -92,7 +92,7 @@ ALLOWED = {
 CAP = 1_000_000
 BASE_FILE_COUNT = 544
 REVIEWED_TEST_FILES = {'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': 'f4c7a7a16bf5414e6c2a2716bc146bdc216f7ea966a80207acce8a7667584890', 'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift': 'ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034'}
-REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': 'd46a2b69adb296e6160d17b30f6f4a516f40b4178b356997fcbdcfcff794aeb0', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': 'ba3199901afda2065323e67ba53ad27cd3cd95d047c81508c5045ad177993b58', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
+REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': '00b65848c3da2486b58c3cf4fd1e4c48e0e45fe9bb543590ecc1475e065e2c36', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': 'ba3199901afda2065323e67ba53ad27cd3cd95d047c81508c5045ad177993b58', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
 UNCHANGED_BASE_FILES = BASE_FILE_COUNT - 2 - len(REVIEWED_TEST_FILES) - len(REVIEWED_CANDIDATE_FILES)
 
 def run(*args):
@@ -379,9 +379,9 @@ def extract_transport():
 
 def validate_host_ui(selection,before,after,photos,ownership,source_sha):
     common={'schema','host_entry_contract','source_sha','photos_pid','photos_bundle','photos_executable','fixture_sha256','asset_label'}
-    selection_keys={'menu_label','menu_count','menu_enabled','menu_hittable','editor_count_before'}
+    selection_keys={'menu_title','menu_identifier','menu_scope','extension_menu_button_count','opened_menu_count','menu_count','menu_enabled','menu_hittable','editor_count_before'}
     editor_keys={'phase','editor_label','editor_count','preview_label','preview_count','placeholder_count','preparing_count','filter_identifier','filter_count','filter_enabled','read_only_count','error_count'}
-    for name,row,keys,schema in [('selection',selection,selection_keys,'Celluloid.HostSelection.2'),('before',before,editor_keys,'Celluloid.HostEditor.2'),('after',after,editor_keys,'Celluloid.HostEditor.2')]:
+    for name,row,keys,schema in [('selection',selection,selection_keys,'Celluloid.HostSelection.3'),('before',before,editor_keys,'Celluloid.HostEditor.2'),('after',after,editor_keys,'Celluloid.HostEditor.2')]:
         assert type(row) is dict and set(row)==common|keys, 'Unknown/missing host UI receipt: '+name
         assert row['schema']==schema and row['host_entry_contract']==HOST_CONTRACT
         assert row['source_sha']==source_sha
@@ -389,8 +389,9 @@ def validate_host_ui(selection,before,after,photos,ownership,source_sha):
         assert row['photos_bundle']==photos['bundle']=='/System/Applications/Photos.app'
         assert row['photos_executable']==photos['executable']=='/System/Applications/Photos.app/Contents/MacOS/Photos'
         assert row['fixture_sha256']==ownership['fixture_sha256'] and row['asset_label']==ownership['asset_label']
-    assert selection['menu_label']=='Celluloid'
-    for key,wanted in [('menu_count',1),('editor_count_before',0)]:assert type(selection[key]) is int and selection[key]==wanted
+    assert selection['menu_title']=='Celluloid' and selection['menu_identifier']=='editWithPlugin:'
+    assert selection['menu_scope']=='Extensions.menuButton/childMenu/directMenuItem'
+    for key,wanted in [('menu_count',1),('editor_count_before',0),('extension_menu_button_count',1),('opened_menu_count',1)]:assert type(selection[key]) is int and selection[key]==wanted
     assert selection['menu_enabled'] is True and selection['menu_hittable'] is True
     for phase,row in [('before-process',before),('after-process',after)]:
         assert row['phase']==phase and row['editor_label']=='Celluloid photo editor' and row['preview_label']=='Edited photo preview'
@@ -483,11 +484,13 @@ def verify_acceptance(root, source_sha):
     editor_after=read_receipt(observed/'host-editor-after-process.json')
     validate_host_ui(selection,editor_before,editor_after,photos,ownership,source_sha)
     menu=outcome.get('extension_menu_observation')
-    assert type(menu) is dict and set(menu)=={'schema','acceptance','menu_label','menu_count','menu_enabled','menu_hittable','classification'}, 'Missing/malformed outcome menu observation'
-    assert menu['schema']=='Celluloid.HostMenuObservation.1' and menu['acceptance'] is False
+    assert type(menu) is dict and set(menu)=={'schema','acceptance','menu_title','menu_identifier','menu_scope','extension_menu_button_count','opened_menu_count','menu_count','menu_enabled','menu_hittable','classification'}, 'Missing/malformed outcome menu observation'
+    assert menu['schema']=='Celluloid.HostMenuObservation.2' and menu['acceptance'] is False
     assert type(menu['menu_count']) is int and menu['menu_count']==selection['menu_count']==1
     assert menu['menu_enabled'] is True and menu['menu_hittable'] is True
-    assert menu['menu_label']==selection['menu_label']=='Celluloid' and menu['classification']=='selectable', 'Contradictory outcome menu observation'
+    assert menu['menu_identifier']==selection['menu_identifier']=='editWithPlugin:' and menu['menu_scope']==selection['menu_scope']=='Extensions.menuButton/childMenu/directMenuItem'
+    for key in ['extension_menu_button_count','opened_menu_count']:assert type(menu[key]) is int and menu[key]==selection[key]==1
+    assert menu['menu_title']==selection['menu_title']=='Celluloid' and menu['classification']=='selectable', 'Contradictory outcome menu observation'
     process = read_receipt(observed / 'extension-process.json')
     for name, receipt in [('prerequisite', prerequisite), ('outcome', outcome), ('process', process)]:
         assert receipt['source_sha'] == source_sha, 'Wrong candidate: ' + name

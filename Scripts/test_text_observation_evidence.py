@@ -84,16 +84,29 @@ class NativeGlyphObservationTests(unittest.TestCase):
             ('frame-position-on-quant-off','CTFrameDraw',{'positioning':True,'quantization':False}),
             ('frame-position-on-quant-on','CTFrameDraw',{'positioning':True,'quantization':True}),
             ('frame-smoothing-off','CTFrameDraw',{'smoothing':False}),
-            ('line-default','CTLineDraw',{}),('run-default','CTRunDraw',{}),('glyph-default','CTFontDrawGlyphs',{})]
+            ('line-default','CTLineDraw',{}),('run-default','CTRunDraw',{}),('glyph-default','CTFontDrawGlyphs',{}),('glyph-absolute-origin','CTFontDrawGlyphs',{}),('glyph-appkit-transform','CTFontDrawGlyphs',{})]
+        ct_lines=[{'frameLineOrigin':[0,y],'runs':[{'glyphs':list(range(n)), 'font':'SyntheticFont', 'size':10,
+            'fontMatrix':[1,0,0,1,0,0], 'positionsFromCTRunGetPositions':[[k,0] for k in range(n)]}]} for y,n in [(27,6),(15,4),(3,1)]]
         zero={'premultipliedRGBMaximum':0,'alphaMaximum':0,'premultipliedRGBPixelsAbove2':0,'alphaPixelsAbove2':0}
-        experiments=[dict(fields,name=name,api=api,explicitFlagOverrides=flags,initialCTM=[2,0,0,2,0,6.48],
-            initialTextMatrix=[1,0,0,1,0,0],initialTextPosition=[0,0],finalCTM=[2,0,0,2,0,6.48],
-            finalTextMatrix=[1,0,0,1,0,0],finalTextPosition=[0,0],interpolationQuality=3,
+        experiments=[dict(fields,name=name,api=api,explicitFlagOverrides=flags,plannedCoordinateProof={'glyphCount':11,'maximumDeviceOriginDelta':0,'maximumGlyphLinearDelta':0} if name in {'glyph-absolute-origin','glyph-appkit-transform'} else None,
+            initialCTM=[2,0,0,2,0,0] if name=='glyph-absolute-origin' else [2,0,0,-2,0,88] if name=='glyph-appkit-transform' else [2,0,0,2,0,6.48],
+            initialTextMatrix=[1,0,0,1,0,0],initialTextPosition=[0,0],
+            finalCTM=[2,0,0,2,0,0] if name=='glyph-absolute-origin' else [2,0,0,-2,0,88] if name=='glyph-appkit-transform' else [2,0,0,2,0,6.48],
+            finalTextMatrix=[1,0,0,-1,0,0] if name=='glyph-appkit-transform' else [1,0,0,1,0,0],finalTextPosition=[0,0],interpolationQuality=3,
             premultipliedRGBA_SHA256='d'*64,againstProductionReplay=dict(zero),againstExactOracle=dict(zero)) for name,api,flags in modes]
-        return {'schema':'Celluloid.NativeGlyphObservation.2','acceptance':False,'text':'Hello, 世界 🎬',
+        for experiment in experiments[-2:]:
+            draw_inputs=[]
+            for i,line in enumerate(ct_lines):
+                run=line['runs'][0];y=line['frameLineOrigin'][1]
+                positions=[[x,y+3.24] if experiment['name']=='glyph-absolute-origin' else [x,44-(y+3.24)] for x,_ in run['positionsFromCTRunGetPositions']]
+                draw_inputs.append({'lineIndex':i,'runIndex':0,'font':run['font'],'size':run['size'],
+                    'fontMatrix':[1,0,0,-1,0,0] if experiment['name']=='glyph-appkit-transform' else [1,0,0,1,0,0],
+                    'inputCTM':experiment['initialCTM'],'glyphs':run['glyphs'],'positions':positions})
+            experiment['plannedCoordinateProof']['drawInputs']=draw_inputs
+        return {'schema':'Celluloid.NativeGlyphObservation.3','acceptance':False,'text':'Hello, 世界 🎬',
             'sourcePNG_SHA256':'a'*64,'actualCompositePNG_SHA256':'b'*64,'actualTextRect':[77.231,26.24,27.875,43.52],
             'frameAllocationHeight':37,'naturalBlockHeight':36,'fontSize':10,'lineHeight':12,'backingScale':2,
-            'coreTextLines':[{'frameLineOrigin':[0,y],'runs':[]} for y in [27,15,3]],
+            'coreTextLines':ct_lines,
             'oracleLines':[{'text':text,'glyphRuns':[]} for text in ['Hello,',' 世界 ','🎬']],
             'images':[dict(fields,role=role) for role in ['replayed-production-backing','exact-appkit-oracle-backing']],
             'rasterExperiments':experiments,
@@ -142,6 +155,39 @@ class NativeGlyphObservationTests(unittest.TestCase):
         for mutate in mutations:
             def change(lines,row):mutate(row);lines[1]=gate.GLYPH_PREFIX+json.dumps(row);return lines
             with self.subTest(mutate=mutate),self.assertRaises(ValueError):self.exercise(change)
+
+    def test_transform_decomposition_proof_and_effective_matrix_must_be_invariant(self):
+        mutations=[lambda r:r['rasterExperiments'][-1].update(plannedCoordinateProof=None),
+            lambda r:r['rasterExperiments'][-1]['plannedCoordinateProof'].update(glyphCount=10),
+            lambda r:r['rasterExperiments'][-1]['plannedCoordinateProof'].update(maximumDeviceOriginDelta=0.01),
+            lambda r:r['rasterExperiments'][-1]['plannedCoordinateProof'].update(maximumGlyphLinearDelta=0.01),
+            lambda r:r['rasterExperiments'][-2].update(initialCTM=[2,0,0,2,0,1]),
+            lambda r:r['rasterExperiments'][0].update(plannedCoordinateProof={})]
+        for mutate in mutations:
+            def change(lines,row):mutate(row);lines[1]=gate.GLYPH_PREFIX+json.dumps(row);return lines
+            with self.subTest(mutate=mutate),self.assertRaises(ValueError):self.exercise(change)
+        # Same device glyph origin and linear transform across all decompositions.
+        for x,y in [(0,27),(2.9296875,15),(0,3)]:
+            shift=3.24;baseline=(2*x,2*(y+shift))
+            absolute=(2*x,2*(y+shift));flipped=(2*x,88-2*(44-(y+shift)))
+            for observed in [absolute,flipped]:
+                self.assertAlmostEqual(observed[0],baseline[0],places=9)
+                self.assertAlmostEqual(observed[1],baseline[1],places=9)
+
+    def test_planned_geometry_is_recomputed_from_inputs_not_post_call_state(self):
+        for field,value in [('font','WrongFont'),('size',11),('glyphs',[999]),
+                            ('inputCTM',[2,0,0,-2,0,87]),('fontMatrix',[1,0,0,1,0,0]),
+                            ('positions',[[0,0]]*6)]:
+            def change(lines,row):
+                row['rasterExperiments'][-1]['plannedCoordinateProof']['drawInputs'][0][field]=value
+                lines[1]=gate.GLYPH_PREFIX+json.dumps(row);return lines
+            with self.subTest(field=field),self.assertRaises(ValueError):self.exercise(change)
+        def changed_post_state(lines,row):
+            row['rasterExperiments'][-1].update(finalCTM=[1,0,0,1,0,0],finalTextMatrix=[1,0,0,1,0,0],finalTextPosition=[17,29])
+            lines[1]=gate.GLYPH_PREFIX+json.dumps(row);return lines
+        retained=self.exercise(changed_post_state)
+        self.assertFalse(retained['acceptance'])
+        self.assertEqual(retained['observation']['rasterExperiments'][-1]['finalTextPosition'],[17,29])
 
     def test_collector_retains_diagnostic_before_optional_pressure_and_rejects_corruption(self):
         import os,subprocess

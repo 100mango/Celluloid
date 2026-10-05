@@ -190,22 +190,22 @@ class MacPhotosHostGateTests(unittest.TestCase):
         self.assertIn('outcome["first_blocked_operation"] = firstBlockedOperation',cleanup)
         self.assertIn('print("MAC_HOST_BLOCKED stage=" + stage + " reason=" + reason)',self.swift)
         self.assertNotIn('actual Manage state captured',self.swift)
-        self.assertIn('no enablement action was taken',self.swift)
+        self.assertIn('no settings action was taken',self.swift)
 
     def test_menu_classification_survives_export_failure_in_bounded_stdout_outcome(self):
         self.assertLess(self.swift.index('extensionMenuObservation = ['),self.swift.index('checkpoint(photos, "extensions", screenshot: true)'))
         self.assertIn('outcome["extension_menu_observation"] = extensionMenuObservation',self.swift)
         self.assertIn('let menuCount = celluloid.count',self.swift)
-        self.assertEqual(self.swift.count('celluloid.count'),2)
-        for state in ['absent','ambiguous','disabled','not-hittable','selectable']:
+        self.assertEqual(self.swift.count('celluloid.count'),1)
+        for state in ['no-matching-item','ambiguous','disabled','not-hittable','selectable']:
             self.assertIn('"'+state+'"',self.swift)
         self.assertIn('menuEnabled.map { $0 as Any } ?? NSNull()',self.swift)
         self.assertIn('menuHittable.map { $0 as Any } ?? NSNull()',self.swift)
-        self.assertIn('"schema": "Celluloid.HostMenuObservation.1", "acceptance": false',self.swift)
+        self.assertIn('"schema": "Celluloid.HostMenuObservation.2", "acceptance": false',self.swift)
 
     def test_menu_is_freshly_revalidated_after_checkpoint_without_mixing_snapshots(self):
         body=self.swift.split('        let editorCountBefore =',1)[1].split('        stage = "invoke-real-photos-extension"',1)[0]
-        self.assertEqual(body.count('celluloid.count'),1)
+        self.assertEqual(body.count('invocationItems.count'),1)
         self.assertLess(self.swift.index('checkpoint(photos, "extensions", screenshot: true)'),self.swift.index('let invocationMenuCount ='))
         self.assertLess(body.index('try hostObservation('),body.index('let invocationMenuCount ='))
         self.assertLess(body.index('let invocationMenuCount ='),body.index('named: "host-selection.json"'))
@@ -223,6 +223,22 @@ class MacPhotosHostGateTests(unittest.TestCase):
         for fresh in [(0,None,None),(2,None,None),(1,False,True),(1,True,False),(1,False,False)]:
             with self.subTest(fresh=fresh):self.assertFalse(permitted((1,True,True),fresh))
         self.assertFalse(permitted((0,None,None),(1,True,True)))
+
+    def test_exact_title_identifier_and_opened_menu_scope_have_no_label_fallback(self):
+        helper=self.swift.split('@MainActor private func openedExtensionItems',1)[1].split('@MainActor private func editorMatches',1)[0]
+        for exact in ['.menuButton','"label == %@", "Extensions"','guard buttonCount == 1',
+            'children(matching: .menu)','guard menuCount == 1','!menu.frame.isEmpty',
+            'menu.children(matching: .menuItem)','"title == %@ AND identifier == %@", "Celluloid", "editWithPlugin:"']:
+            self.assertIn(exact,helper)
+        self.assertNotIn(' OR ',helper);self.assertNotIn('"label == %@", "Celluloid"',self.swift)
+        self.assertEqual(self.swift.count('try openedExtensionItems(in: photos)'),2)
+        # Exact observed title, identifier and parent scope are conjunctive.
+        def matches(item):return item['scope']=='Extensions.menuButton/childMenu/directMenuItem' and item['title']=='Celluloid' and item['identifier']=='editWithPlugin:'
+        good={'scope':'Extensions.menuButton/childMenu/directMenuItem','title':'Celluloid','identifier':'editWithPlugin:','label':''}
+        self.assertTrue(matches(good))
+        for fields in [{'title':'Other','label':'Celluloid'},{'identifier':'Other'}, {'scope':'Photos.menuBar/hiddenMenu'}]:
+            self.assertFalse(matches(dict(good,**fields)))
+        self.assertEqual(sum(matches(item) for item in [good,dict(good)]),2)
 
     def test_unknown_interruptions_abort_without_alert_action(self):
         handler = self.swift.split('addUIInterruptionMonitor', 1)[1].split('let input', 1)[0]
@@ -256,7 +272,7 @@ class MacPhotosHostGateTests(unittest.TestCase):
         self.assertNotIn('assertUniqueRegistration',self.swift)
         self.assertIn('menuEnabled != true || menuHittable != true',self.swift)
         self.assertIn('XCTAssertEqual(editorCountBefore, 0',self.swift)
-        self.assertLess(self.swift.index('named: "host-selection.json"'),self.swift.index('celluloid.element(boundBy: 0).click()'))
+        self.assertLess(self.swift.index('named: "host-selection.json"'),self.swift.index('invocationItems.element(boundBy: 0).click()'))
         self.assertLess(self.swift.index('named: "host-editor-before-process.json"'),self.swift.index('named: "extension-process.json"'))
         self.assertLess(self.swift.index('named: "extension-process.json"'),self.swift.index('named: "host-editor-after-process.json"'))
         for label in ['Celluloid photo editor','Edited photo preview','Current photo from Photos','Preparing photo']:
@@ -359,7 +375,7 @@ class MacPhotosHostGateTests(unittest.TestCase):
         self.assertIn('"prerequisite_passed": true, "complete_host_e2e": false', self.swift)
         self.assertIn('save_reopen_cancel_revert', self.swift)
         self.assertIn('not executed in prerequisite phase', self.swift)
-        self.assertIn('try checkpoint(settings, "manage-observed")', self.swift)
+        self.assertNotIn('settings = XCUIApplication', self.swift)
 
     def test_optimized_python_rejects_before_any_action_or_acceptance(self):
         script = str(ROOT / 'Scripts/mac_photos_host_gate.py')
@@ -483,7 +499,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             'mac-host-observed/prerequisite.json': {'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'prerequisite_passed': True,
                 'complete_host_e2e': False, 'production_source_base': gate.BASE},
             'mac-host-observed/outcome.json': {'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'complete_host_e2e': False,
-                'last_stage': 'host-entry-prerequisite-passed', 'save_reopen_cancel_revert': 'not executed in prerequisite phase', 'extension_menu_observation': {'schema':'Celluloid.HostMenuObservation.1','acceptance':False,'menu_label':'Celluloid','menu_count':1,'menu_enabled':True,'menu_hittable':True,'classification':'selectable'}},
+                'last_stage': 'host-entry-prerequisite-passed', 'save_reopen_cancel_revert': 'not executed in prerequisite phase', 'extension_menu_observation': {'schema':'Celluloid.HostMenuObservation.2','acceptance':False,'menu_title':'Celluloid','menu_identifier':'editWithPlugin:','menu_scope':'Extensions.menuButton/childMenu/directMenuItem','extension_menu_button_count':1,'opened_menu_count':1,'menu_count':1,'menu_enabled':True,'menu_hittable':True,'classification':'selectable'}},
             'mac-host-observed/extension-process.json': {'source_sha': self.SOURCE, 'extension_id': gate.EXT_ID,
                 'expected_executable': executable, 'expected_executable_sha256': 'e' * 64,
                 'unique_exact_process': True,
@@ -491,7 +507,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
         common={'host_entry_contract':gate.HOST_CONTRACT,'source_sha':self.SOURCE,'photos_pid':122,
             'photos_bundle':'/System/Applications/Photos.app','photos_executable':'/System/Applications/Photos.app/Contents/MacOS/Photos',
             'fixture_sha256':'f'*64,'asset_label':'synthetic sole asset'}
-        documents['mac-host-observed/host-selection.json']=dict(common,schema='Celluloid.HostSelection.2',menu_label='Celluloid',menu_count=1,menu_enabled=True,menu_hittable=True,editor_count_before=0)
+        documents['mac-host-observed/host-selection.json']=dict(common,schema='Celluloid.HostSelection.3',menu_title='Celluloid',menu_identifier='editWithPlugin:',menu_scope='Extensions.menuButton/childMenu/directMenuItem',extension_menu_button_count=1,opened_menu_count=1,menu_count=1,menu_enabled=True,menu_hittable=True,editor_count_before=0)
         for phase in ['before','after']:
             documents['mac-host-observed/host-editor-'+phase+'-process.json']=dict(common,schema='Celluloid.HostEditor.2',phase=phase+'-process',
                 editor_label='Celluloid photo editor',editor_count=1,preview_label='Edited photo preview',preview_count=1,placeholder_count=0,preparing_count=0,
@@ -717,6 +733,14 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
             with self.subTest(name=name, updates=updates):
                 self.check_mutation_rejected(lambda root: self.edit(root / 'mac-host-observed' / name, **updates))
 
+    def test_rehashed_wrong_title_identifier_scope_and_duplicate_menu_reject(self):
+        for fields in [{'menu_title':'Other'},{'menu_identifier':'other:'},{'menu_scope':'Photos.menuBar/hiddenMenu'},
+                       {'extension_menu_button_count':2},{'opened_menu_count':0},{'opened_menu_count':True},
+                       {'schema':'Celluloid.HostSelection.2'}]:
+            with self.subTest(fields=fields),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);self.seed(root);self.edit(root/'mac-host-observed/host-selection.json',**fields);self.write_transport_log(root)
+                with self.assertRaises(AssertionError):gate.verify_acceptance(root,self.SOURCE)
+
     def test_menu_outcome_cannot_contradict_passed_host_selection_after_rehash(self):
         for change in [{'menu_count':0,'menu_enabled':None,'menu_hittable':None,'classification':'absent'},
                        {'menu_count':2,'classification':'ambiguous'},{'menu_enabled':False,'classification':'disabled'},
@@ -738,7 +762,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
 
     def test_wrong_ambiguous_unready_or_replaced_host_ui_rejects_after_rehashing(self):
         variants={
-            'host-selection.json':[{'menu_count':0},{'menu_count':2},{'menu_count':True},{'menu_enabled':False},{'menu_hittable':False},{'editor_count_before':1},{'menu_label':'Other'}],
+            'host-selection.json':[{'menu_count':0},{'menu_count':2},{'menu_count':True},{'menu_enabled':False},{'menu_hittable':False},{'editor_count_before':1},{'menu_title':'Other'}],
             'host-editor-before-process.json':[{'editor_count':0},{'editor_count':2},{'preview_count':0},{'placeholder_count':1},{'preparing_count':1},{'filter_enabled':False},{'read_only_count':1},{'error_count':1}],
             'host-editor-after-process.json':[{'photos_pid':124},{'phase':'before-process'},{'preview_count':2},{'filter_count':0},{'filter_enabled':1},{'source_sha':'f'*40},{'fixture_sha256':'e'*64},{'asset_label':'other asset'}]}
         for name,mutations in variants.items():

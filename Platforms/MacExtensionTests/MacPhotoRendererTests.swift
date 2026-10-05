@@ -524,7 +524,7 @@ final class MacPhotoRendererTests: XCTestCase {
             alphaMaximum = max(alphaMaximum, alpha); rgbMaximum = max(rgbMaximum, rgb)
             if alpha > 2 { alphaPixels += 1 }; if rgb > 2 { rgbPixels += 1 }
         }
-        let record: [String: Any] = ["schema": "Celluloid.NativeGlyphObservation.2", "acceptance": false,
+        let record: [String: Any] = ["schema": "Celluloid.NativeGlyphObservation.3", "acceptance": false,
             "text": text, "sourcePNG_SHA256": digest(sourcePNG),
             "actualCompositePNG_SHA256": digest(try RasterCodec.encode(actualComposite, as: .png)),
             "actualTextRect": [rect.minX, rect.minY, rect.width, rect.height],
@@ -554,7 +554,9 @@ final class MacPhotoRendererTests: XCTestCase {
             ("frame-position-on-quant-on", "CTFrameDraw", ["positioning": true, "quantization": true]),
             ("frame-smoothing-off", "CTFrameDraw", ["smoothing": false]),
             ("line-default", "CTLineDraw", [:]), ("run-default", "CTRunDraw", [:]),
-            ("glyph-default", "CTFontDrawGlyphs", [:])]
+            ("glyph-default", "CTFontDrawGlyphs", [:]),
+            ("glyph-absolute-origin", "CTFontDrawGlyphs", [:]),
+            ("glyph-appkit-transform", "CTFontDrawGlyphs", [:])]
         let lines = CTFrameGetLines(layout.frame) as! [CTLine]
         var origins = [CGPoint](repeating: .zero, count: lines.count)
         CTFrameGetLineOrigins(layout.frame, CFRange(location: 0, length: 0), &origins)
@@ -575,10 +577,20 @@ final class MacPhotoRendererTests: XCTestCase {
         var results: [[String: Any]] = []
         for (name, api, flags) in modes {
             let bitmap = try RasterCodec.bitmap(width: replay.width, height: replay.height)
-            bitmap.scaleBy(x: MacPhotoTextRaster.scale, y: MacPhotoTextRaster.scale)
-            bitmap.translateBy(x: 0, y: CGFloat(replay.height) / MacPhotoTextRaster.scale - layout.height
-                               - (bounds.height - layout.typographicHeight) / 2)
+            let scale = MacPhotoTextRaster.scale
+            let frameOffset = CGFloat(replay.height) / scale - layout.height - (bounds.height - layout.typographicHeight) / 2
+            let absoluteOrigin = name == "glyph-absolute-origin"
+            let appKitTransform = name == "glyph-appkit-transform"
+            if appKitTransform {
+                bitmap.translateBy(x: 0, y: CGFloat(replay.height)); bitmap.scaleBy(x: scale, y: -scale)
+            } else {
+                bitmap.scaleBy(x: scale, y: scale)
+                if !absoluteOrigin { bitmap.translateBy(x: 0, y: frameOffset) }
+            }
             bitmap.textMatrix = .identity
+            var coordinateGlyphCount = 0
+            var drawInputs: [[String: Any]] = []
+            var maximumOriginDelta: CGFloat = 0, maximumLinearDelta: CGFloat = 0
             if let enabled = flags["positioning"] {
                 bitmap.setAllowsFontSubpixelPositioning(enabled); bitmap.setShouldSubpixelPositionFonts(enabled)
             }
@@ -595,7 +607,7 @@ final class MacPhotoRendererTests: XCTestCase {
                 for (index, line) in lines.enumerated() {
                     bitmap.textMatrix = .identity; bitmap.textPosition = origins[index]
                     if api == "CTLineDraw" { CTLineDraw(line, bitmap); continue }
-                    for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+                    for (runIndex, run) in (CTLineGetGlyphRuns(line) as! [CTRun]).enumerated() {
                         bitmap.textMatrix = .identity; bitmap.textPosition = origins[index]
                         if api == "CTRunDraw" { CTRunDraw(run, bitmap, CFRange(location: 0, length: 0)); continue }
                         let count = CTRunGetGlyphCount(run)
@@ -603,10 +615,42 @@ final class MacPhotoRendererTests: XCTestCase {
                         var positions = [CGPoint](repeating: .zero, count: count)
                         CTRunGetGlyphs(run, CFRange(location: 0, length: 0), &glyphs)
                         CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
-                        positions = positions.map { CGPoint(x: $0.x + origins[index].x, y: $0.y + origins[index].y) }
+                        let originalPositions = positions.map { CGPoint(x: $0.x + origins[index].x, y: $0.y + origins[index].y) }
+                        positions = originalPositions
                         let font = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
+                        var drawFont = font
+                        if absoluteOrigin {
+                            positions = originalPositions.map { CGPoint(x: $0.x, y: $0.y + frameOffset) }
+                        } else if appKitTransform {
+                            positions = originalPositions.map { CGPoint(x: $0.x, y: CGFloat(replay.height) / scale - ($0.y + frameOffset)) }
+                            // CTFontDrawGlyphs takes user-space positions and
+                            // installs the font matrix. Reflect that matrix,
+                            // not a fitted glyph offset, under the flipped CTM.
+                            XCTAssertEqual(CTFontGetMatrix(font), .identity)
+                            var reflection = CGAffineTransform(scaleX: 1, y: -1)
+                            drawFont = CTFontCreateCopyWithAttributes(font, 0, &reflection, nil)
+                            XCTAssertEqual(CTFontGetSize(drawFont), CTFontGetSize(font))
+                            XCTAssertEqual(CTFontCopyPostScriptName(drawFont) as String, CTFontCopyPostScriptName(font) as String)
+                        }
                         bitmap.textPosition = .zero
-                        CTFontDrawGlyphs(font, &glyphs, &positions, count, bitmap)
+                        if absoluteOrigin || appKitTransform {
+                            coordinateGlyphCount += count
+                            let inputCTM = bitmap.ctm, drawMatrix = CTFontGetMatrix(drawFont)
+                            drawInputs.append(["lineIndex": index, "runIndex": runIndex,
+                                "font": CTFontCopyPostScriptName(drawFont) as String, "size": CTFontGetSize(drawFont),
+                                "fontMatrix": matrix(drawMatrix), "inputCTM": matrix(inputCTM),
+                                "glyphs": glyphs.map(Int.init), "positions": positions.map { [$0.x, $0.y] }])
+                            for (original, position) in zip(originalPositions, positions) {
+                                let expected = CGPoint(x: scale * original.x, y: scale * (original.y + frameOffset))
+                                let actual = position.applying(inputCTM)
+                                maximumOriginDelta = max(maximumOriginDelta, max(abs(expected.x - actual.x), abs(expected.y - actual.y)))
+                            }
+                            let c = inputCTM, t = drawMatrix, f = CTFontGetMatrix(font)
+                            let actual = [c.a*t.a+c.c*t.b, c.b*t.a+c.d*t.b, c.a*t.c+c.c*t.d, c.b*t.c+c.d*t.d]
+                            let expected = [scale*f.a, scale*f.b, scale*f.c, scale*f.d]
+                            for (a,b) in zip(actual,expected) { maximumLinearDelta = max(maximumLinearDelta, abs(a-b)) }
+                        }
+                        CTFontDrawGlyphs(drawFont, &glyphs, &positions, count, bitmap)
                     }
                 }
             }
@@ -615,9 +659,18 @@ final class MacPhotoRendererTests: XCTestCase {
             if name == "frame-default" { XCTAssertEqual(bytes, a, "Test-only default frame replay must equal the shipping helper") }
             let png = try RasterCodec.encode(image, as: .png)
             guard png.count <= 6_000 else { throw NSError(domain: "NativeGlyphObservation", code: 3) }
-            results.append(["name": name, "api": api, "explicitFlagOverrides": flags,
+            var plannedCoordinateProof: Any = NSNull()
+            if absoluteOrigin || appKitTransform {
+                XCTAssertLessThanOrEqual(maximumOriginDelta, 1e-9, "Every device-space glyph origin must be invariant")
+                XCTAssertLessThanOrEqual(maximumLinearDelta, 1e-9, "Every device-space glyph scale/orientation must be invariant")
+                plannedCoordinateProof = ["glyphCount": coordinateGlyphCount, "maximumDeviceOriginDelta": maximumOriginDelta,
+                    "maximumGlyphLinearDelta": maximumLinearDelta, "drawInputs": drawInputs] as [String: Any]
+            }
+            results.append(["name": name, "api": api, "explicitFlagOverrides": flags, "plannedCoordinateProof": plannedCoordinateProof,
                 "initialCTM": initialCTM, "initialTextMatrix": initialTextMatrix,
                 "initialTextPosition": [initialPosition.x, initialPosition.y],
+                // Post-call graphics state is observation only. Planned geometry
+                // is proved from input CTM, actual CTFont matrix and positions.
                 "finalCTM": matrix(bitmap.ctm), "finalTextMatrix": matrix(bitmap.textMatrix),
                 "finalTextPosition": [bitmap.textPosition.x, bitmap.textPosition.y],
                 "interpolationQuality": bitmap.interpolationQuality.rawValue,
