@@ -157,6 +157,7 @@ struct MacPhotoTextLayout {
     static func make(_ text: String, rect: CGRect) throws -> Self {
         guard text.utf8.count <= 16_384, rect.width > 0, rect.height > 0 else { throw RenderError.textDoesNotFit }
         let nativeMetrics = NSLayoutManager()
+        nativeMetrics.backgroundLayoutEnabled = false
         for size in stride(from: 16, through: 2, by: -1) {
             try Task.checkCancellation()
             let font = CTFontCreateUIFontForLanguage(.system, CGFloat(size), nil) ?? CTFontCreateWithName("Helvetica" as CFString, CGFloat(size), nil)
@@ -218,18 +219,79 @@ enum MacPhotoTextRaster {
         let width = ceil((bounds.width + 2 * padding) * scale), height = ceil((bounds.height + 2 * padding) * scale)
         guard width.isFinite, height.isFinite, width > 0, height > 0,
               width <= 4096, height <= 4096, width * height <= 4_194_304 else { throw RecipeError.resourceLimit }
-        let bitmap = try RasterCodec.bitmap(width: Int(width), height: Int(height))
-        bitmap.scaleBy(x: scale, y: scale)
-        // Keep the label's logical bounds separate from its outward-rounded
-        // pixel backing. UIKit centers the text in the logical label rectangle.
-        // The CT frame may need extra fitting room for descenders. Center the
-        // natural line block, keeping that allocation and all CT origins intact.
-        // Do not move the first baseline by half the frame's rounding margin.
-        bitmap.translateBy(x: padding, y: height / scale - padding - layout.height
-                           - (bounds.height - layout.typographicHeight) / 2)
-        bitmap.textMatrix = .identity
-        CTFrameDraw(layout.frame, bitmap)
-        guard let image = bitmap.makeImage() else { throw RenderError.renderFailed }
-        return image
+        return try autoreleasepool {
+            let bitmap = try RasterCodec.bitmap(width: Int(width), height: Int(height))
+            let runs = try glyphRuns(layout, bounds: bounds, padding: padding)
+            bitmap.translateBy(x: 0, y: height); bitmap.scaleBy(x: scale, y: -scale)
+            let graphics = NSGraphicsContext(cgContext: bitmap, flipped: true)
+            NSGraphicsContext.saveGraphicsState()
+            defer { NSGraphicsContext.restoreGraphicsState() }
+            NSGraphicsContext.current = graphics
+            // Apple permits isolated layout managers on secondary threads when
+            // background layout is off and no text view is attached. No object
+            // escapes this synchronous render or is shared with another job.
+            let manager = NSLayoutManager(); manager.backgroundLayoutEnabled = false
+            for run in runs {
+                try Task.checkCancellation()
+                bitmap.saveGState(); defer { bitmap.restoreGState() }
+                run.font.set(in: graphics)
+                bitmap.setFillColor(CGColor(gray: 0, alpha: 1))
+                bitmap.textMatrix = run.textMatrix
+                let attributes: [NSAttributedString.Key: Any] = [.font: run.font, .foregroundColor: NSColor.black]
+                run.glyphs.withUnsafeBufferPointer { glyphs in
+                    run.positions.withUnsafeBufferPointer { positions in
+                        manager.showCGGlyphs(glyphs.baseAddress!, positions: positions.baseAddress!, count: glyphs.count,
+                            font: run.font, textMatrix: run.textMatrix, attributes: attributes, in: bitmap)
+                    }
+                }
+            }
+            guard let image = bitmap.makeImage() else { throw RenderError.renderFailed }
+            return image
+        }
     }
+
+    struct GlyphRun {
+        let font: NSFont
+        let glyphs: [CGGlyph]
+        let positions: [CGPoint]
+        let textMatrix: CGAffineTransform
+        let sourceRange: CFRange
+        let stringIndices: [CFIndex]
+    }
+
+    /// Reuse the shaped CoreText stream. Never slice/re-layout strings: that can
+    /// change contextual forms, bidi levels, variation selectors or ZWJ clusters.
+    static func glyphRuns(_ layout: MacPhotoTextLayout, bounds: CGSize, padding: CGFloat) throws -> [GlyphRun] {
+        let lines = CTFrameGetLines(layout.frame) as! [CTLine]
+        var origins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(layout.frame, CFRange(location: 0, length: 0), &origins)
+        let top = padding + layout.height + (bounds.height - layout.typographicHeight) / 2
+        var result: [GlyphRun] = []
+        for (index, line) in lines.enumerated() {
+            try Task.checkCancellation()
+            for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+                let count = CTRunGetGlyphCount(run)
+                if count == 0 { continue } // Blank/control-only lines retain layout and consume no ink.
+                let attributes = CTRunGetAttributes(run) as NSDictionary
+                // CTFont and NSFont are documented toll-free counterparts; do
+                // not recreate a font by name and lose fallback/variation data.
+                guard let font = attributes[kCTFontAttributeName] as? NSFont else { throw RenderError.renderFailed }
+                var glyphs = [CGGlyph](repeating: 0, count: count)
+                var positions = [CGPoint](repeating: .zero, count: count)
+                var indices = [CFIndex](repeating: 0, count: count)
+                CTRunGetGlyphs(run, CFRange(location: 0, length: 0), &glyphs)
+                CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
+                CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
+                positions = positions.map { CGPoint(x: padding + origins[index].x + $0.x, y: top - origins[index].y - $0.y) }
+                let source = CTRunGetTextMatrix(run)
+                // AppKit text space is reflected under its flipped user space.
+                // showCGGlyphs uses supplied positions instead of matrix tx/ty.
+                let matrix = CGAffineTransform(a: source.a, b: -source.b, c: source.c, d: -source.d, tx: 0, ty: 0)
+                result.append(GlyphRun(font: font, glyphs: glyphs, positions: positions,
+                    textMatrix: matrix, sourceRange: CTRunGetStringRange(run), stringIndices: indices))
+            }
+        }
+        return result
+    }
+
 }

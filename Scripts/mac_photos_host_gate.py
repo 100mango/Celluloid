@@ -59,6 +59,7 @@ ALLOWED = {
     'Scripts/mac-photos-host-source-base.json',
     'Scripts/keyed_archive_graph.py',
     'Scripts/mac_host_transport.py',
+    'Scripts/mac_owned_crash.py',
     'Scripts/mac_photos_host_gate.py',
     'Scripts/native_text_release_guard.py',
     'Scripts/optional_export_budget.py',
@@ -74,6 +75,7 @@ ALLOWED = {
     'Scripts/test_interop_continuation.py',
     'Scripts/test_keyed_archive_graph.py',
     'Scripts/test_mac_host_transport.py',
+    'Scripts/test_mac_owned_crash.py',
     'Scripts/test_mac_photos_host_gate.py',
     'Scripts/test_native_evidence.py',
     'Scripts/test_native_phone_fixture.py',
@@ -92,7 +94,7 @@ ALLOWED = {
 CAP = 1_000_000
 BASE_FILE_COUNT = 544
 REVIEWED_TEST_FILES = {'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': 'f4c7a7a16bf5414e6c2a2716bc146bdc216f7ea966a80207acce8a7667584890', 'Platforms/MacExtensionTests/MacPhotoAdjustmentTests.swift': 'ec2e5f8d1e794ffbfcef4be15f34ed6b3d02bbdeae2b722d8c08ce0a9ccb7034'}
-REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': '00b65848c3da2486b58c3cf4fd1e4c48e0e45fe9bb543590ecc1475e065e2c36', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': 'ba3199901afda2065323e67ba53ad27cd3cd95d047c81508c5045ad177993b58', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
+REVIEWED_CANDIDATE_FILES = {'Platforms/MacExtensionTests/MacPhotoRendererTests.swift': '99fbf99d389a99a0d571693fe2b3324077b7e2024d90102d5870d2873cfdaf90', 'Platforms/PhoneUITests/PhoneCompanionUITests.swift': 'c6bd4a670bc2b84eb8f7f2f69c49b07213b628dcb0779d8147afbf6e483fcdb0', 'Platforms/TVUITests/NativeTVUITests.swift': '80d914d55ebbcba90eea15453036175d40b6130120c5f80ba5e1693e02b09276', 'Platforms/WatchUITests/NativeWatchUITests.swift': '7faddc48f25ad4ae6899d77055f83255dabbd9b7836a7691a57db6e8073b60ca', 'Platforms/macOSExtension/MacPhotoRenderer.swift': '00eb3f54e9e7ff03c76ad77c346745619ab03144c65cd67da0e0204eedfc0868', 'Platforms/tvOS/CelluloidTVApp.swift': '86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f'}
 UNCHANGED_BASE_FILES = BASE_FILE_COUNT - 2 - len(REVIEWED_TEST_FILES) - len(REVIEWED_CANDIDATE_FILES)
 
 def run(*args):
@@ -691,14 +693,24 @@ def collect():
         shutil.copyfile(path,destination/name);used+=count
         entries.append({'path':name,'source_relative':relative,'kind':'required-proof','bytes':count,'sha256':sha(path)})
     missing=sorted(set(PROOF_LIMITS)-{e['source_relative'] for e in entries})
-    optional=[]; observed=root/'mac-host-observed'
+    # Small owned-crash projections precede optional screenshots, but never
+    # become required host proof or grant acceptance.
+    from mac_owned_crash import IDENTITY,OUTPUT,MAX_OUTPUT,validate_diagnostic
+    crash_limits={IDENTITY:8192,OUTPUT:MAX_OUTPUT}
+    optional=[root/name for name in crash_limits if (root/name).exists()]; observed=root/'mac-host-observed'
+    for name in crash_limits:
+        if not (root/name).exists():omitted.append({'name':name,'reason':'owned-crash diagnostic unavailable','bytes':0})
     if observed.is_dir():
-        optional=[p for p in sorted(observed.iterdir(),key=lambda p:(p.suffix!='.jpg',p.name))
+        optional += [p for p in sorted(observed.iterdir(),key=lambda p:(p.suffix!='.jpg',p.name))
                   if p.is_file() and p.suffix in ['.json','.txt','.jpg'] and str(p.relative_to(root)) not in PROOF_LIMITS]
     for path in optional:
-        count=path.stat().st_size;limit=700_000 if path.suffix=='.jpg' else 160_000
+        count=path.stat().st_size;limit=crash_limits.get(path.name,700_000 if path.suffix=='.jpg' else 160_000)
         if path.is_symlink() or count>limit or used+count>CAP-50_000:
             omitted.append({'name':path.name,'reason':'optional diagnostic cap or symlink','bytes':count});continue
+        if path.parent==root and path.name in crash_limits:
+            try:validate_diagnostic(path.read_bytes(),source_sha,path.name)
+            except (ValueError,KeyError,TypeError,UnicodeError,RecursionError):
+                omitted.append({'name':path.name,'reason':'invalid owned-crash diagnostic','bytes':count});continue
         assert not (destination/path.name).exists(), 'Optional diagnostic collides with required proof'
         shutil.copyfile(path,destination/path.name);used+=count
         entries.append({'path':path.name,'source_relative':str(path.relative_to(root)), 'kind':'optional-diagnostic','bytes':count,'sha256':sha(path)})

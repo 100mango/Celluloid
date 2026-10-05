@@ -1,9 +1,6 @@
 #!/bin/bash
 # Reuse this Mac job's qualified sandbox app/UI bundle. No rebuild, account or settings change.
 set -euo pipefail
-python3 Scripts/mac_photos_host_gate.py budget-before-prepare
-python3 Scripts/mac_photos_host_gate.py source-before
-python3 Scripts/mac_photos_host_gate.py prepare
 python3 Scripts/mac_photos_host_gate.py budget-before-host
 status=0
 TEST_RUNNER_CELLULOID_MAC_PHOTOS_HOST_PREREQUISITE=1 \

@@ -917,6 +917,27 @@ class CollectedProofTests(SyntheticHostFixtureCase):
                 self.mutate_manifest(folder,update)
                 with self.assertRaises(AssertionError):gate.verify_collected(folder,self.SOURCE)
                 self.assert_outer_rejects(root)
+    def test_owned_crash_diagnostics_precede_screenshots_without_acceptance_effect(self):
+        from mac_owned_crash import OUTPUT,encode
+        for accepted in [False,True]:
+            with self.subTest(accepted=accepted),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);self.packet(root,accepted)
+                row={'schema':'Celluloid.OwnedCrashCollectionError.1','source_sha':self.SOURCE,'acceptance':False,
+                    'complete_host_e2e':False,'phase':'capture','state':'incomplete','error':'No matching safely bound incident'}
+                (root/OUTPUT).write_bytes(encode(row))
+                for i in range(2):(root/'mac-host-observed'/f'optional-{i}.jpg').write_bytes(b'x'*600_000)
+                folder=self.collect(root);manifest=gate.verify_collected(folder,self.SOURCE)
+                self.assertEqual(manifest['prerequisite_accepted'],accepted)
+                self.assertEqual(json.loads((folder/OUTPUT).read_text()),row)
+                self.assertLessEqual(sum(p.stat().st_size for p in folder.iterdir()),gate.CAP)
+                entries=manifest['files'];crash_index=next(i for i,r in enumerate(entries) if r['path']==OUTPUT)
+                self.assertTrue(all(i>crash_index for i,r in enumerate(entries) if r['path'].endswith('.jpg')))
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);self.packet(root,True);row['source_sha']='wrong';(root/OUTPUT).write_bytes(encode(row))
+            folder=self.collect(root);manifest=gate.verify_collected(folder,self.SOURCE)
+            self.assertTrue(manifest['prerequisite_accepted']);self.assertFalse((folder/OUTPUT).exists())
+            self.assertTrue(any(r['name']==OUTPUT and r['reason']=='invalid owned-crash diagnostic' for r in manifest['omitted']))
+
     def test_false_diagnostic_keeps_failure_and_available_ownership_source_proof(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);self.packet(root,False)
@@ -1031,7 +1052,9 @@ class HostTimeBudgetTests(SyntheticHostFixtureCase):
         self.assertLess(workflow.index('Verify actual embedded sandbox extension before UI'),workflow.index('Actual Photos host discovery'))
         self.assertLess(workflow.index('Actual Photos host discovery'),workflow.index('Bound and replay the dedicated host proof'))
         shell=(ROOT/'Scripts/run_mac_photos_host_gate.sh').read_text()
-        self.assertLess(shell.index('budget-before-prepare'),shell.index('source-before'))
+        predecessor=workflow.split('- name: Prepare verified Photos host context',1)[1].split('- name:',1)[0]
+        self.assertLess(predecessor.index('budget-before-prepare'),predecessor.index('source-before'))
+        self.assertNotIn('budget-before-prepare',shell)
         self.assertLess(shell.index('budget-before-host'),shell.index('TEST_RUNNER_CELLULOID_MAC_PHOTOS_HOST_PREREQUISITE'))
         self.assertIn('timeout-minutes: 45',workflow)
 

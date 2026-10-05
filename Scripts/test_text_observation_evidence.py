@@ -103,7 +103,7 @@ class NativeGlyphObservationTests(unittest.TestCase):
                     'fontMatrix':[1,0,0,-1,0,0] if experiment['name']=='glyph-appkit-transform' else [1,0,0,1,0,0],
                     'inputCTM':experiment['initialCTM'],'glyphs':run['glyphs'],'positions':positions})
             experiment['plannedCoordinateProof']['drawInputs']=draw_inputs
-        return {'schema':'Celluloid.NativeGlyphObservation.3','acceptance':False,'text':'Hello, 世界 🎬',
+        return {'schema':'Celluloid.NativeGlyphObservation.4','acceptance':False,'productionBackend':'NSLayoutManager.showCGGlyphs/CoreText-shaped-runs','text':'Hello, 世界 🎬',
             'sourcePNG_SHA256':'a'*64,'actualCompositePNG_SHA256':'b'*64,'actualTextRect':[77.231,26.24,27.875,43.52],
             'frameAllocationHeight':37,'naturalBlockHeight':36,'fontSize':10,'lineHeight':12,'backingScale':2,
             'coreTextLines':ct_lines,
@@ -123,6 +123,14 @@ class NativeGlyphObservationTests(unittest.TestCase):
     def test_failed_and_passed_case_observations_never_grant_acceptance(self):
         for result in ['failed','passed']:
             report=self.exercise(result=result);self.assertFalse(report['acceptance']);self.assertEqual(report['case_result'],result)
+    def test_historical_coretext_difference_is_retained_without_granting_acceptance(self):
+        def changed_backend(lines,row):
+            row['rasterExperiments'][0]['againstProductionReplay'].update(alphaMaximum=102,alphaPixelsAbove2=241)
+            lines[1]=gate.GLYPH_PREFIX+json.dumps(row);return lines
+        result=self.exercise(changed_backend)
+        self.assertFalse(result['acceptance'])
+        self.assertEqual(result['observation']['rasterExperiments'][0]['againstProductionReplay']['alphaMaximum'],102)
+
     def test_duplicate_missing_outside_case_and_oversized_lines_reject(self):
         for change in [lambda lines,row:lines[:2]+lines[1:],lambda lines,row:lines[:2]+lines[3:],
                        lambda lines,row:[lines[1]]+lines[:1]+lines[2:],
@@ -145,7 +153,7 @@ class NativeGlyphObservationTests(unittest.TestCase):
             lambda r:r['rasterExperiments'][1].update(api='OtherAPI'),
             lambda r:r['rasterExperiments'][1].update(explicitFlagOverrides={'positioning':1}),
             lambda r:r['rasterExperiments'][2].update(initialCTM=[2,0,0,2,0,7.48]),
-            lambda r:r['rasterExperiments'][0]['againstProductionReplay'].update(alphaMaximum=1),
+            lambda r:r.update(productionBackend='CTFrameDraw'),
             lambda r:r['rasterExperiments'][0].update(initialTextPosition=[0,1]),
             lambda r:r['rasterExperiments'][0].update(pngSHA256='f'*64),
             lambda r:r['rasterExperiments'][0].update(width=57),
@@ -217,7 +225,8 @@ class NativeGlyphObservationTests(unittest.TestCase):
         for api in ['setAllowsFontSubpixelPositioning','setShouldSubpixelPositionFonts','setAllowsFontSubpixelQuantization','setShouldSubpixelQuantizeFonts','setAllowsFontSmoothing','setShouldSmoothFonts','CTLineDraw','CTRunDraw','CTFontDrawGlyphs','CTRunGetPositions','CTRunGetStringIndices','CTRunGetTextMatrix','CTFontGetMatrix','super.showCGGlyphs','firstGlyphLocation','observedOracleBacking = image']:
             self.assertIn(api,swift)
         self.assertIn('XCTAssertLessThanOrEqual(difference, 2,',swift)
-        self.assertIn('XCTAssertEqual(bytes, a, "Test-only default frame replay must equal the shipping helper")',swift)
+        self.assertNotIn('Test-only default frame replay must equal the shipping helper',swift)
+        self.assertIn('"productionBackend": "NSLayoutManager.showCGGlyphs/CoreText-shaped-runs"',swift)
         self.assertIn('guard png.count <= 6_000',swift)
         self.assertIn('guard data.count <= 100_000',swift)
         self.assertIn('manager.drawGlyphs(forGlyphRange: glyphRange, at: drawOrigin)',swift)
@@ -225,5 +234,46 @@ class NativeGlyphObservationTests(unittest.TestCase):
         self.assertIn('"acceptance": false',swift)
         collector=(root/'Scripts/collect_native_evidence.py').read_text()
         self.assertLess(collector.index('glyph_observations=collect_glyphs'),collector.index('Optional exporter time'))
+
+class AppKitShapedRunSourceTests(unittest.TestCase):
+    def source(self):
+        root=Path(__file__).resolve().parents[1]
+        return ((root/'Platforms/macOSExtension/MacPhotoRenderer.swift').read_text(),
+                (root/'Platforms/MacExtensionTests/MacPhotoRendererTests.swift').read_text())
+
+    def test_independent_fixed_geometry_oracle_is_byte_identical(self):
+        _,swift=self.source()
+        oracle=swift[swift.index('    private func independentLegacyTextBacking()'):swift.index('    func testProductionTextMatchesIndependentNativeControlAndRejectsPathMutations()')]
+        self.assertEqual(hashlib.sha256(oracle.encode()).hexdigest(),'d41f8e7ecb75ebfa690e3d3161085631747daa4714fdb10d428663f521b96045')
+        for token in ['XCTAssertLessThanOrEqual(difference, 2,','remove-wrapped-space','shift-down-one-point','squeeze-to-logical-bounds','clip-right-half']:
+            self.assertIn(token,swift)
+
+    def test_renderer_uses_only_original_shaped_stream_and_per_call_appkit_objects(self):
+        source,_=self.source();raster=source.split('enum MacPhotoTextRaster {',1)[1]
+        for token in ['CTFrameGetLines','CTFrameGetLineOrigins','CTLineGetGlyphRuns','CTRunGetGlyphs',
+                      'CTRunGetPositions','CTRunGetStringIndices','CTRunGetStringRange','CTRunGetTextMatrix',
+                      'attributes[kCTFontAttributeName] as? NSFont','manager.showCGGlyphs',
+                      'let manager = NSLayoutManager(); manager.backgroundLayoutEnabled = false',
+                      'NSGraphicsContext.saveGraphicsState()', 'defer { NSGraphicsContext.restoreGraphicsState() }',
+                      'bitmap.saveGState(); defer { bitmap.restoreGState() }','try Task.checkCancellation()',
+                      'return try autoreleasepool']:
+            self.assertIn(token,raster)
+        for token in ['NSTextStorage','NSTextContainer','NSTextView','substring','drawGlyphs(',
+                      'CTFontCreate','NSFont(name:', 'MainActor','DispatchQueue.main', 'static let manager',
+                      'await ', 'CTFrameDraw(']:
+            self.assertNotIn(token,raster)
+        self.assertIn('guard adjustment.layers.isEmpty else { throw MacPhotoRenderQualificationError.layeredPhotosOutput }',source)
+
+    def test_generic_and_background_runtime_invariants_remain_explicit(self):
+        _,swift=self.source()
+        for token in ['assertUnchangedShapedRuns','candidate.font === font','candidate.glyphs, glyphs',
+                      'candidate.stringIndices, indices','candidate.sourceRange.location',
+                      'pixelHeight - 2 * actual.y','No extra, missing, reordered or reshaped runs',
+                      'العربية','שלום','नमस्ते','✈︎ ✈️','🇯🇵 🇺🇸','👩🏽‍💻',
+                      'Task.detached','withUnsafeCurrentTask { $0?.cancel() }',
+                      'NSGraphicsContext.current === sentinel','catch is CancellationError',
+                      'padding: 65']:
+            self.assertIn(token,swift)
+
 
 if __name__=='__main__':unittest.main()

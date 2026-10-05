@@ -326,9 +326,19 @@ jobs:
           codesign --verify --strict --deep "$CHILD"
           codesign -d --entitlements :- "$CHILD" > "$RUNNER_TEMP/sandbox-extension-entitlements-before.plist"
           python3 -c 'import plistlib,sys; assert plistlib.load(open(sys.argv[1],"rb")) == {"com.apple.security.app-sandbox":True}' "$RUNNER_TEMP/sandbox-extension-entitlements-before.plist"
+      - name: Prepare verified Photos host context
+        id: host_context
+        if: (success() || failure()) && steps.sandbox_child.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Scripts/mac_photos_host_gate.py budget-before-prepare
+          python3 Scripts/mac_photos_host_gate.py source-before
+          python3 Scripts/mac_photos_host_gate.py prepare
+          python3 Scripts/mac_owned_crash.py optional-prepare || true
       - name: Actual Photos host discovery using the qualified sandbox product
         id: mac_host
-        if: (success() || failure()) && steps.sandbox_child.outcome == 'success'
+        if: (success() || failure()) && steps.sandbox_child.outcome == 'success' && steps.host_context.outcome == 'success'
         timeout-minutes: 14
         shell: bash
         run: |
@@ -352,6 +362,7 @@ jobs:
         if: always() && steps.sandbox_child.outcome == 'success'
         shell: bash
         run: |
+          python3 Scripts/mac_owned_crash.py optional-capture || true
           python3 Scripts/mac_photos_host_gate.py collect
       - name: Upload bounded actual Photos host evidence
         if: always() && steps.bounded_host_evidence.outcome == 'success'

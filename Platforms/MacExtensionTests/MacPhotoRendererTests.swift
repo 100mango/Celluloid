@@ -203,7 +203,7 @@ final class MacPhotoRendererTests: XCTestCase {
         XCTAssertEqual(manager.usedRect(for: container).height, 36)
     }
 
-    func testTextBackingUsesIntrinsicPointSizeAndOneLogicalOrigin() throws {
+    func testTextBackingUsesIntrinsicPointSizeAndOneLogicalOrigin() async throws {
         let layout = try MacPhotoTextLayout.make(qualifiedText, rect: qualifiedRect)
         let image = try MacPhotoTextRaster.make(layout, bounds: qualifiedRect.size)
         XCTAssertEqual(image.width, 56); XCTAssertEqual(image.height, 88)
@@ -214,6 +214,42 @@ final class MacPhotoRendererTests: XCTestCase {
         XCTAssertNotEqual(actual.size, qualifiedRect.size, "Fractional logical bounds must not squeeze the rounded backing")
         let moved = MacPhotoTextRaster.destinationRect(for: image, origin: CGPoint(x: -7.125, y: 4.75))
         XCTAssertEqual(moved, CGRect(x: -7.125, y: 4.75, width: 28, height: 44))
+        // Independent background calls own all AppKit objects, including the
+        // thread-local sentinel. No context or layout graph crosses an await.
+        let first = Task.detached { try Self.isolatedRaster(cancel: false) }
+        let second = Task.detached { try Self.isolatedRaster(cancel: false) }
+        let firstPNG = try await first.value, secondPNG = try await second.value
+        XCTAssertEqual(firstPNG, secondPNG)
+        let cancelled = Task.detached { () throws -> Bool in
+            do { _ = try Self.isolatedRaster(cancel: true); return false }
+            catch is CancellationError { return true }
+        }
+        let cancelledAsExpected = try await cancelled.value
+        XCTAssertTrue(cancelledAsExpected)
+    }
+
+    private static func isolatedRaster(cancel: Bool) throws -> Data {
+        try autoreleasepool {
+            let sentinelBitmap = try RasterCodec.bitmap(width: 2, height: 2)
+            let sentinel = NSGraphicsContext(cgContext: sentinelBitmap, flipped: false)
+            NSGraphicsContext.saveGraphicsState(); defer { NSGraphicsContext.restoreGraphicsState() }
+            NSGraphicsContext.current = sentinel
+            let bounds = CGSize(width: 160.25, height: 120.5)
+            let layout = try MacPhotoTextLayout.make("Latin 世界 👩🏽‍💻\nالعربية שלום", rect: CGRect(origin: .zero, size: bounds))
+            do { _ = try MacPhotoTextRaster.make(layout, bounds: bounds, padding: 65)
+                throw NSError(domain: "ExpectedRasterResourceLimit", code: 1)
+            } catch RecipeError.resourceLimit { }
+            guard NSGraphicsContext.current === sentinel else { throw NSError(domain: "RasterContextRestore", code: 1) }
+            if cancel { withUnsafeCurrentTask { $0?.cancel() } }
+            do {
+                let image = try MacPhotoTextRaster.make(layout, bounds: bounds)
+                guard NSGraphicsContext.current === sentinel else { throw NSError(domain: "RasterContextRestore", code: 2) }
+                return try RasterCodec.encode(image, as: .png)
+            } catch {
+                guard NSGraphicsContext.current === sentinel else { throw NSError(domain: "RasterContextRestore", code: 3) }
+                throw error
+            }
+        }
     }
 
     private var fittingCases: [(String, CGSize)] { [
@@ -225,7 +261,15 @@ final class MacPhotoRendererTests: XCTestCase {
         ("👨‍👩‍👧‍👦 👩🏽‍💻 🎬", CGSize(width: 140.25, height: 64.5)),
         ("日本語\n한국어\nHello", CGSize(width: 96.25, height: 92.125)),
         ("Narrow 文 👩‍💻", CGSize(width: 36.125, height: 150.25)),
-        ("a\u{0301} e\u{0301} o\u{0308} 你好", CGSize(width: 57.25, height: 96.125))
+        ("a\u{0301} e\u{0301} o\u{0308} 你好", CGSize(width: 57.25, height: 96.125)),
+        ("العربية لا مرحباً\nשלום עולם 123", CGSize(width: 240.25, height: 100.5)),
+        ("English (שלום) العربية 123!", CGSize(width: 280.25, height: 100.5)),
+        ("नमस्ते क्षि বাংলা தமிழ்", CGSize(width: 280.25, height: 100.5)),
+        ("✈︎ ✈️ 🇯🇵 🇺🇸 👩🏽‍💻", CGSize(width: 200.25, height: 100.5)),
+        ("A\r\n\r\nB\r\n", CGSize(width: 120.25, height: 150.5)),
+        ("A\u{2028}B\u{2029}C", CGSize(width: 120.25, height: 120.5)),
+        ("  leading\tand trailing  ", CGSize(width: 240.25, height: 100.5)),
+        (" \t \n ", CGSize(width: 120.25, height: 120.5))
     ] }
 
     private func alphaOutside(_ image: CGImage, x: Int, y: Int, width: Int, height: Int) throws -> Int {
@@ -252,9 +296,48 @@ final class MacPhotoRendererTests: XCTestCase {
         }
     }
 
+    private func assertUnchangedShapedRuns(_ layout: MacPhotoTextLayout, bounds: CGSize, padding: CGFloat) throws {
+        let planned = try MacPhotoTextRaster.glyphRuns(layout, bounds: bounds, padding: padding)
+        let lines = CTFrameGetLines(layout.frame) as! [CTLine]
+        var origins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(layout.frame, CFRange(location: 0, length: 0), &origins)
+        let pixelHeight = ceil((bounds.height + 2 * padding) * 2)
+        let oldTranslationY = pixelHeight / 2 - padding - layout.height - (bounds.height - layout.typographicHeight) / 2
+        var index = 0
+        for (lineIndex, line) in lines.enumerated() {
+            for original in CTLineGetGlyphRuns(line) as! [CTRun] where CTRunGetGlyphCount(original) > 0 {
+                let candidate = try XCTUnwrap(planned.indices.contains(index) ? planned[index] : nil)
+                let count = CTRunGetGlyphCount(original)
+                var glyphs = [CGGlyph](repeating: 0, count: count), indices = [CFIndex](repeating: 0, count: count)
+                var positions = [CGPoint](repeating: .zero, count: count)
+                CTRunGetGlyphs(original, CFRange(location: 0, length: 0), &glyphs)
+                CTRunGetStringIndices(original, CFRange(location: 0, length: 0), &indices)
+                CTRunGetPositions(original, CFRange(location: 0, length: 0), &positions)
+                let font = try XCTUnwrap((CTRunGetAttributes(original) as NSDictionary)[kCTFontAttributeName] as? NSFont)
+                XCTAssertTrue(candidate.font === font, "Keep the actual fallback/variation font object")
+                XCTAssertEqual(candidate.glyphs, glyphs); XCTAssertEqual(candidate.stringIndices, indices)
+                XCTAssertEqual(candidate.sourceRange.location, CTRunGetStringRange(original).location)
+                XCTAssertEqual(candidate.sourceRange.length, CTRunGetStringRange(original).length)
+                XCTAssertEqual(candidate.positions.count, count)
+                for (actual, relative) in zip(candidate.positions, positions) {
+                    XCTAssertEqual(2 * actual.x, 2 * (padding + origins[lineIndex].x + relative.x), accuracy: 1e-9)
+                    XCTAssertEqual(pixelHeight - 2 * actual.y, 2 * (oldTranslationY + origins[lineIndex].y + relative.y), accuracy: 1e-9)
+                }
+                let matrix = CTRunGetTextMatrix(original)
+                XCTAssertEqual(candidate.textMatrix.a, matrix.a); XCTAssertEqual(-candidate.textMatrix.b, matrix.b)
+                XCTAssertEqual(candidate.textMatrix.c, matrix.c); XCTAssertEqual(-candidate.textMatrix.d, matrix.d)
+                XCTAssertEqual(candidate.textMatrix.tx, 0); XCTAssertEqual(candidate.textMatrix.ty, 0)
+                index += 1
+            }
+        }
+        XCTAssertEqual(index, planned.count, "No extra, missing, reordered or reshaped runs")
+    }
+
     func testUnicodeCoveragePreservesClustersWhitespaceAndRejectsOverflow() throws {
         for (text, bounds) in fittingCases {
             let layout = try MacPhotoTextLayout.make(text, rect: CGRect(origin: .zero, size: bounds))
+            try assertUnchangedShapedRuns(layout, bounds: bounds, padding: 0)
+            try assertUnchangedShapedRuns(layout, bounds: bounds, padding: 8)
             XCTAssertTrue((2...16).contains(Int(layout.fontSize))); XCTAssertEqual(layout.fontSize.rounded(), layout.fontSize)
             let (ranges, _) = frameLines(layout)
             XCTAssertEqual(layout.typographicHeight, CGFloat(ranges.count) * layout.lineHeight)
@@ -524,7 +607,8 @@ final class MacPhotoRendererTests: XCTestCase {
             alphaMaximum = max(alphaMaximum, alpha); rgbMaximum = max(rgbMaximum, rgb)
             if alpha > 2 { alphaPixels += 1 }; if rgb > 2 { rgbPixels += 1 }
         }
-        let record: [String: Any] = ["schema": "Celluloid.NativeGlyphObservation.3", "acceptance": false,
+        let record: [String: Any] = ["schema": "Celluloid.NativeGlyphObservation.4", "acceptance": false,
+            "productionBackend": "NSLayoutManager.showCGGlyphs/CoreText-shaped-runs",
             "text": text, "sourcePNG_SHA256": digest(sourcePNG),
             "actualCompositePNG_SHA256": digest(try RasterCodec.encode(actualComposite, as: .png)),
             "actualTextRect": [rect.minX, rect.minY, rect.width, rect.height],
@@ -656,7 +740,9 @@ final class MacPhotoRendererTests: XCTestCase {
             }
             let image = try XCTUnwrap(bitmap.makeImage()), bytes = try pixels(image)
             XCTAssertEqual(bytes.count, a.count); XCTAssertEqual(bytes.count, b.count)
-            if name == "frame-default" { XCTAssertEqual(bytes, a, "Test-only default frame replay must equal the shipping helper") }
+            // The historical CTFrame control now compares a different backend.
+            // Keep its measured difference; only the independent native oracle
+            // and real compositor mutations decide rendering qualification.
             let png = try RasterCodec.encode(image, as: .png)
             guard png.count <= 6_000 else { throw NSError(domain: "NativeGlyphObservation", code: 3) }
             var plannedCoordinateProof: Any = NSNull()

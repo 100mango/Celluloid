@@ -249,3 +249,102 @@ owned input and finalized test/process evidence remain mandatory.
 
 [Apple's public XCTest attributes](https://developer.apple.com/documentation/xcuiautomation/xcuielementattributes)
 include distinct title and label values and support their use in query matching.
+
+## Bounded owned-extension crash diagnostics
+
+Run [37274931809](https://github.com/100mango/Celluloid/actions/runs/37274931809)
+at `8c42255789cd51ecb329a632389ce706d5f77e5d` selected the actual Celluloid menu
+item, then the extension process crashed before the ready-editor/live-process
+proof. The retained log and summary contain no established exception, termination
+reason, stack or dyld cause. This failure remains failed; it does not justify an
+actor, entitlement, signing or permission change.
+
+The outer runner now records the exact built extension executable and adjacent
+`.debug.dylib` SHA256/size/arm64 UUID independently before host execution. After the
+existing product check, it can read only fixed-name `CelluloidMacPhotosExtension-*.ips`
+files directly in the runner's `~/Library/Logs/DiagnosticReports`. Diagnostics are
+outside the14-minute host step. A predecessor context step performs the existing
+budget-before-prepare/source-before/prepare calls in their original order after
+successful sandbox-child signature verification, then optionally binds UUIDs.
+Its separate outcome gates host launch without suppressing failed-preparation
+evidence collection. Crash capture runs in the evidence step after mandatory host,
+source and product work. Neither diagnostic changes captured host status or host
+acceptance.
+
+Ownership requires the exact executable path, main UUID and bundle ID, together
+with a capture/launch time within the actual testcase interval. The interval is
+reconstructed from the exact test start/terminal duration and explicit runner
+timezone, reconciled with the finalized summary and bounded xcodebuild interval.
+The source/context/test/verifier/collector and current product hashes are bound.
+The built debug dylib UUID is recorded even when absent from loaded images; its
+absence is diagnostic data rather than a reason to discard an early loader crash.
+If an owned loaded image exists, its path/UUID must agree.
+
+Apple documents privacy substitutions and shows `/Users/USER/` in macOS reports.
+Only the precise current runner username→`USER` substitution is permitted, with
+every later component exact and the other ownership checks still mandatory.
+Wildcard `*`, suffix-only matches, other placeholders and path normalization are
+rejected. Reported image paths are never opened. Symlinks, nonregular files and
+replacement during a bounded read reject.
+
+Caps are256 scanned directory entries,16 fixed-prefix candidates,4 matching
+incidents,512KiB per input/2MiB total reads,128 frames per retained trace,64 necessary
+images and96KiB total projected output. All matching incidents within these limits
+are retained. Overflow, duplicate incidents, malformed/nonfinite/duplicate-key
+JSON, unknown identity/time and truncated structures are explicit incomplete
+capture; no first/latest-incident choice or silent frame/image truncation occurs.
+
+The fixed projection retains exception/termination, exception reason, faulting
+and last-exception backtraces, their necessary image metadata and owned-image
+observations, bounded report notes, and application-specific `asi` messages.
+The latter allow at most8 modules,8 messages per module,128-byte module names,
+4096-byte messages and16KiB aggregate, still within the96KiB total. Strings are
+diagnostic data. Device/user identifiers, trial metadata, unrelated thread state,
+virtual-memory dumps and unrelated process reports are not projected.
+
+These files are optional diagnostics, reserved after required host proof and
+before optional screenshots inside the unchanged1MB artifact/one-day retention.
+Malformed or unbound diagnostics are explicitly omitted and cannot alter host
+acceptance. No raw IPS, xcresult, library or product is uploaded. Actual Photos
+invocation, editor transition, live executable and existing source/input checks
+remain mandatory; complete host lifecycle qualification remains open.
+
+Official format references:
+- [IPS JSON fields](https://developer.apple.com/documentation/xcode/interpreting-the-json-format-of-a-crash-report)
+- [Crash fields and macOS privacy placeholder example](https://developer.apple.com/documentation/xcode/examining-the-fields-in-a-crash-report?changes=_3)
+
+### Optional diagnostic time and pre-read admission
+
+The original41-minute monotonic job clock is shared with the mandatory host
+budget; its exact hash must still match the host-budget receipt. Immediately
+before an optional child starts, its limit is clipped to at most20 seconds of
+actual remaining time after reserving1020 seconds (unchanged720 host +300 evidence)
+before host launch, or300 evidence seconds after host. Another12 seconds remain
+reserved for owned process/pipe cleanup and receipt finalization. Less than one available second produces a bounded incomplete diagnostic
+without launching a child. The14-minute host step,720-second host command,
+660-second testcase,41-minute execution clock and45-minute job cap do not increase.
+No claim is made that the job reserve proves every mandatory maximum fits inside
+the separate host-step cap.
+
+The optional boundary starts one direct owned session and reads its combined
+stdout/stderr nonblocking, retaining at most8KiB while reading rather than checking
+an unbounded buffer afterward. The admitted absolute deadline includes spawn time
+and is never renewed. Completion requires actual pipe EOF and a bounded direct-child
+wait. The leader is not polled/reaped while descendants may retain its pipe, so
+TERM/KILL cleanup targets the still-owned group before its PID can be reused.
+Process/pipe cleanup has at most10 seconds, leaving two of the reserved12 seconds
+for receipt finalization. Timeout, output-cap pressure and unconfirmed pipe/process
+completion remain explicit failures. A printed END marker cannot establish this
+boundary. The mandatory host path and existing run_bounded helper are unchanged.
+
+The next capture child also requires finalized host-test/process evidence, the
+prior identity child's completion and completed mandatory product/source receipts.
+Unknown termination skips further diagnostic execution. Missing or insufficient
+spare time cannot reduce a mandatory allowance or become host proof.
+
+Aggregate IPS input allowance is admitted before opening/reading the next file:
+`safe_read` receives at most the smaller of512KiB and the remaining2MiB allowance;
+an exhausted allowance fails before the next read. Oversized next files fail at
+stat before any payload bytes are read. Rejected candidates consume the same read
+budget. A five-full-file adversary measures actual reads and proves they stop at
+2MiB rather than reading the fifth file and checking afterward.

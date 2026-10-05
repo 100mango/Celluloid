@@ -89,8 +89,9 @@ def collect_glyphs(temp,source):
     check(len(events)==2 and events[0][0]=='started' and events[1][0] in {'passed','failed'},'Missing/ambiguous glyph diagnostic testcase')
     check(all(events[0][1]<position<events[1][1] for position,_ in rows+contracts),'Glyph observation outside actual testcase')
     row=rows[0][1];contract=contracts[0][1]
-    keys={'schema','acceptance','text','sourcePNG_SHA256','actualCompositePNG_SHA256','actualTextRect','frameAllocationHeight','naturalBlockHeight','fontSize','lineHeight','backingScale','coreTextLines','oracleLines','images','isolatedMetrics','rasterExperiments','scope'}
-    check(type(row) is dict and set(row)==keys and row['schema']=='Celluloid.NativeGlyphObservation.3' and row['acceptance'] is False,'Unknown/accepted glyph observation')
+    keys={'schema','acceptance','text','sourcePNG_SHA256','actualCompositePNG_SHA256','actualTextRect','frameAllocationHeight','naturalBlockHeight','fontSize','lineHeight','backingScale','coreTextLines','oracleLines','images','isolatedMetrics','rasterExperiments','productionBackend','scope'}
+    check(type(row) is dict and set(row)==keys and row['schema']=='Celluloid.NativeGlyphObservation.4' and row['acceptance'] is False,'Unknown/accepted glyph observation')
+    check(row['productionBackend']=='NSLayoutManager.showCGGlyphs/CoreText-shaped-runs','Wrong production glyph backend')
     check(row['text']=='Hello, 世界 🎬' and row['sourcePNG_SHA256']==contract['sourcePNG_SHA256'] and row['actualCompositePNG_SHA256']==contract['actualPNG_SHA256'],'Glyph/composite image binding changed')
     check(contract['schema']=='Celluloid.NativeTextContract.1' and contract['case']=='manufactured-affine','Wrong native diagnostic contract')
     for key in ['sourcePNG_SHA256','actualCompositePNG_SHA256']:check(re.fullmatch('[0-9a-f]{64}',row[key]) is not None,'Invalid glyph image digest')
@@ -162,7 +163,8 @@ def collect_glyphs(temp,source):
         for key in ['againstProductionReplay','againstExactOracle']:
             value=experiment[key];check(type(value) is dict and set(value)==set(metrics),'Malformed raster comparison')
             for metric,n in value.items():check(type(n) is int and 0<=n<=(255 if metric.endswith('Maximum') else 56*88),'Invalid raster comparison')
-        if name=='frame-default':check(all(v==0 for v in experiment['againstProductionReplay'].values()),'Default frame replay differs from production helper')
+        # The retained CTFrame control is a historical backend comparison, not
+        # an equality assertion about the new AppKit glyph drawing primitive.
     validate_pngs(row)
     report={'source_sha':source,'log_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'acceptance':False,
         'case_result':events[1][0],'observation':row,'scope':'Bounded public glyph/baseline diagnostics only; neither test success nor rendering qualification follows from this record.'}

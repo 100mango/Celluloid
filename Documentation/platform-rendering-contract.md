@@ -172,3 +172,38 @@ Therefore the reflected case uses
 preserving the font size and identity while specifying the reflection; it does not
 assume that a separately assigned CGContext text matrix survives the draw call.
 All original production/oracle geometry, data, thresholds and resource caps remain.
+
+### CoreText-shaped AppKit raster candidate
+
+Run [37274931809](https://github.com/100mango/Celluloid/actions/runs/37274931809)
+kept the max-60 / 284-pixel final mismatch. Both invariant-coordinate controls
+preserved Latin/CJK pixels and worsened the emoji difference. No further fitted
+offset or flag sweep is used.
+
+The candidate uses the public `NSLayoutManager.showCGGlyphs` primitive with the
+original CoreText run glyphs, actual fallback font objects and glyph positions.
+It preserves fit, wrapping, ranges, shaping, blank-line layout, frame allocation,
+natural block height, intrinsic backing size and all layer transforms. Only the
+raster API and its algebraically equivalent flipped drawing space change. It
+never reshapes substrings or builds a second text layout. Each synchronous render
+owns its manager, arrays and graphics context; background layout is disabled,
+no text view is attached, and current-context/bitmap state is restored with defer.
+No main-thread hop or shared layout manager is introduced.
+
+`NativeGlyphObservation.4` explicitly binds this backend. The historical CTFrame
+control is retained as a measured comparison, so the earlier v2/v3 assertion that
+it equals production is retired. Diagnostics still cannot grant acceptance. The
+independent fixed-string/fixed-baseline AppKit oracle remains byte-identical, and
+the original ≤2 whole-image check plus four actual-path mutations still decide
+native qualification. Generic Unicode, bidi, fallback, ZWJ, blank-line and
+background-render invariants preserve the original shaped stream and test the
+new path's padding and context lifetime. Their source checks do not prove pixels.
+
+Native compilation and unchanged-oracle execution are still required. Photos
+layer output remains guarded and the final archive remains disabled. This raster
+candidate does not explain or fix the independently observed Photos extension
+process crash, and grants no host-entry or save/reopen/cancel/Revert claim.
+
+Public contracts: [glyph primitive](https://developer.apple.com/documentation/appkit/nslayoutmanager/showcgglyphs(_:positions:count:font:textmatrix:attributes:in:)),
+[CoreText run matrix](https://developer.apple.com/documentation/coretext/ctrungettextmatrix(_:)),
+[isolated secondary-thread layout managers](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/TextLayout/Concepts/LayoutManager.html).
