@@ -2,7 +2,7 @@
 """Bind exact combined app/test/project bytes and workflow to the admitted checkout."""
 from pathlib import Path
 import argparse, hashlib, json, os, subprocess
-from validation_route import current_route,HOST_ONLY,host_only_source_binding,UIKIT_FULL,UIKIT_FULL_BASE,UIKIT_FULL_DRIVER_PATHS,UIKIT_FULL_PREDECESSOR,UIKIT_FULL_REPAIR_PATHS,ORIGINAL_IOS,ORIGINAL_IOS_BASE,ORIGINAL_IOS_PATHS,ORIGINAL_IOS_PREDECESSOR,ORIGINAL_IOS_REPAIR_PATHS,ORIGINAL_IOS_QUALIFIED_PREDECESSOR,ORIGINAL_IOS_FIRST_SUMMARY_PATHS,ORIGINAL_IOS_ARCHIVE_PREDECESSOR,ORIGINAL_IOS_ARCHIVE_ONLY_PATHS
+from validation_route import current_route,HOST_ONLY,host_only_source_binding,UIKIT_FULL,UIKIT_FULL_BASE,UIKIT_FULL_DRIVER_PATHS,UIKIT_FULL_PREDECESSOR,UIKIT_FULL_REPAIR_PATHS,ORIGINAL_IOS,ORIGINAL_IOS_BASE,ORIGINAL_IOS_PATHS,ORIGINAL_IOS_PREDECESSOR,ORIGINAL_IOS_REPAIR_PATHS,ORIGINAL_IOS_QUALIFIED_PREDECESSOR,ORIGINAL_IOS_FIRST_SUMMARY_PATHS,ORIGINAL_IOS_ARCHIVE_PREDECESSOR,ORIGINAL_IOS_ARCHIVE_ONLY_PATHS,ORIGINAL_IOS_RESOURCE_PREDECESSOR,ORIGINAL_IOS_RESOURCE_PATHS
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
@@ -26,10 +26,14 @@ def main():
         from original_ios_source_contract import audit
         qualified=ORIGINAL_IOS_QUALIFIED_PREDECESSOR
         prior_archive=ORIGINAL_IOS_ARCHIVE_PREDECESSOR
-        assert git('rev-list','--parents','-n','1','HEAD').split()==[os.environ['GITHUB_SHA'],prior_archive['commit']], 'Unreviewed archive-only parent'
+        resource_prior=ORIGINAL_IOS_RESOURCE_PREDECESSOR
+        assert git('rev-list','--parents','-n','1','HEAD').split()==[os.environ['GITHUB_SHA'],resource_prior['commit']], 'Unreviewed observed-resource parent'
+        assert git('rev-list','--parents','-n','1',resource_prior['commit']).split()==[resource_prior['commit'],prior_archive['commit']], 'Changed exact archived predecessor parent'
+        assert git('rev-parse',resource_prior['commit']+'^{tree}')==resource_prior['tree'], 'Changed exact archived predecessor tree'
+        assert set(git('diff','--name-only',resource_prior['commit'],'HEAD').splitlines())==ORIGINAL_IOS_RESOURCE_PATHS, 'Unreviewed observed-resource delta'
         assert git('rev-list','--parents','-n','1',prior_archive['commit']).split()==[prior_archive['commit'],qualified['commit']], 'Changed exact completed-cohort parent'
         assert git('rev-parse',prior_archive['commit']+'^{tree}')==prior_archive['tree'], 'Changed exact completed-cohort tree'
-        assert set(git('diff','--name-only',prior_archive['commit'],'HEAD').splitlines())==ORIGINAL_IOS_ARCHIVE_ONLY_PATHS, 'Unreviewed archive-only delta'
+        assert set(git('diff','--name-only',prior_archive['commit'],resource_prior['commit']).splitlines())==ORIGINAL_IOS_ARCHIVE_ONLY_PATHS, 'Unreviewed archive-only delta'
         assert git('rev-list','--parents','-n','1',qualified['commit']).split()==[qualified['commit'],ORIGINAL_IOS_PREDECESSOR['commit']], 'Changed exact qualified predecessor parent'
         assert git('rev-parse',qualified['commit']+'^{tree}')==qualified['tree'], 'Changed exact qualified predecessor tree'
         assert set(git('diff','--name-only',qualified['commit'],prior_archive['commit']).splitlines())==ORIGINAL_IOS_FIRST_SUMMARY_PATHS, 'Unreviewed fixed first-summary/replay delta'

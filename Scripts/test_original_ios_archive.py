@@ -102,7 +102,7 @@ class Package:
         dump(self.path / archive.APP / 'zh-Hans.lproj/InfoPlist.strings', archive.source_usage_localization(self.root))
         for path in (archive.APP + '/Base.lproj/LaunchScreen.storyboardc', archive.EXT + '/Base.lproj/MainInterface.storyboardc'):
             put(self.path / path / 'compiled.nib', b'synthetic-storyboard')
-        for owner in (archive.APP, archive.EXT):
+        for owner in (archive.APP, archive.EXT, archive.SNAPKIT):
             dump(self.path / owner / 'SnapKit_SnapKit.bundle/Info.plist', {'CFBundleName': 'SnapKit_SnapKit', 'CFBundlePackageType': 'BNDL'})
             dump(self.path / owner / 'SnapKit_SnapKit.bundle/PrivacyInfo.xcprivacy', archive.PRIVACY)
         put(self.temp / archive.ROWS_FILE, archive.encoded(row_summary()))
@@ -137,7 +137,7 @@ class ArchiveTests(unittest.TestCase):
         self.assertFalse(result['uploaded'])
         self.assertFalse(result['application_privacy_manifest_present'])
         self.assertEqual({row['path'] for row in result['privacy_manifests']},
-                         {owner + '/SnapKit_SnapKit.bundle/PrivacyInfo.xcprivacy' for owner in (archive.APP, archive.EXT)})
+                         {path+'/PrivacyInfo.xcprivacy' for path in archive.RESOURCE_BUNDLES})
         self.assertEqual(result['row_replay_sha256'], archive.sha((self.package.temp / archive.ROWS_FILE).read_bytes()))
         self.assertEqual(result['inventory_sha256'], archive.sha(archive.encoded(result['files'])))
         self.assertLess(len(archive.encoded(result)), archive.BUDGETS['archive'])
@@ -214,18 +214,43 @@ class ArchiveTests(unittest.TestCase):
     def test_pinned_notice_resources_and_actual_privacy_are_required(self):
         for path in (archive.KIT + '/SnapKit-LICENSE.txt', archive.KIT + '/bubble.json', archive.APP + '/collage.json',
                      archive.APP + '/Assets.car', archive.APP + '/SnapKit_SnapKit.bundle/PrivacyInfo.xcprivacy',
-                     archive.EXT + '/SnapKit_SnapKit.bundle/PrivacyInfo.xcprivacy'):
+                     archive.EXT + '/SnapKit_SnapKit.bundle/PrivacyInfo.xcprivacy',
+                     archive.SNAPKIT + '/SnapKit_SnapKit.bundle/PrivacyInfo.xcprivacy'):
             with self.subTest(path=path), tempfile.TemporaryDirectory() as folder:
                 package = Package(Path(folder))
                 (package.path / path).unlink()
                 with self.assertRaises(ValueError):
                     package.verify()
-        for owner in (archive.APP, archive.EXT):
+        for owner in (archive.APP, archive.EXT, archive.SNAPKIT):
             with self.subTest(owner=owner), tempfile.TemporaryDirectory() as folder:
                 package = Package(Path(folder))
                 dump(package.path / owner / 'SnapKit_SnapKit.bundle/PrivacyInfo.xcprivacy', dict(archive.PRIVACY, NSPrivacyTracking=True))
                 with self.assertRaises(ValueError):
                     package.verify()
+
+    def test_exact_observed_third_resource_copy_is_data_only_and_byte_identical(self):
+        nested=archive.SNAPKIT+'/SnapKit_SnapKit.bundle'
+        result=self.package.verify()
+        privacy=result['privacy_manifests']
+        self.assertEqual({r['path'] for r in privacy},{p+'/PrivacyInfo.xcprivacy' for p in archive.RESOURCE_BUNDLES})
+        self.assertEqual(len(privacy),3);self.assertEqual(len({r['sha256'] for r in privacy}),1)
+        info=self.package.path/nested/'Info.plist';original=info.read_bytes()
+        dump(info,{'CFBundleName':'SnapKit_SnapKit','CFBundlePackageType':'BNDL','CFBundleExecutable':'hidden'})
+        with self.assertRaises(ValueError):self.package.verify()
+        info.write_bytes(original)
+        manifest=self.package.path/nested/'PrivacyInfo.xcprivacy';raw=manifest.read_bytes()
+        # Same plist values plus a changed encoding are still not an exact copy.
+        manifest.write_bytes(raw+b'\n')
+        with self.assertRaisesRegex(ValueError,'exact bytes'):self.package.verify()
+        manifest.write_bytes(raw)
+        put(self.package.path/nested/'hidden',struct.pack('<IIIIIIII',0xfeedfacf,0x100000c,0,6,1,8,0,0)+struct.pack('<II',0x1b,8))
+        with self.assertRaises(ValueError):self.package.verify()
+
+    def test_unobserved_snapkit_resource_locations_still_reject(self):
+        for location in [archive.KIT+'/SnapKit_SnapKit.bundle',archive.SNAPKIT+'/Other.bundle',archive.APP+'/Other.framework/SnapKit_SnapKit.bundle']:
+            with self.subTest(location=location),tempfile.TemporaryDirectory() as folder:
+                package=Package(Path(folder));dump(package.path/location/'PrivacyInfo.xcprivacy',archive.PRIVACY)
+                with self.assertRaises(ValueError):package.verify()
 
     def test_snapkit_exact_identity_and_original_versions_are_distinct(self):
         result = self.package.verify()

@@ -38,7 +38,7 @@ class OriginalIOSRouteTests(unittest.TestCase):
         self.assertIn('--fixed-archive-only-rows',archive)
         self.assertNotIn('needs:',archive);self.assertNotIn('workflow_dispatch',new)
         self.assertNotIn('exportArchive',archive);self.assertNotIn('cancel-in-progress: true',new)
-        self.assertEqual(new.count('fetch-depth: 5'),1)
+        self.assertEqual(new.count('fetch-depth: 6'),1)
         self.assertEqual({str(v['artifact_id']) for v in ARTIFACTS.values()},set(re.findall(r'artifact-ids: ([0-9]+)',archive)))
         self.assertEqual(archive.count('repository: 100mango/Celluloid'),6)
         self.assertEqual(archive.count('run-id: 37432040947'),4)
@@ -70,14 +70,17 @@ class OriginalIOSRouteTests(unittest.TestCase):
         contract=json.loads((ROOT/'Scripts/original-ios-source-contract.json').read_text())
         rows=contract['files'];self.assertEqual(len(rows),546)
         for name,digest in rows:self.assertEqual(hashlib.sha256((ROOT/name).read_bytes()).hexdigest(),digest)
-        env=environment();base=route.ORIGINAL_IOS_BASE['commit'];prior=route.ORIGINAL_IOS_PREDECESSOR['commit'];qualified=route.ORIGINAL_IOS_QUALIFIED_PREDECESSOR['commit'];completed=route.ORIGINAL_IOS_ARCHIVE_PREDECESSOR['commit'];head=env['GITHUB_SHA']
+        env=environment();base=route.ORIGINAL_IOS_BASE['commit'];prior=route.ORIGINAL_IOS_PREDECESSOR['commit'];qualified=route.ORIGINAL_IOS_QUALIFIED_PREDECESSOR['commit'];completed=route.ORIGINAL_IOS_ARCHIVE_PREDECESSOR['commit'];archived=route.ORIGINAL_IOS_RESOURCE_PREDECESSOR['commit'];head=env['GITHUB_SHA']
         replies={('rev-parse','HEAD'):head,('status','--porcelain','--untracked-files=all'):'',
             ('ls-files','-z','--',*contract['roots']):'\0'.join(name for name,_ in rows)+'\0',
             ('ls-files','--','.github/release-controller'):'',('ls-files','--','.github/workflows/cloud-release.yml'):'',
-            ('rev-parse','HEAD^{tree}'):'c'*40,('rev-list','--parents','-n','1','HEAD'):head+' '+completed,
+            ('rev-parse','HEAD^{tree}'):'c'*40,('rev-list','--parents','-n','1','HEAD'):head+' '+archived,
+            ('rev-list','--parents','-n','1',archived):archived+' '+completed,
+            ('rev-parse',archived+'^{tree}'):route.ORIGINAL_IOS_RESOURCE_PREDECESSOR['tree'],
+            ('diff','--name-only',archived,'HEAD'):'\n'.join(sorted(route.ORIGINAL_IOS_RESOURCE_PATHS)),
             ('rev-list','--parents','-n','1',completed):completed+' '+qualified,
             ('rev-parse',completed+'^{tree}'):route.ORIGINAL_IOS_ARCHIVE_PREDECESSOR['tree'],
-            ('diff','--name-only',completed,'HEAD'):'\n'.join(sorted(route.ORIGINAL_IOS_ARCHIVE_ONLY_PATHS)),
+            ('diff','--name-only',completed,archived):'\n'.join(sorted(route.ORIGINAL_IOS_ARCHIVE_ONLY_PATHS)),
             ('rev-list','--parents','-n','1',qualified):qualified+' '+prior,
             ('rev-parse',qualified+'^{tree}'):route.ORIGINAL_IOS_QUALIFIED_PREDECESSOR['tree'],
             ('diff','--name-only',qualified,completed):'\n'.join(sorted(route.ORIGINAL_IOS_FIRST_SUMMARY_PATHS)),
@@ -96,7 +99,7 @@ class OriginalIOSRouteTests(unittest.TestCase):
             self.assertTrue(result['original_ios_source']['original_features_preserved'])
             for key,value in [(('rev-list','--parents','-n','1','HEAD'),head+' '+'e'*40),(('rev-list','--parents','-n','1','HEAD'),head+' '+prior+' '+'e'*40),
                 (('rev-list','--parents','-n','1',prior),prior+' '+'e'*40),
-                (('rev-parse',prior+'^{tree}'),'e'*40),(('rev-parse',base+'^{tree}'),'e'*40),(('diff','--name-only',completed,'HEAD'),'\n'.join(sorted(route.ORIGINAL_IOS_ARCHIVE_ONLY_PATHS|{'CelluloidKit/Unexpected.swift'}))),(('rev-list','--parents','-n','1',completed),completed+' '+'e'*40),(('rev-parse',completed+'^{tree}'),'e'*40),(('rev-parse',qualified+'^{tree}'),'e'*40),(('rev-list','--parents','-n','1',qualified),qualified+' '+'e'*40)]:
+                (('rev-parse',prior+'^{tree}'),'e'*40),(('rev-parse',base+'^{tree}'),'e'*40),(('diff','--name-only',archived,'HEAD'),'\n'.join(sorted(route.ORIGINAL_IOS_RESOURCE_PATHS|{'CelluloidKit/Unexpected.swift'}))),(('rev-list','--parents','-n','1',archived),archived+' '+'e'*40),(('rev-parse',archived+'^{tree}'),'e'*40),(('rev-list','--parents','-n','1',completed),completed+' '+'e'*40),(('rev-parse',completed+'^{tree}'),'e'*40),(('rev-parse',qualified+'^{tree}'),'e'*40),(('rev-list','--parents','-n','1',qualified),qualified+' '+'e'*40)]:
                 previous=replies[key];replies[key]=value
                 with self.subTest(key=key),self.assertRaises(AssertionError):guard.main()
                 replies[key]=previous

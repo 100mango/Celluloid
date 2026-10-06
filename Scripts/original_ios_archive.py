@@ -39,7 +39,9 @@ INSTALL_NAMES = {KIT: '@rpath/CelluloidKit.framework/CelluloidKit',
                  SNAPKIT: '@rpath/' + SNAPKIT_NAME + '.framework/' + SNAPKIT_NAME}
 BUNDLED_DEPENDENCIES = {APP: {INSTALL_NAMES[KIT], INSTALL_NAMES[SNAPKIT]},
                         KIT: {INSTALL_NAMES[SNAPKIT]}, EXT: {INSTALL_NAMES[KIT]}, SNAPKIT: set()}
-RESOURCE_BUNDLES = {APP + '/SnapKit_SnapKit.bundle', EXT + '/SnapKit_SnapKit.bundle'}
+# Actual797 device archive copies the same pinned SwiftPM resource to these three locations.
+RESOURCE_BUNDLES = {APP + '/SnapKit_SnapKit.bundle', EXT + '/SnapKit_SnapKit.bundle',
+                    SNAPKIT + '/SnapKit_SnapKit.bundle'}
 PRIVACY = {'NSPrivacyTracking': False, 'NSPrivacyAccessedAPITypes': [],
            'NSPrivacyCollectedDataTypes': [], 'NSPrivacyTrackingDomains': []}
 NOTICE_HASH = '7c0d21cf5314759fd35a22e42a52099d9cad2570db55a78e4eda26c82493b96b'
@@ -515,6 +517,7 @@ def verify_package(root, temp, context, clock, source):
             privacy.append({'path': path, 'sha256': row['sha256'], 'declarations': declaration})
     present_resources = RESOURCE_BUNDLES & directories
     need(present_resources == RESOURCE_BUNDLES and len(privacy) == len(RESOURCE_BUNDLES), 'Missing pinned SnapKit privacy resource')
+    need(len({item['sha256'] for item in privacy}) == 1, 'SnapKit privacy resource copies differ in exact bytes')
     resolved = load_json(read(Path(root) / 'Celluloid.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved'))
     need(resolved == {'pins': [{'identity': 'snapkit', 'kind': 'remoteSourceControl', 'location': 'https://github.com/SnapKit/SnapKit.git',
                               'state': {'revision': SNAPKIT_REVISION, 'version': '5.7.1'}}], 'version': 2}, 'SnapKit source pin changed')

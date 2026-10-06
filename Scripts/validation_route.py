@@ -17,6 +17,8 @@ ORIGINAL_IOS_BASE={'commit':'4c0c6cb3314cd89e41fc9cfc67b833aca7de7d56','tree':'6
 ORIGINAL_IOS_PREDECESSOR={'commit':'588fa917cbe62e60c6b3502d47aae70b1db3ff55','tree':'2f410ba817e274a2236513b37b3917ad6420fbc1'}
 ORIGINAL_IOS_QUALIFIED_PREDECESSOR={'commit':'04d18a496b019f54706ff42128605cda1d7dea83','tree':'ea20b3393c2ec6f65bc19b4a7a523ce59de6003d'}
 ORIGINAL_IOS_ARCHIVE_PREDECESSOR={'commit':'da9d4abd6484ddaff469677d96caf24362645d7c','tree':'304ee9c0e4197e4a282ae3933c9f510219b2106d'}
+ORIGINAL_IOS_RESOURCE_PREDECESSOR={'commit':'797271810613773ec4a9bc016ea5ad2e6f7cdfa8','tree':'66176a4238492ce027d4748d3586c8a5227cce34'}
+ORIGINAL_IOS_RESOURCE_PATHS={'.github/workflows/original-ios-release.yml','Scripts/original_ios_archive.py','Scripts/test_original_ios_archive.py','Scripts/test_original_ios_route.py','Scripts/validation_route.py','Scripts/verify_combined_source.py'}
 ORIGINAL_IOS_ARCHIVE_ONLY_PATHS={
     '.github/workflows/original-ios-release.yml',
     'Documentation/original-ios-release.md',
