@@ -398,6 +398,16 @@ final class CelluloidUITests: XCTestCase {
     }
 
     private func emitScreenshot(_ name: String) {
+        if ProcessInfo.processInfo.environment["CELLULOID_STORE_CAPTURE"] == "1" {
+            guard ["edited-fixture", "collage-preview"].contains(name),
+                  UIScreen.main.traitCollection.userInterfaceStyle == .dark else { return }
+            let png = app.screenshot().pngRepresentation
+            let attachment = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
+            attachment.name = "celluloid-store-" + name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            return
+        }
         // Two bounded screenshots per CI job, from the iPhone run and synthetic data only.
         guard UIDevice.current.userInterfaceIdiom == .phone,
               UIScreen.main.bounds.width < 400,

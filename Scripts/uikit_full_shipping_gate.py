@@ -20,6 +20,7 @@ from consumer_runtime_binding import MODEL_SCALES, validate as validate_runtime,
 from platform_rendering_contract import require
 from mac_host_transport import load_json
 from original_ios_process_guard import GuardRefusal
+from validation_route import STORE_SCREENSHOTS, validate_route
 
 ROOT = Path(__file__).resolve().parents[1]
 # Exact public parent a940bcdf8a92811210bcfacf84141dceb6c3fcd3. The bound
@@ -309,6 +310,9 @@ def expected_prerequisites(row):
 
 
 def validate_context(context):
+    if type(context) is dict and 'validation_route' in context:
+        from original_ios_process_guard import validate_context as validate_guard_context
+        return validate_guard_context(context)
     require(type(context) is dict and set(context) == {'source_sha', 'run_id', 'run_attempt', 'row'},
             'Malformed UIKit execution identity')
     require(type(context['source_sha']) is str and re.fullmatch(r'[0-9a-f]{40}', context['source_sha']) is not None,
@@ -320,6 +324,16 @@ def validate_context(context):
     return dict(context)
 
 
+def _admit_row_phase(context, phase):
+    row = context['row']
+    test_names = {name for key in ROWS for name in expected_phases(key)}
+    # These labels are accounting keys, not model claims. Store capture's
+    # separate runner binds its actual devices and two unchanged UI methods.
+    allowed = {'bootstrap-readiness', 'bootstrap-reconcile', 'ui'} if context.get('validation_route') == STORE_SCREENSHOTS else set(expected_phases(row))
+    require(phase not in test_names or phase in allowed, 'Command phase belongs to another UIKit row')
+    require(phase != 'release-build' or row == 'compact-phone', 'Release compile belongs only to compact-phone')
+
+
 def clock_status(clock, context, now_monotonic=None, now_unix=None):
     context = validate_context(context)
     keys = {'schema', *context, 'started_monotonic', 'started_unix', 'execution_budget_seconds'}
@@ -327,6 +341,8 @@ def clock_status(clock, context, now_monotonic=None, now_unix=None):
             'Malformed first-step UIKit clock')
     require(all(clock[key] == value and type(clock[key]) is type(value) for key, value in context.items()),
             'First-step UIKit clock execution identity differs')
+    if 'validation_route' in context:
+        require(validate_route(clock['validation_route']) == STORE_SCREENSHOTS, 'Wrong capture clock route')
     require(type(clock['execution_budget_seconds']) is int and clock['execution_budget_seconds'] == EXECUTION_SECONDS,
             'Changed original UIKit execution clock')
     now_monotonic = time.monotonic() if now_monotonic is None else now_monotonic
@@ -346,15 +362,15 @@ def clock_status(clock, context, now_monotonic=None, now_unix=None):
 
 
 def admit_phase(clock, context, phase, now_monotonic=None, now_unix=None):
+    context = validate_context(context)
     status = clock_status(clock, context, now_monotonic, now_unix)
     require(type(phase) is str and phase in set(WORK_CEILINGS) | set(TAIL_PHASES), 'Unknown fixed UIKit command phase')
     if phase not in {'source-before','source-after','collection','upload'}:
         from original_ios_process_guard import ensure_native_dispatch
-        ensure_native_dispatch()
-    row = context['row']
-    test_names = {name for key in ROWS for name in expected_phases(key)}
-    require(phase not in test_names or phase in expected_phases(row), 'Command phase belongs to another UIKit row')
-    require(phase != 'release-build' or row == 'compact-phone', 'Release compile belongs only to compact-phone')
+        staged = ensure_native_dispatch()
+        if context.get('validation_route') == STORE_SCREENSHOTS or (staged or {}).get('validation_route') == STORE_SCREENSHOTS:
+            require(staged == context, 'Capture clock differs from actual source/run/row route')
+    _admit_row_phase(context, phase)
     ceiling, deadline = TAIL_PHASES.get(phase, (WORK_CEILINGS.get(phase), WORK_SECONDS))
     seconds = min(ceiling, math.floor(deadline - status['elapsed_seconds']))
     require(seconds > 0, 'No remaining allocation for fixed UIKit phase: ' + phase)
@@ -362,16 +378,13 @@ def admit_phase(clock, context, phase, now_monotonic=None, now_unix=None):
 
 
 def check_completion(clock, context, phase=None, now_monotonic=None, now_unix=None):
+    context = validate_context(context)
     status = clock_status(clock, context, now_monotonic, now_unix)
     deadline = EXECUTION_SECONDS
     if phase is not None:
         require(type(phase) is str and phase in set(WORK_CEILINGS) | set(TAIL_PHASES),
                 'Unknown fixed UIKit completion phase')
-        test_names = {name for key in ROWS for name in expected_phases(key)}
-        require(phase not in test_names or phase in expected_phases(context['row']),
-                'Completion phase belongs to another UIKit row')
-        require(phase != 'release-build' or context['row'] == 'compact-phone',
-                'Release compile belongs only to compact-phone')
+        _admit_row_phase(context, phase)
         deadline = TAIL_PHASES[phase][1] if phase in TAIL_PHASES else WORK_SECONDS
     require(status['elapsed_seconds'] <= deadline, 'Late UIKit phase completion: ' + str(phase))
     return dict(status, completion_phase=phase, completion_deadline_seconds=deadline)
@@ -415,6 +428,7 @@ def _read_file(root, name, maximum):
 def verify_manifest(manifest, evidence_root, context, clock, source_root=ROOT,
                     now_monotonic=None, now_unix=None):
     context = validate_context(context)
+    require('validation_route' not in context, 'Store capture cannot qualify original UIKit execution')
     if os.environ.get('CELLULOID_VALIDATION_SCOPE') == 'original-ios-release':
         from original_ios_process_guard import require_clear
         require_clear(evidence_root, context)
@@ -482,6 +496,11 @@ def main(argv=None):
         return
     context = {'source_sha': os.environ.get('GITHUB_SHA'), 'run_id': os.environ.get('GITHUB_RUN_ID'),
                'run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'), 'row': args.row}
+    if os.environ.get('CELLULOID_VALIDATION_SCOPE') == STORE_SCREENSHOTS['scope']:
+        from original_ios_process_guard import staged_context
+        staged = staged_context()
+        require(staged is not None and staged['row'] == args.row, 'Capture CLI row differs from actual route')
+        context = staged
     report = None
     try:
         clock = load_json(_read_file(args.clock.parent, args.clock.name, 10_000))

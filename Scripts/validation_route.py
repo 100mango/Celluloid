@@ -13,6 +13,7 @@ UIKIT_FULL_DRIVER_PATHS={'.github/workflows/uikit-full-shipping.yml','Scripts/va
 
 
 ORIGINAL_IOS={'scope':'original-ios-release','branch':'codex/original-ios-release','workflow_path':'.github/workflows/original-ios-release.yml','diagnostic_only':True}
+STORE_SCREENSHOTS={'scope':'store-screenshots','branch':'codex/store-screenshots','workflow_path':'.github/workflows/store-screenshots.yml','diagnostic_only':True}
 ORIGINAL_IOS_BASE={'commit':'4c0c6cb3314cd89e41fc9cfc67b833aca7de7d56','tree':'67ee79704e23936ba451173ce8aa68614b1ec1da'}
 ORIGINAL_IOS_PREDECESSOR={'commit':'588fa917cbe62e60c6b3502d47aae70b1db3ff55','tree':'2f410ba817e274a2236513b37b3917ad6420fbc1'}
 ORIGINAL_IOS_QUALIFIED_PREDECESSOR={'commit':'04d18a496b019f54706ff42128605cda1d7dea83','tree':'ea20b3393c2ec6f65bc19b4a7a523ce59de6003d'}
@@ -120,7 +121,7 @@ def require(ok,message):
 
 def validate_route(value):
     require(type(value) is dict and set(value)==set(FULL) and type(value.get('diagnostic_only')) is bool,'Malformed validation route')
-    require(value==FULL or value==FOCUSED or value==HOST_ONLY or value==UIKIT_FULL or value==ORIGINAL_IOS,'Unknown validation route')
+    require(value==FULL or value==FOCUSED or value==HOST_ONLY or value==UIKIT_FULL or value==ORIGINAL_IOS or value==STORE_SCREENSHOTS,'Unknown validation route')
     return dict(value)
 
 def current_route(environment=None):
@@ -129,7 +130,7 @@ def current_route(environment=None):
     if ref=='refs/heads/'+FULL['branch']:
         # Preserve canonical admission; a caller flag cannot relabel this branch.
         return dict(FULL)
-    selected=next((value for value in (FOCUSED,HOST_ONLY,UIKIT_FULL,ORIGINAL_IOS) if ref=='refs/heads/'+value['branch']),None)
+    selected=next((value for value in (FOCUSED,HOST_ONLY,UIKIT_FULL,ORIGINAL_IOS,STORE_SCREENSHOTS) if ref=='refs/heads/'+value['branch']),None)
     require(selected is not None,'Unreviewed validation branch')
     require(env.get('GITHUB_REPOSITORY')==REPOSITORY and env.get('GITHUB_EVENT_NAME')=='push','Wrong focused repository/event')
     require(env.get('CELLULOID_VALIDATION_SCOPE')==selected['scope'],'Missing focused diagnostic scope')

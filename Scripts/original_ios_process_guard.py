@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail closed after uncertain owned work in the four original-iOS rows.
+"""Fail closed after uncertain owned work in original-iOS or Store capture rows.
 
 These fixed, bounded files are process evidence, not a scheduler. A reservation
 survives helper death; only a normally finalized child clears it. Failure evidence
@@ -17,12 +17,13 @@ import tempfile
 import time
 import uuid
 
-from validation_route import ORIGINAL_IOS, current_route
+from validation_route import ORIGINAL_IOS, STORE_SCREENSHOTS, current_route, validate_route
 
 MARKER_NAME = 'original-ios-process-failure.json'
 INFLIGHT_NAME = 'original-ios-process-inflight.json'
 MAX_MARKER_BYTES = 8192
 ROWS = {'compact-phone', 'large-phone', 'small-ipad', 'large-ipad'}
+STORE_ROWS = {'large-phone', 'large-ipad'}
 SCHEMA = 'Celluloid.OriginalIOSProcessFailure.1'
 INFLIGHT_SCHEMA = 'Celluloid.OriginalIOSProcessInflight.1'
 CONTEXT_KEYS = {'source_sha', 'run_id', 'run_attempt', 'row'}
@@ -38,12 +39,24 @@ def need(condition, message):
 
 
 def validate_context(context):
-    need(type(context) is dict and set(context) == CONTEXT_KEYS, 'Malformed process guard context')
+    need(type(context) is dict and set(context) in (CONTEXT_KEYS, CONTEXT_KEYS | {'validation_route'}),
+         'Malformed process guard context')
+    capture = 'validation_route' in context
+    if capture:
+        try:
+            need(validate_route(context['validation_route']) == STORE_SCREENSHOTS, 'Wrong capture process guard route')
+        except ValueError as error:
+            raise GuardRefusal(str(error)) from error
     for key, pattern in [('source_sha', '[0-9a-f]{40}'), ('run_id', '[1-9][0-9]*'), ('run_attempt', '[1-9][0-9]*')]:
         need(type(context[key]) is str and re.fullmatch(pattern, context[key]) is not None,
              'Malformed process guard ' + key)
-    need(type(context['row']) is str and context['row'] in ROWS, 'Unknown process guard row')
-    return dict(context)
+    need(type(context['row']) is str and context['row'] in (STORE_ROWS if capture else ROWS), 'Unknown process guard row')
+    return dict(context, validation_route=dict(STORE_SCREENSHOTS)) if capture else dict(context)
+
+
+def context_route(context):
+    """Offline receipt replay uses its explicit route, never the current job's."""
+    return dict(validate_context(context).get('validation_route', ORIGINAL_IOS))
 
 
 def staged_context(environment=None):
@@ -52,14 +65,19 @@ def staged_context(environment=None):
     # on a row requires the complete route; mismatches cannot disable the guard.
     if 'CELLULOID_FULL_ROW' not in env:
         return None
-    if (env.get('GITHUB_REF') != 'refs/heads/' + ORIGINAL_IOS['branch']
-            and env.get('CELLULOID_VALIDATION_SCOPE') != ORIGINAL_IOS['scope']):
+    guarded_routes = (ORIGINAL_IOS, STORE_SCREENSHOTS)
+    if not any(env.get('GITHUB_REF') == 'refs/heads/' + route['branch']
+               or env.get('CELLULOID_VALIDATION_SCOPE') == route['scope'] for route in guarded_routes):
         return None
     try:
-        need(current_route(env) == ORIGINAL_IOS, 'Wrong process guard route')
-        return validate_context({key: env.get(name) for key, name in [
+        route = current_route(env)
+        need(route in guarded_routes, 'Wrong process guard route')
+        context = {key: env.get(name) for key, name in [
             ('source_sha', 'GITHUB_SHA'), ('run_id', 'GITHUB_RUN_ID'),
-            ('run_attempt', 'GITHUB_RUN_ATTEMPT'), ('row', 'CELLULOID_FULL_ROW')]})
+            ('run_attempt', 'GITHUB_RUN_ATTEMPT'), ('row', 'CELLULOID_FULL_ROW')]}
+        if route == STORE_SCREENSHOTS:
+            context['validation_route'] = route
+        return validate_context(context)
     except ValueError as error:
         raise GuardRefusal(str(error)) from error
 
@@ -128,9 +146,10 @@ def error_record(error):
 
 
 def _validate_common(value, context):
-    need(type(value) is dict and all(type(value.get(k)) is str and value[k] == v for k, v in validate_context(context).items()),
+    context = validate_context(context)
+    need(type(value) is dict and all(type(value.get(k)) is str and value[k] == context[k] for k in CONTEXT_KEYS),
          'Stale or mismatched process receipt binding')
-    need(value.get('validation_route') == ORIGINAL_IOS and type(value.get('validation_route')) is dict
+    need(value.get('validation_route') == context_route(context) and type(value.get('validation_route')) is dict
          and type(value['validation_route'].get('diagnostic_only')) is bool, 'Wrong process receipt route')
     need(type(value.get('receipt_id')) is str and re.fullmatch('[0-9a-f]{32}', value['receipt_id']) is not None,
          'Malformed process receipt identity')
@@ -243,7 +262,7 @@ class OwnedCommand:
         if self.context is None:
             return
         need(_number(timeout), 'Invalid owned command timeout')
-        self.receipt = {'schema': INFLIGHT_SCHEMA, 'validation_route': dict(ORIGINAL_IOS), **self.context,
+        self.receipt = {'schema': INFLIGHT_SCHEMA, 'validation_route': context_route(self.context), **self.context,
                         'receipt_id': uuid.uuid4().hex, 'command': str(command)[:160], 'label': str(label)[:160],
                         'timeout_seconds': timeout, 'owner_pid': os.getpid(), 'child_pid': None, 'child_pgid': None,
                         'recorded_utc': datetime.now(timezone.utc).isoformat(), 'state': 'reserved'}

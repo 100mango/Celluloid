@@ -11,29 +11,41 @@ errors = []
 evidence_root = pathlib.Path(os.environ.get('RUNNER_TEMP', '.build/bootstrap-evidence'))
 evidence_root.mkdir(parents=True, exist_ok=True)
 
-# Only the fixed full-shipping route uses this already-owned command adapter.
+# Only the fixed shipping and Store capture routes use this owned adapter.
 # Canonical invocations retain their original helper and command ceilings.
-full_row = os.environ.get('CELLULOID_VALIDATION_SCOPE') in {'uikit-full-shipping','original-ios-release'}
+full_row = os.environ.get('CELLULOID_VALIDATION_SCOPE') in {'uikit-full-shipping','original-ios-release','store-screenshots'}
 
 def row_clock():
-    from validation_route import current_route,UIKIT_FULL,ORIGINAL_IOS
+    from validation_route import current_route,UIKIT_FULL,ORIGINAL_IOS,STORE_SCREENSHOTS
     from mac_host_transport import load_json
     from uikit_full_shipping_gate import clock_status
-    if current_route() not in [UIKIT_FULL,ORIGINAL_IOS]:raise ValueError('Wrong full-shipping bootstrap route')
+    route=current_route()
+    if route not in [UIKIT_FULL,ORIGINAL_IOS,STORE_SCREENSHOTS]:raise ValueError('Wrong full-shipping bootstrap route')
     path=evidence_root/'full-shipping-clock.json'
     if path.is_symlink() or not path.is_file() or not 0<path.stat().st_size<=10_000:raise ValueError('Invalid fixed row clock')
     clock=load_json(path.read_bytes())
     context={'source_sha':os.environ['GITHUB_SHA'],'run_id':os.environ['GITHUB_RUN_ID'],
              'run_attempt':os.environ['GITHUB_RUN_ATTEMPT'],'row':os.environ['CELLULOID_FULL_ROW']}
+    if route == STORE_SCREENSHOTS:
+        from original_ios_process_guard import staged_context
+        context=staged_context()
     return clock,context,clock_status(clock,context)
 
 def require_inner_allowance(seconds):
     from original_ios_process_guard import ensure_native_dispatch
     ensure_native_dispatch()
     if not full_row:return
-    _,_,status=row_clock()
-    if status['work_remaining_seconds'] < seconds+15:
+    from validation_route import STORE_SCREENSHOTS
+    _,context,status=row_clock()
+    reserve=20 if context.get('validation_route')==STORE_SCREENSHOTS else 15
+    if status['work_remaining_seconds'] < seconds+reserve:
         raise TimeoutError('Full original bootstrap command and cleanup allowance do not fit; no dispatch')
+
+def capture_options():
+    if os.environ.get('CELLULOID_VALIDATION_SCOPE')!='store-screenshots':return {}
+    from uikit_full_shipping_gate import WORK_SECONDS
+    clock,_,_=row_clock()
+    return {'capture_deadline':clock['started_monotonic']+WORK_SECONDS}
 
 def check_inner_completion():
     if not full_row:return
@@ -47,7 +59,7 @@ def run(label, seconds, *args):
         from native_process import run as owned_run
         require_inner_allowance(seconds)
         try:
-            result=owned_run(args,timeout=seconds,check=False,echo=False,log_name='bootstrap-'+label+'.log')
+            result=owned_run(args,timeout=seconds,check=False,echo=False,log_name='bootstrap-'+label+'.log',**capture_options())
         except (TimeoutError,RuntimeError,OSError):
             path=evidence_root/('bootstrap-'+label+'.log')
             if path.is_file() and not path.is_symlink() and path.stat().st_size<=30_000_000:
@@ -67,7 +79,7 @@ def host_command(command):
     from original_ios_process_guard import active,require_clear
     if active():
         from native_process import run as owned_run
-        value=owned_run(command,timeout=15,check=False,echo=False)
+        value=owned_run(command,timeout=15,check=False,echo=False,**capture_options())
         require_clear() # Signal termination cannot be treated as ordinary nonzero.
         return value
     return subprocess.run(command,capture_output=True,text=True,timeout=15)

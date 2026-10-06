@@ -1,17 +1,57 @@
 #!/usr/bin/env python3
 """Bounded commands in disposable native validation VMs; preserve the original failure."""
-import os,signal,subprocess,sys,time,json,re
+import os,signal,subprocess,sys,time,json,re,math
 from datetime import datetime
 from pathlib import Path
 from original_ios_process_guard import OwnedCommand, active
 
-def run(args,timeout=180,check=True,log_name=None,echo=True):
+def _capture_admission(timeout, enclosing_deadline, previous=None):
+    """Bind a fixed capture phase to its actual row clock; never start a clock."""
+    from original_ios_process_guard import staged_context, need
+    from uikit_full_shipping_gate import clock_status, WORK_SECONDS, TAIL_PHASES, _read_file
+    from mac_host_transport import load_json
+    from validation_route import STORE_SCREENSHOTS
+    need(type(timeout) in (int,float) and math.isfinite(timeout) and timeout>0,
+         'Invalid capture command allowance')
+    need(type(enclosing_deadline) in (int,float) and math.isfinite(enclosing_deadline) and enclosing_deadline>0,
+         'Invalid capture enclosing deadline')
+    context=staged_context()
+    need(context is not None and context.get('validation_route')==STORE_SCREENSHOTS,
+         'Capture deadline requires the actual Store capture route')
+    root=Path(os.environ['RUNNER_TEMP'])
+    need(root.is_dir() and not root.is_symlink(),'Invalid capture evidence root')
+    clock=load_json(_read_file(root,'full-shipping-clock.json',10_000))
+    clock_status(clock,context)
+    deadlines={clock['started_monotonic']+seconds for seconds in {WORK_SECONDS,*[value[1] for value in TAIL_PHASES.values()]}}
+    need(enclosing_deadline in deadlines,'Capture enclosing deadline is outside fixed source-bound phases')
+    binding=(context,clock,str(root.resolve()))
+    need(previous is None or binding==previous,'Capture deadline source/run/row/clock binding changed before dispatch')
+    now=time.monotonic()
+    if now+timeout+15+5>enclosing_deadline:
+        raise TimeoutError('Capture command allowance plus cleanup/finalization does not fit; no dispatch')
+    return binding,now
+
+
+def run(args,timeout=180,check=True,log_name=None,echo=True,*,capture_deadline=None):
     args=list(map(str,args))
+    capture_binding=None
+    if capture_deadline is not None:
+        capture_binding,_=_capture_admission(timeout,capture_deadline)
     owner=OwnedCommand(args[0],log_name or args[0],timeout)
     print('+ '+' '.join(args),flush=True)
     started=datetime.now().astimezone(); monotonic=time.monotonic()
     deadline=monotonic+timeout
+    cleanup_deadline=None
     try:
+        if capture_binding is not None:
+            from original_ios_process_guard import need
+            need(owner.enabled and owner.context==capture_binding[0],'Capture process owner differs from admitted route')
+            _,admitted=_capture_admission(timeout,capture_deadline,capture_binding)
+            # Ownership setup is already charged to the enclosing phase. The
+            # actual spawn and every following operation consume these fixed
+            # deadlines; no post-Popen reset grants fresh command time.
+            deadline=admitted+timeout
+            cleanup_deadline=min(deadline+15,capture_deadline-5)
         process=subprocess.Popen(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,start_new_session=True)
         owner.started(process)
     except BaseException as original:
@@ -43,6 +83,9 @@ def run(args,timeout=180,check=True,log_name=None,echo=True):
             else:
                 for sig,seconds in [(signal.SIGTERM,10),(signal.SIGKILL,5)]:
                     name=signal.Signals(sig).name
+                    if cleanup_deadline is not None and time.monotonic()>=cleanup_deadline:
+                        owner.cleanup_result('bounded_cleanup_expired')
+                        break
                     try:
                         os.killpg(process.pid,sig)
                         owner.cleanup_result('unconfirmed',signal_name=name,outcome='sent')
@@ -54,6 +97,11 @@ def run(args,timeout=180,check=True,log_name=None,echo=True):
                                              outcome='denied' if denied else 'error',error=error)
                         cleanup.append(f'own process-group {name} {"denied" if denied else "failed"}: {error}; termination unconfirmed')
                         break  # No other signal, wait, retry, or route after denial.
+                    if cleanup_deadline is not None:
+                        seconds=min(seconds,cleanup_deadline-time.monotonic())
+                        if seconds<=0:
+                            owner.cleanup_result('bounded_cleanup_expired')
+                            break
                     try:
                         stdout,stderr=process.communicate(timeout=seconds)
                     except subprocess.TimeoutExpired as remaining:
@@ -90,6 +138,11 @@ def run(args,timeout=180,check=True,log_name=None,echo=True):
         timing={'command':args[0],'started':started.isoformat(),'finished':finished.isoformat(),
                 'elapsed_seconds':round(time.monotonic()-monotonic,3),'timeout_seconds':timeout,
                 'timed_out':timed_out,'return_code':process.returncode,'runner_timezone':str(started.tzinfo)}
+        if capture_binding is not None:
+            timing.update(capture_enclosing_deadline_monotonic=capture_deadline,
+                          capture_command_deadline_monotonic=deadline,
+                          capture_cleanup_deadline_monotonic=cleanup_deadline,
+                          capture_finalization_seconds=5)
         suites=re.findall(r"Test Suite 'All tests' (started|passed|failed) at ([0-9-]+ [0-9:.]+)\.",stdout)
         timing['xctest_suite_events']=[{'event':kind,'local_timestamp':value} for kind,value in suites[:20]]
         try:

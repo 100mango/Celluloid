@@ -1,0 +1,62 @@
+name: Original iOS Store screenshot candidates
+on:
+  push:
+    branches:
+    - codex/store-screenshots
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-store-screenshots
+  cancel-in-progress: false
+env:
+  CELLULOID_VALIDATION_SCOPE: store-screenshots
+jobs:
+  capture:
+    name: Serial iPhone 17 Pro and 13-inch iPad original PNG capture
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+    steps:
+    - name: Start one shared capture clock before checkout
+      shell: bash
+      run: |
+        python3 - <<'PYCLOCK'
+        import json, os, time
+        from pathlib import Path
+        Path(os.environ['RUNNER_TEMP'], 'store-capture-clock.json').write_text(json.dumps({
+          'schema': 'Celluloid.StoreCaptureClock.1', 'source_sha': os.environ['GITHUB_SHA'],
+          'run_id': os.environ['GITHUB_RUN_ID'], 'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+          'started_monotonic': time.monotonic(), 'started_unix': time.time(),
+          'execution_budget_seconds': 3360}) + '\n')
+        PYCLOCK
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 2
+      with:
+        persist-credentials: false
+        ref: ${{ github.sha }}
+        fetch-depth: 2
+    - name: Capture only the two existing UI cases after their original setup
+      id: capture
+      timeout-minutes: 52
+      shell: bash
+      run: python3 -u Scripts/store_screenshots.py run
+    - name: Admit bounded file-only evidence upload
+      id: upload_admission
+      if: always()
+      timeout-minutes: 1
+      shell: bash
+      run: |
+        if [[ "${{ steps.capture.outcome }}" != success ]]; then
+          python3 Scripts/store_screenshots.py retain-failure
+        fi
+        python3 Scripts/store_screenshots.py upload-admission
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: ${{ always() && steps.upload_admission.conclusion == 'success' }}
+      timeout-minutes: 1
+      with:
+        name: store-screenshot-candidates-${{ github.sha }}
+        path: ${{ runner.temp }}/store-capture-evidence/
+        if-no-files-found: error
+        retention-days: 1
+        compression-level: 0
