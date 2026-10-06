@@ -32,15 +32,9 @@ def file(path,typ=None):
   add(key,'PBXFileReference',lastKnownFileType=typ,path=path,sourceTree='<group>');children.append(i)
  return i
 package=add('snapkit','XCRemoteSwiftPackageReference',repositoryURL='https://github.com/SnapKit/SnapKit.git',requirement={'kind':'exactVersion','version':'5.7.1'})
-local_packages={name:add('native-package:'+name,'XCLocalSwiftPackageReference',relativePath='Packages/'+name) for name in ['CelluloidCore','CelluloidRendering']}
-# Reference the one canonical native Watch target; never duplicate its definition.
-native_project=file('CelluloidNative.xcodeproj','wrapper.pb-project')
-def native_uid(key):return hashlib.sha1(('celluloid-native:'+key).encode()).hexdigest()[:24].upper()
-watch_product_proxy=add('watch-product-proxy','PBXContainerItemProxy',containerPortal=native_project,proxyType='2',remoteGlobalIDString=native_uid('product:CelluloidWatch'),remoteInfo='CelluloidWatch')
-watch_product=add('watch-product-reference','PBXReferenceProxy',fileType='wrapper.application',path='CelluloidWatch.app',remoteRef=watch_product_proxy,sourceTree='BUILT_PRODUCTS_DIR')
-native_products=add('native-products','PBXGroup',name='Products',children=[watch_product],sourceTree='<group>')
-watch_target_proxy=add('watch-target-proxy','PBXContainerItemProxy',containerPortal=native_project,proxyType='1',remoteGlobalIDString=native_uid('target:CelluloidWatch'),remoteInfo='CelluloidWatch')
-names=['CelluloidKit','CelluloidPhotoExtension','Celluloid','CelluloidTests','CelluloidUITests','CelluloidCompanionTests','CelluloidCompanionUITests']
+# This staged iPhone/iPad project retains the original app, framework and Photos extension.
+# New Watch and standalone companion development remain in CelluloidNative.xcodeproj.
+names=['CelluloidKit','CelluloidPhotoExtension','Celluloid','CelluloidTests','CelluloidUITests']
 products={};targetids={n:uid('target:'+n) for n in names}
 for n in names:
  ext='framework' if n=='CelluloidKit' else ('appex' if n=='CelluloidPhotoExtension' else 'app' if n=='Celluloid' else 'xctest')
@@ -48,9 +42,6 @@ for n in names:
 for n in names:
  source=[];resource=[];framework=[];headers=[];phases=[];deps=[];packages=[]
  paths=list((ROOT/n).rglob('*'))
- if n=='Celluloid':paths.extend((ROOT/'Platforms/Companion').glob('*.swift'))
- if n=='CelluloidCompanionTests':paths.extend((ROOT/'Platforms/PhoneTests').glob('*.swift'));paths.append(ROOT/'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift')
- if n=='CelluloidCompanionUITests':paths.extend((ROOT/'Platforms/PhoneUITests').glob('*.swift'))
  if n=='CelluloidTests':paths.extend([ROOT/'CelluloidPhotoExtension/PhotoEditingViewController.swift',ROOT/'CelluloidPhotoExtension/PhotosOutputWrite.swift'])
  localized={}
  for p in sorted(paths):
@@ -75,12 +66,7 @@ for n in names:
  if n in ['Celluloid','CelluloidKit']:
   dep=add('package:'+n,'XCSwiftPackageProductDependency',package=package,productName='SnapKit');packages.append(dep)
   framework.append(add('build:package:'+n,'PBXBuildFile',productRef=dep))
- if n in ['Celluloid','CelluloidCompanionTests']:
-  for package_name,product_name in [('CelluloidCore','CelluloidDomain'),('CelluloidRendering','CelluloidRendering')]:
-   dep=add('native-package-product:'+n+':'+product_name,'XCSwiftPackageProductDependency',package=local_packages[package_name],productName=product_name);packages.append(dep)
-   framework.append(add('native-package-link:'+n+':'+product_name,'PBXBuildFile',productRef=dep))
- if n=='Celluloid':deps.append(add('watch-target-dependency','PBXTargetDependency',name='CelluloidWatch',targetProxy=watch_target_proxy))
- dependent={'Celluloid':['CelluloidKit','CelluloidPhotoExtension'],'CelluloidPhotoExtension':['CelluloidKit'],'CelluloidTests':['Celluloid','CelluloidKit'],'CelluloidUITests':['Celluloid'],'CelluloidCompanionTests':['Celluloid','CelluloidKit'],'CelluloidCompanionUITests':['Celluloid']}.get(n,[])
+ dependent={'Celluloid':['CelluloidKit','CelluloidPhotoExtension'],'CelluloidPhotoExtension':['CelluloidKit'],'CelluloidTests':['Celluloid','CelluloidKit'],'CelluloidUITests':['Celluloid']}.get(n,[])
  for other in dependent:
   proxy=add('proxy:'+n+other,'PBXContainerItemProxy',containerPortal=uid('project'),proxyType='1',remoteGlobalIDString=targetids[other],remoteInfo=other)
   deps.append(add('dependency:'+n+other,'PBXTargetDependency',target=targetids[other],targetProxy=proxy))
@@ -91,24 +77,21 @@ for n in names:
   for other,dst in [('CelluloidKit','10'),('CelluloidPhotoExtension','13')]:
    embed=add('embed:'+other,'PBXBuildFile',fileRef=products[other],settings={'ATTRIBUTES':['RemoveHeadersOnCopy','CodeSignOnCopy']})
    phases.append(add('embedphase:'+other,'PBXCopyFilesBuildPhase',buildActionMask='2147483647',dstPath='',dstSubfolderSpec=dst,files=[embed],name='Embed '+other,runOnlyForDeploymentPostprocessing='0'))
-  watch_copy=add('embed-native-watch','PBXBuildFile',fileRef=watch_product,settings={'ATTRIBUTES':['RemoveHeadersOnCopy']})
-  phases.append(add('embed-native-watch-phase','PBXCopyFilesBuildPhase',buildActionMask='2147483647',dstPath='$(CONTENTS_FOLDER_PATH)/Watch',dstSubfolderSpec='16',files=[watch_copy],name='Embed Watch Content',runOnlyForDeploymentPostprocessing='0'))
- ids={'Celluloid':'Mango.Celluloid','CelluloidKit':'Mango.CelluloidKit','CelluloidPhotoExtension':'Mango.Celluloid.CelluloidPhotoExtension','CelluloidTests':'Mango.Celluloid.Tests','CelluloidUITests':'Mango.Celluloid.UITests','CelluloidCompanionTests':'Mango.Celluloid.CompanionTests','CelluloidCompanionUITests':'Mango.Celluloid.CompanionUITests'}
+ ids={'Celluloid':'Mango.Celluloid','CelluloidKit':'Mango.CelluloidKit','CelluloidPhotoExtension':'Mango.Celluloid.CelluloidPhotoExtension','CelluloidTests':'Mango.Celluloid.Tests','CelluloidUITests':'Mango.Celluloid.UITests'}
  settings={'PRODUCT_NAME':'$(TARGET_NAME)','PRODUCT_BUNDLE_IDENTIFIER':ids[n],'SWIFT_VERSION':'5.0','SWIFT_STRICT_CONCURRENCY':'minimal','IPHONEOS_DEPLOYMENT_TARGET':'15.0','TARGETED_DEVICE_FAMILY':'1,2','CODE_SIGN_STYLE':'Automatic','CURRENT_PROJECT_VERSION':'2','LD_RUNPATH_SEARCH_PATHS':['$(inherited)','@executable_path/Frameworks','@loader_path/Frameworks'],'ENABLE_USER_SCRIPT_SANDBOXING':'YES','SUPPORTED_PLATFORMS':'iphoneos iphonesimulator'}
  if n in ['Celluloid','CelluloidKit','CelluloidPhotoExtension']:settings['INFOPLIST_FILE']=n+'/Info.plist'
  else:settings['GENERATE_INFOPLIST_FILE']='YES'
  if n=='Celluloid':settings['ASSETCATALOG_COMPILER_APPICON_NAME']='AppIcon'
  if n=='CelluloidKit':settings.update({'DEFINES_MODULE':'YES','SKIP_INSTALL':'YES','APPLICATION_EXTENSION_API_ONLY':'YES','INSTALL_PATH':'$(LOCAL_LIBRARY_DIR)/Frameworks','DYLIB_INSTALL_NAME_BASE':'@rpath'})
  if n=='CelluloidPhotoExtension':settings.update({'SKIP_INSTALL':'YES','APPLICATION_EXTENSION_API_ONLY':'YES','LD_RUNPATH_SEARCH_PATHS':['$(inherited)','@executable_path/Frameworks','@executable_path/../../Frameworks']})
- if n in ['CelluloidTests','CelluloidUITests','CelluloidCompanionTests','CelluloidCompanionUITests']:settings['IPHONEOS_DEPLOYMENT_TARGET']='17.0'
- if n in ['CelluloidCompanionTests','CelluloidCompanionUITests']:settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS']='CELLULOID_SHIPPING_COMPANION'
- if n in ['CelluloidTests','CelluloidCompanionTests']:settings.update({'TEST_HOST':'$(BUILT_PRODUCTS_DIR)/Celluloid.app/Celluloid','BUNDLE_LOADER':'$(TEST_HOST)'})
- if n in ['CelluloidUITests','CelluloidCompanionUITests']:settings['TEST_TARGET_NAME']='Celluloid'
- producttype={'Celluloid':'application','CelluloidKit':'framework','CelluloidPhotoExtension':'app-extension','CelluloidTests':'bundle.unit-test','CelluloidUITests':'bundle.ui-testing','CelluloidCompanionTests':'bundle.unit-test','CelluloidCompanionUITests':'bundle.ui-testing'}[n]
+ if n in ['CelluloidTests','CelluloidUITests']:settings['IPHONEOS_DEPLOYMENT_TARGET']='17.0'
+ if n=='CelluloidTests':settings.update({'TEST_HOST':'$(BUILT_PRODUCTS_DIR)/Celluloid.app/Celluloid','BUNDLE_LOADER':'$(TEST_HOST)'})
+ if n=='CelluloidUITests':settings['TEST_TARGET_NAME']='Celluloid'
+ producttype={'Celluloid':'application','CelluloidKit':'framework','CelluloidPhotoExtension':'app-extension','CelluloidTests':'bundle.unit-test','CelluloidUITests':'bundle.ui-testing'}[n]
  add('target:'+n,'PBXNativeTarget',name=n,productName=n,productReference=products[n],productType='com.apple.product-type.'+producttype,buildConfigurationList=configlist('target:'+n,settings),buildPhases=phases,buildRules=[],dependencies=deps,packageProductDependencies=packages)
 prodgroup=add('products','PBXGroup',name='Products',children=list(products.values()),sourceTree='<group>')
 rootgroup=add('rootgroup','PBXGroup',children=children+[prodgroup],sourceTree='<group>')
-add('project','PBXProject',attributes={'LastUpgradeCheck':'2700','BuildIndependentTargetsInParallel':'YES','TargetAttributes':{targetids['CelluloidTests']:{'TestTargetID':targetids['Celluloid']},targetids['CelluloidUITests']:{'TestTargetID':targetids['Celluloid']},targetids['CelluloidCompanionTests']:{'TestTargetID':targetids['Celluloid']},targetids['CelluloidCompanionUITests']:{'TestTargetID':targetids['Celluloid']}}},buildConfigurationList=configlist('project',{'SDKROOT':'iphoneos','CLANG_ENABLE_MODULES':'YES','CLANG_ENABLE_OBJC_ARC':'YES','GCC_C_LANGUAGE_STANDARD':'gnu17','IPHONEOS_DEPLOYMENT_TARGET':'15.0','SWIFT_VERSION':'5.0','ENABLE_BITCODE':'NO'}),compatibilityVersion='Xcode 14.0',developmentRegion='en',hasScannedForEncodings='0',knownRegions=['en','Base','zh-Hans'],mainGroup=rootgroup,productRefGroup=prodgroup,projectDirPath='',projectRoot='',targets=list(targetids.values()),packageReferences=[package]+list(local_packages.values()),projectReferences=[{'ProductGroup':native_products,'ProjectRef':native_project}])
+add('project','PBXProject',attributes={'LastUpgradeCheck':'2700','BuildIndependentTargetsInParallel':'YES','TargetAttributes':{targetids['CelluloidTests']:{'TestTargetID':targetids['Celluloid']},targetids['CelluloidUITests']:{'TestTargetID':targetids['Celluloid']}}},buildConfigurationList=configlist('project',{'SDKROOT':'iphoneos','CLANG_ENABLE_MODULES':'YES','CLANG_ENABLE_OBJC_ARC':'YES','GCC_C_LANGUAGE_STANDARD':'gnu17','IPHONEOS_DEPLOYMENT_TARGET':'15.0','SWIFT_VERSION':'5.0','ENABLE_BITCODE':'NO'}),compatibilityVersion='Xcode 14.0',developmentRegion='en',hasScannedForEncodings='0',knownRegions=['en','Base','zh-Hans'],mainGroup=rootgroup,productRefGroup=prodgroup,projectDirPath='',projectRoot='',targets=list(targetids.values()),packageReferences=[package])
 (ROOT/'Celluloid.xcodeproj/project.pbxproj').write_text('// !$*UTF8*$!\n'+emit({'archiveVersion':'1','classes':{},'objectVersion':'56','objects':objects,'rootObject':uid('project')})+'\n')
 # One shared scheme builds the shipping extension with the app and both regression suites.
 scheme=ROOT/'Celluloid.xcodeproj/xcshareddata/xcschemes/Celluloid.xcscheme';scheme.parent.mkdir(parents=True,exist_ok=True)
@@ -117,9 +100,6 @@ scheme.write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="2700" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{ref('Celluloid')}</BuildActionEntry></BuildActionEntries></BuildAction><TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables>{''.join('<TestableReference skipped="NO">'+ref(n).replace(n+'.app',n+'.xctest')+'</TestableReference>' for n in ['CelluloidTests','CelluloidUITests'])}</Testables></TestAction><LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0">{ref('Celluloid')}</BuildableProductRunnable></LaunchAction><ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES" savedToolIdentifier="" useCustomWorkingDirectory="NO" debugDocumentVersioning="YES"><BuildableProductRunnable runnableDebuggingMode="0">{ref('Celluloid')}</BuildableProductRunnable></ProfileAction><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>''')
 (ROOT/'Celluloid.xcworkspace/contents.xcworkspacedata').write_text('<?xml version="1.0" encoding="UTF-8"?><Workspace version="1.0"><FileRef location="group:Celluloid.xcodeproj"/></Workspace>\n')
 
-# The companion tests launch the shipping app via its actual navigation.
-# The original full UIKit scheme/test membership remains unchanged.
+# The new shipping-companion scheme belongs to the later full-platform package.
 companion_scheme=scheme.with_name('CelluloidCompanion.xcscheme')
-original_testables=''.join('<TestableReference skipped="NO">'+ref(n).replace(n+'.app',n+'.xctest')+'</TestableReference>' for n in ['CelluloidTests','CelluloidUITests'])
-companion_testables=''.join('<TestableReference skipped="NO">'+ref(n).replace(n+'.app',n+'.xctest')+'</TestableReference>' for n in ['CelluloidCompanionTests','CelluloidCompanionUITests'])
-companion_scheme.write_text(scheme.read_text().replace(original_testables,companion_testables))
+if companion_scheme.exists():companion_scheme.unlink()

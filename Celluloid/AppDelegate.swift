@@ -11,7 +11,6 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         UINavigationBar.appearance().standardAppearance = appearance
         UINavigationBar.appearance().scrollEdgeAppearance = appearance
         UINavigationBar.appearance().tintColor = .white
-        if UIDevice.current.userInterfaceIdiom == .phone { PhoneCompanionController.shared.activate() }
         return true
     }
 }

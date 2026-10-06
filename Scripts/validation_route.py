@@ -11,6 +11,38 @@ UIKIT_FULL_PREDECESSOR={'commit':'a79d359ea605320e37750057adf1a053c13a5fee','tre
 UIKIT_FULL_REPAIR_PATHS={'.github/workflows/uikit-full-shipping.yml','Scripts/validation_route.py','Scripts/verify_combined_source.py','Scripts/test_uikit_full_shipping_bootstrap.py','Scripts/test_uikit_full_shipping_route.py','Scripts/test_uikit_full_shipping_workflow.py'}
 UIKIT_FULL_DRIVER_PATHS={'.github/workflows/uikit-full-shipping.yml','Scripts/validation_route.py','Scripts/verify_combined_source.py','Scripts/mac_photos_host_gate.py','Scripts/collect_native_evidence.py','Scripts/uikit_full_shipping_gate.py','Scripts/test_uikit_full_shipping_gate.py','Scripts/uikit_full_shipping_handoff.py','Scripts/probe_photos_bootstrap.py','Scripts/test_uikit_full_shipping_route.py','Scripts/test_uikit_full_shipping_workflow.py','Scripts/test_uikit_full_shipping_bootstrap.py','Scripts/test_mac_photos_host_gate.py','Scripts/test_combined_preflight.py','Scripts/test_combined_validation.py','Scripts/test_consumer_runtime_binding.py','Scripts/test_native_evidence.py','Scripts/test_text_observation_evidence.py','Documentation/uikit-full-shipping.md'}
 
+
+ORIGINAL_IOS={'scope':'original-ios-release','branch':'codex/original-ios-release','workflow_path':'.github/workflows/original-ios-release.yml','diagnostic_only':True}
+ORIGINAL_IOS_BASE={'commit':'4c0c6cb3314cd89e41fc9cfc67b833aca7de7d56','tree':'67ee79704e23936ba451173ce8aa68614b1ec1da'}
+# Explicit final reviewed path inventory is frozen with this candidate.
+ORIGINAL_IOS_PATHS={
+    '.github/workflows/original-ios-release.yml',
+    'Celluloid.xcodeproj/project.pbxproj',
+    'Celluloid.xcodeproj/xcshareddata/xcschemes/CelluloidCompanion.xcscheme',
+    'Celluloid/AppDelegate.swift',
+    'Celluloid/Controller/EntranceViewController.swift',
+    'Documentation/original-ios-release.md',
+    'Scripts/collect_native_evidence.py',
+    'Scripts/generate_project.py',
+    'Scripts/original-ios-source-contract.json',
+    'Scripts/original_ios_archive.py',
+    'Scripts/original_ios_rows.py',
+    'Scripts/original_ios_source_contract.py',
+    'Scripts/probe_photos_bootstrap.py',
+    'Scripts/staged_test_fixtures.py',
+    'Scripts/test_early_uikit_interop.py',
+    'Scripts/test_mac_photos_host_gate.py',
+    'Scripts/test_original_ios_archive.py',
+    'Scripts/test_original_ios_route.py',
+    'Scripts/test_original_ios_rows.py',
+    'Scripts/test_original_ios_source_contract.py',
+    'Scripts/test_photos_export_observation.py',
+    'Scripts/test_uikit_full_shipping_workflow.py',
+    'Scripts/uikit_full_shipping_handoff.py',
+    'Scripts/validation_route.py',
+    'Scripts/verify_combined_source.py',
+}
+
 HOST_ONLY={'scope':'photos-export-observation','branch':'codex/photos-export-observation','workflow_path':'.github/workflows/photos-export-observation.yml','diagnostic_only':True}
 HOST_ONLY_BASE={'commit':'25b8edc92c3f53cf13208ffa0065746b87ae20e0','tree':'7622774f3291c7b32f46966bebffddd645e57326','fingerprint':'d395f03291d06dc09f0d561b2096fd0bfe32b63f08764753c9d1b31a1069c88b'}
 HOST_ONLY_PROTECTED_FINGERPRINT='c1d88b1bafe0ef55c838e28eccb606d0b7e4701d792d88399f8b03ecc40f984b'
@@ -21,7 +53,7 @@ def require(ok,message):
 
 def validate_route(value):
     require(type(value) is dict and set(value)==set(FULL) and type(value.get('diagnostic_only')) is bool,'Malformed validation route')
-    require(value==FULL or value==FOCUSED or value==HOST_ONLY or value==UIKIT_FULL,'Unknown validation route')
+    require(value==FULL or value==FOCUSED or value==HOST_ONLY or value==UIKIT_FULL or value==ORIGINAL_IOS,'Unknown validation route')
     return dict(value)
 
 def current_route(environment=None):
@@ -30,7 +62,7 @@ def current_route(environment=None):
     if ref=='refs/heads/'+FULL['branch']:
         # Preserve canonical admission; a caller flag cannot relabel this branch.
         return dict(FULL)
-    selected=next((value for value in (FOCUSED,HOST_ONLY,UIKIT_FULL) if ref=='refs/heads/'+value['branch']),None)
+    selected=next((value for value in (FOCUSED,HOST_ONLY,UIKIT_FULL,ORIGINAL_IOS) if ref=='refs/heads/'+value['branch']),None)
     require(selected is not None,'Unreviewed validation branch')
     require(env.get('GITHUB_REPOSITORY')==REPOSITORY and env.get('GITHUB_EVENT_NAME')=='push','Wrong focused repository/event')
     require(env.get('CELLULOID_VALIDATION_SCOPE')==selected['scope'],'Missing focused diagnostic scope')

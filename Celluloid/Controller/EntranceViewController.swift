@@ -19,20 +19,8 @@ enum AppLinks {
 class EntranceViewController: UIViewController {
     private var horizontalLayout: Bool?
     private var footerHeight: CGFloat = 44
-    private lazy var watchPhotosButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle(NSLocalizedString("Watch Photos", comment: "Local paired Watch processing results"), for: .normal)
-        button.titleLabel?.font = .preferredFont(forTextStyle: .footnote)
-        button.titleLabel?.adjustsFontForContentSizeCategory = true
-        button.titleLabel?.numberOfLines = 0
-        button.titleLabel?.textAlignment = .center
-        button.tintColor = .white
-        button.accessibilityIdentifier = "watch-photos"
-        button.addTarget(self, action: #selector(showWatchPhotos), for: .touchUpInside)
-        return button
-    }()
     private lazy var footer: UIStackView = {
-        let buttons = UIDevice.current.userInterfaceIdiom == .phone ? [watchPhotosButton, privacyPolicyButton] : [privacyPolicyButton]
+        let buttons = [privacyPolicyButton]
         let stack = UIStackView(arrangedSubviews: buttons)
         stack.axis = .horizontal; stack.alignment = .fill; stack.distribution = .fillEqually; stack.spacing = 8
         return stack
@@ -130,12 +118,6 @@ class EntranceViewController: UIViewController {
             if horizontal { make.width.equalTo(1); make.height.equalTo(stackView).multipliedBy(0.65) }
             else { make.height.equalTo(1); make.width.equalTo(stackView).multipliedBy(0.65) }
         }
-    }
-
-    @objc private func showWatchPhotos() {
-        let results = PhoneCompanionEntryController()
-        results.modalPresentationStyle = .fullScreen
-        present(results, animated: true)
     }
 
     @objc private func showPrivacyPolicy() {

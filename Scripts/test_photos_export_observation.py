@@ -96,6 +96,12 @@ class PhotosObservationRouteTests(unittest.TestCase):
 
     def test_protected_bytes_and_report_distinguish_prior_proof_from_new_execution(self):
         import verify_combined_source as verify
+        from staged_test_fixtures import historical_checkout
+        with historical_checkout() as root,mock.patch.dict(globals(),ROOT=root),mock.patch.object(verify,'ROOT',root):
+            self._assert_historical_protected_bytes_and_report()
+
+    def _assert_historical_protected_bytes_and_report(self):
+        import verify_combined_source as verify
         contract=json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())
         self.assertEqual(len(contract['files']),547)
         for path,digest in contract['files']:self.assertEqual(hashlib.sha256((ROOT/path).read_bytes()).hexdigest(),digest)

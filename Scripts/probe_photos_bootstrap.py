@@ -13,13 +13,13 @@ evidence_root.mkdir(parents=True, exist_ok=True)
 
 # Only the fixed full-shipping route uses this already-owned command adapter.
 # Canonical invocations retain their original helper and command ceilings.
-full_row = os.environ.get('CELLULOID_VALIDATION_SCOPE') == 'uikit-full-shipping'
+full_row = os.environ.get('CELLULOID_VALIDATION_SCOPE') in {'uikit-full-shipping','original-ios-release'}
 
 def row_clock():
-    from validation_route import current_route,UIKIT_FULL
+    from validation_route import current_route,UIKIT_FULL,ORIGINAL_IOS
     from mac_host_transport import load_json
     from uikit_full_shipping_gate import clock_status
-    if current_route()!=UIKIT_FULL:raise ValueError('Wrong full-shipping bootstrap route')
+    if current_route() not in [UIKIT_FULL,ORIGINAL_IOS]:raise ValueError('Wrong full-shipping bootstrap route')
     path=evidence_root/'full-shipping-clock.json'
     if path.is_symlink() or not path.is_file() or not 0<path.stat().st_size<=10_000:raise ValueError('Invalid fixed row clock')
     clock=load_json(path.read_bytes())

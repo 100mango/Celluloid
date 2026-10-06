@@ -79,6 +79,11 @@ class MacPhotosHostGateTests(unittest.TestCase):
         cls.shell = (ROOT / 'Scripts/run_mac_photos_host_gate.sh').read_text()
 
     def test_production_and_all_existing_test_bytes_remain_frozen(self):
+        from staged_test_fixtures import historical_checkout
+        with historical_checkout() as root, mock.patch.dict(globals(),ROOT=root):
+            self._assert_historical_production_and_test_bytes()
+
+    def _assert_historical_production_and_test_bytes(self):
         contract = json.loads((ROOT / 'Scripts/mac-photos-host-source-base.json').read_text())
         self.assertEqual(len(contract['files']), gate.BASE_FILE_COUNT)
         count = 0

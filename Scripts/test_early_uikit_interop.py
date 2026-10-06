@@ -76,7 +76,9 @@ class EarlyUIKitInteropTests(unittest.TestCase):
                 report=json.loads((Path(folder)/'early-uikit-interop.json').read_text());self.assertFalse(report['passed']);self.assertEqual(report['profiles'],[]);invoke.assert_not_called()
         self.assertLessEqual(early.ACTIVE_SECONDS,18*60)
     def test_current_original_production_fingerprint_is_frozen(self):
-        self.assertEqual(early.frozen_uikit_fingerprint(),early.FROZEN_UIKIT_FINGERPRINT)
+        from staged_test_fixtures import historical_checkout
+        with historical_checkout() as root,patch.object(early,'ROOT',root):
+            self.assertEqual(early.frozen_uikit_fingerprint(),early.FROZEN_UIKIT_FINGERPRINT)
     def test_later_runtime_requires_verified_continuation_but_final_archive_frozen(self):
         source=(early.ROOT/'.github/workflows/apple-platforms.yml').read_text()
         for name in ['Native Mac UI launch and editing','External sandbox document UI and container runtime']:

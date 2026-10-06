@@ -2,13 +2,14 @@
 """Bind exact combined app/test/project bytes and workflow to the admitted checkout."""
 from pathlib import Path
 import argparse, hashlib, json, os, subprocess
-from validation_route import current_route,HOST_ONLY,host_only_source_binding,UIKIT_FULL,UIKIT_FULL_BASE,UIKIT_FULL_DRIVER_PATHS,UIKIT_FULL_PREDECESSOR,UIKIT_FULL_REPAIR_PATHS
+from validation_route import current_route,HOST_ONLY,host_only_source_binding,UIKIT_FULL,UIKIT_FULL_BASE,UIKIT_FULL_DRIVER_PATHS,UIKIT_FULL_PREDECESSOR,UIKIT_FULL_REPAIR_PATHS,ORIGINAL_IOS,ORIGINAL_IOS_BASE,ORIGINAL_IOS_PATHS
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--phase',choices=['before','after'],required=True);args=parser.parse_args()
     def git(*args):return subprocess.check_output(['git',*args],cwd=ROOT,text=True).strip()
-    contract=json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())
+    route=current_route()
+    contract=json.loads((ROOT/('Scripts/original-ios-source-contract.json' if route==ORIGINAL_IOS else 'Scripts/combined-source-contract.json')).read_text())
     assert os.environ['GITHUB_REPOSITORY']=='100mango/Celluloid'
     route=current_route()
     assert os.environ['GITHUB_WORKFLOW_SHA']==os.environ['GITHUB_SHA']==git('rev-parse','HEAD')
@@ -21,6 +22,12 @@ def main():
     forbidden=['.github/release-controller','.github/workflows/cloud-release.yml']
     assert not any(git('ls-files','--',p) for p in forbidden)
     report={'source_sha':os.environ['GITHUB_SHA'],'tree':git('rev-parse','HEAD^{tree}'),'phase':args.phase,'file_count':len(rows),'source_fingerprint':fingerprint,'reviewed_source_tree':contract['reviewed_source_tree'],'appearance_cancel_patch_sha256':contract.get('appearance_cancel_patch_sha256'),'expected_UIKit_executions':contract.get('expected_UIKit_executions'),'uikit_base':contract['uikit_base'],'native_base':contract['native_base'],'workflow_sha256':hashlib.sha256((ROOT/route['workflow_path']).read_bytes()).hexdigest(),'validation_route':route}
+    if route==ORIGINAL_IOS:
+        from original_ios_source_contract import audit
+        assert git('rev-list','--parents','-n','1','HEAD').split()==[os.environ['GITHUB_SHA'],ORIGINAL_IOS_BASE['commit']], 'Unreviewed staged iOS parent'
+        assert git('rev-parse',ORIGINAL_IOS_BASE['commit']+'^{tree}')==ORIGINAL_IOS_BASE['tree'], 'Changed staged iOS baseline tree'
+        assert set(git('diff','--name-only',ORIGINAL_IOS_BASE['commit'],'HEAD').splitlines())==ORIGINAL_IOS_PATHS, 'Unreviewed staged iOS delta'
+        report['original_ios_source']=audit(ROOT)
     if route==HOST_ONLY:
         report['host_only_diagnostic']=host_only_source_binding(rows)
     if route==UIKIT_FULL:

@@ -45,10 +45,10 @@ if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'}:require
 if PLATFORM=='archive':required+=['archive-embedded-watch.json']
 # Fixed original-shipping route: keep complete phase/source/product proof ahead
 # of optional screenshots. Canonical allocation and collection stay unchanged.
-FULL_SHIPPING=os.environ.get('CELLULOID_VALIDATION_SCOPE')=='uikit-full-shipping'
+FULL_SHIPPING=os.environ.get('CELLULOID_VALIDATION_SCOPE') in {'uikit-full-shipping','original-ios-release'}
 if FULL_SHIPPING:
-    from validation_route import current_route,UIKIT_FULL
-    if current_route()!=UIKIT_FULL:raise ValueError('Wrong full-shipping collection route')
+    from validation_route import current_route,UIKIT_FULL,ORIGINAL_IOS
+    if current_route() not in [UIKIT_FULL,ORIGINAL_IOS]:raise ValueError('Wrong full-shipping collection route')
     if PLATFORM=='mac':
         required=['combined-source-before.json','combined-source-after.json','mac-required-tests.json',
             'full-shipping-producer.json','full-shipping-mac-summary.json','full-shipping-mac-accounting.json']

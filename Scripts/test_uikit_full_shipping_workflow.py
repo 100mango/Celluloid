@@ -531,6 +531,12 @@ class ClockRepairLineageTests(unittest.TestCase):
     @unittest.skipUnless(__debug__, 'Source binding is intentionally invoked under normal Python')
     def test_exact_successor_lineage_and_repair_delta_over_actual_protected_bytes(self):
         import verify_combined_source as source
+        from staged_test_fixtures import historical_checkout
+        with historical_checkout() as root,patch.dict(globals(),ROOT=root),patch.object(source,'ROOT',root):
+            self._assert_historical_exact_successor_lineage()
+
+    def _assert_historical_exact_successor_lineage(self):
+        import verify_combined_source as source
         from validation_route import UIKIT_FULL, UIKIT_FULL_BASE, UIKIT_FULL_PREDECESSOR, UIKIT_FULL_REPAIR_PATHS, UIKIT_FULL_DRIVER_PATHS
         contract = json.loads((ROOT / 'Scripts/combined-source-contract.json').read_text())
         self.assertEqual(len(contract['files']), 547)

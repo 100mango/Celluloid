@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Fixed same-run Mac fixture handoff and one original UIKit row's product proof."""
 from pathlib import Path
-import argparse,hashlib,json,os,re,stat,subprocess,sys,uuid,zlib
+import argparse,hashlib,json,os,re,stat,subprocess,sys,uuid,zlib,shutil,tempfile
 from mac_host_transport import load_json
 from native_fixture_handoff import load_layer_exact,load_exact
 from platform_rendering_contract import validate_native,validate_archive_fixture
-from validation_route import current_route,UIKIT_FULL,UIKIT_FULL_BASE
+from validation_route import current_route,UIKIT_FULL,UIKIT_FULL_BASE,ORIGINAL_IOS
 
 ROOT=Path(__file__).resolve().parents[1]
 SCHEMA='Celluloid.FullShippingProducer.1'
@@ -20,8 +20,16 @@ def read(path,maximum=2_000_000):
 def write(path,row):
     p=Path(path);need(not p.exists() and not p.is_symlink(),'Duplicate proof: '+p.name)
     p.write_text(json.dumps(row,indent=2,sort_keys=True)+'\n')
+def source_profile():
+    route=current_route()
+    need(route in [UIKIT_FULL,ORIGINAL_IOS],'Wrong full-shipping route')
+    if route==UIKIT_FULL:return 547,UIKIT_FULL_BASE['fingerprint']
+    contract=read(ROOT/'Scripts/original-ios-source-contract.json')
+    need(contract['schema']=='Celluloid.OriginalIOSProtectedSource.1' and len(contract['files'])==546,'Malformed staged source profile')
+    need(hashlib.sha256(json.dumps(contract['files'],separators=(',',':')).encode()).hexdigest()==contract['fingerprint'],'Changed staged source fingerprint')
+    return 546,contract['fingerprint']
 def identity():
-    need(current_route()==UIKIT_FULL,'Wrong full-shipping route')
+    source_profile()
     source=os.environ['GITHUB_SHA'];run=os.environ['GITHUB_RUN_ID'];attempt=os.environ['GITHUB_RUN_ATTEMPT']
     need(re.fullmatch('[0-9a-f]{40}',source) and re.fullmatch('[1-9][0-9]*',run) and re.fullmatch('[1-9][0-9]*',attempt),'Wrong actual execution identity')
     return {'source_sha':source,'run_id':run,'run_attempt':attempt}
@@ -32,8 +40,12 @@ def passed_summary(row):
 
 def source_proof(temp,phase='before'):
     row=read(temp/('combined-source-'+phase+'.json'))
-    need(row['source_sha']==identity()['source_sha'] and row['file_count']==547 and row['source_fingerprint']==UIKIT_FULL_BASE['fingerprint'],'Unqualified shipping source')
-    need(row['validation_route']==UIKIT_FULL and row['phase']==phase,'Wrong source proof phase')
+    count,fingerprint=source_profile()
+    need(row['source_sha']==identity()['source_sha'] and type(row['file_count']) is int and row['file_count']==count and row['source_fingerprint']==fingerprint,'Unqualified shipping source')
+    need(row['validation_route']==current_route() and row['phase']==phase,'Wrong source proof phase')
+    if current_route()==ORIGINAL_IOS:
+        projection=row.get('original_ios_source')
+        need(type(projection) is dict and projection.get('source_equivalence') is True and projection.get('unchanged_protected_files')==543 and projection.get('original_total_invocations')==412,'Missing staged feature/source equivalence')
     return row
 
 def producer(temp):
@@ -57,7 +69,7 @@ def producer(temp):
     write(temp/'full-shipping-mac-accounting.json',{'raw_log_sha256':sha(temp/'mac.log'),'terminal_normalization':'test success to test-without-building success only','accounting':raw_accounting})
     toolchain=(temp/'full-shipping-xcode.txt').read_text()
     need(toolchain.startswith('Xcode 27.0\n'),'Wrong producer Xcode')
-    write(temp/'full-shipping-producer.json',{'schema':SCHEMA,**identity(),'tree':source['tree'],'protected_fingerprint':UIKIT_FULL_BASE['fingerprint'],
+    write(temp/'full-shipping-producer.json',{'schema':SCHEMA,**identity(),'tree':source['tree'],'protected_fingerprint':source_profile()[1],
         'mac_summary_sha256':sha(temp/'full-shipping-mac-summary.json'),'mac_accounting_sha256':sha(temp/'full-shipping-mac-accounting.json'),
         'xcode_sha256':sha(temp/'full-shipping-xcode.txt'),'native_required_sha256':sha(temp/'mac-required-tests.json'),'required_mac_cases':42,
         'scope':'Fresh fixture producer only; no Mac Photos host or whole-platform acceptance'})
@@ -81,7 +93,7 @@ def transfer(temp,artifact_id,manifest_hash,reported_artifact_digest):
     need(core<=names,'Missing core producer artifact members')
     producer_row=read(folder/'full-shipping-producer.json');source=source_proof(temp)
     need(producer_row['schema']==SCHEMA and all(producer_row[k]==v for k,v in ident.items()),'Producer source/run/attempt differs')
-    need(producer_row['tree']==source['tree'] and producer_row['protected_fingerprint']==UIKIT_FULL_BASE['fingerprint'],'Producer source tree differs')
+    need(producer_row['tree']==source['tree'] and producer_row['protected_fingerprint']==source_profile()[1],'Producer source tree differs')
     need(producer_row['xcode_sha256']==sha(temp/'full-shipping-xcode.txt'),'Producer/consumer toolchains differ')
     required=read(folder/'mac-required-tests.json')
     need(producer_row['native_required_sha256']==sha(folder/'mac-required-tests.json') and required['source_sha']==ident['source_sha'] and type(required['expected_count']) is int and type(producer_row['required_mac_cases']) is int and required['expected_count']==producer_row['required_mac_cases']==42,'Unbound native producer proof')
@@ -125,13 +137,19 @@ def product_after(temp):
     check_completion(clock,context,'product-readbacks')
     write(temp/'full-shipping-product-after.json',{'schema':'Celluloid.FullShippingProduct.1',**identity(),'row':row,'staging_sha256':sha(temp/'uikit-layer-staging.json'),'actual':actual})
 
-def accept_row(temp):
+def accept_row(temp, *, row=None, recorded_observation=None):
     from uikit_full_shipping_gate import verify_manifest,clock_status,ROW_COUNTS
     from uikit_installed_identity import validate as validate_installation
     from verify_required_interoperability import verify
-    ident=identity();row=os.environ['CELLULOID_FULL_ROW'];context={**ident,'row':row}
+    ident=identity();row=os.environ['CELLULOID_FULL_ROW'] if row is None else row;context={**ident,'row':row}
     clock=read(temp/'full-shipping-clock.json');manifest=read(temp/'full-shipping-execution.json')
-    observed=read(temp/'full-shipping-accounting.json');replayed=verify_manifest(manifest,temp,context,clock)
+    observed=read(temp/'full-shipping-accounting.json')
+    # Fixed archive replay uses the recorded execution interval; live row callers
+    # always retain the actual current monotonic/wall clock defaults.
+    observation={} if recorded_observation is None else recorded_observation
+    need(not observation or current_route()==ORIGINAL_IOS,'Historical replay is confined to staged package qualification')
+    need(not observation or set(observation)=={'now_monotonic','now_unix'},'Malformed recorded observation')
+    replayed=verify_manifest(manifest,temp,context,clock,**observation)
     need(same_json({k:v for k,v in observed.items() if k!='clock'},{k:v for k,v in replayed.items() if k!='clock'}),'Changed full-row execution accounting')
     prior=observed['clock'];current=replayed['clock']
     need(prior==clock_status(clock,context,clock['started_monotonic']+prior['elapsed_seconds'],clock['started_unix']+prior['wall_elapsed_seconds'])
@@ -166,7 +184,7 @@ def accept_row(temp):
     need(outer.is_file() and not outer.is_symlink() and 0<outer.stat().st_size<=30_000_000,'Missing/unbounded bootstrap driver log')
     names=['bootstrap.log','full-shipping-stage-outcomes.json','full-shipping-execution.json','full-shipping-accounting.json','full-shipping-clock.json','full-shipping-device.json','full-shipping-transfer.json','full-shipping-product-after.json','full-shipping-cleanup.json','uikit-layer-staging.json','uikit-required-tests.json','combined-source-before.json','combined-source-after.json']
     return {'schema':'Celluloid.UIKitFullShippingRow.1',**context,'device':device['device'],'row_checks_passed':True,
-        'original_test_invocation_count':ROW_COUNTS[row],'source_tree':before['tree'],'protected_fingerprint':UIKIT_FULL_BASE['fingerprint'],
+        'original_test_invocation_count':ROW_COUNTS[row],'source_tree':before['tree'],'protected_fingerprint':source_profile()[1],
         'proof_sha256':{name:sha(temp/name) for name in names},'workflow_completion_required':True,'release_acceptance':False,
         'scope':'One complete original UIKit row; all four rows and later release gates remain separate'}
 
