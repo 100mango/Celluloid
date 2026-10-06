@@ -22,8 +22,8 @@ import zlib
 from mac_host_transport import load_json
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE_TREE = 'cdde7dae9e9a2ad92c04dc19990a4df663bdd27a'
-PUBLIC_BASE = 'ef07f3229517db656b970b136a8071f385185f75'
+BASE_TREE = '4613b47d2699bdbe5608635c8716ab2db4b0ff82'
+PUBLIC_BASE = '91580d8453d47612fb1f83e075951acc763b0157'
 PRODUCT_SOURCE = 'da9d4abd6484ddaff469677d96caf24362645d7c'
 PRODUCT_TREE = '304ee9c0e4197e4a282ae3933c9f510219b2106d'
 CONTRACT_SHA = 'cc2c2db6140e4062ac4259092573d2085318d63baf0ce95b92d04e5582f2c481'
@@ -61,6 +61,7 @@ CAPTURE_FINALIZATION_SECONDS = 5
 CAPTURE_PATHS = {
     'Documentation/store-screenshots.md',
     'Scripts/store_screenshots.py', 'Scripts/test_store_screenshots.py',
+    'Scripts/probe_photos_bootstrap.py', 'Scripts/test_store_screenshots_route.py',
 }
 
 

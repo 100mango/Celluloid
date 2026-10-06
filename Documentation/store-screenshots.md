@@ -10,8 +10,8 @@ release qualification, archive work, or Store submission in this route.
 
 The product source remains da9d4abd6484ddaff469677d96caf24362645d7c,
 tree 304ee9c0e4197e4a282ae3933c9f510219b2106d. The successor's exact direct parent
-must be public ef07f3229517db656b970b136a8071f385185f75,
-tree cdde7dae9e9a2ad92c04dc19990a4df663bdd27a. A different parent with the same
+must be public 91580d8453d47612fb1f83e075951acc763b0157,
+tree 4613b47d2699bdbe5608635c8716ab2db4b0ff82. A different parent with the same
 tree or an arbitrary ancestor does not satisfy this identity check.
 The capture source has its own actual commit/tree and workflow identity.
 Its source proof is 545 unchanged protected inputs plus one precisely hashed
@@ -26,9 +26,8 @@ attach `app.screenshot().pngRepresentation` unchanged as `public.png`. The
 existing compact-phone JPEG path remains intact without the opt-in. No pixels
 are drawn, resized, converted, composited or generated for the capture.
 
-This owned-device successor changes only the runner, its tests and this document;
-all protected inputs, including the existing screenshot helper, remain identical
-to ef07. It addresses the observed first attempt 37454490760/job 112238635892,
+The earlier owned-device successor changed only the runner, its tests and this
+document. It addressed the observed first attempt 37454490760/job 112238635892,
 which completed toolchain/runtime/type/device discovery but stopped before build
 because iPhone 17 Pro was not precreated. The complete retained devices JSON was
 10470 bytes. That attempt passed the unique 17 Pro device-type check; its complete
@@ -47,7 +46,29 @@ eligible for boot, shutdown or deletion. No failed/unknown create is retried or
 followed by speculative cleanup. The second instance is not created until the
 first owned instance's cleanup is confirmed. Existing instances remain untouched.
 
-Per device the unchanged bootstrap runs these two setup methods, imports its
+The current narrow successor retains every protected input, including the
+screenshot helper, byte-for-byte from 91580. Attempt 37456436117/job 112245086351
+successfully created/read back the exact 17 Pro, built and installed the actual
+product, and passed the original Photos readiness method. Before its first
+fixture import, the optional `ps -axo pid=,ppid=,rss=,comm=` host probe exceeded
+its 15-second allowance. PID/PGID 24006 was reaped after SIGTERM with code -15,
+but group exit remained unconfirmed. That attempt remains failed: no imports,
+reconcile, UI cases, PNGs or second-device creation followed. No receipt from
+that host is retroactively accepted or relabeled as successful.
+
+Only on a fully validated STORE_SCREENSHOTS route/context, bootstrap.host now
+omits its five nonessential probes: vm_stat, memory_pressure, sysctl, df and ps.
+It first requires a clear existing process guard and matching current row clock,
+then emits a source/run/row-bound BOOTSTRAP_HOST_DIAGNOSTICS_NOT_COLLECTED record
+with diagnostics_not_collected=true and the exact omitted command list. It does
+not catch an already-running probe's timeout and continue, clear a failure,
+change a command allowance or expand a deadline. Original/release/UIKit and
+other valid routes retain the original host behavior. A future capture must
+start as a fresh cohort; the failed 91580 host cannot resume under this change.
+Actual necessary commands, their timing/ownership receipts and failure logs
+remain collected within the same artifact caps.
+
+Per device the unchanged required bootstrap sequence runs these two setup methods, imports its
 existing six synthetic PNG fixtures, and verifies their original resource hashes:
 
 - `EditorRegressionTests/testPhotosLibraryBootstrapReadiness`
@@ -98,7 +119,7 @@ Fixed command allowances (seconds), shared by both devices under that clock:
 | Bootstrap prepared-registration lookup |45 |
 | Each original readiness/reconcile test |360 |
 | First fixture import / each later import |480 /180 |
-| Each optional bootstrap host observation |15 |
+| Bootstrap host observations on Store capture |Not collected; explicit marker |
 | Two existing UI cases together |900 |
 | Finalized summary / attachment export |45 /45 |
 | Post-test installed identity lookup |60 |

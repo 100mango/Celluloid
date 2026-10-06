@@ -118,8 +118,8 @@ class FileProofTests(unittest.TestCase):
             return answers[args]
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, environment(directory), clear=True), patch.object(capture, 'git', side_effect=git), patch('subprocess.Popen', side_effect=AssertionError('source test must not dispatch')):
             proof = capture.verify_source(runtime=True)
-            self.assertEqual(proof['supervision_public_base_sha'], 'ef07f3229517db656b970b136a8071f385185f75')
-            self.assertEqual(proof['supervision_base_tree'], 'cdde7dae9e9a2ad92c04dc19990a4df663bdd27a')
+            self.assertEqual(proof['supervision_public_base_sha'], '91580d8453d47612fb1f83e075951acc763b0157')
+            self.assertEqual(proof['supervision_base_tree'], '4613b47d2699bdbe5608635c8716ab2db4b0ff82')
             parent[0] = '1d28' + '0' * 36
             with self.assertRaisesRegex(ValueError, 'public capture parent'):
                 capture.verify_source(runtime=True)

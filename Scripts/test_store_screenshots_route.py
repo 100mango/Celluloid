@@ -20,6 +20,10 @@ import uikit_full_shipping_gate as gate
 import validation_route as routes
 from test_uikit_full_shipping_bootstrap import load_functions, SOURCE, DEVICE
 
+HOST_COMMANDS = [['vm_stat'], ['memory_pressure', '-Q'], ['sysctl', 'vm.swapusage'],
+                 ['df', '-h', '.'], ['ps', '-axo', 'pid=,ppid=,rss=,comm=']]
+HOST_OMISSION = 'BOOTSTRAP_HOST_DIAGNOSTICS_NOT_COLLECTED '
+
 
 def environment(root, row='large-phone'):
     route = routes.STORE_SCREENSHOTS
@@ -219,7 +223,7 @@ class StoreRouteTests(unittest.TestCase):
             gate.admit_phase(value, self.context, 'ui', 10_000, 100_000)
 
     def test_bootstrap_executes_existing_two_methods_and_six_owned_imports(self):
-        """Execute the real top-level sequence with fake native commands only."""
+        """Run actual host/clock checks and the real sequence; fake native work."""
         fixtures = self.root / 'fixtures'
         fixtures.mkdir()
         names = ['celluloid-fixture.png', 'celluloid-fixture-2.png'] + ['celluloid-composition-' + str(i) + '.png' for i in range(4)]
@@ -228,7 +232,6 @@ class StoreRouteTests(unittest.TestCase):
         value = clock(self.context, time.monotonic(), time.time())
         (self.root / 'full-shipping-clock.json').write_text(json.dumps(value))
         functions = load_functions(self.root)
-        functions['host'] = lambda label: None
         functions['pathlib'] = SimpleNamespace(Path=lambda raw: fixtures / str(raw)[5:] if str(raw).startswith('/tmp/celluloid-') else fixtures if str(raw) == '/tmp' else Path(raw))
         body = ast.Module(body=[node for node in ast.parse(SOURCE.read_text()).body
                                 if not isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef))], type_ignores=[])
@@ -248,8 +251,17 @@ class StoreRouteTests(unittest.TestCase):
             owner.completed(0)
             return subprocess.CompletedProcess(command, 0, output, '')
 
-        with patch.object(sys, 'argv', [str(SOURCE), DEVICE, '--already-prepared']), patch('native_process.run', side_effect=native), patch('subprocess.run', side_effect=AssertionError('unowned dispatch')), contextlib.redirect_stdout(io.StringIO()):
+        output = io.StringIO()
+        with patch.object(sys, 'argv', [str(SOURCE), DEVICE, '--already-prepared']), patch('native_process.run', side_effect=native), patch('subprocess.run', side_effect=AssertionError('unowned dispatch')), contextlib.redirect_stdout(output):
             exec(compile(body, str(SOURCE), 'exec'), functions)
+        self.assertEqual(len(calls), 9)
+        self.assertFalse(any(command[0] in {cmd[0] for cmd in HOST_COMMANDS} for command, _ in calls))
+        self.assertTrue(all(kwargs['capture_deadline'] == value['started_monotonic'] + gate.WORK_SECONDS for _, kwargs in calls))
+        omissions = [json.loads(line[len(HOST_OMISSION):]) for line in output.getvalue().splitlines() if line.startswith(HOST_OMISSION)]
+        self.assertEqual([item['label'] for item in omissions],
+                         ['prepared-before-readiness', 'before-PhotoKit-readiness', 'before-import', 'after-import'])
+        for item in omissions:
+            self.assert_host_omission(item, item['label'])
         tests = [(command, kwargs) for command, kwargs in calls if command[0] == 'xcodebuild']
         self.assertEqual([[arg for arg in command if arg.startswith('-only-testing:')] for command, _ in tests],
                          [['-only-testing:CelluloidTests/EditorRegressionTests/testPhotosLibraryBootstrapReadiness'],
@@ -261,6 +273,136 @@ class StoreRouteTests(unittest.TestCase):
         self.assertEqual({item['filename'] for item in imported}, set(names))
         self.assertIsNone(guard.read_inflight(self.root, self.context))
         self.assertEqual(json.loads((self.root / 'full-shipping-clock.json').read_text()), value)
+
+    def host_functions(self):
+        value = clock(self.context, time.monotonic(), time.time())
+        (self.root / 'full-shipping-clock.json').write_text(json.dumps(value))
+        return load_functions(self.root)
+
+    def assert_host_omission(self, receipt, label):
+        self.assertEqual(set(receipt), {*self.context, 'schema', 'label', 'diagnostics_not_collected', 'omitted_commands', 'reason'})
+        self.assertEqual(receipt['schema'], 'Celluloid.StoreCaptureHostDiagnostics.1')
+        self.assertEqual({key: receipt[key] for key in self.context}, self.context)
+        self.assertEqual(receipt['label'], label)
+        self.assertIs(receipt['diagnostics_not_collected'], True)
+        self.assertEqual(receipt['omitted_commands'], HOST_COMMANDS)
+        self.assertTrue(receipt['reason'])
+
+    def test_capture_host_emits_exact_omission_without_host_or_native_dispatch(self):
+        functions = self.host_functions()
+        output = io.StringIO()
+        with patch('native_process.run') as native, patch('subprocess.run') as direct, patch('subprocess.Popen') as spawn, contextlib.redirect_stdout(output):
+            functions['host']('before-import')
+        native.assert_not_called()
+        direct.assert_not_called()
+        spawn.assert_not_called()
+        lines = output.getvalue().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].startswith(HOST_OMISSION))
+        self.assert_host_omission(json.loads(lines[0][len(HOST_OMISSION):]), 'before-import')
+        self.assertIsNone(guard.read_failure(self.root, self.context))
+        self.assertIsNone(guard.read_inflight(self.root, self.context))
+
+    def test_capture_host_spoofed_or_missing_identity_cannot_emit_omission_or_dispatch(self):
+        functions = self.host_functions()
+        changes = [('GITHUB_REF', 'refs/heads/' + routes.FULL['branch']),
+                   ('GITHUB_WORKFLOW_REF', 'unreviewed'), ('GITHUB_WORKFLOW_SHA', 'b' * 40),
+                   ('GITHUB_EVENT_NAME', 'workflow_dispatch'), ('CELLULOID_FULL_ROW', 'compact-phone')]
+        environments = [dict(self.env, **{key: value}) for key, value in changes]
+        for key in ('CELLULOID_FULL_ROW', 'GITHUB_REF', 'GITHUB_REPOSITORY', 'GITHUB_RUN_ID',
+                    'CELLULOID_VALIDATION_SCOPE', 'GITHUB_RUN_ATTEMPT'):
+            changed = dict(self.env)
+            changed.pop(key)
+            environments.append(changed)
+        for index, env in enumerate(environments):
+            output = io.StringIO()
+            with self.subTest(index=index), patch.dict(os.environ, env, clear=True), patch('native_process.run') as native, patch('subprocess.run') as direct, contextlib.redirect_stdout(output):
+                with self.assertRaises((guard.GuardRefusal, ValueError, KeyError)):
+                    functions['host']('before-import')
+                native.assert_not_called()
+                direct.assert_not_called()
+                self.assertNotIn(HOST_OMISSION, output.getvalue())
+
+    def test_capture_host_requires_actual_clock_binding_and_work_completion(self):
+        functions = self.host_functions()
+        original = json.loads((self.root / 'full-shipping-clock.json').read_text())
+        for key, value in (('source_sha', 'b' * 40), ('run_id', '7654321'), ('run_attempt', '2'), ('row', 'large-ipad'),
+                           ('validation_route', routes.ORIGINAL_IOS)):
+            (self.root / 'full-shipping-clock.json').write_text(json.dumps(dict(original, **{key: value})))
+            output = io.StringIO()
+            with self.subTest(key=key), patch('native_process.run') as native, patch('subprocess.run') as direct, contextlib.redirect_stdout(output):
+                with self.assertRaises((guard.GuardRefusal, ValueError)):
+                    functions['host']('before-import')
+                native.assert_not_called()
+                direct.assert_not_called()
+                self.assertNotIn(HOST_OMISSION, output.getvalue())
+        value = clock(self.context)
+        (self.root / 'full-shipping-clock.json').write_text(json.dumps(value))
+        output = io.StringIO()
+        with patch('time.monotonic', return_value=12_701), patch('time.time', return_value=102_701), patch('native_process.run') as native, patch('subprocess.run') as direct, contextlib.redirect_stdout(output):
+            with self.assertRaisesRegex(ValueError, 'Late UIKit phase completion'):
+                functions['host']('after-import')
+            native.assert_not_called()
+            direct.assert_not_called()
+            self.assertNotIn(HOST_OMISSION, output.getvalue())
+
+    def test_capture_host_rechecks_staged_context_against_row_clock_context(self):
+        functions = self.host_functions()
+        original_clock = functions['row_clock']
+        def other_row():
+            value, context, status = original_clock()
+            return value, dict(context, row='large-ipad'), status
+        functions['row_clock'] = other_row
+        output = io.StringIO()
+        with patch('native_process.run') as native, patch('subprocess.run') as direct, contextlib.redirect_stdout(output):
+            with self.assertRaises(ValueError):
+                functions['host']('before-import')
+        native.assert_not_called()
+        direct.assert_not_called()
+        self.assertNotIn(HOST_OMISSION, output.getvalue())
+
+    def test_existing_unknown_or_timed_out_ps_receipt_still_blocks_host_and_required_commands(self):
+        functions = self.host_functions()
+        owner = guard.OwnedCommand('ps', 'ps', 15)
+        owner.started(MagicMock(pid=12345))
+        for state in ('unknown', 'timeout'):
+            if state == 'timeout':
+                owner.failed(subprocess.TimeoutExpired(HOST_COMMANDS[-1], 15), timed_out=True)
+            receipts = {name: (self.root / name).read_bytes() for name in (guard.MARKER_NAME, guard.INFLIGHT_NAME)
+                        if (self.root / name).exists()}
+            output = io.StringIO()
+            with self.subTest(state=state), patch('native_process.run') as native, patch('subprocess.run') as direct, contextlib.redirect_stdout(output):
+                with self.assertRaises(guard.GuardRefusal):
+                    functions['host']('before-import')
+                with self.assertRaises(guard.GuardRefusal):
+                    functions['run']('readiness-before-import', 360, 'xcodebuild')
+                with self.assertRaises(guard.GuardRefusal):
+                    functions['run']('import-0', 480, 'xcrun', 'simctl', 'addmedia', DEVICE, 'fixture.png')
+                native.assert_not_called()
+                direct.assert_not_called()
+                self.assertNotIn(HOST_OMISSION, output.getvalue())
+            self.assertEqual({name: (self.root / name).read_bytes() for name in receipts}, receipts)
+
+    def test_original_uikit_and_canonical_host_keep_all_five_fifteen_second_probes(self):
+        for route in (routes.ORIGINAL_IOS, routes.UIKIT_FULL, routes.FULL):
+            env = dict(self.env, GITHUB_REF='refs/heads/' + route['branch'],
+                       CELLULOID_VALIDATION_SCOPE=route['scope'],
+                       GITHUB_WORKFLOW_REF=routes.REPOSITORY + '/' + route['workflow_path'] + '@refs/heads/' + route['branch'])
+            context = {key: self.context[key] for key in guard.CONTEXT_KEYS}
+            value = clock(context, time.monotonic(), time.time())
+            (self.root / 'full-shipping-clock.json').write_text(json.dumps(value))
+            functions = load_functions(self.root, full_row=route != routes.FULL)
+            output = io.StringIO()
+            result = subprocess.CompletedProcess([], 0, '', '')
+            with self.subTest(route=route['scope']), patch.dict(os.environ, env, clear=True), patch('native_process.run', return_value=result) as native, patch('subprocess.run', return_value=result) as direct, contextlib.redirect_stdout(output):
+                functions['host']('compatibility')
+            called, unused = (native, direct) if route == routes.ORIGINAL_IOS else (direct, native)
+            self.assertEqual([call.args[0] for call in called.call_args_list], HOST_COMMANDS)
+            self.assertTrue(all(call.kwargs['timeout'] == 15 and 'capture_deadline' not in call.kwargs for call in called.call_args_list))
+            unused.assert_not_called()
+            self.assertNotIn(HOST_OMISSION, output.getvalue())
+            self.assertIn('BOOTSTRAP_HOST_BEGIN compatibility', output.getvalue())
+            self.assertIn('BOOTSTRAP_HOST_END compatibility', output.getvalue())
 
     def test_bootstrap_admission_checks_capture_work_window_before_inner_owned_command(self):
         value = clock(self.context)

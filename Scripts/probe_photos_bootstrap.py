@@ -85,6 +85,23 @@ def host_command(command):
     return subprocess.run(command,capture_output=True,text=True,timeout=15)
 
 def host(label):
+    from original_ios_process_guard import staged_context, require_clear
+    from validation_route import STORE_SCREENSHOTS
+    context = staged_context()
+    if context is not None and context.get('validation_route') == STORE_SCREENSHOTS:
+        # This fixed capture route needs the owned command/setup receipts, not
+        # optional host telemetry. Never recover an existing failed process by
+        # relabeling its diagnostics as omitted: its guard must still be clear.
+        if require_clear() != context or row_clock()[1] != context:
+            raise ValueError('Store capture host omission context changed')
+        check_inner_completion()
+        print('BOOTSTRAP_HOST_DIAGNOSTICS_NOT_COLLECTED ' + json.dumps({
+            'schema': 'Celluloid.StoreCaptureHostDiagnostics.1', **context, 'label': label,
+            'diagnostics_not_collected': True,
+            'omitted_commands': [['vm_stat'], ['memory_pressure', '-Q'], ['sysctl', 'vm.swapusage'],
+                                 ['df', '-h', '.'], ['ps', '-axo', 'pid=,ppid=,rss=,comm=']],
+            'reason': 'Nonessential host probes excluded from the fixed Store capture route'}), flush=True)
+        return
     if full_row and row_clock()[2]['work_remaining_seconds'] < 630:
         print('BOOTSTRAP_OPTIONAL_HOST_WITHHELD preserving next command and cleanup allowance',flush=True);return
     print('BOOTSTRAP_HOST_BEGIN', label, datetime.datetime.now(datetime.timezone.utc).isoformat(), flush=True)
