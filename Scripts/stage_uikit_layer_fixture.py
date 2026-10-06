@@ -22,7 +22,12 @@ def main():
     args=parser.parse_args(); payload=load_layer_exact(args.fixtures,os.environ['GITHUB_SHA'])
     info=plistlib.loads((args.app/'Info.plist').read_bytes())
     assert (info['CFBundleIdentifier'],info['CFBundleExecutable'],info['CFBundleShortVersionString'],info['CFBundleVersion'],info['DTPlatformName']) == ('Mango.Celluloid','Celluloid','1.1','2','iphonesimulator')
-    subprocess.run(['xcrun','simctl','install',args.udid,str(args.app)],check=True,timeout=300)
+    from original_ios_process_guard import active,ensure_native_dispatch
+    ensure_native_dispatch()
+    if active():
+        run(['xcrun','simctl','install',args.udid,str(args.app)],timeout=300)
+    else:
+        subprocess.run(['xcrun','simctl','install',args.udid,str(args.app)],check=True,timeout=300)
     installed=container_path(args.udid,'app'); digest=hashlib.sha256((args.app/'Celluloid').read_bytes()).hexdigest()
     assert hashlib.sha256((installed/'Celluloid').read_bytes()).hexdigest()==digest
     documents=container_path(args.udid,'data')/'Documents'; documents.mkdir(exist_ok=True)

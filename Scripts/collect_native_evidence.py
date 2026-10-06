@@ -18,11 +18,20 @@ manifest={'source_sha':os.environ.get('GITHUB_SHA'),'run_id':os.environ.get('GIT
           'limits':{'per_file_bytes':MAX_FILE,'total_bytes':MAX_TOTAL,'retention_days':1},
           'platform':PLATFORM,'whole_run_limit_bytes':WHOLE_RUN,'whole_run_allocation':BUDGETS,'files':[],'omissions':[],'scope':'Synthetic native test summaries, log tails and selected screenshots only; no xcresult bundles'}
 size=0
+from original_ios_process_guard import staged_context,read_failure,read_inflight,require_clear,MARKER_NAME,INFLIGHT_NAME,MAX_MARKER_BYTES,GuardRefusal
+STAGED_CONTEXT=staged_context()
+GUARD_RESERVE=2*MAX_MARKER_BYTES if STAGED_CONTEXT is not None else 0
+STAGED_COLLECTION_DEADLINE=None
+if STAGED_CONTEXT is not None:
+    from uikit_full_shipping_gate import admit_phase
+    from mac_host_transport import load_json
+    clock=load_json((TEMP/'full-shipping-clock.json').read_bytes())
+    STAGED_COLLECTION_DEADLINE=COLLECTION_STARTED+admit_phase(clock,STAGED_CONTEXT,'collection')
 
 def retain_bytes(name,data,source):
     global size
     name=Path(name).name
-    if len(data)>MAX_FILE or size+len(data)>MAX_TOTAL-RESERVE:
+    if len(data)>MAX_FILE or size+len(data)>MAX_TOTAL-RESERVE-GUARD_RESERVE:
         manifest['omissions'].append({'name':name,'reason':'evidence byte cap','bytes':len(data)})
         return False
     (OUT/name).write_bytes(data);size+=len(data)
@@ -31,7 +40,7 @@ def retain_bytes(name,data,source):
 
 def retain_file(name,path,source):
     count=path.stat().st_size
-    if count>MAX_FILE or size+count>MAX_TOTAL-RESERVE:
+    if count>MAX_FILE or size+count>MAX_TOTAL-RESERVE-GUARD_RESERVE:
         manifest['omissions'].append({'name':name,'reason':'evidence byte cap','bytes':count});return False
     return retain_bytes(name,path.read_bytes(),source)
 
@@ -64,8 +73,14 @@ if FULL_SHIPPING:
         if status_path.is_file():
             from uikit_full_shipping_handoff import read,accept_row,same_json
             status=read(status_path)
-            if status.get('row_checks_passed') is True and not same_json(status,accept_row(TEMP)):
-                raise ValueError('Changed accepted original UIKit row proof')
+            if status.get('row_checks_passed') is True:
+                blocked=False
+                if STAGED_CONTEXT is not None:
+                    try:require_clear(TEMP,STAGED_CONTEXT)
+                    except GuardRefusal:blocked=True
+                if blocked:manifest['omissions'].append({'name':'full-shipping-row.json','reason':'Earlier candidate receipt predates process uncertainty; retained only as diagnostic'})
+                elif not same_json(status,accept_row(TEMP)):
+                    raise ValueError('Changed accepted original UIKit row proof')
     else:raise ValueError('Unexpected full-shipping evidence row')
 # A claimed versioned consumer cannot be uploaded without the actual summary
 #it was bound to. Diagnostic-only failures still retain available evidence.
@@ -211,6 +226,18 @@ if FULL_SHIPPING and optional_budget is not None:
     optional_budget.deadline=min(optional_budget.deadline,COLLECTION_STARTED+150)
 
 def optional_export(args,timeout):
+    if STAGED_CONTEXT is not None:
+        try:
+            require_clear(TEMP,STAGED_CONTEXT)
+            if STAGED_COLLECTION_DEADLINE-time.monotonic()<timeout+15+30:
+                raise OptionalExportError('Staged exporter/cleanup/finalization allowance does not fit; no dispatch')
+            from native_process import run
+            result=run(args,timeout=timeout,check=False,echo=False)
+            if time.monotonic()>STAGED_COLLECTION_DEADLINE-30:
+                raise OptionalExportError('Staged exporter exceeded collection finalization boundary')
+            return subprocess.CompletedProcess(result.args,result.returncode,result.stdout.encode(),result.stderr.encode())
+        except (GuardRefusal,TimeoutError,RuntimeError,OSError) as error:
+            raise OptionalExportError('Staged native export withheld/failed: '+str(error)) from error
     if optional_budget is not None:return optional_budget.run(args,timeout)
     return subprocess.run(args,capture_output=True,timeout=timeout)
 
@@ -313,6 +340,21 @@ for name in [f'native-{platform}-launch.{extension}' for platform in ['vision','
     if path.is_file():retain_file(path.name,path,'simctl native launch screenshot')
 if FULL_SHIPPING and PLATFORM=='mac' and time.monotonic()-COLLECTION_STARTED>180:
     raise RuntimeError('Fixed Mac collection exceeded its180-second allocation')
+if STAGED_CONTEXT is not None:
+    GUARD_RESERVE=0
+    state={'context':STAGED_CONTEXT,'native_dispatch_clear':False}
+    try:
+        failure=read_failure(TEMP,STAGED_CONTEXT);inflight=read_inflight(TEMP,STAGED_CONTEXT)
+        state.update(native_dispatch_clear=failure is None and inflight is None,failure_present=failure is not None,inflight_present=inflight is not None)
+    except GuardRefusal as error:state['validation_error']=str(error)[:512]
+    for name in (MARKER_NAME,INFLIGHT_NAME):
+        path=TEMP/name
+        if path.exists() or path.is_symlink():
+            if path.is_file() and not path.is_symlink() and path.stat().st_nlink==1 and 0<path.stat().st_size<=MAX_MARKER_BYTES:
+                if not retain_file(name,path,'mandatory first process uncertainty/ownership evidence; never acceptance'):raise RuntimeError('Process guard evidence omitted')
+            else:manifest['omissions'].append({'name':name,'reason':'unsafe or oversized process receipt; native dispatch remains blocked'})
+    manifest['original_ios_process_guard']=state
+    if time.monotonic()>STAGED_COLLECTION_DEADLINE:raise RuntimeError('Staged collection exceeded existing180s/row boundary')
 if optional_budget is not None:manifest['optional_export_budget']=optional_budget.report()
 manifest['retained_bytes_before_manifest']=size
 payload=(json.dumps(manifest,indent=2,ensure_ascii=False)+'\n').encode()

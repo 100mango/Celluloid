@@ -175,3 +175,10 @@
 "On" = "已开启";
 "Off" = "已关闭";
 "Redo" = "重做";
+
+/* Original iOS offline privacy screen. */
+"Close" = "关闭";
+"Shows the privacy policy offline." = "离线显示隐私政策。";
+"Open in External Browser" = "在外部浏览器中打开";
+"Opens GitHub Pages, which logs your IP address." = "打开 GitHub Pages 网页，网站会记录您的 IP 地址。";
+"privacy-policy.offline-body" = "本隐私政策可离线阅读。查看此页面不会打开网站。\n\n照片编辑\nCelluloid 在您的设备上处理照片和编辑内容。人脸检测和像素化使用 Apple 的 Core Image 在本地完成。检测可能遗漏人脸，请在分享前检查结果。开发者不收集或上传您的照片、编辑内容或人脸检测结果。Celluloid 不包含分析统计或广告 SDK，也不跟踪广告标识符或供应商标识符。\n\n照片与 iCloud\nCelluloid 根据您授予的照片访问权限显示和编辑照片。浏览或编辑时，Apple 的“照片”服务可能从 iCloud 下载图片。点击“完成”会将编辑结果或拼图保存到“照片”；照片编辑扩展也会将保存的结果交回“照片”。照片图库可能根据您的系统设置与 iCloud 同步。这些系统服务由 Apple 处理。\n\n分享\n当您选择“分享”时，Celluloid 会打开系统分享面板。您选择的目标应用或服务会接收图片，并按其自身隐私规则处理。\n\n外部网站\n只有单独点击“在外部浏览器中打开”，才会打开托管在 GitHub Pages 上的在线隐私政策。浏览器会发送包括 IP 地址在内的网络信息，GitHub Pages 会出于安全目的记录和保存您的 IP 地址。浏览器和托管服务适用各自的隐私规则。\n\n删除与权限\n您可以通过“照片”移除照片和已保存的编辑，并在系统“设置”中撤回 Celluloid 的照片访问权限。卸载应用不会删除已经保存在“照片”、iCloud 或分享目标中的图片。请在相应应用或服务中管理这些副本，具体删除和恢复方式以系统规则为准。\n\n隐私问题请联系：100mango@gmail.com";

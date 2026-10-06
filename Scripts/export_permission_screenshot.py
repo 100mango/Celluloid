@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Export at most two synthetic XCTest JPEGs; failure evidence takes priority."""
 import base64, hashlib, json, pathlib, sqlite3, subprocess
+from original_ios_process_guard import active,StagedDiagnosticCommands
+diagnostic=StagedDiagnosticCommands('evidence-screens') if active() else None
 
 
 def records(value):
@@ -18,7 +20,8 @@ candidates = []
 for result in sorted(pathlib.Path('.').glob('TestResults*.xcresult'), key=lambda p: p.stat().st_mtime, reverse=True):
     destination = pathlib.Path('.build/ui-evidence') / result.stem
     destination.mkdir(parents=True, exist_ok=True)
-    exported = subprocess.run(['xcrun', 'xcresulttool', 'export', 'attachments', '--path', str(result), '--output-path', str(destination)], capture_output=True, text=True, timeout=45)
+    command=['xcrun', 'xcresulttool', 'export', 'attachments', '--path', str(result), '--output-path', str(destination)]
+    exported=diagnostic.run(command) if diagnostic is not None else subprocess.run(command,capture_output=True,text=True,timeout=45)
     print('UI_ATTACHMENT_EXPORT', result.name, exported.returncode, exported.stdout[-1000:], exported.stderr[-1000:], flush=True)
     manifest_path = destination / 'manifest.json'
     if exported.returncode or not manifest_path.is_file():
@@ -59,3 +62,5 @@ if marker.exists():
             rows = list(connection.execute('SELECT ' + ','.join(wanted) + ' FROM access WHERE client=? AND service=?', ('Mango.Celluloid', 'kTCCServicePhotos')))
             print('SYSTEM_PHOTOS_TCC_RAW', json.dumps({'columns': wanted, 'rows': rows}))
         connection.close()
+
+if diagnostic is not None:diagnostic.finish()

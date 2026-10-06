@@ -160,3 +160,10 @@
 "On" = "On";
 "Off" = "Off";
 "Redo" = "Redo";
+
+/* Original iOS offline privacy screen. */
+"Close" = "Close";
+"Shows the privacy policy offline." = "Shows the privacy policy offline.";
+"Open in External Browser" = "Open in External Browser";
+"Opens GitHub Pages, which logs your IP address." = "Opens GitHub Pages, which logs your IP address.";
+"privacy-policy.offline-body" = "This policy is available offline. Viewing this screen does not open a website.\n\nPhoto editing\nCelluloid processes photos and edits on your device. Face detection and pixelation use Apple's Core Image locally. Detection can miss faces; check the result before sharing. The developer does not collect or upload your photos, edits or face-detection results. Celluloid does not include analytics or advertising SDKs or track advertising or vendor identifiers.\n\nPhotos and iCloud\nCelluloid uses the Photos access you allow to display and edit photos. Apple's Photos service may download images from iCloud when you browse or edit them. Choosing Done saves edits or a collage to Photos; the Photos editing extension also returns its saved output to Photos. Your Photos library may sync with iCloud according to your system settings. These system services are handled by Apple.\n\nSharing\nWhen you choose Share, Celluloid opens the system share sheet. The destination you choose receives the image and handles it under its own privacy practices.\n\nExternal website\nOnly the separate Open in External Browser button opens the online privacy policy on GitHub Pages. Your browser sends network information, including your IP address, and GitHub Pages logs and stores your IP address for security purposes. The browser and hosting service have their own privacy practices.\n\nDeletion and permissions\nYou can remove photos and saved edits through Photos and revoke Celluloid's Photos permission in Settings. Removing the app does not delete images already saved in Photos, iCloud or a sharing destination. Manage those copies in the respective app or service; system deletion and recovery rules apply.\n\nPrivacy questions: 100mango@gmail.com";

@@ -44,8 +44,10 @@ def source_proof(temp,phase='before'):
     need(row['source_sha']==identity()['source_sha'] and type(row['file_count']) is int and row['file_count']==count and row['source_fingerprint']==fingerprint,'Unqualified shipping source')
     need(row['validation_route']==current_route() and row['phase']==phase,'Wrong source proof phase')
     if current_route()==ORIGINAL_IOS:
+        from original_ios_source_contract import audit
         projection=row.get('original_ios_source')
-        need(type(projection) is dict and projection.get('source_equivalence') is True and projection.get('unchanged_protected_files')==543 and projection.get('original_total_invocations')==412,'Missing staged feature/source equivalence')
+        need(type(projection) is dict and same_json(projection,audit(ROOT)),
+             'Missing exact staged original-feature and approved offline-privacy source proof')
     return row
 
 def producer(temp):
@@ -142,6 +144,9 @@ def accept_row(temp, *, row=None, recorded_observation=None):
     from uikit_installed_identity import validate as validate_installation
     from verify_required_interoperability import verify
     ident=identity();row=os.environ['CELLULOID_FULL_ROW'] if row is None else row;context={**ident,'row':row}
+    if current_route()==ORIGINAL_IOS:
+        from original_ios_process_guard import require_clear
+        require_clear(temp,context)
     clock=read(temp/'full-shipping-clock.json');manifest=read(temp/'full-shipping-execution.json')
     observed=read(temp/'full-shipping-accounting.json')
     # Fixed archive replay uses the recorded execution interval; live row callers
@@ -202,6 +207,10 @@ def pack_phase_logs(temp,retain,available):
         'raw_aggregate_limit':RAW_LOG_LIMIT,'producer_complete':False,'files':[],'omissions':[]}
     status_path=temp/'full-shipping-row.json'
     accepted=status_path.is_file() and read(status_path).get('row_checks_passed') is True
+    if accepted and current_route()==ORIGINAL_IOS:
+        from original_ios_process_guard import require_clear,GuardRefusal
+        try:require_clear(temp,{**identity(),'row':row})
+        except GuardRefusal:accepted=False  # Keep raw diagnostics; no pre-failure receipt acceptance.
     if accepted:need(same_json(read(status_path),accept_row(temp)),'Unverified complete log producer')
     accounting=read(temp/'full-shipping-accounting.json') if accepted else None
     expected_hashes={r['phase']:r['raw_log_sha256'] for r in accounting['phases']} if accounting else {}

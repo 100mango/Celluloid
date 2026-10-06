@@ -10,7 +10,6 @@ import UIKit
 import SnapKit
 import CelluloidKit
 import Photos
-import SafariServices
 
 enum AppLinks {
     static let privacyPolicyURL = URL(string: "https://100mango.github.io/app-privacy/")!
@@ -34,7 +33,7 @@ class EntranceViewController: UIViewController {
         button.titleLabel?.textAlignment = .center
         button.tintColor = .alphaWhiteColor
         button.accessibilityIdentifier = "privacy-policy"
-        button.accessibilityHint = NSLocalizedString("Opens the app privacy policy.", comment: "Privacy link accessibility hint")
+        button.accessibilityHint = NSLocalizedString("Shows the privacy policy offline.", comment: "Privacy entry accessibility hint")
         button.addTarget(self, action: #selector(showPrivacyPolicy), for: .touchUpInside)
         return button
     }()
@@ -121,11 +120,98 @@ class EntranceViewController: UIViewController {
     }
 
     @objc private func showPrivacyPolicy() {
-        let policy = SFSafariViewController(url: AppLinks.privacyPolicyURL)
-        policy.dismissButtonStyle = .close
-        present(policy, animated: true)
+        let navigation = UINavigationController(rootViewController: PrivacyPolicyViewController())
+        navigation.modalPresentationStyle = .fullScreen
+        present(navigation, animated: true)
     }
 
+}
+
+/// Reading the bundled policy never opens a website. Only the separate button
+/// invokes the browser opener, which can be captured without networking in tests.
+final class PrivacyPolicyViewController: UIViewController {
+    let bodyTextView = UITextView()
+    let externalBrowserButton = UIButton(type: .system)
+    private let openURL: @MainActor (URL) -> Void
+    private var browserButtonHeight: NSLayoutConstraint?
+
+    init(openURL: @escaping @MainActor (URL) -> Void = {
+        UIApplication.shared.open($0, options: [:], completionHandler: nil)
+    }) {
+        self.openURL = openURL
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = NSLocalizedString("Privacy Policy", comment: "Privacy screen title")
+        view.backgroundColor = .systemBackground
+        let close = UIBarButtonItem(title: NSLocalizedString("Close", comment: "Close privacy screen"),
+                                    style: .done, target: self, action: #selector(closePolicy))
+        close.accessibilityIdentifier = "privacy-policy-close"
+        navigationItem.rightBarButtonItem = close
+
+        bodyTextView.text = NSLocalizedString("privacy-policy.offline-body", comment: "Bundled original iOS privacy policy")
+        bodyTextView.font = .preferredFont(forTextStyle: .body)
+        bodyTextView.adjustsFontForContentSizeCategory = true
+        bodyTextView.textColor = .label
+        bodyTextView.backgroundColor = .clear
+        bodyTextView.isEditable = false
+        bodyTextView.isSelectable = true
+        bodyTextView.isScrollEnabled = true
+        bodyTextView.alwaysBounceVertical = true
+        bodyTextView.dataDetectorTypes = []
+        bodyTextView.textContainerInset = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
+        bodyTextView.textContainer.lineFragmentPadding = 0
+        bodyTextView.accessibilityIdentifier = "privacy-policy-body"
+
+        externalBrowserButton.setTitle(NSLocalizedString("Open in External Browser", comment: "Explicit external privacy website action"), for: .normal)
+        externalBrowserButton.titleLabel?.font = .preferredFont(forTextStyle: .body)
+        externalBrowserButton.titleLabel?.adjustsFontForContentSizeCategory = true
+        externalBrowserButton.titleLabel?.numberOfLines = 0
+        externalBrowserButton.titleLabel?.textAlignment = .center
+        externalBrowserButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        externalBrowserButton.accessibilityIdentifier = "privacy-policy-external-browser"
+        externalBrowserButton.accessibilityHint = NSLocalizedString("Opens GitHub Pages, which logs your IP address.", comment: "External browser privacy hint")
+        externalBrowserButton.addTarget(self, action: #selector(openExternalPolicy), for: .touchUpInside)
+
+        for control in [bodyTextView, externalBrowserButton] as [UIView] {
+            control.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(control)
+        }
+        let buttonHeight = externalBrowserButton.heightAnchor.constraint(equalToConstant: 44)
+        browserButtonHeight = buttonHeight
+        NSLayoutConstraint.activate([
+            bodyTextView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            bodyTextView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            bodyTextView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            bodyTextView.bottomAnchor.constraint(equalTo: externalBrowserButton.topAnchor, constant: -8),
+            externalBrowserButton.leadingAnchor.constraint(equalTo: bodyTextView.leadingAnchor),
+            externalBrowserButton.trailingAnchor.constraint(equalTo: bodyTextView.trailingAnchor),
+            externalBrowserButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
+            buttonHeight
+        ])
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let textWidth = max(1, externalBrowserButton.bounds.width - 24)
+        let textHeight = externalBrowserButton.titleLabel?.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude)).height ?? 0
+        let height = max(44, ceil(textHeight) + 24)
+        if browserButtonHeight?.constant != height { browserButtonHeight?.constant = height }
+    }
+
+    @objc private func openExternalPolicy() {
+        openURL(AppLinks.privacyPolicyURL)
+    }
+
+    @objc private func closePolicy() {
+        dismiss(animated: true)
+    }
 }
 
 //MARK: Action

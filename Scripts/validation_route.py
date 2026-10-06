@@ -14,6 +14,35 @@ UIKIT_FULL_DRIVER_PATHS={'.github/workflows/uikit-full-shipping.yml','Scripts/va
 
 ORIGINAL_IOS={'scope':'original-ios-release','branch':'codex/original-ios-release','workflow_path':'.github/workflows/original-ios-release.yml','diagnostic_only':True}
 ORIGINAL_IOS_BASE={'commit':'4c0c6cb3314cd89e41fc9cfc67b833aca7de7d56','tree':'67ee79704e23936ba451173ce8aa68614b1ec1da'}
+ORIGINAL_IOS_PREDECESSOR={'commit':'588fa917cbe62e60c6b3502d47aae70b1db3ff55','tree':'2f410ba817e274a2236513b37b3917ad6420fbc1'}
+ORIGINAL_IOS_REPAIR_PATHS={
+    '.github/workflows/original-ios-release.yml',
+    'Celluloid/Controller/EntranceViewController.swift',
+    'Celluloid/en.lproj/Localizable.strings',
+    'Celluloid/zh-Hans.lproj/Localizable.strings',
+    'CelluloidTests/EditorRegressionTests.swift',
+    'CelluloidUITests/CelluloidUITests.swift',
+    'Documentation/original-ios-release.md',
+    'Scripts/collect_native_evidence.py',
+    'Scripts/collect_simulator_diagnostics.py',
+    'Scripts/export_permission_screenshot.py',
+    'Scripts/native_process.py',
+    'Scripts/original-ios-source-contract.json',
+    'Scripts/original_ios_process_guard.py',
+    'Scripts/original_ios_source_contract.py',
+    'Scripts/probe_photos_bootstrap.py',
+    'Scripts/run_bounded.py',
+    'Scripts/stage_uikit_layer_fixture.py',
+    'Scripts/test_original_ios_diagnostic_ownership.py',
+    'Scripts/test_original_ios_process_guard.py',
+    'Scripts/test_original_ios_route.py',
+    'Scripts/test_original_ios_source_contract.py',
+    'Scripts/test_original_ios_supervision_integration.py',
+    'Scripts/uikit_full_shipping_gate.py',
+    'Scripts/uikit_full_shipping_handoff.py',
+    'Scripts/validation_route.py',
+    'Scripts/verify_combined_source.py',
+}
 # Explicit final reviewed path inventory is frozen with this candidate.
 ORIGINAL_IOS_PATHS={
     '.github/workflows/original-ios-release.yml',

@@ -29,7 +29,13 @@ class OriginalIOSRouteTests(unittest.TestCase):
     def test_original_native_and_uikit_commands_and_clocks_remain_exact(self):
         old=(ROOT/route.UIKIT_FULL['workflow_path']).read_text();new=(ROOT/route.ORIGINAL_IOS['workflow_path']).read_text()
         for name in ['mac-producer','uikit-regression']:
-            expected=job(old,name).replace('codex/uikit-full-shipping','codex/original-ios-release').replace('.github/workflows/uikit-full-shipping.yml','.github/workflows/original-ios-release.yml').replace('max-parallel: 1','max-parallel: 2').replace('fetch-depth: 3','fetch-depth: 2').replace('celluloid-uikit-full-','celluloid-original-ios-')
+            expected=job(old,name).replace('codex/uikit-full-shipping','codex/original-ios-release').replace('.github/workflows/uikit-full-shipping.yml','.github/workflows/original-ios-release.yml').replace('max-parallel: 1','max-parallel: 2').replace('celluloid-uikit-full-','celluloid-original-ios-')
+            expected=expected.replace('        bounded collection collection python3 Scripts/collect_native_evidence.py','        full_gate admit --phase collection > /dev/null\n        python3 Scripts/collect_native_evidence.py\n        full_gate check-clock --phase collection')
+            if name=='uikit-regression':
+                for phase,script,log in [('evidence-screens','python3 -u Scripts/export_permission_screenshot.py','uikit-screens.log'),('diagnostics','python3 Scripts/collect_simulator_diagnostics.py','uikit-diagnostics.log')]:
+                    expected=expected.replace('        bounded '+phase+' '+phase+' '+script,'        full_gate admit --phase '+phase+' > /dev/null\n        '+script)
+                    needle=' | tee \"$RUNNER_TEMP/'+log+'\"'
+                    expected=expected.replace(needle,needle+'\n        full_gate check-clock --phase '+phase)
             self.assertEqual(job(new,name),expected)
             self.assertEqual(xcode_commands(job(new,name)),xcode_commands(job(old,name)))
         self.assertIn('max-parallel: 1',job(old,'uikit-regression'))
@@ -71,21 +77,27 @@ class OriginalIOSRouteTests(unittest.TestCase):
         contract=json.loads((ROOT/'Scripts/original-ios-source-contract.json').read_text())
         rows=contract['files'];self.assertEqual(len(rows),546)
         for name,digest in rows:self.assertEqual(hashlib.sha256((ROOT/name).read_bytes()).hexdigest(),digest)
-        env=environment();base=route.ORIGINAL_IOS_BASE['commit'];head=env['GITHUB_SHA']
+        env=environment();base=route.ORIGINAL_IOS_BASE['commit'];prior=route.ORIGINAL_IOS_PREDECESSOR['commit'];head=env['GITHUB_SHA']
         replies={('rev-parse','HEAD'):head,('status','--porcelain','--untracked-files=all'):'',
             ('ls-files','-z','--',*contract['roots']):'\0'.join(name for name,_ in rows)+'\0',
             ('ls-files','--','.github/release-controller'):'',('ls-files','--','.github/workflows/cloud-release.yml'):'',
-            ('rev-parse','HEAD^{tree}'):'c'*40,('rev-list','--parents','-n','1','HEAD'):head+' '+base,
+            ('rev-parse','HEAD^{tree}'):'c'*40,('rev-list','--parents','-n','1','HEAD'):head+' '+prior,
+            ('rev-list','--parents','-n','1',prior):prior+' '+base,
+            ('rev-parse',prior+'^{tree}'):route.ORIGINAL_IOS_PREDECESSOR['tree'],
             ('rev-parse',base+'^{tree}'):route.ORIGINAL_IOS_BASE['tree'],
-            ('diff','--name-only',base,'HEAD'):'\n'.join(sorted(route.ORIGINAL_IOS_PATHS))}
+            ('diff','--name-only',base,prior):'\n'.join(sorted(route.ORIGINAL_IOS_PATHS)),
+            ('diff','--name-only',prior,'HEAD'):'\n'.join(sorted(route.ORIGINAL_IOS_REPAIR_PATHS))}
         actual_check_output=subprocess.check_output
         def call(command,**kwargs):
             if command[:2]==['git','show']:return actual_check_output(command,**kwargs)
             return replies[tuple(command[1:])]
         with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,dict(env,RUNNER_TEMP=folder),clear=True),patch.object(sys,'argv',['verify_combined_source.py','--phase','before']),patch.object(guard.subprocess,'check_output',side_effect=call),contextlib.redirect_stdout(io.StringIO()):
             guard.main();result=json.loads((Path(folder)/'combined-source-before.json').read_text())
-            self.assertEqual(result['source_fingerprint'],contract['fingerprint']);self.assertTrue(result['original_ios_source']['source_equivalence'])
-            for key,value in [(('rev-list','--parents','-n','1','HEAD'),head+' '+'e'*40),(('rev-list','--parents','-n','1','HEAD'),head+' '+base+' '+'e'*40),(('rev-parse',base+'^{tree}'),'e'*40),(('diff','--name-only',base,'HEAD'),'\n'.join(sorted(route.ORIGINAL_IOS_PATHS|{'CelluloidKit/Unexpected.swift'})))]:
+            self.assertEqual(result['source_fingerprint'],contract['fingerprint']);self.assertFalse(result['original_ios_source']['source_equivalence'])
+            self.assertTrue(result['original_ios_source']['original_features_preserved'])
+            for key,value in [(('rev-list','--parents','-n','1','HEAD'),head+' '+'e'*40),(('rev-list','--parents','-n','1','HEAD'),head+' '+prior+' '+'e'*40),
+                (('rev-list','--parents','-n','1',prior),prior+' '+'e'*40),
+                (('rev-parse',prior+'^{tree}'),'e'*40),(('rev-parse',base+'^{tree}'),'e'*40),(('diff','--name-only',prior,'HEAD'),'\n'.join(sorted(route.ORIGINAL_IOS_REPAIR_PATHS|{'CelluloidKit/Unexpected.swift'})))]:
                 previous=replies[key];replies[key]=value
                 with self.subTest(key=key),self.assertRaises(AssertionError):guard.main()
                 replies[key]=previous

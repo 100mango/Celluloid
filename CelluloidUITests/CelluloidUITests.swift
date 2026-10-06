@@ -237,21 +237,37 @@ final class CelluloidUITests: XCTestCase {
         let policy = app.buttons["privacy-policy"]
         XCTAssertTrue(policy.isHittable)
         XCTAssertEqual(policy.label, "Privacy Policy")
-        rotate(.landscapeLeft, observing: ["privacy-policy"])
-        XCTAssertTrue(policy.isHittable)
-        policy.tap()
-        // The browser's Close action is available even when external networking is offline.
-        let close = app.buttons["Close"]
-        let visible = close.waitForExistence(timeout: 15)
-        if !visible {
-            print("PRIVACY_ACCESSIBILITY_BEGIN")
-            print(String(app.debugDescription.prefix(18000)))
-            print("PRIVACY_ACCESSIBILITY_END")
+        for orientation in [UIDeviceOrientation.landscapeLeft, .portrait] {
+            rotate(orientation, observing: ["privacy-policy"])
+            XCTAssertTrue(policy.isHittable)
+            policy.tap()
+            let body = app.descendants(matching: .any).matching(identifier: "privacy-policy-body").firstMatch
+            let close = app.buttons["privacy-policy-close"]
+            let browser = app.buttons["privacy-policy-external-browser"]
+            XCTAssertTrue(body.waitForExistence(timeout: 5), "The bundled policy must appear without loading a website")
+            XCTAssertTrue(close.isHittable)
+            XCTAssertEqual(close.label, "Close")
+            XCTAssertTrue(browser.isHittable)
+            XCTAssertEqual(browser.label, "Open in External Browser")
+            let publicText = [body.value as? String, Optional(body.label)].compactMap { $0 }
+            let text = publicText.first {
+                $0.contains("This policy is available offline.") && $0.contains("Privacy questions: 100mango@gmail.com")
+            }
+            XCTAssertNotNil(text, "The native text view must expose the complete offline policy in its public value or label")
+            for phrase in ["available offline", "Core Image", "iCloud", "Sharing", "GitHub Pages", "IP address", "does not delete", "100mango@gmail.com"] {
+                XCTAssertTrue(text?.contains(phrase) == true, "The offline body must include: \(phrase)")
+            }
+            XCTAssertEqual(app.webViews.count, 0)
+            XCTAssertEqual(app.state, .runningForeground)
+            body.swipeUp()
+            XCTAssertTrue(close.isHittable && browser.isHittable, "Scrolling must keep both explicit actions accessible")
+            // The unit test captures the browser action's URL. This UI flow must
+            // never launch a browser or contact the external website.
+            close.tap()
+            XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 5))
+            XCTAssertTrue(policy.isHittable)
+            XCTAssertFalse(body.exists)
         }
-        XCTAssertTrue(visible, "The policy browser must provide its explicit Close control")
-        close.tap()
-        XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 5))
-        XCTAssertTrue(policy.isHittable)
     }
 
     func testDeniedPhotosShowsRecoveryAndCanCancelRepeatedly() {

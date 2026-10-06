@@ -482,7 +482,7 @@
     ],
     [
       "Celluloid/Controller/EntranceViewController.swift",
-      "7d9bd9e0b55dfdcf17c36d4631421033b4465c24f60b1dd10d726cb1fbc23d11"
+      "e6b89f9b0bcb065f8d8e0d0bd06c42bd55ce330f2920586a6e058a0537fbbce4"
     ],
     [
       "Celluloid/Controller/PhotoPickerViewController.swift",
@@ -526,7 +526,7 @@
     ],
     [
       "Celluloid/en.lproj/Localizable.strings",
-      "360e92980229405b27efce5af1d78387e1c1427df59adabdc3ac800acd79db11"
+      "a8c3996e6247440cfb225d5a225a03839c80d147e3105edbb0f77c15148344ed"
     ],
     [
       "Celluloid/zh-Hans.lproj/InfoPlist.strings",
@@ -538,7 +538,7 @@
     ],
     [
       "Celluloid/zh-Hans.lproj/Localizable.strings",
-      "4bc02f5ce79b455eef0ab45ba2c57e4fb4b1548d456f3f4738b23e3351df6507"
+      "1070e225ed1ccad4e591d95be8133cf489b86679999557fe5e82da7cb2d54c55"
     ],
     [
       "CelluloidKit/Bubble/Controller/BubblePickerViewController.swift",
@@ -1362,7 +1362,7 @@
     ],
     [
       "CelluloidTests/EditorRegressionTests.swift",
-      "a9d9b4ea815f117c8bee1d1243a6eb427146431fc79e562d13405a1a46798a89"
+      "558db7be201497c738a30aeab15922a33d61495f041ff9b964845c6c7af7ee24"
     ],
     [
       "CelluloidTests/ExportAndInteractionTests.swift",
@@ -1390,7 +1390,7 @@
     ],
     [
       "CelluloidUITests/CelluloidUITests.swift",
-      "750e15e0c1e0ad4d3074eaa093feaec31f780504431206c919c057cc5851dd71"
+      "94f9fffbbf2693038fe85867bd31426959bf099af7f05b681182ef6e97361256"
     ],
     [
       "Packages/CelluloidCore/Package.swift",
@@ -2201,7 +2201,7 @@
       "f7603c1c1175e32b5146b43d9e1f03bd6e839416510109795eb942cf7223579a"
     ]
   ],
-  "fingerprint": "8a9845804a6e9d18cc671d25689fce62950447b5e632255210ab0cfb2a7ef4ce",
+  "fingerprint": "3ee65da6ddf7be2f2c42df6505bec283b96a28398736c382189fcd5570068a02",
   "appearance_cancel_patch_sha256": "a3f6810452a5d2d3475a4bf0a921cda863f431c0660c7d8b7616f484e019f15f",
   "expected_UIKit_executions": {
     "original_qualified": 400,
@@ -2220,5 +2220,58 @@
     "additional_shipping_resource": "Celluloid/en.lproj/Localizable.strings",
     "note": "The complete combined bytes, including these reviewed native navigation/localization overlays, are pinned in files/fingerprint above."
   },
-  "trait_fixture_patch_sha256": "55ee3dc7d93cff7b8eeec189525b3261a9da3eddd944335005e02c1ecd9efc16"
+  "trait_fixture_patch_sha256": "55ee3dc7d93cff7b8eeec189525b3261a9da3eddd944335005e02c1ecd9efc16",
+  "offline_privacy_change": {
+    "schema": "Celluloid.OfflinePrivacyChange.1",
+    "baseline": "4c0c6cb3314cd89e41fc9cfc67b833aca7de7d56",
+    "files": [
+      {
+        "path": "Celluloid/Controller/EntranceViewController.swift",
+        "baseline_sha256": "ed767960bb7be488660da6c28c69b11e83d9c777c30b98bd4006042f0431e210",
+        "pre_privacy_sha256": "7d9bd9e0b55dfdcf17c36d4631421033b4465c24f60b1dd10d726cb1fbc23d11",
+        "approved_sha256": "e6b89f9b0bcb065f8d8e0d0bd06c42bd55ce330f2920586a6e058a0537fbbce4",
+        "unchanged_nonprivacy_sha256": "6467c147468bbfa02887d3e833fb690cd6cb90f522e5f85ba7e68cfe08b49f09"
+      },
+      {
+        "path": "Celluloid/en.lproj/Localizable.strings",
+        "baseline_sha256": "360e92980229405b27efce5af1d78387e1c1427df59adabdc3ac800acd79db11",
+        "pre_privacy_sha256": "360e92980229405b27efce5af1d78387e1c1427df59adabdc3ac800acd79db11",
+        "approved_sha256": "a8c3996e6247440cfb225d5a225a03839c80d147e3105edbb0f77c15148344ed",
+        "unchanged_nonprivacy_sha256": "360e92980229405b27efce5af1d78387e1c1427df59adabdc3ac800acd79db11"
+      },
+      {
+        "path": "Celluloid/zh-Hans.lproj/Localizable.strings",
+        "baseline_sha256": "4bc02f5ce79b455eef0ab45ba2c57e4fb4b1548d456f3f4738b23e3351df6507",
+        "pre_privacy_sha256": "4bc02f5ce79b455eef0ab45ba2c57e4fb4b1548d456f3f4738b23e3351df6507",
+        "approved_sha256": "1070e225ed1ccad4e591d95be8133cf489b86679999557fe5e82da7cb2d54c55",
+        "unchanged_nonprivacy_sha256": "4bc02f5ce79b455eef0ab45ba2c57e4fb4b1548d456f3f4738b23e3351df6507"
+      },
+      {
+        "path": "CelluloidTests/EditorRegressionTests.swift",
+        "baseline_sha256": "a9d9b4ea815f117c8bee1d1243a6eb427146431fc79e562d13405a1a46798a89",
+        "pre_privacy_sha256": "a9d9b4ea815f117c8bee1d1243a6eb427146431fc79e562d13405a1a46798a89",
+        "approved_sha256": "558db7be201497c738a30aeab15922a33d61495f041ff9b964845c6c7af7ee24",
+        "unchanged_nonprivacy_sha256": "d1f63801aac6933afcb25d3aab56daeae225066caf278c95638a30d49050c195"
+      },
+      {
+        "path": "CelluloidUITests/CelluloidUITests.swift",
+        "baseline_sha256": "750e15e0c1e0ad4d3074eaa093feaec31f780504431206c919c057cc5851dd71",
+        "pre_privacy_sha256": "750e15e0c1e0ad4d3074eaa093feaec31f780504431206c919c057cc5851dd71",
+        "approved_sha256": "94f9fffbbf2693038fe85867bd31426959bf099af7f05b681182ef6e97361256",
+        "unchanged_nonprivacy_sha256": "fb53a904742679d9662888d32a2b16800907c47fb2f4097d052350e45e9815f0"
+      }
+    ],
+    "updated_existing_test_methods": {
+      "CelluloidTests/EditorRegressionTests.swift": "testPrivacyPolicyUsesApprovedHTTPSDestinationAndAccessibleControl",
+      "CelluloidUITests/CelluloidUITests.swift": "testPrivacyPolicyEntryRemainsAccessibleAndCanClose"
+    },
+    "appended_localization_keys": [
+      "Close",
+      "Shows the privacy policy offline.",
+      "Open in External Browser",
+      "Opens GitHub Pages, which logs your IP address.",
+      "privacy-policy.offline-body"
+    ],
+    "scope": "Bundled offline privacy policy with an explicit external-browser action; no other original feature or test-method change"
+  }
 }

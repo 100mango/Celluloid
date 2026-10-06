@@ -52,10 +52,17 @@ final class EditorRegressionTests: XCTestCase {
         print("PHOTOS_LIBRARY_READINESS " + String(decoding: try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]), as: UTF8.self))
     }
 
-    func testPrivacyPolicyUsesApprovedHTTPSDestinationAndAccessibleControl() {
+    func testPrivacyPolicyUsesApprovedHTTPSDestinationAndAccessibleControl() throws {
+        final class PresentationRecorder: EntranceViewController {
+            var recordedPresentation: UIViewController?
+            override func present(_ viewControllerToPresent: UIViewController, animated: Bool, completion: (() -> Void)? = nil) {
+                recordedPresentation = viewControllerToPresent
+                completion?()
+            }
+        }
         XCTAssertEqual(AppLinks.privacyPolicyURL.absoluteString, "https://100mango.github.io/app-privacy/")
         XCTAssertEqual(AppLinks.privacyPolicyURL.scheme, "https")
-        let entrance = EntranceViewController()
+        let entrance = PresentationRecorder()
         entrance.loadViewIfNeeded()
         entrance.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         entrance.view.layoutIfNeeded()
@@ -63,6 +70,73 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertFalse(entrance.privacyPolicyButton.currentTitle?.isEmpty ?? true)
         XCTAssertGreaterThanOrEqual(entrance.privacyPolicyButton.bounds.height, 44)
         XCTAssertTrue(entrance.privacyPolicyButton.isEnabled)
+        XCTAssertEqual(entrance.privacyPolicyButton.accessibilityHint,
+                       NSLocalizedString("Shows the privacy policy offline.", comment: ""))
+        entrance.privacyPolicyButton.sendActions(for: .touchUpInside)
+        let navigation = try XCTUnwrap(entrance.recordedPresentation as? UINavigationController)
+        XCTAssertEqual(navigation.modalPresentationStyle, .fullScreen)
+        let presentedPolicy = try XCTUnwrap(navigation.viewControllers.first as? PrivacyPolicyViewController)
+        presentedPolicy.loadViewIfNeeded()
+        XCTAssertTrue(presentedPolicy.bodyTextView.text.contains("100mango@gmail.com"))
+
+        var openedURLs: [URL] = []
+        let policy = PrivacyPolicyViewController(openURL: { openedURLs.append($0) })
+        policy.loadViewIfNeeded()
+        XCTAssertTrue(openedURLs.isEmpty, "Reading the offline policy must not open the website")
+        XCTAssertEqual(policy.bodyTextView.accessibilityIdentifier, "privacy-policy-body")
+        XCTAssertFalse(policy.bodyTextView.isEditable)
+        XCTAssertTrue(policy.bodyTextView.isSelectable)
+        XCTAssertTrue(policy.bodyTextView.isScrollEnabled)
+        XCTAssertTrue(policy.bodyTextView.adjustsFontForContentSizeCategory)
+        XCTAssertEqual(policy.bodyTextView.dataDetectorTypes, [])
+        XCTAssertEqual(policy.externalBrowserButton.accessibilityIdentifier, "privacy-policy-external-browser")
+        XCTAssertEqual(policy.externalBrowserButton.currentTitle, NSLocalizedString("Open in External Browser", comment: ""))
+        XCTAssertTrue(policy.externalBrowserButton.titleLabel?.adjustsFontForContentSizeCategory ?? false)
+        let close = try XCTUnwrap(policy.navigationItem.rightBarButtonItem)
+        XCTAssertEqual(close.accessibilityIdentifier, "privacy-policy-close")
+        XCTAssertEqual(close.title, NSLocalizedString("Close", comment: ""))
+        XCTAssertTrue(close.isEnabled)
+        XCTAssertTrue(close.target === policy)
+        XCTAssertTrue(policy.responds(to: try XCTUnwrap(close.action)))
+
+        for language in ["en", "zh-Hans"] {
+            let url = try XCTUnwrap(Bundle(for: EntranceViewController.self).url(forResource: language, withExtension: "lproj"))
+            let bundle = try XCTUnwrap(Bundle(url: url))
+            let body = bundle.localizedString(forKey: "privacy-policy.offline-body", value: nil, table: nil)
+            for phrase in ["Celluloid", "Core Image", "iCloud", "GitHub Pages", "IP", "100mango@gmail.com"] {
+                XCTAssertTrue(body.contains(phrase), "Missing privacy disclosure for \(language): \(phrase)")
+            }
+            let disclosures = language == "en"
+                ? ["available offline", "does not collect or upload", "Photos", "Sharing", "Settings", "does not delete"]
+                : ["离线阅读", "不收集或上传", "照片", "分享", "设置", "不会删除"]
+            for phrase in disclosures { XCTAssertTrue(body.contains(phrase), "Missing \(language): \(phrase)") }
+            policy.bodyTextView.text = body
+            policy.externalBrowserButton.setTitle(bundle.localizedString(forKey: "Open in External Browser", value: nil, table: nil), for: .normal)
+            for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+                let traits = UITraitCollection(preferredContentSizeCategory: category)
+                policy.bodyTextView.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+                policy.externalBrowserButton.titleLabel?.font = .preferredFont(forTextStyle: .body, compatibleWith: traits)
+                for size in [CGSize(width: 320, height: 568), CGSize(width: 568, height: 320)] {
+                    policy.view.frame = CGRect(origin: .zero, size: size)
+                    policy.view.setNeedsLayout()
+                    policy.view.layoutIfNeeded()
+                    policy.viewDidLayoutSubviews()
+                    policy.view.layoutIfNeeded()
+                    XCTAssertGreaterThan(policy.bodyTextView.bounds.height, 44)
+                    XCTAssertGreaterThan(policy.bodyTextView.contentSize.height, policy.bodyTextView.bounds.height)
+                    XCTAssertGreaterThanOrEqual(policy.externalBrowserButton.bounds.height, 44)
+                    let textHeight = policy.externalBrowserButton.titleLabel?.sizeThatFits(CGSize(width: policy.externalBrowserButton.bounds.width - 24, height: .greatestFiniteMagnitude)).height ?? 0
+                    XCTAssertGreaterThanOrEqual(policy.externalBrowserButton.bounds.height, textHeight + 24)
+                    XCTAssertFalse(policy.bodyTextView.frame.intersects(policy.externalBrowserButton.frame))
+                    XCTAssertTrue(policy.view.bounds.contains(policy.externalBrowserButton.frame))
+                    policy.bodyTextView.setContentOffset(CGPoint(x: 0, y: 30), animated: false)
+                    XCTAssertGreaterThan(policy.bodyTextView.contentOffset.y, 0)
+                }
+            }
+        }
+        XCTAssertTrue(openedURLs.isEmpty, "Layout, localization and scrolling must stay offline")
+        policy.externalBrowserButton.sendActions(for: .touchUpInside)
+        XCTAssertEqual(openedURLs, [AppLinks.privacyPolicyURL], "Only the explicit browser action opens the approved HTTPS destination")
     }
 
     func testHomeLayoutDoesNotCollapseOrOverlapAcrossPhoneAndPadSizes() throws {

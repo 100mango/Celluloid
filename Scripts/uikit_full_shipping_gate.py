@@ -19,6 +19,7 @@ import time
 from consumer_runtime_binding import MODEL_SCALES, validate as validate_runtime, validate_raw_execution
 from platform_rendering_contract import require
 from mac_host_transport import load_json
+from original_ios_process_guard import GuardRefusal
 
 ROOT = Path(__file__).resolve().parents[1]
 # Exact public parent a940bcdf8a92811210bcfacf84141dceb6c3fcd3. The bound
@@ -28,14 +29,14 @@ SOURCE_HASHES = {'CelluloidTests/AdaptiveInterfaceTests.swift': 'b79b23a853bbc53
  'CelluloidTests/AdjustmentPreservationPhotoKitTests.swift': 'a3a05edb6cd6c66adf0b1c387d53b825416aa540b8f301f17b54ee63597007b7',
  'CelluloidTests/CelluloidTestFixtures.swift': '09a0c7c1e47d4cdd96a79f55c5ddf326e73e8e6d5cd378a7599054a45a449ed9',
  'CelluloidTests/CollageCompositionTests.swift': '07edd5f8ad2531b1792cba4057f98ce8cb5cbf862b1cc4779b7dcb0d67143c0f',
- 'CelluloidTests/EditorRegressionTests.swift': 'a9d9b4ea815f117c8bee1d1243a6eb427146431fc79e562d13405a1a46798a89',
+ 'CelluloidTests/EditorRegressionTests.swift': '558db7be201497c738a30aeab15922a33d61495f041ff9b964845c6c7af7ee24',
  'CelluloidTests/ExportAndInteractionTests.swift': '0fc3a1a79de3feb0755d9383ada2dc7f586c96059a498f6ab76b6907720d3757',
  'CelluloidTests/LargeDecoratedExportTests.swift': '89a1adf0a0b02928caba8e981ce189987de2a9436216c26f14bce55d18b883d4',
  'CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift': 'f4c7a7a16bf5414e6c2a2716bc146bdc216f7ea966a80207acce8a7667584890',
  'CelluloidTests/OverlayResizeTests.swift': '8b547bbd342bb8e52217ad49f7c6dd729625dc791e2f147f0a6aad842032a5ab',
  'CelluloidTests/PhotosOutputWriteTests.swift': '01afee7d0dd4fbdfbc89f4d6017199309346f0042aa26fd12fd46605914e2c7e',
  'CelluloidUITests/CelluloidSystemPermissionTests.swift': '7ca40d9ca8a6649a16943f304316a4536591e2aaab524de866d78b600f513f70',
- 'CelluloidUITests/CelluloidUITests.swift': '750e15e0c1e0ad4d3074eaa093feaec31f780504431206c919c057cc5851dd71'}
+ 'CelluloidUITests/CelluloidUITests.swift': '94f9fffbbf2693038fe85867bd31426959bf099af7f05b681182ef6e97361256'}
 SOURCE_METHODS = {
     'CelluloidTests.AdaptiveInterfaceTests': (
         'testBubbleArtworkTextHasIdenticalReadablePixelsInLightAndDark',
@@ -347,6 +348,9 @@ def clock_status(clock, context, now_monotonic=None, now_unix=None):
 def admit_phase(clock, context, phase, now_monotonic=None, now_unix=None):
     status = clock_status(clock, context, now_monotonic, now_unix)
     require(type(phase) is str and phase in set(WORK_CEILINGS) | set(TAIL_PHASES), 'Unknown fixed UIKit command phase')
+    if phase not in {'source-before','source-after','collection','upload'}:
+        from original_ios_process_guard import ensure_native_dispatch
+        ensure_native_dispatch()
     row = context['row']
     test_names = {name for key in ROWS for name in expected_phases(key)}
     require(phase not in test_names or phase in expected_phases(row), 'Command phase belongs to another UIKit row')
@@ -411,6 +415,9 @@ def _read_file(root, name, maximum):
 def verify_manifest(manifest, evidence_root, context, clock, source_root=ROOT,
                     now_monotonic=None, now_unix=None):
     context = validate_context(context)
+    if os.environ.get('CELLULOID_VALIDATION_SCOPE') == 'original-ios-release':
+        from original_ios_process_guard import require_clear
+        require_clear(evidence_root, context)
     require(type(manifest) is dict and set(manifest) == {'schema', *context, 'device', 'phases', 'prerequisites'}
             and manifest['schema'] == EXECUTION_SCHEMA, 'Malformed UIKit row manifest')
     require(all(manifest[key] == value and type(manifest[key]) is type(value) for key, value in context.items()),
@@ -486,7 +493,7 @@ def main(argv=None):
         else:
             manifest = load_json(_read_file(args.manifest.parent, args.manifest.name, 100_000))
             report = verify_manifest(manifest, args.root, context, clock)
-    except (ValueError, TypeError, KeyError, OSError) as error:
+    except (ValueError, TypeError, KeyError, OSError, GuardRefusal) as error:
         if args.command == 'verify':
             report = {'schema': 'Celluloid.UIKitFullShippingAccounting.1', **context,
                       'row_execution_passed': False, 'release_acceptance': False, 'error': str(error)}

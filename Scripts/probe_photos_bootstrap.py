@@ -28,6 +28,8 @@ def row_clock():
     return clock,context,clock_status(clock,context)
 
 def require_inner_allowance(seconds):
+    from original_ios_process_guard import ensure_native_dispatch
+    ensure_native_dispatch()
     if not full_row:return
     _,_,status=row_clock()
     if status['work_remaining_seconds'] < seconds+15:
@@ -61,6 +63,15 @@ def run(label, seconds, *args):
     print(result.stdout, end='', flush=True)
     return result.returncode, result.stdout
 
+def host_command(command):
+    from original_ios_process_guard import active,require_clear
+    if active():
+        from native_process import run as owned_run
+        value=owned_run(command,timeout=15,check=False,echo=False)
+        require_clear() # Signal termination cannot be treated as ordinary nonzero.
+        return value
+    return subprocess.run(command,capture_output=True,text=True,timeout=15)
+
 def host(label):
     if full_row and row_clock()[2]['work_remaining_seconds'] < 630:
         print('BOOTSTRAP_OPTIONAL_HOST_WITHHELD preserving next command and cleanup allowance',flush=True);return
@@ -68,13 +79,13 @@ def host(label):
     for command in [['vm_stat'], ['memory_pressure', '-Q'], ['sysctl', 'vm.swapusage'], ['df', '-h', '.']]:
         try:
             require_inner_allowance(15)
-            value = subprocess.run(command, capture_output=True, text=True, timeout=15)
+            value = host_command(command)
             check_inner_completion()
             print('BOOTSTRAP_HOST', command[0], value.returncode, value.stdout[:4500], value.stderr[:500], flush=True)
         except subprocess.TimeoutExpired: print('BOOTSTRAP_HOST_TIMEOUT', command[0], flush=True)
     try:
         require_inner_allowance(15)
-        value = subprocess.run(['ps', '-axo', 'pid=,ppid=,rss=,comm='], capture_output=True, text=True, timeout=15)
+        value = host_command(['ps', '-axo', 'pid=,ppid=,rss=,comm='])
         check_inner_completion()
         selected = []
         for line in value.stdout.splitlines():

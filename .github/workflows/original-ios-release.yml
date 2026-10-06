@@ -52,7 +52,7 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ github.sha }}
-        fetch-depth: 2
+        fetch-depth: 3
     - name: Verify exact integrated source and stable toolchain
       timeout-minutes: 4
       shell: bash
@@ -303,7 +303,7 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ github.sha }}
-        fetch-depth: 2
+        fetch-depth: 3
       timeout-minutes: 2
     - name: Verify exact tested commit
       id: source_before
@@ -588,7 +588,9 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        bounded evidence-screens evidence-screens python3 -u Scripts/export_permission_screenshot.py 2>&1 | tee "$RUNNER_TEMP/uikit-screens.log"
+        full_gate admit --phase evidence-screens > /dev/null
+        python3 -u Scripts/export_permission_screenshot.py 2>&1 | tee "$RUNNER_TEMP/uikit-screens.log"
+        full_gate check-clock --phase evidence-screens
     - name: Collect targeted failure diagnostics
       id: diagnostics
       if: failure()
@@ -596,7 +598,9 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        bounded diagnostics diagnostics python3 Scripts/collect_simulator_diagnostics.py 2>&1 | tee "$RUNNER_TEMP/uikit-diagnostics.log"
+        full_gate admit --phase diagnostics > /dev/null
+        python3 Scripts/collect_simulator_diagnostics.py 2>&1 | tee "$RUNNER_TEMP/uikit-diagnostics.log"
+        full_gate check-clock --phase diagnostics
     - name: Verify installed shipping product after all tests
       id: product_after
       if: always()
@@ -688,7 +692,9 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        bounded collection collection python3 Scripts/collect_native_evidence.py
+        full_gate admit --phase collection > /dev/null
+        python3 Scripts/collect_native_evidence.py
+        full_gate check-clock --phase collection
       timeout-minutes: 3
     - name: Admit bounded evidence upload
       id: upload_admission
@@ -751,7 +757,7 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ github.sha }}
-        fetch-depth: 2
+        fetch-depth: 3
     - name: Verify exact staged source and stable toolchain
       timeout-minutes: 2
       shell: bash
