@@ -551,6 +551,21 @@ class ArchiveTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'cleanup uncertain'):
             archive.require_finalized_processes(self.package.temp, CONTEXT)
 
+    def test_unknown_fixed_metadata_blocks_native_admission_but_retains_and_uploads_diagnostics(self):
+        import contextlib,io
+        from original_ios_fixed_rows import METADATA
+        pending={'schema':'Celluloid.OriginalIOSFixedMetadata.1',**CONTEXT,'complete':False,'observations':{'producer':{'finalized':False}}}
+        put(self.package.temp/METADATA,archive.encoded(pending))
+        put(self.package.temp/archive.CLOCK,archive.encoded(self.package.clock))
+        with mock.patch.object(archive,'identity',return_value=CONTEXT),mock.patch.dict(os.environ,RUNNER_TEMP=str(self.package.temp)),contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(ValueError):archive.main(['admit','--phase','archive'])
+            self.assertEqual(self.probes.call_count,0)
+            manifest=archive.collect(self.package.temp,CONTEXT,self.package.clock)
+            self.assertFalse(manifest['unsigned_package_verified'])
+            self.assertEqual((self.package.temp/archive.EVIDENCE/METADATA).read_bytes(),archive.encoded(pending))
+            archive.main(['admit','--phase','upload'])
+        self.assertEqual(self.probes.call_count,0)
+
     def test_collector_rejects_symlink_input_and_does_not_overwrite_destination(self):
         output = self.package.temp / archive.OUTPUT
         output.symlink_to(self.package.temp / archive.ROWS_FILE)

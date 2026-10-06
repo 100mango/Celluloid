@@ -14,19 +14,29 @@ from original_ios_process_guard import OwnedCommand, error_record
 parser = argparse.ArgumentParser()
 parser.add_argument('--seconds', required=True, type=float)
 parser.add_argument('--label', required=True)
+parser.add_argument('--original-ios-first-summary', action='store_true')
 parser.add_argument('command', nargs=argparse.REMAINDER)
 args = parser.parse_args()
 if not args.command or args.seconds <= 0:
     parser.error('A positive time bound and command are required')
+started = time.monotonic() if args.original_ios_first_summary else None
+first_summary = None
+if args.original_ios_first_summary:
+    from original_ios_first_summary import admission, record
+    first_summary = admission(args.command, args.label, args.seconds, started)
+    deadline = first_summary['command_deadline']
 owner = OwnedCommand(args.command[0], args.label, args.seconds)
-started = time.monotonic()
-deadline = started + args.seconds
+if first_summary is None:
+    started = time.monotonic()
+    deadline = started + args.seconds
 print('BOUNDED_COMMAND_BEGIN', json.dumps({'label': args.label, 'utc': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'seconds': args.seconds, 'command': args.command}), flush=True)
 try:
+    if first_summary is not None and time.monotonic() >= deadline:
+        raise subprocess.TimeoutExpired(args.command, args.seconds)
     process = subprocess.Popen(args.command, start_new_session=True)
     owner.started(process)
 except BaseException as original:
-    owner.failed(original)
+    owner.failed(original, timed_out=isinstance(original, subprocess.TimeoutExpired))
     raise
 try:
     if owner.enabled:
@@ -48,6 +58,11 @@ except subprocess.TimeoutExpired as original:
             owner.cleanup_result('child_reaped', reaped)
         else:
             for sig, seconds in [(signal.SIGTERM, 5), (signal.SIGKILL, 5)]:
+                if first_summary is not None:
+                    seconds = min(seconds, first_summary['cleanup_deadline'] - time.monotonic())
+                    if seconds <= 0:
+                        owner.cleanup_result('bounded_cleanup_expired')
+                        break
                 name = signal.Signals(sig).name
                 try:
                     os.killpg(process.pid, sig)
@@ -60,6 +75,11 @@ except subprocess.TimeoutExpired as original:
                     print('BOUNDED_COMMAND_CLEANUP_UNCONFIRMED', json.dumps(error_record(error)), flush=True)
                     break  # Never switch signals or routes after denied cleanup.
                 try:
+                    if first_summary is not None:
+                        seconds = min(seconds, first_summary['cleanup_deadline'] - time.monotonic())
+                        if seconds <= 0:
+                            owner.cleanup_result('bounded_cleanup_expired')
+                            break
                     process.wait(timeout=seconds)
                 except subprocess.TimeoutExpired:
                     owner.cleanup_result('bounded_cleanup_expired')
@@ -68,7 +88,10 @@ except subprocess.TimeoutExpired as original:
                     print('BOUNDED_COMMAND_CLEANUP_UNCONFIRMED', json.dumps(error_record(error)), flush=True)
                     break
                 else:
-                    owner.cleanup_result('child_reaped', process.returncode)
+                    if first_summary is not None and time.monotonic() > first_summary['cleanup_deadline']:
+                        owner.cleanup_result('bounded_cleanup_expired')
+                    else:
+                        owner.cleanup_result('child_reaped', process.returncode)
                     break
         code = 124
     else:
@@ -104,5 +127,7 @@ except BaseException as original:
     raise
 else:
     owner.completed(code)
+if first_summary is not None:
+    record(first_summary, code, time.monotonic())
 print('BOUNDED_COMMAND_END', json.dumps({'label': args.label, 'exit_code': code, 'elapsed_seconds': round(time.monotonic() - started, 3)}), flush=True)
 sys.exit(code if code >= 0 else 128 - code)

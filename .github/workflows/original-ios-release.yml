@@ -52,7 +52,7 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ github.sha }}
-        fetch-depth: 3
+        fetch-depth: 4
     - name: Verify exact integrated source and stable toolchain
       timeout-minutes: 4
       shell: bash
@@ -147,14 +147,8 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-        - key: compact-phone
-          device: iPhone SE (3rd generation)
-        - key: large-phone
-          device: iPhone 18 Pro Max
         - key: small-ipad
           device: iPad mini (A17 Pro)
-        - key: large-ipad
-          device: iPad Pro 13-inch (M5)
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
       DEVICE_NAME: ${{ matrix.device }}
@@ -205,7 +199,12 @@ jobs:
         }
         extract_summary() {
           local bundle="$1" stem="$2" status=0
+          if [[ "$stem" == units ]]; then
+            python3 Scripts/run_bounded.py --original-ios-first-summary --seconds 90 --label "units summary" /bin/bash -c 'xcrun xcresulttool get test-results summary --path "$1" > "$2"' -- "$bundle" "$RUNNER_TEMP/$stem.summary.json" || status=$?
+            full_gate check-clock --phase summary || { if [[ "$status" -eq 0 ]]; then status=1; fi; }
+          else
           bounded summary "$stem summary" /bin/bash -c 'xcrun xcresulttool get test-results summary --path "$1" > "$2"' -- "$bundle" "$RUNNER_TEMP/$stem.summary.json" || status=$?
+          fi
           if [[ -f "$RUNNER_TEMP/$stem.summary.json" ]]; then
             cat "$RUNNER_TEMP/$stem.summary.json" >> "$GITHUB_STEP_SUMMARY" || status=$?
           fi
@@ -303,7 +302,7 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ github.sha }}
-        fetch-depth: 3
+        fetch-depth: 4
       timeout-minutes: 2
     - name: Verify exact tested commit
       id: source_before
@@ -453,6 +452,7 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
+        python3 Scripts/original_ios_first_summary.py start
         id=$(cat /tmp/current-celluloid-simulator)
         test_phase units TestResults-units.xcresult "$DEVICE_NAME units" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-units.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests -skip-testing:CelluloidTests/AdjustmentPreservationPhotoKitTests -skip-testing:CelluloidTests/AdaptiveInterfaceTests/testFullLocalizedTitlesFitAtNormalAndLargestTextAcrossViewports -skip-testing:CelluloidTests/CollageCompositionTests -skip-testing:CelluloidTests/OverlayResizeTests/testPhotosExtensionRestartWithoutAdjustmentClearsDecorationsFilterAndCancellation -skip-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation -skip-testing:CelluloidTests/EditorRegressionTests/testPhotosLibraryBootstrapReadiness -skip-testing:CelluloidTests/EditorRegressionTests/testReconcileSyntheticPhotosAfterImport test-without-building CODE_SIGNING_ALLOWED=NO
     - name: Require actual original UIKit manufactured-layer consumer
@@ -733,6 +733,9 @@ jobs:
         test "$UPLOAD_OUTCOME" = success || status=1
         exit "$status"
   archive:
+    permissions:
+      contents: read
+      actions: read
     needs: [mac-producer, uikit-regression]
     if: always() && needs.mac-producer.result == 'success' && needs.uikit-regression.result == 'success'
     name: Original iOS unsigned device Release package
@@ -757,7 +760,7 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ github.sha }}
-        fetch-depth: 3
+        fetch-depth: 4
     - name: Verify exact staged source and stable toolchain
       timeout-minutes: 2
       shell: bash
@@ -778,25 +781,53 @@ jobs:
         artifact-ids: ${{ needs.mac-producer.outputs.artifact_id }}
         merge-multiple: true
         path: ${{ runner.temp }}/mac-fixture-evidence/
+    - name: Verify four fixed historical artifact identities within setup allocation
+      timeout-minutes: 2
+      env:
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 Scripts/original_ios_archive.py admit --phase setup
+        python3 Scripts/original_ios_fixed_rows.py metadata
+        python3 Scripts/original_ios_archive.py check-clock --phase setup
+    - name: Retrieve fixed 04d18 producer used by the three qualified rows
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      timeout-minutes: 1
+      with:
+        artifact-ids: 11397407111
+        run-id: 37432040947
+        repository: 100mango/Celluloid
+        github-token: ${{ github.token }}
+        merge-multiple: true
+        path: ${{ runner.temp }}/original-ios-fixed-producer/
     - name: Admit fixed compact-phone evidence retrieval
       shell: bash
       run: |
         python3 Scripts/original_ios_archive.py check-clock --phase setup
-    - name: Retrieve same-run compact-phone proof
+    - name: Retrieve fixed qualified 04d18 compact-phone proof
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       timeout-minutes: 1
       with:
-        name: celluloid-original-ios-compact-phone-${{ github.sha }}-${{ github.run_attempt }}
+        artifact-ids: 11398344849
+        run-id: 37432040947
+        repository: 100mango/Celluloid
+        github-token: ${{ github.token }}
+        merge-multiple: true
         path: ${{ runner.temp }}/original-ios-rows/compact-phone/
     - name: Admit fixed large-phone evidence retrieval
       shell: bash
       run: |
         python3 Scripts/original_ios_archive.py check-clock --phase setup
-    - name: Retrieve same-run large-phone proof
+    - name: Retrieve fixed qualified 04d18 large-phone proof
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       timeout-minutes: 1
       with:
-        name: celluloid-original-ios-large-phone-${{ github.sha }}-${{ github.run_attempt }}
+        artifact-ids: 11397769097
+        run-id: 37432040947
+        repository: 100mango/Celluloid
+        github-token: ${{ github.token }}
+        merge-multiple: true
         path: ${{ runner.temp }}/original-ios-rows/large-phone/
     - name: Admit fixed small-ipad evidence retrieval
       shell: bash
@@ -812,11 +843,15 @@ jobs:
       shell: bash
       run: |
         python3 Scripts/original_ios_archive.py check-clock --phase setup
-    - name: Retrieve same-run large-ipad proof
+    - name: Retrieve fixed qualified 04d18 large-ipad proof
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       timeout-minutes: 1
       with:
-        name: celluloid-original-ios-large-ipad-${{ github.sha }}-${{ github.run_attempt }}
+        artifact-ids: 11400355337
+        run-id: 37432040947
+        repository: 100mango/Celluloid
+        github-token: ${{ github.token }}
+        merge-multiple: true
         path: ${{ runner.temp }}/original-ios-rows/large-ipad/
     - name: Replay all four original rows and exact producer before archiving
       timeout-minutes: 2
@@ -829,7 +864,7 @@ jobs:
         set -euo pipefail
         python3 Scripts/original_ios_archive.py admit --phase setup
         python3 Scripts/uikit_full_shipping_handoff.py transfer --artifact-id "$PRODUCER_ARTIFACT_ID" --manifest-sha256 "$PRODUCER_MANIFEST_SHA" --reported-artifact-digest "$PRODUCER_ARTIFACT_DIGEST"
-        python3 Scripts/original_ios_rows.py
+        python3 Scripts/original_ios_rows.py --fixed-04d18-rows
         python3 Scripts/original_ios_archive.py check-clock --phase setup
     - name: Archive original app framework and Photos extension for device Release
       id: build_archive

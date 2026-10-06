@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Replay four fixed same-run UIKit artifacts before unsigned iOS archive admission.
+"""Replay four original UIKit artifacts, including three literal qualified rows before unsigned iOS archive admission.
 
 Only data is reconstructed. A later queue wait does not change the recorded
 native execution interval or extend any producing job's clock.
 """
 from pathlib import Path
-import hashlib,json,os,shutil,tempfile
+import argparse,hashlib,json,os,shutil,tempfile
 import uikit_full_shipping_handoff as handoff
 from uikit_full_shipping_gate import ROWS,ROW_COUNTS,clock_status
 from validation_route import current_route,ORIGINAL_IOS
@@ -33,16 +33,24 @@ def checked_artifact(folder,context):
     need({p.name for p in folder.iterdir()}==names|{'manifest.json'},'Unlisted row artifact member')
     return manifest
 
-def verify_four(temp):
+def verify_four(temp, *, fixed_04d18_rows=False):
     need=handoff.need
     need(current_route()==ORIGINAL_IOS,'Wrong staged archive row replay route')
     ident=handoff.identity();source=handoff.source_proof(temp)
     transfer=handoff.read(temp/'full-shipping-transfer.json')
     need(transfer.get('schema')=='Celluloid.FullShippingTransfer.1' and all(transfer.get(k)==v for k,v in ident.items()) and transfer.get('tree')==source['tree'] and transfer.get('manifest_and_all_members_verified') is True,'Missing current exact producer handoff')
     producer=temp/'mac-fixture-evidence'
-    result=[]
+    result=[];fixed={}
     for row,model in ROWS.items():
         context={**ident,'row':row};folder=temp/'original-ios-rows'/row
+        if fixed_04d18_rows and row in {'compact-phone','large-phone','large-ipad'}:
+            from original_ios_fixed_rows import verify_fixed_row
+            proof=verify_fixed_row(temp,row,folder,temp/'original-ios-fixed-producer')
+            actual=proof['original'];artifact=proof['artifact'];fixed[row]=proof
+            result.append({'row':row,'original_test_invocation_count':ROW_COUNTS[row],'model':model,'device_id':actual['device']['id'],
+                'row_receipt_sha256':handoff.sha(folder/'full-shipping-row.json'),'artifact_manifest_sha256':handoff.sha(folder/'manifest.json'),
+                'artifact_name':artifact['name'],'execution_identity':{k:actual[k] for k in ident},'execution_source_tree':actual['source_tree']})
+            continue
         checked_artifact(folder,context)
         stored=handoff.read(folder/'full-shipping-row.json')
         need(stored.get('row_checks_passed') is True,'Incomplete original UIKit row')
@@ -67,10 +75,17 @@ def verify_four(temp):
         result.append({'row':row,'original_test_invocation_count':ROW_COUNTS[row],'model':model,'device_id':actual['device']['id'],
             'row_receipt_sha256':handoff.sha(folder/'full-shipping-row.json'),'artifact_manifest_sha256':handoff.sha(folder/'manifest.json'),
             'artifact_name':'celluloid-original-ios-'+row+'-'+ident['source_sha']+'-'+ident['run_attempt']})
+        if fixed_04d18_rows:result[-1].update(execution_identity=dict(ident),execution_source_tree=source['tree'])
     need(len({r['device_id'] for r in result})==4,'Reused device identity across independent rows')
     packet={'schema':'Celluloid.OriginalIOSRows.1',**ident,'source_tree':source['tree'],'scope':ORIGINAL_IOS['scope'],
         'all_rows_verified':True,'original_total_invocations':412,'rows':result}
+    if fixed_04d18_rows:
+        from original_ios_fixed_rows import validate_fixed_summary
+        validate_fixed_summary(fixed,ident,source['tree'])
+        packet.update(schema='Celluloid.OriginalIOSRows.2',fixed_predecessor_rows=fixed)
     handoff.write(temp/'original-ios-rows.json',packet)
     return packet
 
-if __name__=='__main__':print(json.dumps(verify_four(Path(os.environ['RUNNER_TEMP']).resolve()),sort_keys=True))
+if __name__=='__main__':
+    parser=argparse.ArgumentParser();parser.add_argument('--fixed-04d18-rows',action='store_true');args=parser.parse_args()
+    print(json.dumps(verify_four(Path(os.environ['RUNNER_TEMP']).resolve(),fixed_04d18_rows=args.fixed_04d18_rows),sort_keys=True))

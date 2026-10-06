@@ -333,22 +333,45 @@ def unchanged(archive, snapshots, deadline):
 
 def row_binding(value, context, source):
     required = {'schema', *context, 'source_tree', 'scope', 'all_rows_verified', 'original_total_invocations', 'rows'}
-    need(type(value) is dict and set(value) == required and value['schema'] == 'Celluloid.OriginalIOSRows.1', 'Malformed original row replay')
+    fixed = type(value) is dict and value.get('schema') == 'Celluloid.OriginalIOSRows.2'
+    if fixed:required.add('fixed_predecessor_rows')
+    need(type(value) is dict and set(value) == required and value['schema'] in {'Celluloid.OriginalIOSRows.1','Celluloid.OriginalIOSRows.2'}, 'Malformed original row replay')
+    if fixed:
+        from original_ios_fixed_rows import validate_fixed_summary
+        validate_fixed_summary(value['fixed_predecessor_rows'],context,source['tree'])
     need(all(value[k] == v and type(value[k]) is str for k, v in context.items()), 'Row replay identity differs')
     need(value['scope'] == 'original-ios-release' and value['source_tree'] == source['tree'] and value['all_rows_verified'] is True, 'Unverified row source')
     need(type(value['original_total_invocations']) is int and value['original_total_invocations'] == 412, 'Incomplete original invocations')
     need(type(value['rows']) is list and len(value['rows']) == 4, 'Incomplete original rows')
     devices = set()
     for actual, row in zip(value['rows'], ROWS):
-        need(type(actual) is dict and set(actual) == {'row', 'original_test_invocation_count', 'model', 'device_id', 'row_receipt_sha256', 'artifact_manifest_sha256', 'artifact_name'}, 'Malformed replayed row')
+        keys={'row', 'original_test_invocation_count', 'model', 'device_id', 'row_receipt_sha256', 'artifact_manifest_sha256', 'artifact_name'}
+        if fixed:keys.update({'execution_identity','execution_source_tree'})
+        need(type(actual) is dict and set(actual) == keys, 'Malformed replayed row')
         need(actual['row'] == row and actual['model'] == ROWS[row] and type(actual['original_test_invocation_count']) is int and actual['original_test_invocation_count'] == ROW_COUNTS[row], 'Original row/model/count changed')
         for key in ('row_receipt_sha256', 'artifact_manifest_sha256'):
             need(type(actual[key]) is str and re.fullmatch('[0-9a-f]{64}', actual[key]), 'Invalid replayed row hash')
         device = actual['device_id']
         need(type(device) is str and re.fullmatch('[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}', device) and device.lower() not in devices, 'Missing/duplicate row device')
         devices.add(device.lower())
-        need(actual['artifact_name'] == 'celluloid-original-ios-' + row + '-' + context['source_sha'] + '-' + context['run_attempt'], 'Wrong current-source row artifact name')
+        execution=context;tree=source['tree']
+        if fixed and row in {'compact-phone','large-phone','large-ipad'}:
+            proof=value['fixed_predecessor_rows'][row];original=proof['original'];artifact=proof['artifact']
+            execution={k:original[k] for k in context};tree=original['source_tree']
+            need(actual['device_id']==original['device']['id'] and actual['row_receipt_sha256']==artifact['row_receipt_sha256']
+                 and actual['artifact_manifest_sha256']==artifact['manifest_sha256'],'Fixed historical row summary differs from replay')
+        if fixed:
+            need(actual['execution_identity']==execution and actual['execution_source_tree']==tree,'Row execution identity was relabelled')
+        need(actual['artifact_name'] == 'celluloid-original-ios-' + row + '-' + execution['source_sha'] + '-' + execution['run_attempt'], 'Wrong original-execution row artifact name')
     return value
+
+
+def fixed_metadata_binding(temp, context, rows):
+    if rows.get('schema') != 'Celluloid.OriginalIOSRows.2':return None
+    from original_ios_fixed_rows import METADATA, validate_metadata
+    raw=read(Path(temp)/METADATA,16_384)
+    validate_metadata(load_json(raw),context)
+    return sha(raw)
 
 
 class ObservationFailure(ValueError):
@@ -418,7 +441,8 @@ def verify_package(root, temp, context, clock, source):
     deadline = min(started + 180, clock_status(clock, context, 'proof', started)['deadline_monotonic'])
     check_deadline(deadline)
     rows_raw = read(Path(temp) / ROWS_FILE)
-    row_binding(load_json(rows_raw), context, source)
+    rows=row_binding(load_json(rows_raw), context, source)
+    fixed_metadata_sha=fixed_metadata_binding(temp,context,rows)
     archive = Path(root) / ARCHIVE
     files, directories, snapshots, signatures = inventory(archive, deadline)
     hashes = {row['path']: row['sha256'] for row in files}
@@ -488,7 +512,7 @@ def verify_package(root, temp, context, clock, source):
     return {'schema': SCHEMA, **context, 'source_tree': source['tree'], 'scope': 'original-ios-release',
             'unsigned_package_verified': True, 'release_acceptance': False, 'signing_qualified': False, 'uploaded': False,
             'all_processes_finalized': True,
-            'archive_path': ARCHIVE, 'row_replay_sha256': sha(rows_raw), 'source_before_sha256': sha(read(Path(temp) / 'combined-source-before.json')),
+            'archive_path': ARCHIVE, 'row_replay_sha256': sha(rows_raw), 'fixed_artifact_metadata_sha256':fixed_metadata_sha, 'source_before_sha256': sha(read(Path(temp) / 'combined-source-before.json')),
             'code_bundles': bundle_reports, 'files': files, 'inventory_sha256': sha(encoded(files)),
             'privacy_manifests': privacy, 'application_privacy_manifest_present': False,
             'photos_usage': {'default': {key: source_info[key] for key in ('NSPhotoLibraryUsageDescription', 'NSPhotoLibraryAddUsageDescription')}, 'zh-Hans': localized_usage},
@@ -510,7 +534,8 @@ def finalize(temp, context, clock):
     need(package.get('schema') == SCHEMA and all(package.get(k) == v for k, v in context.items()) and package.get('unsigned_package_verified') is True and package.get('release_acceptance') is False, 'Missing/failed current archive proof')
     need(package['source_before_sha256'] == sha(read(temp / 'combined-source-before.json')) and package['source_tree'] == after['tree'], 'Archive source binding differs')
     rows_raw = read(temp / ROWS_FILE)
-    row_binding(load_json(rows_raw), context, before)
+    rows=row_binding(load_json(rows_raw), context, before)
+    need(package.get('fixed_artifact_metadata_sha256')==fixed_metadata_binding(temp,context,rows),'Fixed artifact metadata changed after archive')
     need(package['row_replay_sha256'] == sha(rows_raw), 'Row replay changed after archive')
     package['source_after_sha256'] = sha(read(temp / 'combined-source-after.json'))
     package['source_unchanged'] = True
@@ -520,6 +545,9 @@ def finalize(temp, context, clock):
 
 
 def require_finalized_processes(temp, context):
+    from original_ios_fixed_rows import METADATA, validate_metadata
+    metadata=Path(temp)/METADATA
+    if metadata.exists() or metadata.is_symlink():validate_metadata(load_json(read(metadata,16_384)),context)
     path = Path(temp) / PACKAGE
     if path.exists() or path.is_symlink():
         package = load_json(read(path, BUDGETS['archive']))
@@ -537,6 +565,8 @@ def collect(temp, context, clock):
     deadline = min(time.monotonic() + 60, clock_status(clock, context, 'retention')['deadline_monotonic'])
     check_deadline(deadline)
     names = (OUTPUT, ROWS_FILE, 'combined-source-before.json', 'combined-source-after.json', CLOCK)
+    from original_ios_fixed_rows import METADATA, validate_metadata
+    if (temp/METADATA).exists() or (temp/METADATA).is_symlink():names+=(METADATA,)
     retained, missing, errors = {}, [], []
     manifest = {'schema': 'Celluloid.OriginalIOSArchiveEvidence.1', **context, 'platform': 'archive',
                 'unsigned_package_verified': False, 'release_acceptance': False,
@@ -563,7 +593,11 @@ def collect(temp, context, clock):
             need(final.get('schema') == SCHEMA and final.get('unsigned_package_verified') is True and final.get('source_unchanged') is True and final.get('release_acceptance') is False and final.get('all_processes_finalized') is True, 'No complete unsigned archive proof')
             need(final['source_before_sha256'] == sha(retained['combined-source-before.json']) and final['source_after_sha256'] == sha(retained['combined-source-after.json']), 'Retained source hashes differ')
             need(before.get('source_sha') == after.get('source_sha') == context['source_sha'] and before.get('phase') == 'before' and after.get('phase') == 'after', 'Retained source identity differs')
-            row_binding(load_json(retained[ROWS_FILE]), context, before)
+            rows=row_binding(load_json(retained[ROWS_FILE]), context, before)
+            if rows['schema']=='Celluloid.OriginalIOSRows.2':
+                need(METADATA in retained,'Missing fixed artifact metadata retention')
+                validate_metadata(load_json(retained[METADATA]),context)
+                need(final.get('fixed_artifact_metadata_sha256')==sha(retained[METADATA]),'Retained fixed metadata hash differs')
             need(final['row_replay_sha256'] == sha(retained[ROWS_FILE]), 'Retained row replay hash differs')
             clock_status(load_json(retained[CLOCK]), context, 'retention')
             manifest['unsigned_package_verified'] = True
@@ -626,7 +660,7 @@ def main(argv=None):
         write_new(temp / CLOCK, {'schema': CLOCK_SCHEMA, **context, 'started_monotonic': time.monotonic(), 'started_unix': time.time(), 'execution_budget_seconds': 1560})
         return
     clock = load_json(read(temp / CLOCK, 8192))
-    if args.action != 'collect':
+    if args.action != 'collect' and args.phase not in {'retention','upload'}:
         require_finalized_processes(temp, context)
     if args.action in ('admit', 'check-clock'):
         need(args.phase is not None, 'Clock phase required')

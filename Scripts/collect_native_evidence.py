@@ -69,6 +69,8 @@ if FULL_SHIPPING:
             'full-shipping-product-after.json','full-shipping-cleanup.json',
             'bootstrap-readiness-before-import.log.timing.json','bootstrap-reconcile-all.log.timing.json']
         required += [phase_files(phase)[1] for phase in expected_phases(PLATFORM)]
+        if STAGED_CONTEXT is not None:
+            required += ['original-ios-units-phase.json','original-ios-first-summary.json']
         status_path=TEMP/'full-shipping-row.json'
         if status_path.is_file():
             from uikit_full_shipping_handoff import read,accept_row,same_json

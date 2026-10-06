@@ -38,10 +38,15 @@ def passed_summary(row):
     need(all(type(row.get(k)) is int and row[k]>=0 for k in keys),'Malformed native summary counts')
     need(row.get('result')=='Passed' and row['totalTestCount']==row['passedTests']>0 and row['failedTests']==row['skippedTests']==row['expectedFailures']==0,'Unpassed enclosing Mac execution')
 
-def source_proof(temp,phase='before'):
+def source_proof(temp,phase='before',*,fixed_original_replay=False):
+    need(type(fixed_original_replay) is bool,'Malformed fixed replay selector')
     row=read(temp/('combined-source-'+phase+'.json'))
     count,fingerprint=source_profile()
-    need(row['source_sha']==identity()['source_sha'] and type(row['file_count']) is int and row['file_count']==count and row['source_fingerprint']==fingerprint,'Unqualified shipping source')
+    ident=identity()
+    if fixed_original_replay:
+        from original_ios_fixed_rows import replay_identity,FIXED_TREE
+        ident=replay_identity();need(row.get('tree')==FIXED_TREE,'Wrong fixed original source tree')
+    need(row['source_sha']==ident['source_sha'] and type(row['file_count']) is int and row['file_count']==count and row['source_fingerprint']==fingerprint,'Unqualified shipping source')
     need(row['validation_route']==current_route() and row['phase']==phase,'Wrong source proof phase')
     if current_route()==ORIGINAL_IOS:
         from original_ios_source_contract import audit
@@ -76,8 +81,13 @@ def producer(temp):
         'xcode_sha256':sha(temp/'full-shipping-xcode.txt'),'native_required_sha256':sha(temp/'mac-required-tests.json'),'required_mac_cases':42,
         'scope':'Fresh fixture producer only; no Mac Photos host or whole-platform acceptance'})
 
-def transfer(temp,artifact_id,manifest_hash,reported_artifact_digest):
+def transfer(temp,artifact_id,manifest_hash,reported_artifact_digest,*,fixed_original_replay=False):
+    need(type(fixed_original_replay) is bool,'Malformed fixed replay selector')
     folder=temp/'mac-fixture-evidence';manifest=read(folder/'manifest.json');ident=identity()
+    if fixed_original_replay:
+        from original_ios_fixed_rows import replay_identity,ARTIFACTS
+        ident=replay_identity();fixed=ARTIFACTS['producer']
+        need((artifact_id,manifest_hash,reported_artifact_digest)==(fixed['artifact_id'],fixed['manifest_sha256'],fixed['reported_upload_artifact_digest']),'Wrong fixed producer artifact')
     need(re.fullmatch('[1-9][0-9]*',artifact_id) and re.fullmatch('[0-9a-f]{64}',manifest_hash) and re.fullmatch('[0-9a-f]{64}',reported_artifact_digest),'Malformed exact artifact identity')
     need(sha(folder/'manifest.json')==manifest_hash and manifest['source_sha']==ident['source_sha'] and str(manifest['run_id'])==ident['run_id'],'Wrong producer artifact/source/run')
     need(manifest['platform']=='mac' and type(manifest['limits']['total_bytes']) is int and manifest['limits']['total_bytes']==2_000_000,'Unexpected producer allocation')
@@ -93,7 +103,7 @@ def transfer(temp,artifact_id,manifest_hash,reported_artifact_digest):
         total+=row['bytes']
     need(total<=2_000_000 and names=={p.name for p in folder.iterdir()}-{'manifest.json'},'Incomplete/oversized producer artifact')
     need(core<=names,'Missing core producer artifact members')
-    producer_row=read(folder/'full-shipping-producer.json');source=source_proof(temp)
+    producer_row=read(folder/'full-shipping-producer.json');source=source_proof(temp,fixed_original_replay=fixed_original_replay)
     need(producer_row['schema']==SCHEMA and all(producer_row[k]==v for k,v in ident.items()),'Producer source/run/attempt differs')
     need(producer_row['tree']==source['tree'] and producer_row['protected_fingerprint']==source_profile()[1],'Producer source tree differs')
     need(producer_row['xcode_sha256']==sha(temp/'full-shipping-xcode.txt'),'Producer/consumer toolchains differ')
@@ -139,11 +149,17 @@ def product_after(temp):
     check_completion(clock,context,'product-readbacks')
     write(temp/'full-shipping-product-after.json',{'schema':'Celluloid.FullShippingProduct.1',**identity(),'row':row,'staging_sha256':sha(temp/'uikit-layer-staging.json'),'actual':actual})
 
-def accept_row(temp, *, row=None, recorded_observation=None):
+def accept_row(temp, *, row=None, recorded_observation=None, fixed_original_replay=False):
     from uikit_full_shipping_gate import verify_manifest,clock_status,ROW_COUNTS
     from uikit_installed_identity import validate as validate_installation
     from verify_required_interoperability import verify
-    ident=identity();row=os.environ['CELLULOID_FULL_ROW'] if row is None else row;context={**ident,'row':row}
+    need(type(fixed_original_replay) is bool,'Malformed fixed replay selector')
+    ident=identity();row=os.environ['CELLULOID_FULL_ROW'] if row is None else row
+    if fixed_original_replay:
+        from original_ios_fixed_rows import replay_identity,FIXED_ROWS
+        need(row in FIXED_ROWS and recorded_observation is not None,'Fixed replay requires an admitted original row and recorded interval')
+        ident=replay_identity()
+    context={**ident,'row':row}
     if current_route()==ORIGINAL_IOS:
         from original_ios_process_guard import require_clear
         require_clear(temp,context)
@@ -167,7 +183,7 @@ def accept_row(temp, *, row=None, recorded_observation=None):
     for name in required_stages:
         need(type(stages.get(name)) is dict and stages[name].get('outcome')=='success' and stages[name].get('conclusion')=='success','Unpassed original workflow stage: '+name)
     if 'diagnostics' in stages:need(stages['diagnostics'].get('outcome') in {'success','skipped'},'Failed original diagnostics stage')
-    before=source_proof(temp);after=source_proof(temp,'after')
+    before=source_proof(temp,fixed_original_replay=fixed_original_replay);after=source_proof(temp,'after',fixed_original_replay=fixed_original_replay)
     need(before['tree']==after['tree'],'Source tree changed during row')
     transfer_row=read(temp/'full-shipping-transfer.json');product=read(temp/'full-shipping-product-after.json');device=read(temp/'full-shipping-device.json');cleanup=read(temp/'full-shipping-cleanup.json')
     need(transfer_row['schema']=='Celluloid.FullShippingTransfer.1' and transfer_row['queue_expiry_applied'] is False and product['schema']=='Celluloid.FullShippingProduct.1','Wrong producer/product receipt schema')
@@ -188,6 +204,10 @@ def accept_row(temp, *, row=None, recorded_observation=None):
     outer=temp/'bootstrap.log'
     need(outer.is_file() and not outer.is_symlink() and 0<outer.stat().st_size<=30_000_000,'Missing/unbounded bootstrap driver log')
     names=['bootstrap.log','full-shipping-stage-outcomes.json','full-shipping-execution.json','full-shipping-accounting.json','full-shipping-clock.json','full-shipping-device.json','full-shipping-transfer.json','full-shipping-product-after.json','full-shipping-cleanup.json','uikit-layer-staging.json','uikit-required-tests.json','combined-source-before.json','combined-source-after.json']
+    if current_route()==ORIGINAL_IOS and not fixed_original_replay:
+        from original_ios_first_summary import verify as verify_first_summary,PHASE_FILE,OBSERVATION_FILE
+        verify_first_summary(temp,context,clock)
+        names += [PHASE_FILE,OBSERVATION_FILE]
     return {'schema':'Celluloid.UIKitFullShippingRow.1',**context,'device':device['device'],'row_checks_passed':True,
         'original_test_invocation_count':ROW_COUNTS[row],'source_tree':before['tree'],'protected_fingerprint':source_profile()[1],
         'proof_sha256':{name:sha(temp/name) for name in names},'workflow_completion_required':True,'release_acceptance':False,

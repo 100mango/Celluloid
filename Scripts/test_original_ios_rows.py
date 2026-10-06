@@ -58,6 +58,12 @@ class OriginalIOSRowsTests(unittest.TestCase):
         put_json(folder/'full-shipping-accounting.json',gate.verify_manifest(manifest,folder,cases.context(row),clock))
         stages=handoff.read(folder/'full-shipping-stage-outcomes.json');stages['preflight']={'outcome':'success','conclusion':'success'};put_json(folder/'full-shipping-stage-outcomes.json',stages)
         put_json(folder/'uikit-required-tests.json',verify('uikit',path,folder/'mac-fixture-evidence','a'*40,platform_contract=True,runtime_summary=handoff.read(folder/'units.summary.json'),expected_device=manifest['device']))
+        from original_ios_first_summary import PHASE_FILE,SCHEMA,record
+        started=clock['started_monotonic']
+        put_json(folder/PHASE_FILE,{'schema':SCHEMA,**cases.context(row),'started_monotonic':started+1.,'started_unix':clock['started_unix']+1.,'phase_seconds':1020})
+        import contextlib,io
+        with contextlib.redirect_stdout(io.StringIO()):
+            record({'context':cases.context(row),'root':folder,'phase_started':started+1.,'started':started+12.,'command_deadline':started+102.,'cleanup_deadline':started+112.,'enclosing_deadline':started+1021.},0,started+14.)
         with patch.dict(os.environ,CELLULOID_FULL_ROW=row):
             proof=handoff.accept_row(folder);put_json(folder/'full-shipping-row.json',proof)
             out=self.temp/'original-ios-rows'/row;out.mkdir(parents=True)

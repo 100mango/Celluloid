@@ -2,7 +2,7 @@
 """Bind exact combined app/test/project bytes and workflow to the admitted checkout."""
 from pathlib import Path
 import argparse, hashlib, json, os, subprocess
-from validation_route import current_route,HOST_ONLY,host_only_source_binding,UIKIT_FULL,UIKIT_FULL_BASE,UIKIT_FULL_DRIVER_PATHS,UIKIT_FULL_PREDECESSOR,UIKIT_FULL_REPAIR_PATHS,ORIGINAL_IOS,ORIGINAL_IOS_BASE,ORIGINAL_IOS_PATHS,ORIGINAL_IOS_PREDECESSOR,ORIGINAL_IOS_REPAIR_PATHS
+from validation_route import current_route,HOST_ONLY,host_only_source_binding,UIKIT_FULL,UIKIT_FULL_BASE,UIKIT_FULL_DRIVER_PATHS,UIKIT_FULL_PREDECESSOR,UIKIT_FULL_REPAIR_PATHS,ORIGINAL_IOS,ORIGINAL_IOS_BASE,ORIGINAL_IOS_PATHS,ORIGINAL_IOS_PREDECESSOR,ORIGINAL_IOS_REPAIR_PATHS,ORIGINAL_IOS_QUALIFIED_PREDECESSOR,ORIGINAL_IOS_FIRST_SUMMARY_PATHS
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
@@ -24,12 +24,16 @@ def main():
     report={'source_sha':os.environ['GITHUB_SHA'],'tree':git('rev-parse','HEAD^{tree}'),'phase':args.phase,'file_count':len(rows),'source_fingerprint':fingerprint,'reviewed_source_tree':contract['reviewed_source_tree'],'appearance_cancel_patch_sha256':contract.get('appearance_cancel_patch_sha256'),'expected_UIKit_executions':contract.get('expected_UIKit_executions'),'uikit_base':contract['uikit_base'],'native_base':contract['native_base'],'workflow_sha256':hashlib.sha256((ROOT/route['workflow_path']).read_bytes()).hexdigest(),'validation_route':route}
     if route==ORIGINAL_IOS:
         from original_ios_source_contract import audit
-        assert git('rev-list','--parents','-n','1','HEAD').split()==[os.environ['GITHUB_SHA'],ORIGINAL_IOS_PREDECESSOR['commit']], 'Unreviewed staged supervision parent'
+        qualified=ORIGINAL_IOS_QUALIFIED_PREDECESSOR
+        assert git('rev-list','--parents','-n','1','HEAD').split()==[os.environ['GITHUB_SHA'],qualified['commit']], 'Unreviewed first-summary parent'
+        assert git('rev-list','--parents','-n','1',qualified['commit']).split()==[qualified['commit'],ORIGINAL_IOS_PREDECESSOR['commit']], 'Changed exact qualified predecessor parent'
+        assert git('rev-parse',qualified['commit']+'^{tree}')==qualified['tree'], 'Changed exact qualified predecessor tree'
+        assert set(git('diff','--name-only',qualified['commit'],'HEAD').splitlines())==ORIGINAL_IOS_FIRST_SUMMARY_PATHS, 'Unreviewed fixed first-summary/replay delta'
         assert git('rev-list','--parents','-n','1',ORIGINAL_IOS_PREDECESSOR['commit']).split()==[ORIGINAL_IOS_PREDECESSOR['commit'],ORIGINAL_IOS_BASE['commit']], 'Changed fixed staged predecessor parent'
         assert git('rev-parse',ORIGINAL_IOS_PREDECESSOR['commit']+'^{tree}')==ORIGINAL_IOS_PREDECESSOR['tree'], 'Changed fixed staged predecessor tree'
         assert git('rev-parse',ORIGINAL_IOS_BASE['commit']+'^{tree}')==ORIGINAL_IOS_BASE['tree'], 'Changed staged iOS baseline tree'
         assert set(git('diff','--name-only',ORIGINAL_IOS_BASE['commit'],ORIGINAL_IOS_PREDECESSOR['commit']).splitlines())==ORIGINAL_IOS_PATHS, 'Changed original staged isolation delta'
-        assert set(git('diff','--name-only',ORIGINAL_IOS_PREDECESSOR['commit'],'HEAD').splitlines())==ORIGINAL_IOS_REPAIR_PATHS, 'Unreviewed staged supervision delta'
+        assert set(git('diff','--name-only',ORIGINAL_IOS_PREDECESSOR['commit'],qualified['commit']).splitlines())==ORIGINAL_IOS_REPAIR_PATHS, 'Unreviewed staged supervision delta'
         report['original_ios_source']=audit(ROOT)
     if route==HOST_ONLY:
         report['host_only_diagnostic']=host_only_source_binding(rows)
