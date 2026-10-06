@@ -3,6 +3,8 @@ import hashlib,os,stat,struct,zlib
 
 PNG_LIMIT=128*1024
 ICC_LIMIT=4096
+TEXT_LIMIT=16384
+ORIGINAL_DIAGNOSTIC="lifecycle-original-observed.png"
 DIMENSIONS=(1200,800)
 NAMES=('lifecycle-source.png','lifecycle-expected-save.png','lifecycle-saved.png','lifecycle-cancelled.png','lifecycle-reverted.png')
 
@@ -39,6 +41,22 @@ def orientation(data):
     require(number(data[offset+2+count*12:offset+6+count*12])==0,'Unexpected extra PNG image directory')
     return 1
 
+def international_text(body):
+    """Bounded PNG iTXt envelope only. No XML/XMP or textual semantics."""
+    require(type(body) is bytes and len(body)<=TEXT_LIMIT,'Oversized iTXt envelope')
+    keyword,separator,rest=body.partition(b'\0')
+    require(separator and 1<=len(keyword)<=79 and all(32<=x<=126 or 161<=x<=255 for x in keyword)
+            and not keyword.startswith(b' ') and not keyword.endswith(b' ') and b'  ' not in keyword,'Malformed iTXt keyword')
+    require(len(rest)>=4 and rest[0] in (0,1) and (rest[0]==0 or rest[1]==0),'Malformed iTXt compression')
+    language,separator,remaining=rest[2:].partition(b'\0');require(separator,'Missing iTXt language separator')
+    require(all(45==x or 48<=x<=57 or 65<=x<=90 or 97<=x<=122 for x in language),'Malformed iTXt language bytes')
+    translated,separator,text=remaining.partition(b'\0');require(separator,'Missing iTXt translated-keyword separator')
+    if rest[0]:text=inflate(text,TEXT_LIMIT)
+    require(len(text)<=TEXT_LIMIT and b'\0' not in text,'Oversized/null iTXt text')
+    try:translated.decode('utf8');text.decode('utf8')
+    except UnicodeDecodeError as error:raise ValueError('Malformed iTXt UTF-8') from error
+
+
 def decode(data,reference_icc=None,dimensions=DIMENSIONS):
     require(type(data) is bytes and 0<len(data)<=PNG_LIMIT and data.startswith(b'\x89PNG\r\n\x1a\n'),'Missing, oversized or wrong PNG')
     if reference_icc is not None:
@@ -74,11 +92,12 @@ def decode(data,reference_icc=None,dimensions=DIMENSIONS):
             profile='exact-reference-sRGB-ICC';profile_hash=sha(actual)
         elif kind==b'gAMA':require(not compressed and body==struct.pack('>I',45455),'Non-sRGB gamma')
         elif kind==b'cHRM':require(not compressed and body==struct.pack('>8I',31270,32900,64000,33000,30000,60000,15000,6000),'Non-sRGB chromaticities')
+        elif kind==b'iTXt':international_text(body)
         elif kind==b'eXIf':orientation(body)
         elif kind==b'pHYs':require(length==9 and body[-1] in (0,1),'Malformed PNG physical dimensions')
         else:
             # Never ignore alpha, animation, alternate profile or critical data.
-            require(kind in (b'tEXt',b'iTXt',b'zTXt',b'tIME') and length<=16384,'Unreviewed PNG chunk')
+            require(kind in (b'tEXt',b'zTXt',b'tIME') and length<=16384,'Unreviewed PNG chunk')
         chunks.append(kind);seen.add(kind);index=end
     require(chunks[-1:]==[b'IEND'] and header is not None and profile is not None,'Incomplete/unprofiled PNG')
     width,height,channels=header;stride=width*channels

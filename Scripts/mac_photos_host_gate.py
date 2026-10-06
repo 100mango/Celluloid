@@ -19,10 +19,10 @@ import tempfile
 import time
 import math
 from mac_host_transport import load_json,HOST_CONTRACT
-from validation_route import current_route,validate_route,HOST_ONLY,host_only_source_binding
+from validation_route import current_route,validate_route,HOST_ONLY,host_only_source_binding,host_clock_profile,context_clock
 from mac_host_self_identity import validate as validate_self_identity
 from mac_host_lifecycle import validate as validate_lifecycle
-from mac_host_lifecycle_pixels import NAMES as LIFECYCLE_IMAGES,PNG_LIMIT,read_owned_png
+from mac_host_lifecycle_pixels import NAMES as LIFECYCLE_IMAGES,PNG_LIMIT,read_owned_png,ORIGINAL_DIAGNOSTIC
 
 # Mandatory acceptance/source/product assertions must never be optimized away.
 # Reject before parsing an action, reading receipts, or creating any evidence.
@@ -238,7 +238,7 @@ def prepare():
     evidence = temp() / 'mac-host-observed'
     evidence.mkdir(exist_ok=False)
     route=current_route()
-    context = {'validation_route':route, 'host_entry_contract':HOST_CONTRACT, 'source_sha': os.environ['GITHUB_SHA'], 'base_sha': BASE, 'app_path': str(installed),
+    context = {'validation_route':route, 'host_clock_profile':host_clock_profile(route), 'host_entry_contract':HOST_CONTRACT, 'source_sha': os.environ['GITHUB_SHA'], 'base_sha': BASE, 'app_path': str(installed),
                'extension_path': str(embedded), 'app_executable': str(installed / 'Contents/MacOS/CelluloidMac'),
                'extension_executable': str(embedded / 'Contents/MacOS/CelluloidMacPhotosExtension'),
                'app_id': APP_ID, 'extension_id': EXT_ID, 'evidence_path': str(evidence),
@@ -429,11 +429,13 @@ def verify_acceptance(root, source_sha):
     """
     root = Path(root)
     observed = root / 'mac-host-observed'
+    assert not (observed/ORIGINAL_DIAGNOSTIC).exists(), 'Rejected Original diagnostic cannot grant lifecycle acceptance'
     budget_report=read_receipt(root/'mac-host-budget.json')
     clock=read_receipt(root/'mac-job-clock.json')
-    validate_budget(budget_report,clock,source_sha,complete=True)
-    assert budget_report['clock_sha256']==sha(root/'mac-job-clock.json')
     c = read_receipt(root / 'mac-host-context.json')
+    context_clock(c)
+    validate_budget(budget_report,clock,source_sha,complete=True,route=c['validation_route'])
+    assert budget_report['clock_sha256']==sha(root/'mac-job-clock.json')
     assert re.fullmatch(r'[0-9a-f]{40}', source_sha), 'Invalid candidate identity'
     assert c['host_entry_contract']==HOST_CONTRACT
     assert c['source_sha'] == source_sha and c['base_sha'] == BASE
@@ -588,11 +590,13 @@ def validate_clock(clock, source_sha):
     assert numeric(clock['started_monotonic'],positive=True) and numeric(clock['started_unix'],positive=True), 'Invalid job clock'
     return clock['started_monotonic']+JOB_EXECUTION_SECONDS
 
-def validate_budget(report, clock, source_sha, complete=False):
+def validate_budget(report, clock, source_sha, complete=False, route=None):
+    profile=host_clock_profile(current_route() if route is None else route)
     deadline=validate_clock(clock,source_sha)
     assert report['source_sha']==source_sha and report['complete_host_e2e'] is False
-    for key,value in [('host_process_seconds',HOST_SECONDS),('evidence_reserve_seconds',HOST_EVIDENCE_RESERVE_SECONDS)]:
+    for key,value in [('host_process_seconds',profile['process_seconds']),('evidence_reserve_seconds',profile['evidence_seconds'])]:
         assert type(report[key]) is int and report[key]==value
+    context_clock({'validation_route':current_route() if route is None else route,'host_clock_profile':report['host_clock_profile']})
     checks=report['checks'];assert isinstance(checks,list) and len(checks)<=2
     phases=['before-prepare','before-host']
     assert [row['phase'] for row in checks]==phases[:len(checks)], 'Wrong/duplicate budget phase'
@@ -601,7 +605,7 @@ def validate_budget(report, clock, source_sha, complete=False):
         assert numeric(row['observed_monotonic'],positive=True) and row['observed_monotonic']>=previous, 'Decreasing or invalid phase clock'
         assert numeric(row['deadline_monotonic'],positive=True) and row['deadline_monotonic']==deadline
         assert numeric(row['remaining_seconds']) and row['remaining_seconds']==deadline-row['observed_monotonic']
-        assert type(row['required_seconds']) is int and row['required_seconds']==HOST_SECONDS+HOST_EVIDENCE_RESERVE_SECONDS
+        assert type(row['required_seconds']) is int and row['required_seconds']==profile['before_prepare_seconds' if row['phase']=='before-prepare' else 'before_host_seconds']
         assert type(row['admitted']) is bool and row['admitted']==(row['remaining_seconds']>=row['required_seconds'])
         previous=row['observed_monotonic']
     if checks:assert report['admitted'] is checks[-1]['admitted']
@@ -610,14 +614,16 @@ def validate_budget(report, clock, source_sha, complete=False):
 
 def budget(phase):
     require_runner()
+    profile=host_clock_profile(current_route())
     root=temp(); path=root/'mac-host-budget.json'
-    report=read_receipt(path) if path.exists() else {'source_sha':os.environ['GITHUB_SHA'], 'checks':[], 'host_process_seconds':HOST_SECONDS, 'evidence_reserve_seconds':HOST_EVIDENCE_RESERVE_SECONDS, 'complete_host_e2e':False}
+    report=read_receipt(path) if path.exists() else {'source_sha':os.environ['GITHUB_SHA'], 'checks':[], 'host_process_seconds':profile['process_seconds'], 'host_clock_profile':profile, 'evidence_reserve_seconds':profile['evidence_seconds'], 'complete_host_e2e':False}
     clock=read_receipt(root/'mac-job-clock.json'); now=time.monotonic()
     deadline=validate_budget(report,clock,os.environ['GITHUB_SHA'])
     assert numeric(now,positive=True)
+    required=profile['before_prepare_seconds' if phase=='before-prepare' else 'before_host_seconds']
     row={'phase':phase,'observed_monotonic':now,'deadline_monotonic':deadline,
-         'remaining_seconds':deadline-now,'required_seconds':HOST_SECONDS+HOST_EVIDENCE_RESERVE_SECONDS,
-         'admitted':deadline-now>=HOST_SECONDS+HOST_EVIDENCE_RESERVE_SECONDS}
+         'remaining_seconds':deadline-now,'required_seconds':required,
+         'admitted':deadline-now>=required}
     report['checks'].append(row);report['clock_sha256']=sha(root/'mac-job-clock.json')
     report['admitted']=row['admitted']
     # Same validation runs at admission and replay; malformed or decreasing
@@ -736,13 +742,15 @@ def collect():
     from mac_owned_crash import IDENTITY,OUTPUT,MAX_OUTPUT,validate_diagnostic
     crash_limits={IDENTITY:8192,OUTPUT:MAX_OUTPUT}
     optional=[root/name for name in crash_limits if (root/name).exists()]; observed=root/'mac-host-observed'
+    original_diagnostic=observed/ORIGINAL_DIAGNOSTIC
+    if original_diagnostic.exists():optional.append(original_diagnostic)
     for name in crash_limits:
         if not (root/name).exists():omitted.append({'name':name,'reason':'owned-crash diagnostic unavailable','bytes':0})
     if observed.is_dir():
         optional += [p for p in sorted(observed.iterdir(),key=lambda p:(p.name!='last-observed.txt',p.suffix!='.jpg',p.name))
                   if p.is_file() and p.suffix in ['.json','.txt','.jpg'] and str(p.relative_to(root)) not in PROOF_LIMITS]
     for path in optional:
-        count=path.stat().st_size;limit=crash_limits.get(path.name,700_000 if path.suffix=='.jpg' else 160_000)
+        count=path.stat().st_size;limit=PNG_LIMIT if path.name==ORIGINAL_DIAGNOSTIC else crash_limits.get(path.name,700_000 if path.suffix=='.jpg' else 160_000)
         if path.is_symlink() or count>limit or used+count>CAP-50_000:
             omitted.append({'name':path.name,'reason':'optional diagnostic cap or symlink','bytes':count});continue
         if path.parent==root and path.name in crash_limits:

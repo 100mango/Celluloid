@@ -1,4 +1,5 @@
 """Portable transport adversaries; synthetic data does not qualify Apple host UI."""
+from validation_route import FULL,host_clock_profile,context_clock
 import base64,copy,json,tempfile,unittest
 from unittest import mock
 from pathlib import Path
@@ -6,7 +7,7 @@ import mac_host_transport as t
 
 class HostTransportTests(unittest.TestCase):
     def setUp(self):
-        self.context={'host_entry_contract':t.HOST_CONTRACT,'source_sha':'a'*40,'test_source_sha256':'b'*64,'script_sha256':'c'*64,'app_executable_sha256':'d'*64,'extension_executable_sha256':'e'*64,'extension_debug_dylib_sha256':'9'*64}
+        self.context={'validation_route':dict(FULL),'host_clock_profile':host_clock_profile(FULL),'host_entry_contract':t.HOST_CONTRACT,'source_sha':'a'*40,'test_source_sha256':'b'*64,'script_sha256':'c'*64,'app_executable_sha256':'d'*64,'extension_executable_sha256':'e'*64,'extension_debug_dylib_sha256':'9'*64}
         self.context_hash='f'*64
         self.rows=[]
         for index,name in enumerate(t.ORDER):
@@ -16,7 +17,7 @@ class HostTransportTests(unittest.TestCase):
                 'source_sha':self.context['source_sha'],'context_sha256':self.context_hash,'test_source_sha256':self.context['test_source_sha256'],'verifier_sha256':self.context['script_sha256']})
     def transcript(self,rows=None):
         owner,method=t.CASE
-        command=['xcodebuild','-only-testing:'+owner.replace('.','/')+'/'+method,'test-without-building']
+        command=['xcodebuild','-maximum-test-execution-time-allowance',str(context_clock(self.context)['test_seconds']),'-only-testing:'+owner.replace('.','/')+'/'+method,'test-without-building']
         lines=['BOUNDED_COMMAND_BEGIN '+json.dumps({'label':t.LABEL,'seconds':720,'command':command}),"Test Case '-["+owner+' '+method+"]' started."]
         lines += [t.PREFIX+json.dumps(row) for row in (self.rows if rows is None else rows)]
         lines += ["Test Case '-["+owner+' '+method+"]' passed (1.0 seconds).",'** TEST EXECUTE SUCCEEDED **','BOUNDED_COMMAND_END '+json.dumps({'label':t.LABEL,'exit_code':0,'elapsed_seconds':1})]
@@ -121,6 +122,44 @@ class HostTransportTests(unittest.TestCase):
             # The old, unobserved doubled-extension spelling is not a fallback.
             items[1]['suggestedHumanReadableName']=items[1]['suggestedHumanReadableName'].replace('last-observed_0','last-observed.txt_0')
             with self.assertRaisesRegex(ValueError,'Unexpected/duplicate named'):t.attachment_candidates(folder,manifest)
+
+    def test_failed_predecode_png_is_retained_with_no_semantic_acceptance(self):
+        from test_mac_host_lifecycle_pixels import encode,chunk
+        from mac_host_lifecycle_pixels import decode,ORIGINAL_DIAGNOSTIC,NAMES,PNG_LIMIT
+        malformed=encode(extra=[chunk(b'iTXt',b'invalid envelope')])
+        with self.assertRaises(ValueError):decode(malformed,dimensions=(3,2))
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory);items=[]
+            def add(name,data,index):
+                exported=str(index)+'.png';(folder/exported).write_bytes(data)
+                items.append({'exportedFileName':exported,'suggestedHumanReadableName':t.LIFECYCLE_PREFIX+Path(name).stem+'_0_11111111-2222-3333-4444-555555555555.png'})
+            add('lifecycle-saved.png',malformed,0)
+            manifest=[{'testIdentifier':'MacPhotosHostUITests/'+t.CASE[1]+'()','attachments':items}]
+            self.assertEqual(t.attachment_candidates(folder,manifest),{'lifecycle-saved.png':malformed})
+            add(ORIGINAL_DIAGNOSTIC,malformed,1)
+            self.assertEqual(t.attachment_candidates(folder,manifest)[ORIGINAL_DIAGNOSTIC],malformed)
+            self.assertNotIn(ORIGINAL_DIAGNOSTIC,NAMES)
+            manifest[0]['testIdentifier']='Other/test()'
+            with self.assertRaises(ValueError):t.attachment_candidates(folder,manifest)
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory);items=[]
+            for index,name in enumerate((*NAMES,ORIGINAL_DIAGNOSTIC)):
+                add(name,b'\x89PNG\r\n\x1a\n'+b'x'*(PNG_LIMIT-8),index)
+            manifest=[{'testIdentifier':'MacPhotosHostUITests/'+t.CASE[1]+'()','attachments':items}]
+            with self.assertRaisesRegex(ValueError,'aggregate'):t.attachment_candidates(folder,manifest)
+
+    def test_process_clock_profile_and_actual_xctest_allowance_are_bound(self):
+        good=self.transcript()
+        self.parse(good.replace('"seconds": 720','"seconds": 720.0'))  # Actual run_bounded argparse float.
+        for change in [good.replace('"660"','"960"'),good.replace('"seconds": 720','"seconds": 1020'),
+                       good.replace('"-maximum-test-execution-time-allowance", "660", ',''),
+                       good.replace('"660"','"660", "-maximum-test-execution-time-allowance", "660"')]:
+            with self.assertRaises(ValueError):self.parse(change)
+        from validation_route import HOST_ONLY,host_clock_profile
+        self.context['validation_route']=dict(HOST_ONLY)
+        with self.assertRaises(ValueError):self.parse(good)
+        self.context['host_clock_profile']=host_clock_profile(HOST_ONLY)
+        self.parse(self.transcript().replace('"seconds": 720','"seconds": 1020.0'))
 
     def test_same_fixed_name_with_distinct_export_paths_still_rejects(self):
         with tempfile.TemporaryDirectory() as directory:

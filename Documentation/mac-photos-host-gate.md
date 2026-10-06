@@ -704,3 +704,68 @@ The narrow successor polls only existence of the exact GoToWindow captured in
 the final validated field observation, within the same remaining 10 seconds.
 The full alert/parent/identity/Where/path/no-overwrite checks still run once after
 that wait and before Export. No timeout, input retry or acceptance gate changes.
+
+### Owned PNG metadata and measured lifecycle allocation
+
+Run37392180964 (a993e6c2) completed the actual owned save-panel navigation,
+Export click and bounded file read. The Swift predecode whitelist then rejected
+`iTXt`; the exported file SHA-256 was
+`c026105f110471e7d9d87b6edafd4d02b4dd9c9372535e450226668f512ae0f0`.
+That historical run remains failed, and its actual exported PNG was not retained.
+Its exact chunk length/order/profile/pixels therefore cannot be reconstructed.
+
+[PNG11.3.3.4](https://www.w3.org/TR/png/#11iTXt) defines iTXt as ancillary text.
+The narrow allowance checks its bounded envelope, keyword/separators, compression
+flag, UTF-8 and at most16KiB of decompressed text before ImageIO. It does not
+interpret XML/XMP, follow links, or use textual orientation/color claims.
+Unknown critical chunks remain rejected; CRC, existing ICC byte equivalence,
+ImageIO orientation/dimensions/opacity and independent outer pixel checks remain
+mandatory. Outer replay already allowed bounded iTXt; it now independently
+checks the same structural/decompression constraints. No filter oracle changed.
+
+Each already-owned saved/cancelled/reverted PNG is attached under its existing
+fixed name before semantic decoding. A small outcome inventory records only
+chunk type, length and offset with whole-file bytes/hash, explicitly without
+acceptance. Successful image metadata is promoted separately after validation.
+Original export must equal the already-retained source byte-for-byte. Only a
+rejected mismatch may attach `lifecycle-original-observed.png`; that sixth name
+is diagnostic-only and explicitly blocks acceptance. It shares the unchanged
+640KiB aggregate/128KiB per-PNG bound. Its omission on cap exhaustion is recorded
+without replacing the original failure. No arbitrary filenames/paths are read.
+
+Measured first normal export logging was45,278 bytes; start through that export
+was48,819 bytes including early proof. Repeating three normal exports, an
+estimated smaller original export, two editor reentries and final receipts
+projects approximately270KB of transcript, within its unchanged300KB hard cap.
+This is a planning estimate, not a guarantee; overflow stays failure. The
+historical required proof was207,876 bytes, including source19,268 and independent
+expected16,565. Substituting300KB transcript,16KB lifecycle/outcome receipts and
+three128KiB rendered PNGs projects under830KB required proof. The unchanged1MB
+outbound cap reserves50KB for its manifest, gives core proof priority, and
+honestly omits optional screenshots/AX/crash diagnostics if space runs out.
+Four successful exports use five image names because Original exactly deduplicates
+to the retained source. No required acceptance PNG is dropped to fit the cap.
+
+The first full export took about195 seconds, with post-Return AX queries costing
+roughly1.0–1.3 seconds each. Across retained runs the full eight-phase estimate is
+460–650 seconds; sustained slow AX queries could require11–14 minutes. These are
+XCTest/UI-automation timings, not isolated Photos or renderer CPU measurements.
+The host-only route therefore has one fixed, source/context-bound clock profile:
+900-second case,960-second XCTest allowance,1020-second xcodebuild bound,240-second
+portable pretest and28-minute host step. The step allocation is240+1020+360+60:
+360 seconds for mandatory tail commands (30 summary+60 export+80 product+120
+source, plus70 local-work margin), and60 helper/dispatch margin. Step timeout
+remains a hard limit if actual overhead exceeds the allocation. Before prepare,
+admission requires1980 seconds (1680 step+300 evidence); before host, after the
+pretest, it requires1740 seconds. Optional crash preparation preserves that full
+admission reserve. The45-minute job and41-minute execution clock are unchanged.
+Canonical/focused Mac routes explicitly retain600/660/720 and their prior
+allocation. New source/context/transport/replay must agree on the selected fixed
+profile; old receipts are not silently reinterpreted as the longer profile.
+
+Opening Go to Folder now polls only the already-scoped direct GoToWindow child
+count for the original remaining10 seconds. Full parent/alert/field guards run
+once immediately afterward before any input. Dismissal likewise polls only the
+captured child's existence; all original destination/file postconditions remain.
+The candidate still needs actual native compile and full persisted lifecycle
+execution. No new42-case/UIKit execution or release qualification is claimed.

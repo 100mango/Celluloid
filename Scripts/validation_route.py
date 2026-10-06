@@ -8,7 +8,7 @@ FOCUSED={'scope':'mac-repair','branch':'codex/mac-repair','workflow_path':'.gith
 HOST_ONLY={'scope':'photos-export-observation','branch':'codex/photos-export-observation','workflow_path':'.github/workflows/photos-export-observation.yml','diagnostic_only':True}
 HOST_ONLY_BASE={'commit':'25b8edc92c3f53cf13208ffa0065746b87ae20e0','tree':'7622774f3291c7b32f46966bebffddd645e57326','fingerprint':'d395f03291d06dc09f0d561b2096fd0bfe32b63f08764753c9d1b31a1069c88b'}
 HOST_ONLY_PROTECTED_FINGERPRINT='c1d88b1bafe0ef55c838e28eccb606d0b7e4701d792d88399f8b03ecc40f984b'
-HOST_ONLY_UI_TEST={'path':'Platforms/UITests/MacPhotosHostUITests.swift','sha256':'85a5538ed4b1b3bd1434b5cc59376dfd2ac47ff5e473c132be49d76cb0a91a2a'}
+HOST_ONLY_UI_TEST={'path':'Platforms/UITests/MacPhotosHostUITests.swift','sha256':'67bdca402040600b35a2e452a13049b4a44bd55df797596a32e8c460e9eb4fb0'}
 
 def require(ok,message):
     if not ok:raise ValueError(message)
@@ -47,3 +47,20 @@ def host_only_source_binding(rows):
         'unchanged_protected_fingerprint':fingerprint,'reviewed_host_ui_test':dict(HOST_ONLY_UI_TEST),
         'native_42_reexecuted':False,'uikit_reexecuted':False,
         'actual_host_test_required':'MacPhotosHostUITests/testInstalledExtensionIsInvokedByActualPhotos'}
+
+
+def host_clock_profile(route):
+    """Two fixed reviewed allocations, not caller-selectable timeout values."""
+    if validate_route(route)==HOST_ONLY:
+        return {'name':'photos-export-observation-900-v1','case_seconds':900,'test_seconds':960,
+            'process_seconds':1020,'pretest_seconds':240,'tail_seconds':360,'step_margin_seconds':60,
+            'step_seconds':1680,'before_prepare_seconds':1980,'before_host_seconds':1740,'evidence_seconds':300}
+    return {'name':'canonical-600-v1','case_seconds':600,'test_seconds':660,
+        'process_seconds':720,'pretest_seconds':0,'tail_seconds':0,'step_margin_seconds':0,
+        'step_seconds':840,'before_prepare_seconds':1020,'before_host_seconds':1020,'evidence_seconds':300}
+
+def context_clock(context):
+    expected=host_clock_profile(context['validation_route'])
+    require(context.get('host_clock_profile')==expected and type(context.get('host_clock_profile')) is dict
+            and all(type(context['host_clock_profile'][k]) is type(v) for k,v in expected.items()),'Wrong source-bound host clock profile')
+    return expected

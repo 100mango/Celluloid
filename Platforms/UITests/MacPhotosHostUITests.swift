@@ -27,6 +27,7 @@ final class MacPhotosHostUITests: XCTestCase {
     private static let fixtureFilename = "Celluloid-Owned-Host.png"
     private static let lifecyclePhases = ["source-retained", "fade-ready", "saved-export", "reopened-fade",
         "cancelled-export", "reverted-export", "unmodified-original", "reopened-original"]
+    private var lifecycleDeadlineSeconds = 600
     private var testStarted: TimeInterval = 0
     private var lifecyclePhotosPID: pid_t = 0
     private var lifecycleAssetLabel = ""
@@ -40,6 +41,8 @@ final class MacPhotosHostUITests: XCTestCase {
     private var binaryScalarSelfTested = false
     private var lifecycleImages: [String: [String: Any]] = [:]
     private var lifecycleExports: [String: [String: Any]] = [:]
+    private var retainedPNGHashes: [String: String] = [:]
+    private var exportPNGDiagnostics: [[String: Any]] = []
     private var lifecyclePNGBytes = 0
     private var lifecycleRawBytes = 0
     private var lifecycleICC: [String: Any]?
@@ -76,6 +79,14 @@ final class MacPhotosHostUITests: XCTestCase {
         XCTAssertEqual(context["app_id"] as? String, "Mango.Celluloid")
         XCTAssertEqual(context["extension_id"] as? String, "Mango.Celluloid.CelluloidPhotoExtension")
         XCTAssertEqual(context["host_entry_contract"] as? String, Self.hostEntryContract)
+        let route = try XCTUnwrap(context["validation_route"] as? [String: Any])
+        let clock = try XCTUnwrap(context["host_clock_profile"] as? [String: Any])
+        let hostOnly = route["scope"] as? String == "photos-export-observation"
+        lifecycleDeadlineSeconds = hostOnly ? 900 : 600
+        XCTAssertEqual(clock["name"] as? String, hostOnly ? "photos-export-observation-900-v1" : "canonical-600-v1")
+        XCTAssertEqual(clock["case_seconds"] as? Int, lifecycleDeadlineSeconds)
+        XCTAssertEqual(clock["test_seconds"] as? Int, hostOnly ? 960 : 660)
+        XCTAssertEqual(clock["process_seconds"] as? Int, hostOnly ? 1020 : 720)
         contextHash = digest(data)
         XCTAssertEqual(try digest(URL(fileURLWithPath: value("script_path"))), try value("script_sha256"))
         XCTAssertEqual(try digest(URL(fileURLWithPath: value("test_source_path"))), try value("test_source_sha256"))
@@ -88,6 +99,7 @@ final class MacPhotosHostUITests: XCTestCase {
     @MainActor func testInstalledExtensionIsInvokedByActualPhotos() throws {
         testStarted = ProcessInfo.processInfo.systemUptime
         try verifyBinaryScalarContract()
+        try verifyInternationalTextContract()
         // Validate the exact read-only input before any host UI action. Only
         // XCTest stdout/attachments carry data back across the sandbox boundary.
         try report(["schema": "Celluloid.HostTransport.3", "host_entry_contract": Self.hostEntryContract, "source_sha": try value("source_sha"),
@@ -106,6 +118,7 @@ final class MacPhotosHostUITests: XCTestCase {
                 "last_stage": stage, "host_entry_contract": Self.hostEntryContract, "complete_host_e2e": false,
                 "save_reopen_cancel_revert": lifecycleComplete ? "PhotosFilterLifecycle.1 complete" : "PhotosFilterLifecycle.1 incomplete"]
             if let firstBlockedOperation { outcome["first_blocked_operation"] = firstBlockedOperation }
+            if !exportPNGDiagnostics.isEmpty { outcome["export_png_diagnostics"] = exportPNGDiagnostics }
             if let extensionMenuObservation { outcome["extension_menu_observation"] = extensionMenuObservation }
             if retainedSource != nil {
                 try? report(lifecycleReceipt(photosPID: lifecyclePhotosPID), named: "lifecycle.json")
@@ -489,8 +502,8 @@ final class MacPhotosHostUITests: XCTestCase {
         element.typeText(text)
     }
     private func remainingTime(_ requested: TimeInterval) throws -> TimeInterval {
-        let remaining = 600 - (ProcessInfo.processInfo.systemUptime - testStarted)
-        guard testStarted > 0, remaining > 0 else { throw block("Shared 600-second Photos lifecycle deadline exhausted") }
+        let remaining = TimeInterval(lifecycleDeadlineSeconds) - (ProcessInfo.processInfo.systemUptime - testStarted)
+        guard testStarted > 0, remaining > 0 else { throw block("Source-bound Photos lifecycle deadline exhausted") }
         return min(requested, remaining)
     }
     private func lifecyclePhase(_ name: String, details: [String: Any]) throws {
@@ -509,7 +522,7 @@ final class MacPhotosHostUITests: XCTestCase {
             "photos_pid": photosPID, "fixture_sha256": retainedSource.map { digest($0.bytes) } ?? "",
             "asset_label": lifecycleAssetLabel, "single_photo_topologies": singlePhotoTopologies,
             "complete": lifecycleComplete, "dirty_cancel_tested": false,
-            "deadline_seconds": 600, "control_columns": ["scope", "role", "identifier", "title", "label", "value", "count", "enabled", "hittable"],
+            "deadline_seconds": lifecycleDeadlineSeconds, "control_columns": ["scope", "role", "identifier", "title", "label", "value", "count", "enabled", "hittable"],
             "control_catalog": lifecycleControlCatalog, "phases": lifecycleRows, "images": lifecycleImages, "raw_exports": lifecycleExports,
             "export_option_bindings": exportOptionBindings,
             "binary_states": exportBinaryStates, "binary_scalar_self_tested": binaryScalarSelfTested,
@@ -1108,19 +1121,14 @@ final class MacPhotosHostUITests: XCTestCase {
             panel.descendants(matching: .button).matching(NSPredicate(format: "identifier == %@ AND title == %@", "OKButton", finalTitle))
         }
         _ = try lifecycleControl(confirmButton(initial.panel), scope: "ExportSavePanel", role: "Button", click: false)
-        func waitForChild(_ present: Bool) throws {
-            var failure: Error?
-            try lifecycleWait(photos, seconds: 10, description: present ? "Observed Go to Folder child absent" : "Go to Folder child did not dismiss") {
-                do {
-                    let observed = try self.destinationPanel(in: photos)
-                    guard observed.panel.label == panelLabel else { throw self.block("Export destination panel changed while waiting") }
-                    return (observed.go != nil) == present
-                } catch { failure = error; return true }
-            }
-            if let failure { throw failure }
-        }
+        // Poll only the known direct child scope. Full parent/alert/path checks
+        // run once in destinationPathField before any text or key input.
+        let openingChildren = initial.panel.children(matching: .sheet).matching(identifier: "GoToWindow")
         try deadlineKey(photos, "g", modifierFlags: [.command, .shift])
-        try waitForChild(true)
+        let childOpened = NSPredicate { _, _ in openingChildren.count > 0 }
+        guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: childOpened, object: nil)],
+                            timeout: try remainingTime(10)) == .completed else { throw block("Observed Go to Folder child absent") }
+        _ = try remainingTime(1)
         let input = try destinationPathField(in: photos, panelLabel: panelLabel)
         // Click the exact field. typeText requires keyboard focus and fails if
         // it cannot type; no separate undocumented focus Boolean is sampled.
@@ -1235,8 +1243,20 @@ final class MacPhotosHostUITests: XCTestCase {
         let bytes = try readBoundedOwnedFile(file, maximumBytes: rawAllowance)
         guard lifecycleRawBytes + bytes.count <= 64 * 1024 * 1024 else { throw block("Raw export aggregate exceeds 64 MiB") }
         lifecycleRawBytes += bytes.count
-        let raster = try lifecycleRaster(bytes, expectedFormat: UTType.png.identifier)
         let retainedImage = original ? "lifecycle-source.png" : "lifecycle-" + name + ".png"
+        // Preserve exact owned bytes and bounded framing before ImageIO/profile/
+        // pixel acceptance. Failed decoding never becomes an accepted image.
+        exportPNGDiagnostics.append(pngInventory(bytes, phase: name))
+        if original {
+            guard let source = retainedSource, bytes == source.bytes else {
+                let failure = block("Unmodified original export differs from retained source bytes")
+                do { try retainLifecycleBytes(bytes, named: "lifecycle-original-observed.png") }
+                catch { exportPNGDiagnostics[exportPNGDiagnostics.count - 1]["retention"] = "omitted: fixed diagnostic byte allowance" }
+                throw failure
+            }
+            guard retainedPNGHashes[retainedImage] == digest(bytes) else { throw block("Original source byte retention is missing") }
+        } else { try retainLifecycleBytes(bytes, named: retainedImage) }
+        let raster = try lifecycleRaster(bytes, expectedFormat: UTType.png.identifier)
         lifecycleExports[name] = ["image": retainedImage, "relative_path": name + "/" + Self.fixtureFilename,
             "bytes": bytes.count, "sha256": digest(bytes)]
         return raster
@@ -1312,12 +1332,20 @@ final class MacPhotosHostUITests: XCTestCase {
               bytes[26] == 0, bytes[27] == 0, bytes[28] == 0 else {
             throw block("Required PNG dimensions/depth/color type/interlace failed", operation: ["sha256": digest(data), "bytes": data.count])
         }
-        var offset = 8, chunks = 0, srgb = 0, icc = 0
+        var offset = 8, chunks = 0, srgb = 0, icc = 0, textChunks = 0
         while offset < bytes.count {
             guard offset <= bytes.count - 12, chunks < 64 else { throw block("PNG chunk framing limit") }
             let count = u32(offset)
             guard count <= bytes.count - offset - 12 else { throw block("Truncated PNG chunk") }
             let tag = String(bytes: bytes[(offset + 4)..<(offset + 8)], encoding: .ascii) ?? ""
+            let protected = Array(bytes[(offset + 4)..<(offset + 8 + count)])
+            let actualCRC = protected.withUnsafeBufferPointer { crc32(0, $0.baseAddress, uInt($0.count)) }
+            guard actualCRC == uLong(u32(offset + 8 + count)) else { throw block("PNG chunk CRC mismatch before decode") }
+            if tag == "iTXt" {
+                textChunks += 1
+                guard textChunks == 1 else { throw block("Duplicate iTXt before decode") }
+                try admitInternationalText(Array(bytes[(offset + 8)..<(offset + 8 + count)]))
+            }
             if tag == "sRGB" {
                 guard count == 1, bytes[offset + 8] == 0 else { throw block("PNG sRGB rendering intent mismatch") }
                 srgb += 1
@@ -1327,7 +1355,7 @@ final class MacPhotosHostUITests: XCTestCase {
                 guard icc == 1 else { throw block("Duplicate ICC profile before decode") }
                 try admitICC(Array(bytes[(offset + 8)..<(offset + 8 + count)]), pngSHA256: digest(data))
             }
-            guard ["IHDR", "sRGB", "iCCP", "gAMA", "cHRM", "pHYs", "eXIf", "IDAT", "IEND"].contains(tag) else {
+            guard ["IHDR", "sRGB", "iCCP", "gAMA", "cHRM", "pHYs", "eXIf", "iTXt", "IDAT", "IEND"].contains(tag) else {
                 throw block("Unsupported PNG chunk before decode", operation: ["chunk": tag, "sha256": digest(data)])
             }
             guard !["acTL", "fcTL", "fdAT", "tRNS"].contains(tag) else { throw block("Animated/transparency PNG is outside the fixture contract") }
@@ -1337,6 +1365,54 @@ final class MacPhotosHostUITests: XCTestCase {
             throw block("PNG profile missing/ambiguous; pixel conversion is not a fallback", operation: ["sha256": digest(data), "sRGB_chunks": srgb, "iCCP_chunks": icc])
         }
         return (Int(bytes[25]), srgb == 1 ? "srgb-chunk" : "icc-reference")
+    }
+    private func admitInternationalText(_ payload: [UInt8]) throws {
+        do { try Self.validateInternationalText(payload) }
+        catch { throw block("Malformed or oversized PNG iTXt structure before decode") }
+    }
+    private func verifyInternationalTextContract() throws {
+        let prefix = Array("Comment".utf8) + [UInt8](repeating: 0, count: 5)
+        let plain = prefix + Array("color-neutral 文本".utf8)
+        let compressed: [UInt8] = Array("Comment".utf8) + [0, 1, 0, 0, 0] + [120, 156, 75, 206, 207, 201, 47, 210, 205, 75, 45, 45, 41, 74, 204, 81, 120, 54, 173, 253, 217, 156, 53, 0, 89, 133, 9, 153]
+        for payload in [prefix, plain, compressed] { try Self.validateInternationalText(payload) }
+        for payload in [[UInt8](), Array("Comment".utf8) + [0, 2, 0, 0, 0], prefix + [255], prefix + [0],
+                        prefix + [UInt8](repeating: 65, count: 16_385), Array(compressed.dropLast())] {
+            do { try Self.validateInternationalText(payload); throw block("Native iTXt negative unexpectedly passed") }
+            catch let error as NSError where error.domain == "Celluloid.PNG.iTXt" { }
+        }
+        print("MAC_HOST_PNG_ITXT_STRUCTURE_SELFTEST_PASSED")
+    }
+    private static func validateInternationalText(_ payload: [UInt8]) throws {
+        // W3C PNG 11.3.3.4: inspect only the bounded envelope and UTF-8.
+        // Text is never interpreted as XML/XMP, orientation or color authority.
+        guard payload.count <= 16_384, let separator = payload.firstIndex(of: 0), (1...79).contains(separator),
+              separator + 5 <= payload.count else { throw NSError(domain: "Celluloid.PNG.iTXt", code: 1, userInfo: [NSLocalizedDescriptionKey: "Malformed/oversized PNG iTXt envelope"]) }
+        let keyword = Array(payload[..<separator])
+        guard keyword.allSatisfy({ (32...126).contains($0) || (161...255).contains($0) }),
+              keyword.first != 32, keyword.last != 32,
+              !zip(keyword, keyword.dropFirst()).contains(where: { pair in pair.0 == 32 && pair.1 == 32 }) else { throw NSError(domain: "Celluloid.PNG.iTXt", code: 1, userInfo: [NSLocalizedDescriptionKey: "Malformed PNG iTXt keyword"]) }
+        let flag = payload[separator + 1], method = payload[separator + 2]
+        guard [0, 1].contains(flag), flag == 0 || method == 0,
+              let languageEnd = payload[(separator + 3)...].firstIndex(of: 0),
+              languageEnd + 1 < payload.count,
+              let translatedEnd = payload[(languageEnd + 1)...].firstIndex(of: 0) else { throw NSError(domain: "Celluloid.PNG.iTXt", code: 1, userInfo: [NSLocalizedDescriptionKey: "Malformed PNG iTXt compression/separators"]) }
+        let language = payload[(separator + 3)..<languageEnd]
+        guard language.allSatisfy({ $0 == 45 || (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) }),
+              String(bytes: payload[(languageEnd + 1)..<translatedEnd], encoding: .utf8) != nil else { throw NSError(domain: "Celluloid.PNG.iTXt", code: 1, userInfo: [NSLocalizedDescriptionKey: "Malformed PNG iTXt language/translated bytes"]) }
+        var text = Array(payload[(translatedEnd + 1)...])
+        if flag == 1 {
+            let compressed = text
+            var output = [UInt8](repeating: 0, count: 16_385)
+            var outputCount = uLongf(output.count), inputCount = uLong(compressed.count)
+            let status = output.withUnsafeMutableBufferPointer { destination in
+                compressed.withUnsafeBufferPointer { source in
+                    uncompress2(destination.baseAddress, &outputCount, source.baseAddress, &inputCount)
+                }
+            }
+            guard status == Z_OK, outputCount <= 16_384, inputCount == uLong(compressed.count) else { throw NSError(domain: "Celluloid.PNG.iTXt", code: 1, userInfo: [NSLocalizedDescriptionKey: "PNG iTXt bounded decompression failed"]) }
+            text = Array(output.prefix(Int(outputCount)))
+        }
+        guard text.count <= 16_384, !text.contains(0), String(bytes: text, encoding: .utf8) != nil else { throw NSError(domain: "Celluloid.PNG.iTXt", code: 1, userInfo: [NSLocalizedDescriptionKey: "Malformed/oversized PNG iTXt UTF-8"]) }
     }
     private func admitICC(_ payload: [UInt8], pngSHA256: String) throws {
         _ = try remainingTime(1)
@@ -1401,16 +1477,43 @@ final class MacPhotosHostUITests: XCTestCase {
             "profile_encoding": header.profileEncoding, "alpha": "opaque"]
         return LifecycleRaster(bytes: data, rgba: rgba, metadata: metadata)
     }
-    private func retainLifecycleImage(_ image: LifecycleRaster, named name: String) throws {
-        let names: Set<String> = ["lifecycle-source.png", "lifecycle-expected-save.png", "lifecycle-saved.png", "lifecycle-cancelled.png", "lifecycle-reverted.png"]
-        guard names.contains(name), lifecycleImages[name] == nil, !image.bytes.isEmpty, image.bytes.count <= 128 * 1024,
-              lifecyclePNGBytes + image.bytes.count <= 640 * 1024 else { throw block("Required lifecycle PNG admission failed") }
-        lifecyclePNGBytes += image.bytes.count
-        lifecycleImages[name] = image.metadata
-        let attachment = XCTAttachment(data: image.bytes, uniformTypeIdentifier: "public.png")
+    private func retainLifecycleBytes(_ bytes: Data, named name: String) throws {
+        let names: Set<String> = ["lifecycle-source.png", "lifecycle-expected-save.png", "lifecycle-saved.png", "lifecycle-cancelled.png", "lifecycle-reverted.png", "lifecycle-original-observed.png"]
+        guard names.contains(name), retainedPNGHashes[name] == nil, !bytes.isEmpty, bytes.count <= 128 * 1024,
+              lifecyclePNGBytes + bytes.count <= 640 * 1024 else { throw block("Required lifecycle PNG admission failed") }
+        lifecyclePNGBytes += bytes.count
+        retainedPNGHashes[name] = digest(bytes)
+        let attachment = XCTAttachment(data: bytes, uniformTypeIdentifier: "public.png")
         attachment.name = "celluloid-host-lifecycle-" + name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+    private func retainLifecycleImage(_ image: LifecycleRaster, named name: String) throws {
+        guard name != "lifecycle-original-observed.png", lifecycleImages[name] == nil else { throw block("Duplicate/diagnostic lifecycle image metadata") }
+        if retainedPNGHashes[name] == nil { try retainLifecycleBytes(image.bytes, named: name) }
+        guard retainedPNGHashes[name] == digest(image.bytes) else { throw block("Retained PNG bytes changed before acceptance") }
+        lifecycleImages[name] = image.metadata
+    }
+    private func pngInventory(_ data: Data, phase: String) -> [String: Any] {
+        // Framing only, no text values, ImageIO, profile interpretation or acceptance.
+        var row: [String: Any] = ["schema": "Celluloid.OwnedPNGStructure.1", "acceptance": false,
+            "phase": phase, "bytes": data.count, "sha256": digest(data)]
+        guard data.count >= 8, data.count <= 128 * 1024,
+              Array(data.prefix(8)) == [137,80,78,71,13,10,26,10] else { row["framing"] = "invalid-signature-or-size"; return row }
+        let bytes = [UInt8](data)
+        var offset = 8, chunks: [[Any]] = []
+        while offset <= bytes.count - 12, chunks.count < 64 {
+            let count = Int(bytes[offset]) << 24 | Int(bytes[offset + 1]) << 16 | Int(bytes[offset + 2]) << 8 | Int(bytes[offset + 3])
+            let rawTag = Array(bytes[(offset + 4)..<(offset + 8)])
+            let tag = rawTag.allSatisfy { (65...90).contains($0) || (97...122).contains($0) }
+                ? String(decoding: rawTag, as: UTF8.self) : rawTag.map { String(format: "%02x", $0) }.joined()
+            chunks.append([tag, count, offset])
+            guard count <= bytes.count - offset - 12 else { row["framing"] = "truncated-chunk"; row["chunks"] = chunks; return row }
+            offset += count + 12
+        }
+        row["chunks"] = chunks
+        row["framing"] = offset == bytes.count ? "complete-span" : "truncated-or-chunk-limit"
+        return row
     }
     private func expectedFade(_ original: LifecycleRaster) throws -> (raster: LifecycleRaster, jpegSHA256: String) {
         _ = try remainingTime(1)

@@ -87,6 +87,28 @@ class LifecyclePixelsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Rotated'):self.decode(encode(extra=[chunk(b'eXIf',exif(value))]))
         for raw in [b'x',exif()[:12],b'II\x2a\0'+(100000).to_bytes(4,'little')]:
             with self.assertRaises(ValueError):self.decode(encode(extra=[chunk(b'eXIf',raw)]))
+    def test_itxt_standard_envelopes_are_color_neutral_before_or_after_idat(self):
+        neutral=self.decode(encode())
+        for body in [b'Comment\0\0\0\0\0',b'XML:com.adobe.xmp\0\0\0\0\0<not-parsed/>',
+                     b'Comment\0\0\x7fzh-Hans\0'+"注释".encode()+b'\0'+"文本".encode(),
+                     b'Comment\0\1\0en\0Comment\0'+zlib.compress(b'opaque text')]:
+            p.international_text(body)
+            for rows in [pieces(encode())[:2]+[(b'iTXt',body)]+pieces(encode())[2:],pieces(encode())[:-1]+[(b'iTXt',body)]+pieces(encode())[-1:]]:
+                self.assertEqual(self.decode(rebuild(rows)),neutral | {'png_sha256':p.sha(rebuild(rows)),'bytes':len(rebuild(rows))})
+    def test_itxt_malformed_and_compressed_bombs_reject_without_color_fallback(self):
+        prefix=b'Comment\0\0\0\0\0';compressed=b'Comment\0\1\0\0\0'
+        bad=[b'',b'\0\0\0\0\0',b'x'*80+b'\0\0\0\0\0',b' a\0\0\0\0\0',b'a  b\0\0\0\0\0',
+             b'Comment\0\2\0\0\0',b'Comment\0\1\1\0\0',b'Comment\0\0\0en',b'Comment\0\0\0en\0bad',
+             b'Comment\0\0\0!\0\0text',prefix+b'\0',prefix+b'\xff',b'Comment\0\0\0\0\xff\0text',
+             prefix+b'x'*p.TEXT_LIMIT,compressed+zlib.compress(b'x'*(p.TEXT_LIMIT+1)),compressed+zlib.compress(b'ok')[:-1],
+             compressed+zlib.compress(b'ok')+zlib.compress(b'extra')]
+        for body in bad:
+            with self.subTest(body=body[:30]),self.assertRaises(ValueError):self.decode(encode(extra=[chunk(b'iTXt',body)]))
+        body=prefix+b'orientation=1;profile=sRGB'
+        with self.assertRaisesRegex(ValueError,'Non-sRGB gamma'):self.decode(encode(extra=[chunk(b'iTXt',body),chunk(b'gAMA',struct.pack('>I',100000))]))
+        with self.assertRaisesRegex(ValueError,'Duplicate'):self.decode(encode(extra=[chunk(b'iTXt',body)]*2))
+        raw=bytearray(encode(extra=[chunk(b'iTXt',body)]));raw[45]^=1
+        with self.assertRaisesRegex(ValueError,'CRC'):self.decode(bytes(raw))
     def test_fixed_full_resolution_bound_and_comparison_mutations(self):
         full=encode(width=1200,height=800);row=p.decode(full);self.assertEqual(len(row['rgba']),1200*800*4)
         original=self.decode(encode());changed=bytearray(original['rgba']);changed[0]+=3

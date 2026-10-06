@@ -1,4 +1,5 @@
 """Synthetic IPS/collector adversaries; no Apple host acceptance is claimed."""
+from validation_route import FULL,host_clock_profile,context_clock
 import copy
 import json
 from dataclasses import dataclass
@@ -419,7 +420,7 @@ class OwnedCrashTests(unittest.TestCase):
             with self.assertRaises(ValueError):crash.optional_budget(dict(clock,**changes),'a'*40,'prepare',200)
 
     def test_optional_execution_requires_confirmed_child_end_and_records_skips(self):
-        context={'source_sha':'a'*40};clock={'source_sha':'a'*40,'started_monotonic':100.0,'execution_budget_seconds':2460}
+        context={'source_sha':'a'*40,'validation_route':dict(FULL),'host_clock_profile':host_clock_profile(FULL)};clock={'source_sha':'a'*40,'started_monotonic':100.0,'execution_budget_seconds':2460}
         for outcome in ['success','no-end','wrong-exit','oversize','timeout','skip']:
             with self.subTest(outcome=outcome),tempfile.TemporaryDirectory() as folder:
                 root=Path(folder).resolve();(root/'mac-job-clock.json').write_bytes(crash.encode(clock))
@@ -485,7 +486,7 @@ class OwnedCrashTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):crash.observe_framework_links(Path('/synthetic'),{},identity,120)
 
     def test_unconfirmed_framework_child_marks_prepare_unfinalized_and_preserves_identity(self):
-        context={'source_sha':'a'*40};clock={'source_sha':'a'*40,'started_monotonic':100.0,'execution_budget_seconds':2460}
+        context={'source_sha':'a'*40,'validation_route':dict(FULL),'host_clock_profile':host_clock_profile(FULL)};clock={'source_sha':'a'*40,'started_monotonic':100.0,'execution_budget_seconds':2460}
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder).resolve();(root/'mac-job-clock.json').write_bytes(crash.encode(clock))
             (root/'mac-host-budget.json').write_bytes(crash.encode({'source_sha':'a'*40,'clock_sha256':crash.digest(crash.encode(clock))}))
@@ -590,7 +591,7 @@ class OwnedCrashTests(unittest.TestCase):
         host=workflow.split('- name: Actual Photos host discovery',1)[1].split('- name:',1)[0]
         evidence=workflow.split('- name: Bound and replay the dedicated host proof',1)[1].split('- name:',1)[0]
         self.assertNotIn('mac_owned_crash.py',shell+host)
-        self.assertIn('timeout-minutes: 14',host);self.assertIn('--seconds 720',shell);self.assertIn('-maximum-test-execution-time-allowance 660',shell)
+        self.assertIn('timeout-minutes: 14',host);self.assertIn('process_seconds=720',shell);self.assertIn('test_seconds=660',shell)
         self.assertIn("steps.host_context.outcome == 'success'",host)
         for action,block in [('prepare',before),('capture',evidence)]:
             line=next(l for l in block.splitlines() if f'mac_owned_crash.py optional-{action}' in l)

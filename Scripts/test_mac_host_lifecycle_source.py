@@ -108,7 +108,8 @@ class LifecycleSourceTests(unittest.TestCase):
         for line in self.swift.splitlines():
             if '.waitForExistence(timeout:' in line:self.assertIn('try remainingTime(',line)
         self.assertIn('testStarted = ProcessInfo.processInfo.systemUptime',self.swift)
-        self.assertIn('600 - (ProcessInfo.processInfo.systemUptime - testStarted)',self.swift)
+        self.assertIn('TimeInterval(lifecycleDeadlineSeconds) - (ProcessInfo.processInfo.systemUptime - testStarted)',self.swift)
+        self.assertIn('lifecycleDeadlineSeconds = hostOnly ? 900 : 600',self.swift)
         body=self.section('private func deadlineClick(', 'private func deadlineKey(')
         self.assertLess(body.index('remainingTime'),body.index('.click()'))
         # Executable deadline model tied to the immediate pre-action source fence.
@@ -149,10 +150,34 @@ class LifecycleSourceTests(unittest.TestCase):
     def test_unknown_confirmations_stop_and_fixed_attachment_namespace_is_bounded(self):
         self.assertIn('Unadmitted Photos confirmation or access alert; no action taken',self.swift)
         self.assertIn('Unadmitted Photos sheet/dialog; no confirmation taken',self.swift)
-        body=self.section('private func retainLifecycleImage(', 'private func expectedFade(')
+        body=self.section('private func retainLifecycleBytes(', 'private func expectedFade(')
         for part in ['128 * 1024','640 * 1024','lifecycleImages[name] == nil','"celluloid-host-lifecycle-" + name','"public.png"']:
             self.assertIn(part,body)
         self.assertNotIn('Process()',self.swift)
+    def test_owned_png_is_retained_before_semantic_decode_without_acceptance(self):
+        body=self.section('@MainActor private func exportRaster(', 'private func readBoundedOwnedFile(')
+        for token in ['exportPNGDiagnostics.append(pngInventory(bytes, phase: name))','try retainLifecycleBytes(bytes, named: retainedImage)','bytes == source.bytes']:
+            self.assertLess(body.index(token),body.index('try lifecycleRaster(bytes'))
+        self.assertIn('try retainLifecycleBytes(bytes, named: "lifecycle-original-observed.png")',body)
+        retain=self.section('private func retainLifecycleBytes(', 'private func retainLifecycleImage(')
+        self.assertNotIn('lifecycleImages[name] =',retain)
+        promote=self.section('private func retainLifecycleImage(', 'private func pngInventory(')
+        self.assertIn('name != "lifecycle-original-observed.png"',promote)
+        self.assertLess(promote.index('retainedPNGHashes[name] == digest(image.bytes)'),promote.index('lifecycleImages[name] = image.metadata'))
+        inventory=self.section('private func pngInventory(', 'private func expectedFade(')
+        for token in ['"acceptance": false','data.count <= 128 * 1024','chunks.count < 64','chunks.append([tag, count, offset])']:
+            self.assertIn(token,inventory)
+        self.assertNotIn('CGImageSource',inventory)
+    def test_native_itxt_bounded_selftest_precedes_host_ui_and_has_no_semantic_parser(self):
+        self.assertLess(self.swift.index('try verifyInternationalTextContract()'),self.swift.index('let photos = XCUIApplication'))
+        body=self.section('private static func validateInternationalText(', 'private func admitICC(')
+        for token in ['payload.count <= 16_384','count: 16_385','outputCount <= 16_384','inputCount == uLong(compressed.count)',
+                      'String(bytes: text, encoding: .utf8)','!text.contains(0)']:
+            self.assertIn(token,body)
+        for token in ['XMLParser','JSONSerialization','CGImageSource','orientation','CIFilter']:
+            if token!='orientation':self.assertNotIn(token,body)
+        header=self.section('private func pngHeader(', 'private func admitInternationalText(')
+        self.assertIn('crc32(',header);self.assertIn('textChunks == 1',header);self.assertIn('"iTXt"',header)
     def test_single_photo_topologies_keep_exact_owned_image_and_deduplicate_observation(self):
         seen=[]
         for present in [True,False,False,True]:
@@ -462,7 +487,7 @@ def replay_owned_destination(swift, snapshots, trusted_path, input_error=False, 
         'expected == nil || value == expected','"ExportSavePanel/GoToWindow", "TextField"',
         'row: [Any], go: XCUIElement)', 'value, count, enabled, hittable], go)']
     required_choose=['directory == root.appendingPathComponent(directory.lastPathComponent, isDirectory: true)',
-        'guard initial.go == nil','"OKButton", finalTitle','catch { failure = error; return true }','if let failure { throw failure }',
+        'guard initial.go == nil','"OKButton", finalTitle','let childOpened = NSPredicate { _, _ in openingChildren.count > 0 }',
         'try deadlineClick(input.element)','try deadlineText(input.element, directory.path)',
         'let entered = try destinationPathField(in: photos, panelLabel: panelLabel, expected: directory.path)',
         'let ready = try destinationPathField(in: photos, panelLabel: panelLabel, expected: directory.path)',
@@ -479,7 +504,10 @@ def replay_owned_destination(swift, snapshots, trusted_path, input_error=False, 
     dismissal=choose.split('let childDismissed = NSPredicate',1)[1].split('let selected = try destinationPanel',1)[0]
     if dismissal.count('.exists')!=1 or any(p in dismissal for p in ['photos.', '.label', '.identifier', '.count', 'destinationPanel(']):
         raise AssertionError('Dismissal predicate performs more than one scoped existence query')
-    pending=copy.deepcopy(snapshots);trace={'return_count':0,'export_count':0,'typed':None,'accepted':False,'failure':None,'dismissal_queries':0}
+    opening=choose.split('let childOpened = NSPredicate',1)[1].split('let input = try destinationPathField',1)[0]
+    if opening.count('.count')!=1 or any(p in opening for p in ['photos.', '.label', '.identifier', '.exists', 'destinationPanel(']):
+        raise AssertionError('Opening predicate performs more than one scoped count query')
+    pending=copy.deepcopy(snapshots);trace={'opening_queries':0,'return_count':0,'export_count':0,'typed':None,'accepted':False,'failure':None,'dismissal_queries':0}
     def need(value):
         if not value:raise ValueError('Invalid destination scope/path/input/postcondition')
     def read(child=None):
@@ -497,7 +525,14 @@ def replay_owned_destination(swift, snapshots, trusted_path, input_error=False, 
         return r
     try:
         first=read(0);need(first['ok']=='OKButton' and first['ok_title']=='Export')
-        while read()['children']==0:pass
+        elapsed=0
+        while True:
+            need(bool(pending));poll=pending.pop(0);trace['opening_queries']+=1
+            need(not poll.get('query_error',False));elapsed+=poll.get('query_seconds',1)
+            need(elapsed<=min(10,remaining_seconds))
+            count=poll.get('opening_count',poll.get('children',0) if poll.get('child')=='GoToWindow' else 0)
+            need(type(count) is int and count>=0)
+            if count>0:break
         input_field()
         # Element-scoped typeText has a public keyboard-focus precondition. An
         # input failure aborts rather than producing an invented focus Boolean.
@@ -552,7 +587,7 @@ class DestinationSourceTests(unittest.TestCase):
             result=replay_owned_destination(self.swift,rows,self.path)
             self.assertFalse(result['accepted']);self.assertEqual(result['return_count'],0)
     def test_unexpected_child_is_latched_and_wrong_destination_blocks_export(self):
-        rows=self.samples();rows.insert(1,destination_sample(1));rows[1]['child']='unrelated'
+        rows=self.samples();rows[2]['child']='unrelated'
         result=replay_owned_destination(self.swift,rows,self.path)
         self.assertFalse(result['accepted']);self.assertEqual(result['return_count'],0);self.assertGreater(len(result['unobserved']),0)
         for changes in [dict(children=1,sheets=2),dict(windows=0),dict(windows=2),dict(panels=2),dict(dialogs=1),dict(alerts=1),
@@ -561,6 +596,20 @@ class DestinationSourceTests(unittest.TestCase):
             rows=self.samples();rows[-1].update(changes)
             result=replay_owned_destination(self.swift,rows,self.path)
             self.assertFalse(result['accepted']);self.assertEqual(result['return_count'],1);self.assertEqual(result['export_count'],0)
+    def test_opening_poll_queries_only_scoped_count_then_full_parent(self):
+        rows=self.samples();rows[1:2]=[{'opening_count':0},{'opening_count':1}]
+        result=replay_owned_destination(self.swift,rows,self.path)
+        self.assertTrue(result['accepted']);self.assertEqual(result['opening_queries'],2)
+        for change in [dict(children=2,sheets=3),dict(alerts=1),dict(panel='replacement'),dict(child='unrelated')]:
+            rows=self.samples();rows[1]={'opening_count':2};rows[2].update(change)
+            result=replay_owned_destination(self.swift,rows,self.path)
+            self.assertFalse(result['accepted']);self.assertEqual(result['return_count'],0)
+        for polls in [[{'opening_count':0}]*11,[{'opening_count':1,'query_seconds':11}],[{'query_error':True}]]:
+            rows=self.samples();rows[1:2]=polls
+            self.assertFalse(replay_owned_destination(self.swift,rows,self.path)['accepted'])
+        for old,new in [('openingChildren.count > 0','photos.sheets.count > 0'),
+                        ('openingChildren.count > 0','openingChildren.count > 0 && photos.alerts.count == 0')]:
+            with self.assertRaises(AssertionError):replay_owned_destination(self.swift.replace(old,new),self.samples(),self.path)
     def test_disappearance_poll_is_child_only_and_full_guards_follow_once(self):
         rows=self.samples();rows[5]={'go_exists':False,'exists_seconds':1}
         result=replay_owned_destination(self.swift,rows,self.path)
@@ -589,7 +638,7 @@ class DestinationSourceTests(unittest.TestCase):
         for old,new in [('go.children(matching: .textField)','photos.descendants(matching: .textField)'),
             ('totalSheetCount == 1 + childCount','true'),('expected == nil || value == expected','true'),
             ('try deadlineKey(ready.element, XCUIKeyboardKey.return, modifierFlags: [])','try deadlineKey(photos, "\\n", modifierFlags: [])'),
-            ('if let failure { throw failure }','if let failure { print(failure) }')]:
+            ('openingChildren.count > 0','true')]:
             with self.subTest(old=old),self.assertRaises(AssertionError):replay_owned_destination(self.swift.replace(old,new),self.samples(),self.path)
         self.assertIn('continueAfterFailure = false',self.swift)
         export=self.swift.split('@MainActor private func exportRaster(',1)[1].split('private func readBoundedOwnedFile(',1)[0]

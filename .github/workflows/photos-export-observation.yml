@@ -104,11 +104,11 @@ jobs:
       - name: Actual Photos host discovery using the qualified sandbox product
         id: mac_host
         if: (success() || failure()) && steps.sandbox_child.outcome == 'success' && steps.host_context.outcome == 'success'
-        timeout-minutes: 14
+        timeout-minutes: 28
         shell: bash
         run: |
           set -euo pipefail
-          python3 Scripts/test_mac_photos_host_gate.py
+          python3 Scripts/run_bounded.py --seconds 240 --label photos-host-portable-pretest python3 Scripts/test_mac_photos_host_gate.py
           /bin/bash Scripts/run_mac_photos_host_gate.sh
       - name: Verify unchanged rebuilt host source and icon inputs
         if: always()

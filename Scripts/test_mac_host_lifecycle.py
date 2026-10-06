@@ -1,4 +1,5 @@
 """Synthetic full lifecycle replay; never claims a Photos runtime result."""
+from validation_route import FULL,host_clock_profile,context_clock
 import copy,hashlib,json,unittest
 from functools import lru_cache
 import mac_host_lifecycle as gate
@@ -35,7 +36,7 @@ def sample_images():
 def fixture(context=None,photos=None,ownership=None,context_hash='f'*64):
     if context is None:
         ext='/owned/CelluloidMac.app/Contents/PlugIns/CelluloidMacPhotosExtension.appex';exe=ext+'/Contents/MacOS/CelluloidMacPhotosExtension'
-        context={'source_sha':'a'*40,'extension_id':'Mango.Celluloid.CelluloidPhotoExtension','extension_path':ext,'extension_executable':exe,
+        context={'validation_route':dict(FULL),'host_clock_profile':host_clock_profile(FULL),'source_sha':'a'*40,'extension_id':'Mango.Celluloid.CelluloidPhotoExtension','extension_path':ext,'extension_executable':exe,
             'extension_debug_dylib':exe+'.debug.dylib','extension_executable_sha256':'e'*64,'extension_debug_dylib_sha256':'9'*64,
             'test_source_sha256':'b'*64,'script_sha256':'c'*64}
     photos=photos or {'pid':122}
@@ -44,7 +45,7 @@ def fixture(context=None,photos=None,ownership=None,context_hash='f'*64):
     baseline=payload(context);top={'schema':gate.SCHEMA,'host_entry_contract':gate.HOST_CONTRACT,'source_sha':context['source_sha'],
         'context_sha256':context_hash,'test_source_sha256':context['test_source_sha256'],'verifier_sha256':context['script_sha256'],
         'photos_pid':photos['pid'],'fixture_sha256':ownership['fixture_sha256'],'asset_label':ownership['asset_label'],
-        'complete':True,'dirty_cancel_tested':False,'deadline_seconds':600,'control_columns':gate.COLUMNS,'control_catalog':[],
+        'complete':True,'dirty_cancel_tested':False,'deadline_seconds':context_clock(context)['case_seconds'],'control_columns':gate.COLUMNS,'control_catalog':[],
         'phases':[],'images':{},'raw_exports':{},'srgb_icc_reference':None,'single_photo_topologies':['collection-absent'],'export_option_bindings':[],
         'binary_states':[],'binary_scalar_self_tested':True}
     def phase(name,details,controls=()):

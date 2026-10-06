@@ -1,6 +1,7 @@
 """Bounded, fixed-name stdout handoff from sandboxed XCTest to its outer runner."""
 import base64,hashlib,json,math,os,re,stat
 from collections import Counter
+from validation_route import context_clock
 from pathlib import Path
 
 PREFIX='MAC_HOST_PROOF '
@@ -18,7 +19,7 @@ MAX_ATTACHMENT_RECORDS=16
 MAX_ATTACHMENT_ITEMS=16*64  # Same former total capacity, independent of test grouping.
 ATTACHMENT_PREFIX='celluloid-host-diagnostic-'
 LIFECYCLE_PREFIX='celluloid-host-lifecycle-'
-from mac_host_lifecycle_pixels import NAMES as LIFECYCLE_IMAGES,PNG_LIMIT
+from mac_host_lifecycle_pixels import NAMES as LIFECYCLE_IMAGES,PNG_LIMIT,ORIGINAL_DIAGNOSTIC
 
 def require(value,message):
     if not value:raise ValueError(message)
@@ -44,6 +45,7 @@ def expected_transport(context,context_hash):
         'external_writes':False,'context_validated':True}
 
 def parse(log,context,context_hash,complete=False):
+    profile=context_clock(context)
     require(context.get('host_entry_contract')==HOST_CONTRACT,'Wrong host-entry contract')
     require(type(log) is str and 0<len(log.encode())<=20_000_000,'Missing/oversized host transcript')
     for name,value in [('context',context_hash),('test',context['test_source_sha256']),('verifier',context['script_sha256'])]:
@@ -88,10 +90,13 @@ def parse(log,context,context_hash,complete=False):
         records[name]=data;rows.append(row)
     require(len(starts)==len(ends)==1 and len(cases)==2 and cases[0][0]=='started' and cases[1][0] in {'passed','failed','skipped'},'Incomplete/duplicate host process or test')
     begin,bp=starts[0];end,ep=ends[0]
-    require(begin.get('label')==end.get('label')==LABEL and begin.get('seconds')==720,'Wrong bounded host process')
+    require(begin.get('label')==end.get('label')==LABEL and type(begin.get('seconds')) in (int,float) and math.isfinite(begin['seconds']) and begin['seconds']==profile['process_seconds'],'Wrong bounded host process')
     command=begin.get('command');require(type(command) is list and all(type(x) is str for x in command),'Malformed host command')
     require(command and command[0]=='xcodebuild' and command.count('-only-testing:'+CASE[0].split('.')[0]+'/'+CASE[0].split('.')[1]+'/'+CASE[1])==1 and command.count('test-without-building')==1,'Wrong host process/test selection')
-    require(type(end.get('exit_code')) is int and type(end.get('elapsed_seconds')) in (int,float) and math.isfinite(end['elapsed_seconds']) and 0<=end['elapsed_seconds']<=735,'Unfinalized host process result')
+    allowance='-maximum-test-execution-time-allowance'
+    require(command.count(allowance)==1 and command.index(allowance)+1<len(command)
+            and command[command.index(allowance)+1]==str(profile['test_seconds']),'Wrong source-bound XCTest allowance')
+    require(type(end.get('exit_code')) is int and type(end.get('elapsed_seconds')) in (int,float) and math.isfinite(end['elapsed_seconds']) and 0<=end['elapsed_seconds']<=profile['process_seconds']+15,'Unfinalized host process result')
     require(bp<cases[0][1]<cases[1][1]<ep,'Host process/test boundaries contradict')
     require(records and list(records)[0]=='transport.json','Missing first host transport validation')
     require(not timeouts or (cases[-1][0]!='passed' and end['exit_code']!=0),'Contradictory bounded process timeout')
@@ -172,14 +177,15 @@ def attachment_candidates(folder,manifest):
             seen.add(exported);path=folder/exported
             require(path.is_file() and not path.is_symlink() and path.resolve().parent==folder.resolve(),'Unowned attachment path')
             if type(name) is str and name.startswith(LIFECYCLE_PREFIX):
-                suffix=re.fullmatch(re.escape(LIFECYCLE_PREFIX)+r'(lifecycle-(?:source|expected-save|saved|cancelled|reverted))_(0)_([0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})\.png',name)
+                suffix=re.fullmatch(re.escape(LIFECYCLE_PREFIX)+r'(lifecycle-(?:source|expected-save|saved|cancelled|reverted|original-observed))_(0)_([0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12})\.png',name)
                 require(suffix is not None,'Unexpected lifecycle attachment display name')
                 selected=suffix[1]+'.png'
-                require(selected in LIFECYCLE_IMAGES and selected not in result,'Duplicate lifecycle attachment')
+                require(selected in (*LIFECYCLE_IMAGES,ORIGINAL_DIAGNOSTIC) and selected not in result,'Duplicate lifecycle attachment')
                 require(record.get('testIdentifier')=='MacPhotosHostUITests/'+CASE[1]+'()','Lifecycle attachment belongs to another test')
                 from mac_host_lifecycle_pixels import read_owned_png
                 data=read_owned_png(path)
                 require(data.startswith(b'\x89PNG\r\n\x1a\n'),'Wrong lifecycle PNG type')
+                require(sum(len(v) for k,v in result.items() if k in (*LIFECYCLE_IMAGES,ORIGINAL_DIAGNOSTIC))+len(data)<=5*PNG_LIMIT,'Lifecycle PNG aggregate byte bound')
                 result[selected]=data
                 continue
             if type(name) is not str or not name.startswith(ATTACHMENT_PREFIX):continue

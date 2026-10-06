@@ -1,4 +1,5 @@
 """Strict replay of the bounded, owned real Photos filter lifecycle receipt."""
+from validation_route import context_clock
 import base64,hashlib,json,math,re
 from pathlib import Path,PurePosixPath
 from uuid import UUID
@@ -38,7 +39,7 @@ def validate(row,context,photos,ownership,baseline,images,context_hash):
     for key,expected in [('source_sha',context['source_sha']),('context_sha256',context_hash),('test_source_sha256',context['test_source_sha256']),('verifier_sha256',context['script_sha256']),('fixture_sha256',ownership['fixture_sha256']),('asset_label',ownership['asset_label'])]:
         require(row[key]==expected,'Wrong lifecycle binding: '+key)
     require(type(row['photos_pid']) is int and row['photos_pid']==photos['pid']>0,'Wrong lifecycle Photos PID')
-    require(row['complete'] is True and row['dirty_cancel_tested'] is False and type(row['deadline_seconds']) is int and row['deadline_seconds']==600,'Incomplete/overclaimed lifecycle')
+    require(row['complete'] is True and row['dirty_cancel_tested'] is False and type(row['deadline_seconds']) is int and row['deadline_seconds']==context_clock(context)['case_seconds'],'Incomplete/overclaimed lifecycle')
     topologies=row['single_photo_topologies']
     require(type(topologies) is list and 1<=len(topologies)<=2 and
             all(type(value) is str and value in SINGLE_PHOTO_TOPOLOGIES for value in topologies) and
@@ -49,7 +50,7 @@ def validate(row,context,photos,ownership,baseline,images,context_hash):
     for index,(phase,name) in enumerate(zip(phases,PHASES)):
         exact(phase,{'index','name','elapsed_ms','controls','details'},'Malformed lifecycle phase')
         require(type(phase['index']) is int and phase['index']==index and phase['name']==name,'Out-of-order lifecycle phase')
-        require(integer(phase['elapsed_ms'],0,599999) and phase['elapsed_ms']>=last,'Out-of-budget/nonmonotonic lifecycle phase')
+        require(integer(phase['elapsed_ms'],0,context_clock(context)['case_seconds']*1000-1) and phase['elapsed_ms']>=last,'Out-of-budget/nonmonotonic lifecycle phase')
         last=phase['elapsed_ms'];details[name]=phase['details']
     validate_controls(row['control_catalog'],phases)
     validate_export_bindings(row['export_option_bindings'],row['control_catalog'])

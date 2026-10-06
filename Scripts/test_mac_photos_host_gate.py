@@ -1,3 +1,4 @@
+from validation_route import FULL,host_clock_profile,context_clock
 #!/usr/bin/env python3
 """Portable gate contract tests. These cannot execute Apple Photos or Swift/XCUI."""
 from pathlib import Path
@@ -163,7 +164,8 @@ class MacPhotosHostGateTests(unittest.TestCase):
     def test_existing_runtime_and_caps_reuse_compiled_product(self):
         self.assertIn('    timeout-minutes: 45',self.workflow)
         self.assertIn('        timeout-minutes: 14',self.workflow)
-        self.assertIn('--seconds 720',self.shell)
+        self.assertIn('process_seconds=720',self.shell)
+        self.assertIn('test_seconds=660',self.shell)
         self.assertNotIn('build-for-testing',self.shell)
         self.assertNotIn('CODE_SIGN_IDENTITY',self.shell)
         self.assertIn('celluloid-sandbox',self.shell)
@@ -493,7 +495,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
         app = str(root / 'Applications/CelluloidHost-test.app')
         extension = app + '/Contents/PlugIns/CelluloidMacPhotosExtension.appex'
         executable = extension + '/Contents/MacOS/CelluloidMacPhotosExtension'
-        context = {'validation_route':dict(FULL_ROUTE),'runner_environment':{'GITHUB_REF':'refs/heads/codex/apple-platforms'},'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'base_sha': gate.BASE, 'app_path': app,
+        context = {'host_clock_profile':host_clock_profile(FULL_ROUTE),'validation_route':dict(FULL_ROUTE),'runner_environment':{'GITHUB_REF':'refs/heads/codex/apple-platforms'},'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'base_sha': gate.BASE, 'app_path': app,
                    'extension_path': extension, 'extension_executable': executable,
                    'extension_debug_dylib':executable+'.debug.dylib','extension_debug_dylib_sha256':'9'*64,
                    'app_id': gate.APP_ID, 'extension_id': gate.EXT_ID, 'complete_host_e2e': False,
@@ -514,7 +516,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
         documents = {
             'combined-source-before.json': dict(source,phase='before',file_count=len(json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['files']),source_fingerprint=json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['fingerprint']),
             'combined-source-after.json': dict(source,phase='after',file_count=len(json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['files']),source_fingerprint=json.loads((ROOT/'Scripts/combined-source-contract.json').read_text())['fingerprint']),
-            'mac-host-budget.json':{'source_sha':self.SOURCE,'checks':checks,'admitted':True,'clock_sha256':gate.sha(root/'mac-job-clock.json'),'host_process_seconds':720,'evidence_reserve_seconds':300,'complete_host_e2e':False},
+            'mac-host-budget.json':{'source_sha':self.SOURCE,'checks':checks,'admitted':True,'clock_sha256':gate.sha(root/'mac-job-clock.json'),'host_process_seconds':720,'host_clock_profile':host_clock_profile(FULL_ROUTE),'evidence_reserve_seconds':300,'complete_host_e2e':False},
             'mac-host-observed/fixture.json': {'source_sha': self.SOURCE, 'sha256': fixture_sha},
             'mac-host-observed/fixture-ownership.json': {'source_sha': self.SOURCE, 'app_executable_sha256': 'd' * 64, 'initial_count': 0, 'selected_count': 1, 'width': 1200, 'height': 800, 'asset_label': 'synthetic sole asset', 'fixture_sha256': fixture_sha, 'mode': 'require-empty-library'},
             'mac-host-context.json': context, 'mac-host-summary.json': summary,
@@ -554,8 +556,8 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
         context=context or gate.read_receipt(root/'mac-host-context.json')
         gate.write(root/'mac-host-observed/transport.json',expected_transport(context,gate.sha(root/'mac-host-context.json')))
         owner,method=gate.EXPECTED_CASE
-        command=['xcodebuild','-only-testing:'+owner.replace('.', '/')+'/'+method,'test-without-building']
-        lines=['BOUNDED_COMMAND_BEGIN '+json.dumps({'label':LABEL,'seconds':720,'command':command}),
+        command=['xcodebuild','-maximum-test-execution-time-allowance',str(context_clock(context)['test_seconds']),'-only-testing:'+owner.replace('.', '/')+'/'+method,'test-without-building']
+        lines=['BOUNDED_COMMAND_BEGIN '+json.dumps({'label':LABEL,'seconds':context_clock(context)['process_seconds'],'command':command}),
             "Test Case '-["+owner+' '+method+"]' started."]
         for index,name in enumerate(ORDER):
             data=(root/'mac-host-observed'/name).read_bytes()
@@ -1066,6 +1068,23 @@ class CollectedProofTests(SyntheticHostFixtureCase):
                 self.mutate_manifest(folder,update)
                 with self.assertRaises(AssertionError):gate.verify_collected(folder,self.SOURCE)
                 self.assert_outer_rejects(root)
+    def test_original_mismatch_attachment_is_failure_only_and_survives_collection(self):
+        from mac_host_lifecycle_pixels import ORIGINAL_DIAGNOSTIC
+        from test_mac_host_lifecycle import sample_images
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);self.packet(root,False)
+            raw=sample_images()['lifecycle-saved.png']
+            (root/'mac-host-observed'/ORIGINAL_DIAGNOSTIC).write_bytes(raw)
+            folder=self.collect(root);manifest=gate.verify_collected(folder,self.SOURCE)
+            self.assertFalse(manifest['prerequisite_accepted'])
+            self.assertEqual((folder/ORIGINAL_DIAGNOSTIC).read_bytes(),raw)
+            self.assertEqual(next(row['kind'] for row in manifest['files'] if row['path']==ORIGINAL_DIAGNOSTIC),'optional-diagnostic')
+            with self.assertRaisesRegex(AssertionError,'Rejected Original'):gate.verify_acceptance(root,self.SOURCE)
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);self.packet(root,True)
+            (root/'mac-host-observed'/ORIGINAL_DIAGNOSTIC).write_bytes(raw)
+            with self.assertRaisesRegex(AssertionError,'Rejected Original'):self.collect(root)
+
     def test_owned_crash_diagnostics_precede_screenshots_without_acceptance_effect(self):
         from mac_owned_crash import OUTPUT,encode
         for accepted in [False,True]:
@@ -1147,6 +1166,10 @@ class CollectedProofTests(SyntheticHostFixtureCase):
                 with self.assertRaises(AssertionError):self.collect(root)
 
 class HostTimeBudgetTests(SyntheticHostFixtureCase):
+    def setUp(self):
+        super().setUp()
+        route_environment=mock.patch.dict(os.environ,GITHUB_REF='refs/heads/codex/apple-platforms')
+        route_environment.start();self.addCleanup(route_environment.stop)
     def prepare(self,root):
         gate.write(root/'mac-job-clock.json',{'source_sha':'a'*40,'started_monotonic':100.0,'started_unix':10000.0,'execution_budget_seconds':2460})
     def test_two_time_checks_reserve_twelve_minute_host_plus_five_minute_proof_tail(self):

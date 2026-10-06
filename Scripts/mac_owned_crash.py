@@ -3,6 +3,7 @@
 No host acceptance, discovery, registration, permission or process mutation.
 """
 from pathlib import Path
+from validation_route import context_clock,host_clock_profile,FULL
 import datetime as dt
 import hashlib
 import errno
@@ -96,7 +97,7 @@ def test_window(log,summary,context,context_hash):
     check(type(summary) is dict and summary.get('totalTestCount')==1,'Not the single host test summary')
     check(all(type(summary.get(k)) is int for k in ['totalTestCount','passedTests','failedTests','skippedTests']) and summary.get('passedTests',0)+summary.get('failedTests',0)==1 and summary.get('skippedTests')==0,'Unfinalized host testcase')
     start,end=summary.get('startTime'),summary.get('finishTime')
-    check(number(start) and number(end) and 0<end-start<=735,'Invalid summary interval')
+    check(number(start) and number(end) and 0<end-start<=context_clock(context)['process_seconds']+15,'Invalid summary interval')
     begin=[load_json(line.split(' ',1)[1]) for line in log.splitlines() if line.startswith('BOUNDED_COMMAND_BEGIN ')][0]
     finish=[load_json(line.split(' ',1)[1]) for line in log.splitlines() if line.startswith('BOUNDED_COMMAND_END ')][0]
     command_start=dt.datetime.fromisoformat(begin['utc']);check(command_start.tzinfo is not None,'Missing process timezone')
@@ -111,7 +112,7 @@ def test_window(log,summary,context,context_hash):
     stamps=re.findall(r'^\s+t =\s+0\.00s Start Test at (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+)$',active[:terminal.start()],re.M)
     check(len(stamps)==1,'Missing/ambiguous actual test start')
     case_start=timestamp(stamps[0]+' '+next(iter(offsets)));elapsed=float(terminal[2]);case_end=case_start+elapsed
-    check(0<elapsed<=660 and process_start<=start<=case_start<case_end<=end<=process_end+0.01,'Test/summary/process intervals contradict')
+    check(0<elapsed<=context_clock(context)['test_seconds'] and process_start<=start<=case_start<case_end<=end<=process_end+0.01,'Test/summary/process intervals contradict')
     suites=re.findall(r"^Test Suite 'MacPhotosHostUITests' (?:passed|failed) at (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+)\.$",active[terminal.end():],re.M)
     check(len(suites)==1 and abs(timestamp(suites[0]+' '+next(iter(offsets)))-case_end)<=0.01,'Actual host suite terminal contradicts duration')
     return {'start':case_start,'end':case_end,'result':terminal[1],'test_log_sha256':digest(log.encode())}
@@ -345,13 +346,13 @@ def write_new(path,raw):
     fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'wb') as stream:stream.write(raw)
 
-def optional_budget(clock,source,action,now):
+def optional_budget(clock,source,action,now,route=FULL):
     # One actual job deadline, not a fresh timeout or a claim that the 840s
     # host step contains diagnostics. Mandatory allowances are never clipped.
     check(action in {'prepare','capture'} and type(clock) is dict,'Invalid optional budget phase')
     check(clock.get('source_sha')==source and type(clock.get('execution_budget_seconds')) is int and clock['execution_budget_seconds']==2460,'Wrong shared job clock')
     start=clock.get('started_monotonic');check(number(start) and number(now) and 0<start<=now,'Invalid shared monotonic clock')
-    deadline=start+2460;reserve=1020 if action=='prepare' else 300;cleanup=12
+    deadline=start+2460;reserve=host_clock_profile(route)['before_prepare_seconds'] if action=='prepare' else 300;cleanup=12
     allowance=max(0,min(20,deadline-now-reserve-cleanup))
     if allowance<1:allowance=0
     return {'deadline_monotonic':deadline,'observed_monotonic':now,'mandatory_reserve_seconds':reserve,
@@ -506,7 +507,8 @@ def optional_execute(root,context,context_hash,action):
         clock_raw=safe_read(root/'mac-job-clock.json',160_000);clock=load_json(clock_raw)
         mandatory_budget=load_json(safe_read(root/'mac-host-budget.json',160_000))
         check(mandatory_budget.get('source_sha')==source and mandatory_budget.get('clock_sha256')==digest(clock_raw),'Changed mandatory job-clock binding')
-        decision=optional_budget(clock,source,action,time.monotonic());decision['clock_sha256']=digest(clock_raw)
+        context_clock(context)
+        decision=optional_budget(clock,source,action,time.monotonic(),context['validation_route']);decision['clock_sha256']=digest(clock_raw)
         check(decision['admitted'],'Insufficient spare job time; mandatory host/evidence reserve preserved')
         command=[sys.executable,str(Path(__file__).resolve()),action]
         # Use the admission instant, never a renewed window after slow spawning.
