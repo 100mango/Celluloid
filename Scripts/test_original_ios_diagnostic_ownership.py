@@ -6,7 +6,7 @@ ROOT=pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'Scripts'))
 from test_original_ios_process_guard import environment
 from test_uikit_full_shipping_workflow import body
-workflow=(ROOT/'.github/workflows/original-ios-release.yml').read_text()
+workflow=__import__('staged_test_fixtures').qualified_staged_row_workflow()
 functions=body(workflow,'Start the fixed row clock').split("<<'SHFUNCTIONS'\n",1)[1].split('\nSHFUNCTIONS',1)[0]
 reports=[]
 for phase,step,helper in [('evidence-screens','Export bounded synthetic UI evidence','export_permission_screenshot.py'),('diagnostics','Collect targeted failure diagnostics','collect_simulator_diagnostics.py')]:

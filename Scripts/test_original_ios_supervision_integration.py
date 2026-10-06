@@ -20,7 +20,7 @@ class SupervisionIntegrationTests(unittest.TestCase):
         owner=guard.OwnedCommand('xcrun','units summary',30);owner.started(MagicMock(pid=12345));owner.failed(subprocess.TimeoutExpired('summary',30),timed_out=True);return owner
 
     def shell_functions(self):
-        text=body((ROOT/'.github/workflows/original-ios-release.yml').read_text(),'Start the fixed row clock')
+        text=body(__import__('staged_test_fixtures').qualified_staged_row_workflow(),'Start the fixed row clock')
         return text.split("<<'SHFUNCTIONS'\n",1)[1].split('\nSHFUNCTIONS',1)[0]
 
     def test_failure_blocks_every_native_phase_but_host_retention_can_be_admitted(self):
@@ -66,7 +66,7 @@ class SupervisionIntegrationTests(unittest.TestCase):
     def test_diagnostics_read_owned_log_without_premature_shutdown(self):
         calls,error=self.diagnostic();self.assertIsNone(error)
         self.assertEqual(len(calls),1);self.assertEqual(calls[0][0][:3],['xcrun','simctl','spawn']);self.assertNotIn('shutdown',calls[0][0])
-        workflow=(ROOT/'.github/workflows/original-ios-release.yml').read_text()
+        workflow=__import__('staged_test_fixtures').qualified_staged_row_workflow()
         self.assertLess(workflow.index('- name: Verify installed shipping product after all tests'),workflow.index('- name: Shut down owned simulator'))
 
     def test_inner_diagnostic_timeout_marks_owner_and_old_failure_dispatches_nothing(self):
@@ -103,7 +103,7 @@ class SupervisionIntegrationTests(unittest.TestCase):
         with self.assertRaises(guard.GuardRefusal):handoff.accept_row(out)
 
     def test_staged_collection_has_inner_budget_and_source_after_stays_bounded(self):
-        workflow=(ROOT/'.github/workflows/original-ios-release.yml').read_text()
+        workflow=__import__('staged_test_fixtures').qualified_staged_row_workflow()
         source=body(workflow,'Verify tested source stayed unchanged');self.assertIn('bounded source-after source-after',source)
         collection=body(workflow,'Export bounded combined evidence');self.assertNotIn('bounded collection',collection)
         for name in ['Export bounded synthetic UI evidence','Collect targeted failure diagnostics']:

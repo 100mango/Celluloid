@@ -363,7 +363,7 @@ def error_record(source,action,error):
             'source_sha':source,'phase':action,'state':'incomplete','limits':limits(),
             'error_type':type(error).__name__,'error':str(error)[:256]}
 
-def bounded_optional_process(command,command_deadline,cleanup_deadline,cap=8192):
+def bounded_optional_process(command,command_deadline,cleanup_deadline,cap=8192,*,stop_on_signal_error=False):
     """One owned session; finite reads and absolute deadlines, including pipe EOF.
 
     Do not poll/reap the leader while a descendant can retain the pipe. Its PID
@@ -372,10 +372,12 @@ def bounded_optional_process(command,command_deadline,cleanup_deadline,cap=8192)
     """
     check(number(command_deadline) and number(cleanup_deadline) and time.monotonic()<command_deadline<cleanup_deadline,'Invalid/expired optional process deadlines')
     check(type(cap) is int and 0<cap<=8192,'Invalid optional output cap')
+    check(type(stop_on_signal_error) is bool,'Invalid signal cleanup policy')
     check(signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL,'Unknown child-reaping policy')
     started=time.monotonic();data=bytearray();eof=False;reaped=False;timed_out=False;overflow=False;cleanup_error=None
     process=subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True,bufsize=0)
     selector=None;pipe=process.stdout
+    class SignalCleanupStopped(Exception):pass
     def drain(until):
         nonlocal eof,overflow
         while not eof and not overflow and time.monotonic()<until:
@@ -392,7 +394,9 @@ def bounded_optional_process(command,command_deadline,cleanup_deadline,cap=8192)
         if reaped:return # Never signal after releasing the leader's PID.
         try:os.killpg(process.pid,sig)
         except ProcessLookupError:pass
-        except OSError as error:cleanup_error=type(error).__name__
+        except OSError as error:
+            cleanup_error=type(error).__name__
+            if stop_on_signal_error:raise SignalCleanupStopped() from error
     try:
         selector=selectors.DefaultSelector()
         os.set_blocking(pipe.fileno(),False);selector.register(pipe,selectors.EVENT_READ)
@@ -411,10 +415,15 @@ def bounded_optional_process(command,command_deadline,cleanup_deadline,cap=8192)
             if not overflow:drain(cleanup_deadline)
             try:process.wait(timeout=max(0,cleanup_deadline-time.monotonic()));reaped=True
             except subprocess.TimeoutExpired:cleanup_error='direct child unreaped at absolute deadline'
+    except SignalCleanupStopped:
+        pass # Fixed staged metadata reads never switch signals after denial.
     except (OSError,ValueError) as error:
-        cleanup_error=type(error).__name__;signal_group(signal.SIGKILL)
-        try:process.wait(timeout=max(0,cleanup_deadline-time.monotonic()));reaped=True
-        except subprocess.TimeoutExpired:pass
+        cleanup_error=type(error).__name__
+        try:signal_group(signal.SIGKILL)
+        except SignalCleanupStopped:pass
+        else:
+            try:process.wait(timeout=max(0,cleanup_deadline-time.monotonic()));reaped=True
+            except subprocess.TimeoutExpired:pass
     finally:
         if selector is not None:selector.close()
         pipe.close()

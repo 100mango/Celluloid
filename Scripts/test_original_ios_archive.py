@@ -50,7 +50,9 @@ def process_result(output, **changes):
             'finalized': True, 'elapsed_seconds': 0.01, **changes}
 
 
-def observation(command, command_deadline, cleanup_deadline, cap):
+def observation(command, command_deadline, cleanup_deadline, cap, stop_on_signal_error):
+    if stop_on_signal_error is not True:
+        raise AssertionError('Archive observations must stop after a signal denial')
     tool, executable = command[1], command[-1]
     if tool == 'lipo':
         output = b'arm64\n'
@@ -474,10 +476,10 @@ class ArchiveTests(unittest.TestCase):
 
     def test_proof_deadline_shared_and_late_return_not_accepted(self):
         times = [100.0]
-        def run(command, command_deadline, cleanup_deadline, cap):
+        def run(command, command_deadline, cleanup_deadline, cap, stop_on_signal_error):
             self.assertLessEqual(cleanup_deadline, 119)
             times[0] = 121
-            return observation(command, command_deadline, cleanup_deadline, cap)
+            return observation(command, command_deadline, cleanup_deadline, cap, stop_on_signal_error)
         with mock.patch.object(archive.time, 'monotonic', side_effect=lambda: times[0]), mock.patch.object(archive, 'bounded_optional_process', side_effect=run) as process:
             commands = archive.ProofCommands(120)
             with self.assertRaisesRegex(ValueError, 'deadline'):
@@ -554,7 +556,7 @@ class ArchiveTests(unittest.TestCase):
     def test_unknown_fixed_metadata_blocks_native_admission_but_retains_and_uploads_diagnostics(self):
         import contextlib,io
         from original_ios_fixed_rows import METADATA
-        pending={'schema':'Celluloid.OriginalIOSFixedMetadata.1',**CONTEXT,'complete':False,'observations':{'producer':{'finalized':False}}}
+        pending={'schema':'Celluloid.OriginalIOSFixedMetadata.2',**CONTEXT,'complete':False,'observations':{'producer-04d18':{'finalized':False}}}
         put(self.package.temp/METADATA,archive.encoded(pending))
         put(self.package.temp/archive.CLOCK,archive.encoded(self.package.clock))
         with mock.patch.object(archive,'identity',return_value=CONTEXT),mock.patch.dict(os.environ,RUNNER_TEMP=str(self.package.temp)),contextlib.redirect_stdout(io.StringIO()):
@@ -565,6 +567,19 @@ class ArchiveTests(unittest.TestCase):
             self.assertEqual((self.package.temp/archive.EVIDENCE/METADATA).read_bytes(),archive.encoded(pending))
             archive.main(['admit','--phase','upload'])
         self.assertEqual(self.probes.call_count,0)
+
+    def test_archive_only_cli_rejects_legacy_rows_before_any_native_child(self):
+        import contextlib, io
+        put(self.package.temp / archive.CLOCK, archive.encoded(self.package.clock))
+        with mock.patch.object(archive, 'identity', return_value=CONTEXT), \
+                mock.patch.dict(os.environ, RUNNER_TEMP=str(self.package.temp)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            for schema in ['Celluloid.OriginalIOSRows.1', 'Celluloid.OriginalIOSRows.2']:
+                put(self.package.temp / archive.ROWS_FILE, archive.encoded({**row_summary(), 'schema': schema}))
+                for action in [['admit', '--phase', 'archive'], ['verify'], ['finalize']]:
+                    with self.subTest(schema=schema, action=action), self.assertRaisesRegex(ValueError, 'all four historical rows'):
+                        archive.main(action)
+        self.assertEqual(self.probes.call_count, 0)
 
     def test_collector_rejects_symlink_input_and_does_not_overwrite_destination(self):
         output = self.package.temp / archive.OUTPUT

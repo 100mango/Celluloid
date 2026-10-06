@@ -38,14 +38,19 @@ def passed_summary(row):
     need(all(type(row.get(k)) is int and row[k]>=0 for k in keys),'Malformed native summary counts')
     need(row.get('result')=='Passed' and row['totalTestCount']==row['passedTests']>0 and row['failedTests']==row['skippedTests']==row['expectedFailures']==0,'Unpassed enclosing Mac execution')
 
-def source_proof(temp,phase='before',*,fixed_original_replay=False):
+def source_proof(temp,phase='before',*,fixed_original_replay=False,fixed_original_row=None):
     need(type(fixed_original_replay) is bool,'Malformed fixed replay selector')
     row=read(temp/('combined-source-'+phase+'.json'))
     count,fingerprint=source_profile()
     ident=identity()
     if fixed_original_replay:
-        from original_ios_fixed_rows import replay_identity,FIXED_TREE
-        ident=replay_identity();need(row.get('tree')==FIXED_TREE,'Wrong fixed original source tree')
+        from original_ios_fixed_rows import replay_identity,row_cohort,WORKFLOW_COMMAND_SHA256,COMMAND_SHA256
+        ident=replay_identity(fixed_original_row);cohort=row_cohort(fixed_original_row)
+        need(row.get('tree')==cohort['source_tree'],'Wrong fixed original source tree')
+        need(row.get('workflow_sha256')==cohort['workflow_sha256']
+             and WORKFLOW_COMMAND_SHA256[cohort['workflow_sha256']]==COMMAND_SHA256,
+             'Wrong historical workflow/native command binding')
+    else:need(fixed_original_row is None,'Unexpected historical row selector')
     need(row['source_sha']==ident['source_sha'] and type(row['file_count']) is int and row['file_count']==count and row['source_fingerprint']==fingerprint,'Unqualified shipping source')
     need(row['validation_route']==current_route() and row['phase']==phase,'Wrong source proof phase')
     if current_route()==ORIGINAL_IOS:
@@ -81,13 +86,14 @@ def producer(temp):
         'xcode_sha256':sha(temp/'full-shipping-xcode.txt'),'native_required_sha256':sha(temp/'mac-required-tests.json'),'required_mac_cases':42,
         'scope':'Fresh fixture producer only; no Mac Photos host or whole-platform acceptance'})
 
-def transfer(temp,artifact_id,manifest_hash,reported_artifact_digest,*,fixed_original_replay=False):
+def transfer(temp,artifact_id,manifest_hash,reported_artifact_digest,*,fixed_original_replay=False,fixed_original_row=None):
     need(type(fixed_original_replay) is bool,'Malformed fixed replay selector')
     folder=temp/'mac-fixture-evidence';manifest=read(folder/'manifest.json');ident=identity()
     if fixed_original_replay:
-        from original_ios_fixed_rows import replay_identity,ARTIFACTS
-        ident=replay_identity();fixed=ARTIFACTS['producer']
+        from original_ios_fixed_rows import replay_identity,ARTIFACTS,ROW_BINDINGS
+        ident=replay_identity(fixed_original_row);fixed=ARTIFACTS[ROW_BINDINGS[fixed_original_row][1]]
         need((artifact_id,manifest_hash,reported_artifact_digest)==(fixed['artifact_id'],fixed['manifest_sha256'],fixed['reported_upload_artifact_digest']),'Wrong fixed producer artifact')
+    else:need(fixed_original_row is None,'Unexpected historical producer selector')
     need(re.fullmatch('[1-9][0-9]*',artifact_id) and re.fullmatch('[0-9a-f]{64}',manifest_hash) and re.fullmatch('[0-9a-f]{64}',reported_artifact_digest),'Malformed exact artifact identity')
     need(sha(folder/'manifest.json')==manifest_hash and manifest['source_sha']==ident['source_sha'] and str(manifest['run_id'])==ident['run_id'],'Wrong producer artifact/source/run')
     need(manifest['platform']=='mac' and type(manifest['limits']['total_bytes']) is int and manifest['limits']['total_bytes']==2_000_000,'Unexpected producer allocation')
@@ -103,7 +109,7 @@ def transfer(temp,artifact_id,manifest_hash,reported_artifact_digest,*,fixed_ori
         total+=row['bytes']
     need(total<=2_000_000 and names=={p.name for p in folder.iterdir()}-{'manifest.json'},'Incomplete/oversized producer artifact')
     need(core<=names,'Missing core producer artifact members')
-    producer_row=read(folder/'full-shipping-producer.json');source=source_proof(temp,fixed_original_replay=fixed_original_replay)
+    producer_row=read(folder/'full-shipping-producer.json');source=source_proof(temp,fixed_original_replay=fixed_original_replay,fixed_original_row=fixed_original_row)
     need(producer_row['schema']==SCHEMA and all(producer_row[k]==v for k,v in ident.items()),'Producer source/run/attempt differs')
     need(producer_row['tree']==source['tree'] and producer_row['protected_fingerprint']==source_profile()[1],'Producer source tree differs')
     need(producer_row['xcode_sha256']==sha(temp/'full-shipping-xcode.txt'),'Producer/consumer toolchains differ')
@@ -158,7 +164,7 @@ def accept_row(temp, *, row=None, recorded_observation=None, fixed_original_repl
     if fixed_original_replay:
         from original_ios_fixed_rows import replay_identity,FIXED_ROWS
         need(row in FIXED_ROWS and recorded_observation is not None,'Fixed replay requires an admitted original row and recorded interval')
-        ident=replay_identity()
+        ident=replay_identity(row)
     context={**ident,'row':row}
     if current_route()==ORIGINAL_IOS:
         from original_ios_process_guard import require_clear
@@ -183,7 +189,8 @@ def accept_row(temp, *, row=None, recorded_observation=None, fixed_original_repl
     for name in required_stages:
         need(type(stages.get(name)) is dict and stages[name].get('outcome')=='success' and stages[name].get('conclusion')=='success','Unpassed original workflow stage: '+name)
     if 'diagnostics' in stages:need(stages['diagnostics'].get('outcome') in {'success','skipped'},'Failed original diagnostics stage')
-    before=source_proof(temp,fixed_original_replay=fixed_original_replay);after=source_proof(temp,'after',fixed_original_replay=fixed_original_replay)
+    source_row=row if fixed_original_replay else None
+    before=source_proof(temp,fixed_original_replay=fixed_original_replay,fixed_original_row=source_row);after=source_proof(temp,'after',fixed_original_replay=fixed_original_replay,fixed_original_row=source_row)
     need(before['tree']==after['tree'],'Source tree changed during row')
     transfer_row=read(temp/'full-shipping-transfer.json');product=read(temp/'full-shipping-product-after.json');device=read(temp/'full-shipping-device.json');cleanup=read(temp/'full-shipping-cleanup.json')
     need(transfer_row['schema']=='Celluloid.FullShippingTransfer.1' and transfer_row['queue_expiry_applied'] is False and product['schema']=='Celluloid.FullShippingProduct.1','Wrong producer/product receipt schema')
@@ -204,7 +211,9 @@ def accept_row(temp, *, row=None, recorded_observation=None, fixed_original_repl
     outer=temp/'bootstrap.log'
     need(outer.is_file() and not outer.is_symlink() and 0<outer.stat().st_size<=30_000_000,'Missing/unbounded bootstrap driver log')
     names=['bootstrap.log','full-shipping-stage-outcomes.json','full-shipping-execution.json','full-shipping-accounting.json','full-shipping-clock.json','full-shipping-device.json','full-shipping-transfer.json','full-shipping-product-after.json','full-shipping-cleanup.json','uikit-layer-staging.json','uikit-required-tests.json','combined-source-before.json','combined-source-after.json']
-    if current_route()==ORIGINAL_IOS and not fixed_original_replay:
+    # Only the da9d Mini historical receipt includes and requires these exact
+    # timing proofs. Earlier qualified rows retain their original receipt keys.
+    if current_route()==ORIGINAL_IOS and (not fixed_original_replay or row=='small-ipad'):
         from original_ios_first_summary import verify as verify_first_summary,PHASE_FILE,OBSERVATION_FILE
         verify_first_summary(temp,context,clock)
         names += [PHASE_FILE,OBSERVATION_FILE]

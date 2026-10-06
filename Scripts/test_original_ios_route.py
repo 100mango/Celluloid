@@ -26,38 +26,27 @@ class OriginalIOSRouteTests(unittest.TestCase):
             value=dict(env);value.pop(key)
             with self.subTest(missing=key),self.assertRaises(ValueError):route.current_route(value)
 
-    def test_original_native_and_uikit_commands_and_clocks_remain_exact(self):
-        old=(ROOT/route.UIKIT_FULL['workflow_path']).read_text();new=(ROOT/route.ORIGINAL_IOS['workflow_path']).read_text()
-        # The source-bound successor changes only the fixed Mini selection and
-        # first summary/lineage; every native build/test command stays identical.
-        for name in ['mac-producer','uikit-regression']:
-            self.assertEqual(xcode_commands(job(new,name)),xcode_commands(job(old,name)))
-        row=job(new,'uikit-regression')
-        self.assertIn('- key: small-ipad',row)
-        for other in ['compact-phone','large-phone','large-ipad']:
-            self.assertNotIn('- key: '+other,row)
-        self.assertIn('Scripts/original_ios_first_summary.py start',row)
-        self.assertIn('--original-ios-first-summary --seconds 90',row)
-        self.assertIn('bounded summary "$stem summary"',row)
-        self.assertEqual(new.count('fetch-depth: 4'),3)
-        self.assertIn('max-parallel: 1',job(old,'uikit-regression'))
-        self.assertIn('max-parallel: 2',job(new,'uikit-regression'))
-        self.assertIn('fail-fast: false',new)
-        archive=job(new,'archive')
-        self.assertIn("needs: [mac-producer, uikit-regression]",archive)
-        self.assertIn("needs.uikit-regression.result == 'success'",archive)
+    def test_archive_only_keeps_exact_native_archive_command_and_all_four_required_proofs(self):
+        from staged_test_fixtures import qualified_staged_row_workflow
+        from original_ios_fixed_rows import ARTIFACTS
+        old=qualified_staged_row_workflow();new=(ROOT/route.ORIGINAL_IOS['workflow_path']).read_text()
+        self.assertEqual(re.findall(r'^  ([a-z-]+):$',new.split('jobs:\n',1)[1],re.M),['archive'])
+        old_archive=job(old,'archive');archive=job(new,'archive')
+        self.assertEqual(xcode_commands(archive),xcode_commands(old_archive))
         self.assertIn('timeout-minutes: 30',archive);self.assertIn("'execution_budget_seconds':1560",archive)
-        self.assertIn("-configuration Release -destination 'generic/platform=iOS'",archive)
         self.assertIn('CODE_SIGNING_ALLOWED=NO',archive)
-        self.assertNotIn('exportArchive',archive);self.assertNotIn('workflow_dispatch',new)
-        self.assertNotIn('cancel-in-progress: true',new)
-        self.assertNotIn('CelluloidCompanion',new)
+        self.assertIn('--fixed-archive-only-rows',archive)
+        self.assertNotIn('needs:',archive);self.assertNotIn('workflow_dispatch',new)
+        self.assertNotIn('exportArchive',archive);self.assertNotIn('cancel-in-progress: true',new)
+        self.assertEqual(new.count('fetch-depth: 5'),1)
+        self.assertEqual({str(v['artifact_id']) for v in ARTIFACTS.values()},set(re.findall(r'artifact-ids: ([0-9]+)',archive)))
+        self.assertEqual(archive.count('repository: 100mango/Celluloid'),6)
+        self.assertEqual(archive.count('run-id: 37432040947'),4)
+        self.assertEqual(archive.count('run-id: 37441448096'),2)
+        self.assertIn('python3 -m unittest -v test_original_ios_optional_process_contract',archive)
         self.assertLess(archive.index('Scripts/original_ios_rows.py'),archive.index('--label original-iOS-device-archive'))
         self.assertLess(archive.index('Scripts/original_ios_archive.py verify'),archive.index('--phase after'))
         self.assertLess(archive.index('--phase after'),archive.index('Scripts/original_ios_archive.py finalize'))
-        self.assertEqual(45+60+30,135)
-        self.assertIn("--fixed-04d18-rows",archive)
-        self.assertIn("run-id: 37432040947",archive)
 
     def test_every_new_workflow_shell_block_parses(self):
         for line,body in run_blocks((ROOT/route.ORIGINAL_IOS['workflow_path']).read_text()):
@@ -81,14 +70,17 @@ class OriginalIOSRouteTests(unittest.TestCase):
         contract=json.loads((ROOT/'Scripts/original-ios-source-contract.json').read_text())
         rows=contract['files'];self.assertEqual(len(rows),546)
         for name,digest in rows:self.assertEqual(hashlib.sha256((ROOT/name).read_bytes()).hexdigest(),digest)
-        env=environment();base=route.ORIGINAL_IOS_BASE['commit'];prior=route.ORIGINAL_IOS_PREDECESSOR['commit'];qualified=route.ORIGINAL_IOS_QUALIFIED_PREDECESSOR['commit'];head=env['GITHUB_SHA']
+        env=environment();base=route.ORIGINAL_IOS_BASE['commit'];prior=route.ORIGINAL_IOS_PREDECESSOR['commit'];qualified=route.ORIGINAL_IOS_QUALIFIED_PREDECESSOR['commit'];completed=route.ORIGINAL_IOS_ARCHIVE_PREDECESSOR['commit'];head=env['GITHUB_SHA']
         replies={('rev-parse','HEAD'):head,('status','--porcelain','--untracked-files=all'):'',
             ('ls-files','-z','--',*contract['roots']):'\0'.join(name for name,_ in rows)+'\0',
             ('ls-files','--','.github/release-controller'):'',('ls-files','--','.github/workflows/cloud-release.yml'):'',
-            ('rev-parse','HEAD^{tree}'):'c'*40,('rev-list','--parents','-n','1','HEAD'):head+' '+qualified,
+            ('rev-parse','HEAD^{tree}'):'c'*40,('rev-list','--parents','-n','1','HEAD'):head+' '+completed,
+            ('rev-list','--parents','-n','1',completed):completed+' '+qualified,
+            ('rev-parse',completed+'^{tree}'):route.ORIGINAL_IOS_ARCHIVE_PREDECESSOR['tree'],
+            ('diff','--name-only',completed,'HEAD'):'\n'.join(sorted(route.ORIGINAL_IOS_ARCHIVE_ONLY_PATHS)),
             ('rev-list','--parents','-n','1',qualified):qualified+' '+prior,
             ('rev-parse',qualified+'^{tree}'):route.ORIGINAL_IOS_QUALIFIED_PREDECESSOR['tree'],
-            ('diff','--name-only',qualified,'HEAD'):'\n'.join(sorted(route.ORIGINAL_IOS_FIRST_SUMMARY_PATHS)),
+            ('diff','--name-only',qualified,completed):'\n'.join(sorted(route.ORIGINAL_IOS_FIRST_SUMMARY_PATHS)),
             ('rev-list','--parents','-n','1',prior):prior+' '+base,
             ('rev-parse',prior+'^{tree}'):route.ORIGINAL_IOS_PREDECESSOR['tree'],
             ('rev-parse',base+'^{tree}'):route.ORIGINAL_IOS_BASE['tree'],
@@ -104,7 +96,7 @@ class OriginalIOSRouteTests(unittest.TestCase):
             self.assertTrue(result['original_ios_source']['original_features_preserved'])
             for key,value in [(('rev-list','--parents','-n','1','HEAD'),head+' '+'e'*40),(('rev-list','--parents','-n','1','HEAD'),head+' '+prior+' '+'e'*40),
                 (('rev-list','--parents','-n','1',prior),prior+' '+'e'*40),
-                (('rev-parse',prior+'^{tree}'),'e'*40),(('rev-parse',base+'^{tree}'),'e'*40),(('diff','--name-only',qualified,'HEAD'),'\n'.join(sorted(route.ORIGINAL_IOS_FIRST_SUMMARY_PATHS|{'CelluloidKit/Unexpected.swift'}))),(('rev-parse',qualified+'^{tree}'),'e'*40),(('rev-list','--parents','-n','1',qualified),qualified+' '+'e'*40)]:
+                (('rev-parse',prior+'^{tree}'),'e'*40),(('rev-parse',base+'^{tree}'),'e'*40),(('diff','--name-only',completed,'HEAD'),'\n'.join(sorted(route.ORIGINAL_IOS_ARCHIVE_ONLY_PATHS|{'CelluloidKit/Unexpected.swift'}))),(('rev-list','--parents','-n','1',completed),completed+' '+'e'*40),(('rev-parse',completed+'^{tree}'),'e'*40),(('rev-parse',qualified+'^{tree}'),'e'*40),(('rev-list','--parents','-n','1',qualified),qualified+' '+'e'*40)]:
                 previous=replies[key];replies[key]=value
                 with self.subTest(key=key),self.assertRaises(AssertionError):guard.main()
                 replies[key]=previous

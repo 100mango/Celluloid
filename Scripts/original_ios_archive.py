@@ -333,9 +333,9 @@ def unchanged(archive, snapshots, deadline):
 
 def row_binding(value, context, source):
     required = {'schema', *context, 'source_tree', 'scope', 'all_rows_verified', 'original_total_invocations', 'rows'}
-    fixed = type(value) is dict and value.get('schema') == 'Celluloid.OriginalIOSRows.2'
+    fixed = type(value) is dict and value.get('schema') == 'Celluloid.OriginalIOSRows.3'
     if fixed:required.add('fixed_predecessor_rows')
-    need(type(value) is dict and set(value) == required and value['schema'] in {'Celluloid.OriginalIOSRows.1','Celluloid.OriginalIOSRows.2'}, 'Malformed original row replay')
+    need(type(value) is dict and set(value) == required and value['schema'] in {'Celluloid.OriginalIOSRows.1','Celluloid.OriginalIOSRows.3'}, 'Malformed original row replay')
     if fixed:
         from original_ios_fixed_rows import validate_fixed_summary
         validate_fixed_summary(value['fixed_predecessor_rows'],context,source['tree'])
@@ -355,7 +355,7 @@ def row_binding(value, context, source):
         need(type(device) is str and re.fullmatch('[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}', device) and device.lower() not in devices, 'Missing/duplicate row device')
         devices.add(device.lower())
         execution=context;tree=source['tree']
-        if fixed and row in {'compact-phone','large-phone','large-ipad'}:
+        if fixed:
             proof=value['fixed_predecessor_rows'][row];original=proof['original'];artifact=proof['artifact']
             execution={k:original[k] for k in context};tree=original['source_tree']
             need(actual['device_id']==original['device']['id'] and actual['row_receipt_sha256']==artifact['row_receipt_sha256']
@@ -367,11 +367,22 @@ def row_binding(value, context, source):
 
 
 def fixed_metadata_binding(temp, context, rows):
-    if rows.get('schema') != 'Celluloid.OriginalIOSRows.2':return None
+    if rows.get('schema') != 'Celluloid.OriginalIOSRows.3':return None
     from original_ios_fixed_rows import METADATA, validate_metadata
     raw=read(Path(temp)/METADATA,16_384)
     validate_metadata(load_json(raw),context)
     return sha(raw)
+
+
+def require_archive_only_rows(temp, context):
+    """The current CLI admits only the four fully replayed historical rows."""
+    temp = Path(temp)
+    rows = load_json(read(temp / ROWS_FILE))
+    need(rows.get('schema') == 'Celluloid.OriginalIOSRows.3',
+         'Archive-only qualification requires all four historical rows')
+    source = load_json(read(temp / 'combined-source-before.json'))
+    row_binding(rows, context, source)
+    fixed_metadata_binding(temp, context, rows)
 
 
 class ObservationFailure(ValueError):
@@ -393,7 +404,7 @@ class ProofCommands:
         command = ['/usr/bin/xcrun', tool, *args, str(executable)]
         cleanup_deadline = min(now + 20, self.deadline - 1)
         try:
-            result = bounded_optional_process(command, cleanup_deadline - 2, cleanup_deadline, cap=8192)
+            result = bounded_optional_process(command, cleanup_deadline - 2, cleanup_deadline, cap=8192, stop_on_signal_error=True)
         except Exception as error:
             self.blocked = True
             raise ObservationFailure('Archive observation raised ' + type(error).__name__ + '; cleanup unknown', self.events, False) from error
@@ -594,7 +605,7 @@ def collect(temp, context, clock):
             need(final['source_before_sha256'] == sha(retained['combined-source-before.json']) and final['source_after_sha256'] == sha(retained['combined-source-after.json']), 'Retained source hashes differ')
             need(before.get('source_sha') == after.get('source_sha') == context['source_sha'] and before.get('phase') == 'before' and after.get('phase') == 'after', 'Retained source identity differs')
             rows=row_binding(load_json(retained[ROWS_FILE]), context, before)
-            if rows['schema']=='Celluloid.OriginalIOSRows.2':
+            if rows['schema']=='Celluloid.OriginalIOSRows.3':
                 need(METADATA in retained,'Missing fixed artifact metadata retention')
                 validate_metadata(load_json(retained[METADATA]),context)
                 need(final.get('fixed_artifact_metadata_sha256')==sha(retained[METADATA]),'Retained fixed metadata hash differs')
@@ -662,6 +673,8 @@ def main(argv=None):
     clock = load_json(read(temp / CLOCK, 8192))
     if args.action != 'collect' and args.phase not in {'retention','upload'}:
         require_finalized_processes(temp, context)
+    if args.action in {'verify', 'finalize'} or args.phase in {'archive', 'proof', 'source'}:
+        require_archive_only_rows(temp, context)
     if args.action in ('admit', 'check-clock'):
         need(args.phase is not None, 'Clock phase required')
         remaining = admit(clock, context, args.phase)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay four original UIKit artifacts, including three literal qualified rows before unsigned iOS archive admission.
+"""Replay four original UIKit artifacts before unsigned iOS archive admission.
 
 Only data is reconstructed. A later queue wait does not change the recorded
 native execution interval or extend any producing job's clock.
@@ -33,19 +33,21 @@ def checked_artifact(folder,context):
     need({p.name for p in folder.iterdir()}==names|{'manifest.json'},'Unlisted row artifact member')
     return manifest
 
-def verify_four(temp, *, fixed_04d18_rows=False):
+def verify_four(temp, *, fixed_archive_only_rows=False):
     need=handoff.need
     need(current_route()==ORIGINAL_IOS,'Wrong staged archive row replay route')
+    need(type(fixed_archive_only_rows) is bool,'Malformed archive-only replay selector')
     ident=handoff.identity();source=handoff.source_proof(temp)
-    transfer=handoff.read(temp/'full-shipping-transfer.json')
-    need(transfer.get('schema')=='Celluloid.FullShippingTransfer.1' and all(transfer.get(k)==v for k,v in ident.items()) and transfer.get('tree')==source['tree'] and transfer.get('manifest_and_all_members_verified') is True,'Missing current exact producer handoff')
+    if not fixed_archive_only_rows:
+        transfer=handoff.read(temp/'full-shipping-transfer.json')
+        need(transfer.get('schema')=='Celluloid.FullShippingTransfer.1' and all(transfer.get(k)==v for k,v in ident.items()) and transfer.get('tree')==source['tree'] and transfer.get('manifest_and_all_members_verified') is True,'Missing current exact producer handoff')
     producer=temp/'mac-fixture-evidence'
     result=[];fixed={}
     for row,model in ROWS.items():
         context={**ident,'row':row};folder=temp/'original-ios-rows'/row
-        if fixed_04d18_rows and row in {'compact-phone','large-phone','large-ipad'}:
-            from original_ios_fixed_rows import verify_fixed_row
-            proof=verify_fixed_row(temp,row,folder,temp/'original-ios-fixed-producer')
+        if fixed_archive_only_rows:
+            from original_ios_fixed_rows import verify_fixed_row,ROW_BINDINGS
+            proof=verify_fixed_row(temp,row,folder,temp/'original-ios-fixed-producers'/ROW_BINDINGS[row][0])
             actual=proof['original'];artifact=proof['artifact'];fixed[row]=proof
             result.append({'row':row,'original_test_invocation_count':ROW_COUNTS[row],'model':model,'device_id':actual['device']['id'],
                 'row_receipt_sha256':handoff.sha(folder/'full-shipping-row.json'),'artifact_manifest_sha256':handoff.sha(folder/'manifest.json'),
@@ -75,17 +77,16 @@ def verify_four(temp, *, fixed_04d18_rows=False):
         result.append({'row':row,'original_test_invocation_count':ROW_COUNTS[row],'model':model,'device_id':actual['device']['id'],
             'row_receipt_sha256':handoff.sha(folder/'full-shipping-row.json'),'artifact_manifest_sha256':handoff.sha(folder/'manifest.json'),
             'artifact_name':'celluloid-original-ios-'+row+'-'+ident['source_sha']+'-'+ident['run_attempt']})
-        if fixed_04d18_rows:result[-1].update(execution_identity=dict(ident),execution_source_tree=source['tree'])
     need(len({r['device_id'] for r in result})==4,'Reused device identity across independent rows')
     packet={'schema':'Celluloid.OriginalIOSRows.1',**ident,'source_tree':source['tree'],'scope':ORIGINAL_IOS['scope'],
         'all_rows_verified':True,'original_total_invocations':412,'rows':result}
-    if fixed_04d18_rows:
+    if fixed_archive_only_rows:
         from original_ios_fixed_rows import validate_fixed_summary
         validate_fixed_summary(fixed,ident,source['tree'])
-        packet.update(schema='Celluloid.OriginalIOSRows.2',fixed_predecessor_rows=fixed)
+        packet.update(schema='Celluloid.OriginalIOSRows.3',fixed_predecessor_rows=fixed)
     handoff.write(temp/'original-ios-rows.json',packet)
     return packet
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--fixed-04d18-rows',action='store_true');args=parser.parse_args()
-    print(json.dumps(verify_four(Path(os.environ['RUNNER_TEMP']).resolve(),fixed_04d18_rows=args.fixed_04d18_rows),sort_keys=True))
+    parser=argparse.ArgumentParser();parser.add_argument('--fixed-archive-only-rows',action='store_true');args=parser.parse_args()
+    print(json.dumps(verify_four(Path(os.environ['RUNNER_TEMP']).resolve(),fixed_archive_only_rows=args.fixed_archive_only_rows),sort_keys=True))
