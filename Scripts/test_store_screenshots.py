@@ -1,5 +1,6 @@
 """Portable fixed-capture interface and corruption/failure tests; no native tools."""
 import copy
+import contextlib
 import errno
 import io
 import json
@@ -44,6 +45,21 @@ def device_catalog():
             {'devicetypes': types}, {'devices': {runtime: devices}})
 
 
+def selected_device():
+    """File-only evidence tests supply an independently observed synthetic ID."""
+    return {**capture.select_devices(*device_catalog())[0], 'id': str(uuid.uuid4()).upper()}
+
+
+@contextlib.contextmanager
+def isolated_runner():
+    case = RunnerInterfacesTests()
+    case.setUp()
+    try:
+        yield case
+    finally:
+        case.doCleanups()
+
+
 def summary(device, bundle):
     now = time.time()
     counts = {'passedTests': 2, 'failedTests': 0, 'skippedTests': 0, 'expectedFailures': 0}
@@ -86,6 +102,28 @@ class FileProofTests(unittest.TestCase):
         with patch.object(capture, 'UI_CAPTURE_SHA', '0' * 64), self.assertRaisesRegex(ValueError, 'instrumentation'):
             capture.verify_source()
 
+    def test_runtime_source_requires_public_parent_commit_even_when_tree_matches(self):
+        contract = json.loads((capture.ROOT / 'Scripts/original-ios-source-contract.json').read_text())
+        parent = [capture.PUBLIC_BASE]
+        def git(root, *args):
+            if args[0] == 'ls-files':
+                return '\0'.join(name for name, _ in contract['files']) + '\0'
+            answers = {('rev-parse', 'HEAD'): 'a' * 40,
+                       ('rev-parse', 'HEAD^1'): parent[0],
+                       ('rev-parse', 'HEAD^1^{tree}'): capture.BASE_TREE,
+                       ('rev-parse', 'HEAD^{tree}'): 'b' * 40,
+                       ('status', '--porcelain', '--untracked-files=all'): '',
+                       ('diff', '--name-only', capture.BASE_TREE, 'HEAD'): '\n'.join(sorted(capture.CAPTURE_PATHS))}
+            self.assertIn(args, answers)
+            return answers[args]
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, environment(directory), clear=True), patch.object(capture, 'git', side_effect=git), patch('subprocess.Popen', side_effect=AssertionError('source test must not dispatch')):
+            proof = capture.verify_source(runtime=True)
+            self.assertEqual(proof['supervision_public_base_sha'], 'ef07f3229517db656b970b136a8071f385185f75')
+            self.assertEqual(proof['supervision_base_tree'], 'cdde7dae9e9a2ad92c04dc19990a4df663bdd27a')
+            parent[0] = '1d28' + '0' * 36
+            with self.assertRaisesRegex(ValueError, 'public capture parent'):
+                capture.verify_source(runtime=True)
+
     def test_png_keeps_native_bytes_and_reports_alpha_without_stripping(self):
         for alpha in (False, True):
             raw = png(alpha=alpha)
@@ -111,25 +149,45 @@ class FileProofTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'raster'):
             capture.png_metadata(bytes(raw))
 
-    def test_missing_exact_model_has_no_substitute(self):
+    def test_missing_exact_device_type_has_no_substitute(self):
         values = device_catalog()
         selected = capture.select_devices(*values)
         self.assertEqual([d['model'] for d in selected], ['iPhone 17 Pro', 'iPad Pro 13-inch (M5)'])
+        self.assertTrue(all('id' not in item for item in selected))
+        self.assertEqual([d['observed_device_type'] for d in selected], values[1]['devicetypes'])
+        self.assertTrue(all(d['observed_runtime'] == values[0]['runtimes'][0] for d in selected))
         altered = copy.deepcopy(values)
-        altered[2]['devices'][next(iter(altered[2]['devices']))][0]['name'] = 'iPhone 18 Pro Max'
-        with self.assertRaisesRegex(ValueError, 'missing/ambiguous'):
+        altered[1]['devicetypes'][0]['name'] = 'iPhone 18 Pro Max'
+        with self.assertRaises(ValueError):
             capture.select_devices(*altered)
 
-    def test_duplicate_or_booted_device_fails_closed(self):
-        for mode in ('duplicate', 'booted'):
+    def test_duplicate_exact_type_or_runtime_and_booted_host_fail_closed(self):
+        for mode in ('duplicate-type', 'duplicate-runtime', 'booted'):
             values = device_catalog()
             group = next(iter(values[2]['devices'].values()))
-            if mode == 'duplicate':
-                group.append(copy.deepcopy(group[0]))
+            if mode == 'duplicate-type':
+                values[1]['devicetypes'].append(copy.deepcopy(values[1]['devicetypes'][0]))
+            elif mode == 'duplicate-runtime':
+                values[0]['runtimes'].append(copy.deepcopy(values[0]['runtimes'][0]))
             else:
                 group[0]['state'] = 'Booted'
             with self.subTest(mode=mode), self.assertRaises(ValueError):
                 capture.select_devices(*values)
+
+    def test_absent_or_duplicate_precreated_models_do_not_select_existing_instances(self):
+        for mode in ('absent-phone', 'empty-runtime', 'duplicate-precreated'):
+            values = device_catalog()
+            group = next(iter(values[2]['devices'].values()))
+            if mode == 'absent-phone':
+                group[:] = [d for d in group if d['name'] != 'iPhone 17 Pro']
+            elif mode == 'empty-runtime':
+                group.clear()
+            else:
+                group.append(dict(group[0], udid=str(uuid.uuid4()).upper()))
+            with self.subTest(mode=mode):
+                selected = capture.select_devices(*values)
+                self.assertEqual([d['model'] for d in selected], [t['model'] for t in capture.TARGETS])
+                self.assertTrue(all('id' not in d for d in selected))
 
     def test_stale_seventh_fixture_is_rejected_before_import(self):
         with tempfile.TemporaryDirectory() as name:
@@ -144,7 +202,7 @@ class FileProofTests(unittest.TestCase):
     def test_exact_attachment_test_device_dimensions_and_bytes(self):
         with tempfile.TemporaryDirectory() as name:
             folder = Path(name) / 'exports'
-            device = capture.select_devices(*device_catalog())[0]
+            device = selected_device()
             exports(folder, device)
             result = capture.select_pngs(folder, device, {'source_sha': 'a' * 40}, {'fingerprint': 'b' * 64})
             self.assertEqual(set(result), set(capture.CASES))
@@ -158,7 +216,7 @@ class FileProofTests(unittest.TestCase):
         for mutation in ('test', 'device', 'size', 'duplicate', 'traversal'):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as name:
                 folder = Path(name) / 'exports'
-                device = capture.select_devices(*device_catalog())[0]
+                device = selected_device()
                 records = exports(folder, device)
                 if mutation == 'test': records[0]['testIdentifier'] = 'CelluloidUITests/testOther()'
                 if mutation == 'device': records[0]['attachments'][0]['deviceId'] = str(uuid.uuid4())
@@ -172,7 +230,7 @@ class FileProofTests(unittest.TestCase):
     def test_attachment_identity_uses_exact_observed_uuid_without_guessing_key(self):
         with tempfile.TemporaryDirectory() as name:
             folder = Path(name) / 'exports'
-            device = capture.select_devices(*device_catalog())[0]
+            device = selected_device()
             records = exports(folder, device)
             for row in records:
                 item = row['attachments'][0]
@@ -191,7 +249,7 @@ class FileProofTests(unittest.TestCase):
         for mode in ('nested', 'substring'):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as name:
                 folder = Path(name) / 'exports'
-                device = capture.select_devices(*device_catalog())[0]
+                device = selected_device()
                 records = exports(folder, device)
                 item = records[0]['attachments'][0]
                 value = item.pop('deviceId')
@@ -203,7 +261,7 @@ class FileProofTests(unittest.TestCase):
     def test_attachment_child_cannot_override_parent_test_and_records_are_bounded(self):
         with tempfile.TemporaryDirectory() as name:
             folder = Path(name) / 'exports'
-            device = capture.select_devices(*device_catalog())[0]
+            device = selected_device()
             records = exports(folder, device)
             records[0]['attachments'][0]['testIdentifier'] = records[0]['testIdentifier']
             records[0]['testIdentifier'] = 'CelluloidUITests/testUnrelated()'
@@ -225,13 +283,13 @@ class FileProofTests(unittest.TestCase):
             self.assertFalse(path.exists())
         with tempfile.TemporaryDirectory() as name:
             folder = Path(name)
-            device = capture.select_devices(*device_catalog())[0]
+            device = selected_device()
             (folder / 'manifest.json').write_text('[{"attachments":[],"attachments":[]}]')
             with self.assertRaisesRegex(ValueError, 'Duplicate'):
                 capture.select_pngs(folder, device, {'source_sha': 'a' * 40}, {'fingerprint': 'b' * 64})
 
     def test_summary_requires_exact_cases_counts_time_runtime_and_terminal(self):
-        device = capture.select_devices(*device_catalog())[0]
+        device = selected_device()
         bundle = Path('/tmp/test-StoreCapture.xcresult')
         good, log = summary(device, bundle)
         self.assertTrue(capture.verify_summary(good, device, log, time.time() - 10, time.time() + 1, bundle)['aggregate_execution_passed'])
@@ -269,8 +327,17 @@ class RunnerInterfacesTests(unittest.TestCase):
             'started_monotonic': time.monotonic() - 3, 'started_unix': time.time() - 3,
             'execution_budget_seconds': 3360})
         self.catalog = device_catalog()
-        self.devices = capture.select_devices(*self.catalog)
+        self.selected_models = capture.select_devices(*self.catalog)
+        self.precreated = copy.deepcopy(self.catalog[2])
+        self.precreated_ids = {d['udid'] for group in self.precreated['devices'].values() for d in group}
+        self.devices = []
+        self.confirmed_ids = set()
+        self.pending_creation = None
+        self.creation_output = None
+        self.creation_readback = None
+        self.guarded_create_failure = None
         self.calls = []
+        self.call_options = []
         self.bootstrap_calls = []
         self.source = {'source_sha': env['GITHUB_SHA'], 'release_qualification': False}
         self.current = None
@@ -291,6 +358,7 @@ class RunnerInterfacesTests(unittest.TestCase):
     def native(self, args, timeout, check, log_name, echo, capture_deadline=None):
         args = list(map(str, args))
         self.calls.append(args)
+        self.call_options.append({'timeout': timeout, 'capture_deadline': capture_deadline, 'log_name': log_name})
         self.assertIsInstance(capture_deadline, (int, float))
         self.assertGreater(capture_deadline - time.monotonic(), timeout + 19)
         if self.fail_label and self.fail_label in log_name:
@@ -298,15 +366,76 @@ class RunnerInterfacesTests(unittest.TestCase):
         output = ''
         if args == ['xcodebuild', '-version']:
             output = 'Xcode 27.0\nBuild version reviewed\n'
+        elif args[:3] == ['xcrun', 'simctl', 'create']:
+            self.assertEqual(len(args), 6)
+            self.assertEqual(timeout, 60)
+            name, device_type, runtime = args[3:]
+            spec = next(d for d in self.selected_models if d['device_type'] == device_type)
+            self.assertEqual(runtime, spec['runtime'])
+            self.assertNotIn(name, [d['name'] for group in self.precreated['devices'].values() for d in group])
+            if self.guarded_create_failure:
+                process = MagicMock(pid=48123, returncode=None)
+                process.poll.return_value = None
+                if self.guarded_create_failure == 'nonzero':
+                    process.returncode = 1
+                    process.communicate.return_value = ('', 'ordinary create rejection')
+                else:
+                    process.communicate.side_effect = subprocess.TimeoutExpired(args, timeout, output=b'partial owned create')
+                denial = PermissionError(errno.EPERM, 'owned signal denied') if self.guarded_create_failure == 'eperm' else None
+                with patch('native_process.subprocess.Popen', return_value=process), patch('native_process.os.killpg', side_effect=denial):
+                    return REAL_NATIVE_RUN(args, timeout=timeout, check=check, log_name=log_name, echo=echo,
+                                           capture_deadline=capture_deadline)
+            identifier = str(uuid.uuid4()).upper()
+            created = {'name': name, 'udid': identifier, 'isAvailable': True, 'state': 'Shutdown',
+                       'deviceTypeIdentifier': device_type}
+            self.catalog[2]['devices'].setdefault(runtime, []).append(created)
+            self.devices.append({**spec, 'id': identifier, 'name': name})
+            self.pending_creation = (runtime, identifier)
+            output = identifier + '\n'
+            if self.creation_output == 'invalid': output = 'not-a-uuid\n'
+            if self.creation_output == 'multiple': output += identifier + '\n'
+            if self.creation_output == 'existing': output = next(iter(self.precreated_ids)) + '\n'
+            if self.creation_output == 'foreign': output = str(uuid.uuid4()).upper() + '\n'
+            if self.creation_output == 'lowercase': output = identifier.lower() + '\n'
         elif args[:3] == ['xcrun', 'simctl', 'list']:
             key = args[3]
-            output = json.dumps(self.catalog[('runtimes', 'devicetypes', 'devices').index(key)])
+            observed = copy.deepcopy(self.catalog[('runtimes', 'devicetypes', 'devices').index(key)])
+            if key == 'devices' and self.pending_creation:
+                self.assertEqual(args, ['xcrun', 'simctl', 'list', 'devices', 'available', '-j'])
+                self.assertEqual(timeout, 30)
+                runtime, identifier = self.pending_creation
+                group = observed['devices'][runtime]
+                row = next(d for d in group if d['udid'] == identifier)
+                mutation = self.creation_readback
+                if mutation == 'missing': group.remove(row)
+                if mutation == 'foreign-uuid': row['udid'] = str(uuid.uuid4()).upper()
+                if mutation == 'wrong-type': row['deviceTypeIdentifier'] = 'com.apple.CoreSimulator.SimDeviceType.unrelated'
+                if mutation == 'wrong-name': row['name'] = 'Foreign simulator'
+                if mutation == 'unavailable': row['isAvailable'] = False
+                if mutation == 'truthy-availability': row['isAvailable'] = 1
+                if mutation == 'booted': row['state'] = 'Booted'
+                if mutation == 'unknown-state': row['state'] = 'Creating'
+                if mutation == 'duplicate': group.append(copy.deepcopy(row))
+                if mutation == 'wrong-runtime':
+                    group.remove(row)
+                    observed['devices']['com.apple.CoreSimulator.SimRuntime.iOS-other'] = [row]
+                if mutation == 'duplicate-other-runtime':
+                    observed['devices']['com.apple.CoreSimulator.SimRuntime.iOS-other'] = [copy.deepcopy(row)]
+                if mutation == 'other-booted':
+                    next(d for d in group if d['udid'] != identifier)['state'] = 'Booted'
+                if mutation is None and self.creation_output not in {'invalid', 'multiple', 'existing', 'foreign'}:
+                    self.confirmed_ids.add(identifier)
+                self.pending_creation = None
+            output = json.dumps(observed)
         elif args[0] == 'xcodebuild' and 'build-for-testing' in args:
             self.make_app()
         elif args[:3] == ['xcrun', 'simctl', 'boot']:
+            self.assertIn(args[3], self.confirmed_ids, 'Boot must follow verified create/readback')
+            self.assertNotIn(args[3], self.precreated_ids, 'Never boot an initial host instance')
             self.current = next(d for d in self.devices if d['id'] == args[3])
             next(d for d in next(iter(self.catalog[2]['devices'].values())) if d['udid'] == args[3])['state'] = 'Booted'
         elif args[:3] == ['xcrun', 'simctl', 'install']:
+            self.assertIn(args[3], self.confirmed_ids)
             self.installed = self.base / 'Library/Developer/CoreSimulator/Devices' / self.current['id'] / 'data/Containers/Bundle/Application' / str(uuid.uuid4()) / 'Celluloid.app'
             shutil.copytree(self.app, self.installed)
         elif args[:3] == ['xcrun', 'simctl', 'get_app_container']:
@@ -336,15 +465,21 @@ class RunnerInterfacesTests(unittest.TestCase):
         elif args[:4] == ['xcrun', 'xcresulttool', 'export', 'attachments']:
             exports(Path(args[args.index('--output-path') + 1]), self.current)
         elif args[:3] == ['xcrun', 'simctl', 'shutdown']:
+            self.assertIn(args[3], self.confirmed_ids)
+            self.assertNotIn(args[3], self.precreated_ids)
             next(d for d in next(iter(self.catalog[2]['devices'].values())) if d['udid'] == args[3])['state'] = 'Shutdown'
-        elif args[:3] == ['xcrun', 'simctl', 'delete'] and not self.keep_deleted:
-            group = next(iter(self.catalog[2]['devices'].values()))
-            group[:] = [d for d in group if d['udid'] != args[3]]
+        elif args[:3] == ['xcrun', 'simctl', 'delete']:
+            self.assertIn(args[3], self.confirmed_ids, 'Never delete an unverified returned UUID')
+            self.assertNotIn(args[3], self.precreated_ids, 'Never delete an initial host instance')
+            if not self.keep_deleted:
+                group = next(iter(self.catalog[2]['devices'].values()))
+                group[:] = [d for d in group if d['udid'] != args[3]]
         (Path(os.environ['RUNNER_TEMP']) / log_name).write_text(output)
         return subprocess.CompletedProcess(args, 0, output, '')
 
     def run_capture(self):
         runner = capture.Capture(self.outer)
+        self.runner = runner
         def bootstrap(instance, device):
             self.bootstrap_calls.append(device['id'])
         with patch.object(capture, 'ROOT', self.root), patch.object(capture, 'verify_source', return_value=self.source), \
@@ -361,13 +496,29 @@ class RunnerInterfacesTests(unittest.TestCase):
         self.assertEqual(sum('test-without-building' in c for c in self.calls), 2)
         boot_positions = [i for i, c in enumerate(self.calls) if c[:3] == ['xcrun', 'simctl', 'boot']]
         delete_positions = [i for i, c in enumerate(self.calls) if c[:3] == ['xcrun', 'simctl', 'delete']]
+        create_positions = [i for i, c in enumerate(self.calls) if c[:3] == ['xcrun', 'simctl', 'create']]
+        self.assertEqual(len(create_positions), 2)
+        self.assertLess(create_positions[0], next(i for i, c in enumerate(self.calls) if 'build-for-testing' in c))
+        self.assertLess(delete_positions[0], create_positions[1])
         self.assertLess(delete_positions[0], boot_positions[1])
+        for index, position in enumerate(create_positions):
+            self.assertEqual(self.calls[position][4:], [self.selected_models[index]['device_type'], self.selected_models[index]['runtime']])
+            self.assertEqual(self.call_options[position]['timeout'], 60)
+            self.assertEqual(self.calls[position + 1], ['xcrun', 'simctl', 'list', 'devices', 'available', '-j'])
+            self.assertEqual(self.call_options[position + 1]['timeout'], 30)
+        self.assertEqual(self.catalog[2], self.precreated, 'Every precreated instance must remain untouched')
+        self.assertEqual(len({self.calls[i][3] for i in create_positions}), 2)
         clocks = [json.loads((self.outer / ('store-capture-' + d['row']) / 'full-shipping-clock.json').read_text()) for d in self.devices]
         self.assertEqual(clocks[0]['started_monotonic'], clocks[1]['started_monotonic'])
         self.assertEqual(clocks[0]['started_unix'], clocks[1]['started_unix'])
         result = json.loads((runner.packet / 'capture.json').read_text())
         self.assertTrue(result['complete'])
         self.assertEqual(len(result['screenshots']), 4)
+        self.assertEqual(len(result['selected_models']), 2)
+        self.assertEqual(len(result['creations']), 2)
+        self.assertTrue(all(record['confirmed'] is True and record['create_exit_code'] == 0 for record in result['creations']))
+        self.assertTrue(all(device['created_in_this_run'] is True and device['id'] not in self.precreated_ids for device in result['devices']))
+        self.assertEqual([record['device_id'] for record in result['creations']], [device['id'] for device in result['devices']])
         self.assertFalse(result['release_qualification'])
         self.assertFalse(result['store_submission_approved'])
         self.assertEqual(result['visual_approval'], 'pending')
@@ -381,6 +532,7 @@ class RunnerInterfacesTests(unittest.TestCase):
         self.assertIn('test-without-building', self.calls[-1])
         self.assertEqual(sum(c[:3] == ['xcrun', 'simctl', 'boot'] for c in self.calls), 1)
         self.assertFalse(any(c[:3] == ['xcrun', 'simctl', 'shutdown'] for c in self.calls))
+        self.assertEqual(sum(c[:3] == ['xcrun', 'simctl', 'create'] for c in self.calls), 1)
 
     def assert_guarded_failure_stops_second_device(self, kind):
         self.guarded_ui_failure = kind
@@ -389,6 +541,7 @@ class RunnerInterfacesTests(unittest.TestCase):
         self.assertIn('test-without-building', self.calls[-1])
         self.assertEqual(sum(c[:3] == ['xcrun', 'simctl', 'boot'] for c in self.calls), 1)
         self.assertFalse(any(c[:3] == ['xcrun', 'simctl', 'shutdown'] for c in self.calls))
+        self.assertEqual(sum(c[:3] == ['xcrun', 'simctl', 'create'] for c in self.calls), 1)
         failure = process_guard.read_failure(Path(os.environ['RUNNER_TEMP']), process_guard.staged_context())
         self.assertEqual(failure['failure_kind'], 'timeout')
         if kind == 'eperm':
@@ -406,6 +559,84 @@ class RunnerInterfacesTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'deletion unconfirmed'):
             self.run_capture()
         self.assertEqual(sum(c[:3] == ['xcrun', 'simctl', 'boot'] for c in self.calls), 1)
+        self.assertEqual(sum(c[:3] == ['xcrun', 'simctl', 'create'] for c in self.calls), 1)
+
+    def assert_creation_stopped_before_device_mutation(self):
+        self.assertEqual(sum(c[:3] == ['xcrun', 'simctl', 'create'] for c in self.calls), 1)
+        self.assertFalse(any(c[:3] in (['xcrun', 'simctl', 'boot'], ['xcrun', 'simctl', 'install'],
+                                      ['xcrun', 'simctl', 'shutdown'], ['xcrun', 'simctl', 'delete']) for c in self.calls))
+        self.assertFalse(any('build-for-testing' in c for c in self.calls))
+        self.assertFalse(self.runner.devices)
+        self.assertEqual(len(self.runner.creations), 1)
+        self.assertFalse(self.runner.creations[0]['confirmed'])
+
+    def test_precreated_iphone_17_absence_still_completes_with_two_new_owned_devices(self):
+        group = next(iter(self.catalog[2]['devices'].values()))
+        group[:] = [d for d in group if d['name'] != 'iPhone 17 Pro']
+        self.precreated = copy.deepcopy(self.catalog[2])
+        self.precreated_ids = {d['udid'] for d in group}
+        runner = self.run_capture()
+        self.assertEqual([d['model'] for d in runner.devices], ['iPhone 17 Pro', 'iPad Pro 13-inch (M5)'])
+        self.assertTrue(all(d['id'] not in self.precreated_ids for d in runner.devices))
+        self.assertEqual(self.catalog[2], self.precreated)
+
+    def test_missing_exact_type_fails_before_any_creation_or_build(self):
+        self.catalog[1]['devicetypes'] = self.catalog[1]['devicetypes'][1:]
+        with self.assertRaises(ValueError):
+            self.run_capture()
+        self.assertFalse(any(c[:3] == ['xcrun', 'simctl', 'create'] or 'build-for-testing' in c for c in self.calls))
+        self.assertFalse(self.runner.devices)
+
+    def test_invalid_multiple_existing_and_foreign_returned_uuid_cannot_be_booted_or_deleted(self):
+        for mode in ('invalid', 'multiple', 'existing', 'foreign'):
+            with self.subTest(mode=mode), isolated_runner() as case:
+                case.creation_output = mode
+                with self.assertRaises(ValueError):
+                    case.run_capture()
+                case.assert_creation_stopped_before_device_mutation()
+                if mode != 'foreign':
+                    self.assertEqual(case.calls[-1][:3], ['xcrun', 'simctl', 'create'])
+                else:
+                    self.assertEqual(case.calls[-1], ['xcrun', 'simctl', 'list', 'devices', 'available', '-j'])
+
+    def test_creation_readback_requires_exact_type_runtime_name_uuid_state_and_idle_host(self):
+        for mutation in ('missing', 'foreign-uuid', 'wrong-type', 'wrong-name', 'unavailable', 'truthy-availability',
+                         'booted', 'unknown-state', 'duplicate', 'wrong-runtime', 'duplicate-other-runtime', 'other-booted'):
+            with self.subTest(mutation=mutation), isolated_runner() as case:
+                case.creation_readback = mutation
+                with self.assertRaises(ValueError):
+                    case.run_capture()
+                case.assert_creation_stopped_before_device_mutation()
+                self.assertEqual(case.calls[-1], ['xcrun', 'simctl', 'list', 'devices', 'available', '-j'])
+
+    def test_failed_create_stops_with_normally_finalized_nonzero_and_no_mutation(self):
+        self.guarded_create_failure = 'nonzero'
+        with self.assertRaises(RuntimeError):
+            self.run_capture()
+        self.assert_creation_stopped_before_device_mutation()
+        self.assertIsNone(process_guard.read_failure(Path(os.environ['RUNNER_TEMP']), process_guard.staged_context()))
+        self.assertIsNone(process_guard.read_inflight(Path(os.environ['RUNNER_TEMP']), process_guard.staged_context()))
+
+    def test_owned_create_timeout_and_signal_denial_never_trigger_readback_cleanup_or_retry(self):
+        for mode in ('timeout', 'eperm'):
+            with self.subTest(mode=mode), isolated_runner() as case:
+                case.guarded_create_failure = mode
+                with self.assertRaises(TimeoutError):
+                    case.run_capture()
+                case.assert_creation_stopped_before_device_mutation()
+                self.assertEqual(case.calls[-1][:3], ['xcrun', 'simctl', 'create'])
+                failure = process_guard.read_failure(Path(os.environ['RUNNER_TEMP']), process_guard.staged_context())
+                self.assertEqual(failure['failure_kind'], 'timeout')
+                if mode == 'eperm':
+                    self.assertEqual(failure['cleanup']['status'], 'signal_denied')
+                    self.assertEqual(len(failure['cleanup']['signals']), 1)
+
+    def test_preexisting_owned_name_is_not_reused_or_deleted(self):
+        group = next(iter(self.catalog[2]['devices'].values()))
+        group[0]['name'] = 'Celluloid Store Capture 1234567-1-large-phone'
+        with self.assertRaisesRegex(ValueError, 'name already exists'):
+            self.run_capture()
+        self.assertFalse(any(c[:3] in (['xcrun', 'simctl', 'create'], ['xcrun', 'simctl', 'delete']) for c in self.calls))
 
     def test_readable_identical_bundle_outside_owned_container_is_rejected(self):
         self.foreign_container = True

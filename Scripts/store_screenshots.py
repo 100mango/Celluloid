@@ -22,8 +22,8 @@ import zlib
 from mac_host_transport import load_json
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE_TREE = '66176a4238492ce027d4748d3586c8a5227cce34'
-PUBLIC_BASE = '797271810613773ec4a9bc016ea5ad2e6f7cdfa8'
+BASE_TREE = 'cdde7dae9e9a2ad92c04dc19990a4df663bdd27a'
+PUBLIC_BASE = 'ef07f3229517db656b970b136a8071f385185f75'
 PRODUCT_SOURCE = 'da9d4abd6484ddaff469677d96caf24362645d7c'
 PRODUCT_TREE = '304ee9c0e4197e4a282ae3933c9f510219b2106d'
 CONTRACT_SHA = 'cc2c2db6140e4062ac4259092573d2085318d63baf0ce95b92d04e5582f2c481'
@@ -59,12 +59,8 @@ MAX_ATTACHMENT_MANIFEST = 1_000_000
 CAPTURE_CLEANUP_SECONDS = 15
 CAPTURE_FINALIZATION_SECONDS = 5
 CAPTURE_PATHS = {
-    UI_PATH, '.github/workflows/store-screenshots.yml', 'Documentation/store-screenshots.md',
+    'Documentation/store-screenshots.md',
     'Scripts/store_screenshots.py', 'Scripts/test_store_screenshots.py',
-    'Scripts/validation_route.py', 'Scripts/original_ios_process_guard.py',
-    'Scripts/probe_photos_bootstrap.py', 'Scripts/uikit_full_shipping_gate.py',
-    'Scripts/test_store_screenshots_route.py', 'Scripts/native_process.py',
-    'Scripts/test_store_screenshots_deadline.py',
 }
 
 
@@ -137,7 +133,8 @@ def verify_source(root=ROOT, runtime=False):
         head = git(root, 'rev-parse', 'HEAD')
         need(head == os.environ['GITHUB_SHA'] == os.environ['GITHUB_WORKFLOW_SHA'], 'Wrong capture source')
         need(not git(root, 'status', '--porcelain', '--untracked-files=all'), 'Capture checkout changed')
-        need(git(root, 'rev-parse', 'HEAD^1^{tree}') == BASE_TREE, 'Wrong exact capture parent tree')
+        need(git(root, 'rev-parse', 'HEAD^1') == PUBLIC_BASE
+             and git(root, 'rev-parse', 'HEAD^1^{tree}') == BASE_TREE, 'Wrong exact public capture parent identity/tree')
         changed = set(git(root, 'diff', '--name-only', BASE_TREE, 'HEAD').splitlines())
         need(changed == CAPTURE_PATHS, 'Unreviewed capture path delta')
         result.update(source_sha=head, source_tree=git(root, 'rev-parse', 'HEAD^{tree}'),
@@ -178,13 +175,11 @@ def select_devices(runtimes, types, devices):
     for target in TARGETS:
         model_types = [d for d in types['devicetypes'] if d.get('name') == target['model']]
         need(len(model_types) == 1, 'Required exact model unavailable: ' + target['model'])
-        matches = [d for d in devices['devices'].get(runtime['identifier'], [])
-                   if d.get('name') == target['model'] and d.get('isAvailable') and d.get('state') == 'Shutdown'
-                   and d.get('deviceTypeIdentifier') == model_types[0]['identifier']]
-        need(len(matches) == 1, 'Required exact shutdown simulator missing/ambiguous: ' + target['model'])
-        uuid.UUID(matches[0]['udid'])
-        output.append({**target, 'id': matches[0]['udid'], 'device_type': model_types[0]['identifier'],
-                       'runtime': runtime['identifier'], 'runtime_version': runtime['version']})
+        need(type(model_types[0].get('identifier')) is str
+             and model_types[0]['identifier'].startswith('com.apple.CoreSimulator.SimDeviceType.'), 'Invalid observed device type')
+        output.append({**target, 'device_type': model_types[0]['identifier'],
+                       'runtime': runtime['identifier'], 'runtime_version': runtime['version'],
+                       'observed_runtime': runtime, 'observed_device_type': model_types[0]})
     return output
 
 
@@ -345,6 +340,10 @@ class Capture:
         self.packet = self.outer / 'store-capture-evidence'
         self.packet.mkdir()
         self.devices = []
+        self.selected_models = []
+        self.creations = []
+        self.preexisting_device_ids = set()
+        self.preexisting_device_names = set()
         self.images = []
         self.commands = []
         self.cleanup = []
@@ -357,7 +356,8 @@ class Capture:
         write_json(self.outer / 'store-capture-progress.json', {
             'source': getattr(self, 'source', None), 'product': getattr(self, 'product', None),
             'fixtures': self.fixtures, 'installations': self.installations,
-            'devices': self.devices, 'screenshots': self.images,
+            'devices': self.devices, 'selected_models': self.selected_models,
+            'creations': self.creations, 'screenshots': self.images,
             'commands': self.commands, 'cleanup': self.cleanup})
 
     def enter_row(self, row):
@@ -434,6 +434,56 @@ class Capture:
         need(log.count('BOOTSTRAP_EXACT_SIX_ASSETS_VERIFIED') == 1 and 'BOOTSTRAP_RECOVERED_' not in log,
              'Synthetic fixture bootstrap did not complete cleanly')
 
+    def create_device(self, specification):
+        """Create once from exact observed type/runtime, then confirm ownership."""
+        need(specification in self.selected_models and specification['row'] == self.row,
+             'Unreviewed selected model or capture row')
+        need(not any(record['row'] == self.row for record in self.creations), 'Duplicate owned create attempt forbidden')
+        name = 'Celluloid Store Capture ' + self.context['run_id'] + '-' + self.context['run_attempt'] + '-' + self.row
+        need(name not in self.preexisting_device_names, 'Owned capture name already exists')
+        receipt = {'row': self.row, 'name': name, 'device_type': specification['device_type'],
+                   'runtime': specification['runtime'], 'source_sha': self.context['source_sha'],
+                   'run_id': self.context['run_id'], 'run_attempt': self.context['run_attempt'],
+                   'create_exit_code': None, 'confirmed': False}
+        self.creations.append(receipt)
+        self.persist()
+        created = self.command('boot', 'create-owned', ['xcrun', 'simctl', 'create', name,
+                               specification['device_type'], specification['runtime']], 60)
+        receipt.update(create_exit_code=created.returncode, stdout=created.stdout[:1000],
+                       stdout_bytes=len(created.stdout.encode()), stdout_sha256=sha(created.stdout.encode()))
+        self.persist()
+        udid = created.stdout.strip()
+        need(created.returncode == 0 and len(udid) == 36 and str(uuid.UUID(udid)).upper() == udid.upper(),
+             'Create did not return exactly one canonical owned UUID')
+        need(udid.upper() not in self.preexisting_device_ids
+             and not any(d['id'].upper() == udid.upper() for d in self.devices), 'Create returned preexisting/foreign device UUID')
+        receipt['device_id'] = udid
+        self.persist()
+        listing = load_json(self.command('boot', 'confirm-created',
+                            ['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], 30).stdout)
+        matches = [(runtime, item) for runtime, group in listing['devices'].items() for item in group
+                   if item.get('udid') == udid]
+        need(len(matches) == 1, 'Created device readback missing/ambiguous')
+        runtime, actual = matches[0]
+        receipt['observed_readback'] = {'runtime': runtime, 'device': actual}
+        self.persist()
+        need(runtime == specification['runtime'] and actual.get('deviceTypeIdentifier') == specification['device_type']
+             and actual.get('name') == name and actual.get('isAvailable') is True and actual.get('state') == 'Shutdown',
+             'Created device identity/runtime/type/Shutdown state mismatch')
+        need(not any(item.get('state') == 'Booted' for group in listing['devices'].values() for item in group),
+             'Host is not idle after owned creation')
+        receipt['confirmed'] = True
+        device = {**specification, 'id': udid, 'owned_name': name, 'created_in_this_run': True}
+        self.devices.append(device)
+        self.persist()
+        return device
+
+    def require_owned_device(self, device):
+        need(device in self.devices and device['row'] == self.row and any(
+            record['row'] == self.row and record.get('device_id') == device['id'] and record['confirmed'] is True
+            and record['create_exit_code'] == 0 for record in self.creations),
+            'Native device mutation requires successful owned creation and exact readback')
+
     def run(self):
         self.enter_row('large-phone')
         self.source = verify_source(runtime=True)
@@ -442,13 +492,16 @@ class Capture:
         observed = [load_json(self.command('source-before', 'list-' + kind,
                     ['xcrun', 'simctl', 'list', kind, *(['available'] if kind == 'devices' else []), '-j'], 30).stdout)
                     for kind in ('runtimes', 'devicetypes', 'devices')]
-        self.devices = select_devices(*observed)
+        self.selected_models = select_devices(*observed)
+        self.preexisting_device_ids = {str(item['udid']).upper() for group in observed[2]['devices'].values() for item in group}
+        self.preexisting_device_names = {item.get('name') for group in observed[2]['devices'].values() for item in group}
         self.persist()
         need(not any((Path('/tmp') / name).is_symlink() for name in FIXTURE_NAMES), 'Unsafe synthetic fixture destination')
         runpy.run_path(str(ROOT / 'Scripts/create_fixture.py'), run_name='__main__')
         self.fixtures = fixture_files()
         self.persist()
-        first_id = self.devices[0]['id']
+        first_device = self.create_device(self.selected_models[0])
+        first_id = first_device['id']
         self.command('build', 'build', ['xcodebuild', '-project', 'Celluloid.xcodeproj', '-scheme', 'Celluloid',
                      '-configuration', 'Debug', '-destination', 'platform=iOS Simulator,id=' + first_id,
                      '-derivedDataPath', '.build', '-jobs', '2', 'build-for-testing',
@@ -456,9 +509,13 @@ class Capture:
         app = ROOT / '.build/Build/Products/Debug-iphonesimulator/Celluloid.app'
         self.product = product_manifest(app)
         self.persist()
-        for index, device in enumerate(self.devices):
+        for index, specification in enumerate(self.selected_models):
             if index:
-                self.enter_row(device['row'])
+                self.enter_row(specification['row'])
+                device = self.create_device(specification)
+            else:
+                device = first_device
+            self.require_owned_device(device)
             udid = device['id']
             self.command('boot', 'boot', ['xcrun', 'simctl', 'boot', udid])
             self.command('bootstatus', 'bootstatus', ['xcrun', 'simctl', 'bootstatus', udid, '-b'])
@@ -511,10 +568,12 @@ class Capture:
                  'Built/installed product changed during capture')
             self.installations.append({'row': self.row, 'before': staging, 'after': after_installation})
             self.persist()
+            self.require_owned_device(device)
             self.command('shutdown', 'shutdown', ['xcrun', 'simctl', 'shutdown', udid], 45)
             state = load_json(self.command('shutdown', 'confirm-shutdown', ['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], 15).stdout)
             matches = [d for group in state['devices'].values() for d in group if d.get('udid') == udid]
             need(len(matches) == 1 and matches[0].get('state') == 'Shutdown', 'Owned shutdown unconfirmed')
+            self.require_owned_device(device)
             self.command('delete', 'delete', ['xcrun', 'simctl', 'delete', udid], 45)
             state = load_json(self.command('delete', 'confirm-delete', ['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], 15).stdout)
             need(not any(d.get('udid') == udid for group in state['devices'].values() for d in group), 'Owned deletion unconfirmed')
@@ -531,6 +590,7 @@ class Capture:
                   'fixtures': self.fixtures,
                   'installations': self.installations,
                   'first_step_clock': self.first, 'devices': self.devices, 'screenshots': self.images,
+                  'selected_models': self.selected_models, 'creations': self.creations,
                   'commands': self.commands, 'cleanup': self.cleanup, 'error': error,
                   'ui_cases_per_device': list(CASES.values()), 'setup_cases_per_device': list(SETUP_CASES),
                   'full412_reexecuted': False, 'release_qualification': False,
@@ -614,6 +674,7 @@ def main():
         capture.source = progress.get('source') if type(progress.get('source')) is dict else None
         capture.product = progress.get('product') if type(progress.get('product')) is dict else None
         for attribute, key in (('fixtures', 'fixtures'), ('installations', 'installations'),
+                               ('selected_models', 'selected_models'), ('creations', 'creations'),
                                ('devices', 'devices'), ('images', 'screenshots'),
                                ('commands', 'commands'), ('cleanup', 'cleanup')):
             value = progress.get(key, [])

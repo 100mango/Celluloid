@@ -2,14 +2,17 @@
 
 This separate `codex/store-screenshots` push route captures the original app on
 one disposable Mac, serially on the exact observed iPhone 17 Pro (1206×2622)
-and iPad Pro 13-inch (M5) (2064×2752), both on iOS27.0. A missing or ambiguous
-model, different runtime, wrong image size, unknown process state, or command
+and iPad Pro 13-inch (M5) (2064×2752), both on iOS27.0. It creates fresh owned
+instances from those exact observed device types; precreated instances are not
+required or used. A missing or ambiguous type, different runtime, wrong image size, unknown process state, or command
 failure stops the capture. There is no model fallback, rescaling, retry,
 release qualification, archive work, or Store submission in this route.
 
 The product source remains da9d4abd6484ddaff469677d96caf24362645d7c,
-tree 304ee9c0e4197e4a282ae3933c9f510219b2106d. The supervision base is public
-797271810613773ec4a9bc016ea5ad2e6f7cdfa8, tree 66176a4238492ce027d4748d3586c8a5227cce34.
+tree 304ee9c0e4197e4a282ae3933c9f510219b2106d. The successor's exact direct parent
+must be public ef07f3229517db656b970b136a8071f385185f75,
+tree cdde7dae9e9a2ad92c04dc19990a4df663bdd27a. A different parent with the same
+tree or an arbitrary ancestor does not satisfy this identity check.
 The capture source has its own actual commit/tree and workflow identity.
 Its source proof is 545 unchanged protected inputs plus one precisely hashed
 UI-test helper insertion. It does not claim all 546 inputs unchanged or source
@@ -17,11 +20,32 @@ equivalence with the release test target. Removing the exact insertion restores
 the original UI-test hash, proving both existing method bodies and assertions
 remain byte-for-byte unchanged. Every product/project/resource input is unchanged.
 
-Only `emitScreenshot(_:)` changes within protected inputs. With
+The inherited capture overlay changes only `emitScreenshot(_:)` within protected inputs. With
 `TEST_RUNNER_CELLULOID_STORE_CAPTURE=1`, its existing editor/collage checkpoints
 attach `app.screenshot().pngRepresentation` unchanged as `public.png`. The
 existing compact-phone JPEG path remains intact without the opt-in. No pixels
 are drawn, resized, converted, composited or generated for the capture.
+
+This owned-device successor changes only the runner, its tests and this document;
+all protected inputs, including the existing screenshot helper, remain identical
+to ef07. It addresses the observed first attempt 37454490760/job 112238635892,
+which completed toolchain/runtime/type/device discovery but stopped before build
+because iPhone 17 Pro was not precreated. The complete retained devices JSON was
+10470 bytes. That attempt passed the unique 17 Pro device-type check; its complete
+type inventory was not retained, only a 20KB log tail, so no complete type-log
+claim is made.
+
+Discovery still requires exactly one available iOS27.0 runtime, exactly one
+observed type for each fixed model, and an idle host. The runner retains the
+selected raw runtime/type rows. It issues one `simctl create` per model with a
+run/attempt/row-specific name and those exact type/runtime identifiers. It records
+the actual successful command output, rejects noncanonical, repeated or initially
+preexisting UUIDs, then reads back available devices. Exactly one matching UUID
+must belong to the selected runtime/type, have the owned name, be available and
+Shutdown, with no simulator booted. Only after that readback is the instance
+eligible for boot, shutdown or deletion. No failed/unknown create is retried or
+followed by speculative cleanup. The second instance is not created until the
+first owned instance's cleanup is confirmed. Existing instances remain untouched.
 
 Per device the unchanged bootstrap runs these two setup methods, imports its
 existing six synthetic PNG fixtures, and verifies their original resource hashes:
@@ -66,6 +90,7 @@ Fixed command allowances (seconds), shared by both devices under that clock:
 | Operation | Command allowance |
 | --- | ---: |
 | Xcode/version and each simulator inventory read |30 |
+| Fresh owned create / exact created identity readback |60 /30 |
 | Build once |900 |
 | Boot / bootstatus |60 /600 |
 | Install / initial owned container lookup |300 /120 |
@@ -111,6 +136,10 @@ Post-test identity uses the existing uikit_installed_identity readback/validator
 including its relocation, metadata and executable checks; full bundle bytes
 must still match the captured build. Command deadline timing receipts survive
 success and failure retention.
+
+Selected runtime/type rows and per-device create/readback receipts are included
+in the existing bounded progress/report packet, including unsuccessful attempts.
+This does not expand the four-image, 5MB-per-file, 20MB-total artifact limits.
 
 The artifact contains exactly four raw candidate PNGs on success, each at most
 5MB, with receipts, full bounded UI/setup logs, and other log tails within 20MB total. No xcresult bundle is uploaded.
