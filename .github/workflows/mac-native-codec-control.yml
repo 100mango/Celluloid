@@ -1,0 +1,35 @@
+name: Isolated Mac native codec control (diagnostic only)
+on:
+  push:
+    branches: [codex/mac-native-codec-control]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-platforms-refs/heads/codex/apple-platforms
+  cancel-in-progress: false
+jobs:
+  codec-control:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Verify source and run only the retained-source codec control
+        timeout-minutes: 15
+        shell: bash
+        run: python3 Scripts/run_mac_native_codec_control.py
+      - name: Upload fixed bounded codec diagnostics
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: celluloid-mac-native-codec-control-${{ github.sha }}
+          path: ${{ runner.temp }}/celluloid-codec-evidence/
+          retention-days: 1
+          if-no-files-found: error
