@@ -11,7 +11,50 @@ errors = []
 evidence_root = pathlib.Path(os.environ.get('RUNNER_TEMP', '.build/bootstrap-evidence'))
 evidence_root.mkdir(parents=True, exist_ok=True)
 
+# Only the fixed full-shipping route uses this already-owned command adapter.
+# Canonical invocations retain their original helper and command ceilings.
+full_row = os.environ.get('CELLULOID_VALIDATION_SCOPE') == 'uikit-full-shipping'
+
+def row_clock():
+    from validation_route import current_route,UIKIT_FULL
+    from mac_host_transport import load_json
+    from uikit_full_shipping_gate import clock_status
+    if current_route()!=UIKIT_FULL:raise ValueError('Wrong full-shipping bootstrap route')
+    path=evidence_root/'full-shipping-clock.json'
+    if path.is_symlink() or not path.is_file() or not 0<path.stat().st_size<=10_000:raise ValueError('Invalid fixed row clock')
+    clock=load_json(path.read_bytes())
+    context={'source_sha':os.environ['GITHUB_SHA'],'run_id':os.environ['GITHUB_RUN_ID'],
+             'run_attempt':os.environ['GITHUB_RUN_ATTEMPT'],'row':os.environ['CELLULOID_FULL_ROW']}
+    return clock,context,clock_status(clock,context)
+
+def require_inner_allowance(seconds):
+    if not full_row:return
+    _,_,status=row_clock()
+    if status['work_remaining_seconds'] < seconds+15:
+        raise TimeoutError('Full original bootstrap command and cleanup allowance do not fit; no dispatch')
+
+def check_inner_completion():
+    if not full_row:return
+    from uikit_full_shipping_gate import check_completion
+    clock,context,_=row_clock();check_completion(clock,context,'bootstrap')
+
 def run(label, seconds, *args):
+    if full_row:
+        # Direct owned group: do not kill an outer helper while its actual
+        # xcodebuild/simctl command lives in a separate inner process group.
+        from native_process import run as owned_run
+        require_inner_allowance(seconds)
+        try:
+            result=owned_run(args,timeout=seconds,check=False,echo=False,log_name='bootstrap-'+label+'.log')
+        except (TimeoutError,RuntimeError,OSError):
+            path=evidence_root/('bootstrap-'+label+'.log')
+            if path.is_file() and not path.is_symlink() and path.stat().st_size<=30_000_000:
+                print(path.read_text(),end='',flush=True)
+            raise  # No later import/probe after unconfirmed or timed-out work.
+        check_inner_completion()
+        output=result.stdout+'\n'+result.stderr
+        print(output,end='',flush=True)
+        return result.returncode,output
     result = subprocess.run([sys.executable, 'Scripts/run_bounded.py', '--seconds', str(seconds), '--label', label, *args],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     (evidence_root / ('bootstrap-' + label + '.log')).write_text(result.stdout)
@@ -19,14 +62,20 @@ def run(label, seconds, *args):
     return result.returncode, result.stdout
 
 def host(label):
+    if full_row and row_clock()[2]['work_remaining_seconds'] < 630:
+        print('BOOTSTRAP_OPTIONAL_HOST_WITHHELD preserving next command and cleanup allowance',flush=True);return
     print('BOOTSTRAP_HOST_BEGIN', label, datetime.datetime.now(datetime.timezone.utc).isoformat(), flush=True)
     for command in [['vm_stat'], ['memory_pressure', '-Q'], ['sysctl', 'vm.swapusage'], ['df', '-h', '.']]:
         try:
+            require_inner_allowance(15)
             value = subprocess.run(command, capture_output=True, text=True, timeout=15)
+            check_inner_completion()
             print('BOOTSTRAP_HOST', command[0], value.returncode, value.stdout[:4500], value.stderr[:500], flush=True)
         except subprocess.TimeoutExpired: print('BOOTSTRAP_HOST_TIMEOUT', command[0], flush=True)
     try:
+        require_inner_allowance(15)
         value = subprocess.run(['ps', '-axo', 'pid=,ppid=,rss=,comm='], capture_output=True, text=True, timeout=15)
+        check_inner_completion()
         selected = []
         for line in value.stdout.splitlines():
             fields = line.split(None, 3)

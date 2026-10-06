@@ -100,7 +100,7 @@ class CombinedPreflightTests(unittest.TestCase):
             for name in ['combined-source-before.json','combined-source-after.json','combined-preflight.json','preflight-phone-embedded-watch.json','preflight-phone-embedded-watch-release.json']:
                 (root/name).write_text(json.dumps({'source_sha':'a'*40,'checks':{'synthetic_expected_failure':False}}))
             (root/'preflight-phone-debug.log').write_text('irrelevant\n'*10000+'error: synthetic compile problem\n/observed/strip -D -S -no_atom_info source -o destination\n')
-            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,GITHUB_SHA='a'*40,CELLULOID_EVIDENCE_PLATFORM='preflight'),capture_output=True,text=True)
+            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,CELLULOID_VALIDATION_SCOPE='full',RUNNER_TEMP=directory,GITHUB_SHA='a'*40,CELLULOID_EVIDENCE_PLATFORM='preflight'),capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             out=root/'celluloid-bounded-evidence';diagnostics=json.loads((out/'preflight-diagnostics.json').read_text())
             self.assertTrue(any('synthetic compile problem'in line for item in diagnostics for line in item['issues']))

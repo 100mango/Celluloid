@@ -23,7 +23,7 @@ items.append({'exportedFileName':name,'suggestedHumanReadableName':'native-mac-p
 (out/'manifest.json').write_text(json.dumps([{'attachments':items}]))
 ''')
             mock.chmod(0o755)
-            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,GITHUB_SHA='synthetic',CELLULOID_EVIDENCE_PLATFORM='local',PATH=str(binary)+os.pathsep+os.environ['PATH']),capture_output=True,text=True)
+            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,CELLULOID_VALIDATION_SCOPE='full',RUNNER_TEMP=directory,GITHUB_SHA='synthetic',CELLULOID_EVIDENCE_PLATFORM='local',PATH=str(binary)+os.pathsep+os.environ['PATH']),capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             output=folder/'celluloid-bounded-evidence'
             images=list(output.glob('*.png'))
@@ -42,7 +42,7 @@ items.append({'exportedFileName':name,'suggestedHumanReadableName':'native-mac-p
                         for _ in range(256):handle.write(b'x'*256_000)
                         handle.write(b'\nTest Case synthetic passed\n')
                     (folder/'native-vision-launch.png').write_bytes(b'\x89PNG\r\n\x1a\n'+b'x'*5_000_000)
-                    result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,GITHUB_SHA='synthetic',CELLULOID_EVIDENCE_PLATFORM=platform),capture_output=True,text=True)
+                    result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,CELLULOID_VALIDATION_SCOPE='full',RUNNER_TEMP=directory,GITHUB_SHA='synthetic',CELLULOID_EVIDENCE_PLATFORM=platform),capture_output=True,text=True)
                     self.assertEqual(result.returncode,0,result.stderr)
                     output=folder/'celluloid-bounded-evidence'
                     manifest=json.loads((output/'manifest.json').read_text())
@@ -55,14 +55,14 @@ items.append({'exportedFileName':name,'suggestedHumanReadableName':'native-mac-p
                     self.assertLessEqual(sum(p.stat().st_size for p in output.iterdir()),total_budget)
                     for record in manifest['files']:
                         data=(output/record['name']).read_bytes();self.assertEqual(hashlib.sha256(data).hexdigest(),record['sha256']);self.assertLessEqual(len(data),5_000_000)
-                    again=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,CELLULOID_EVIDENCE_PLATFORM=platform),capture_output=True,text=True)
+                    again=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,CELLULOID_VALIDATION_SCOPE='full',RUNNER_TEMP=directory,CELLULOID_EVIDENCE_PLATFORM=platform),capture_output=True,text=True)
                     self.assertNotEqual(again.returncode,0,'A nonempty destination must not be merged into an upload')
     def test_mac_reallocation_preserves_runtime_tails_and_marks_compiler_omissions(self):
         with tempfile.TemporaryDirectory() as directory:
             folder=Path(directory)
             for name in ['early-uikit-build.log','mac-ui.log','sandbox.log']:
                 (folder/name).write_text('x'*250_000+'\nTest Case synthetic passed\n')
-            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,GITHUB_SHA='synthetic',CELLULOID_EVIDENCE_PLATFORM='mac'),capture_output=True,text=True)
+            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,CELLULOID_VALIDATION_SCOPE='full',RUNNER_TEMP=directory,GITHUB_SHA='synthetic',CELLULOID_EVIDENCE_PLATFORM='mac'),capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             output=folder/'celluloid-bounded-evidence';manifest=json.loads((output/'manifest.json').read_text())
             self.assertEqual((output/'early-uikit-build.log.tail.txt').stat().st_size,20_000)
@@ -80,7 +80,7 @@ items.append({'exportedFileName':name,'suggestedHumanReadableName':'native-mac-p
             with self.subTest(platform=platform), tempfile.TemporaryDirectory() as directory:
                 # A fresh child imports the production module after its explicit env is set.
                 result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],
-                    env=dict(os.environ,RUNNER_TEMP=directory,CELLULOID_EVIDENCE_PLATFORM=platform),capture_output=True,text=True)
+                    env=dict(os.environ,CELLULOID_VALIDATION_SCOPE='full',RUNNER_TEMP=directory,CELLULOID_EVIDENCE_PLATFORM=platform),capture_output=True,text=True)
                 self.assertEqual(result.returncode,0,result.stderr)
                 output=Path(directory)/'celluloid-bounded-evidence'
                 manifest=json.loads((output/'manifest.json').read_text())
@@ -92,7 +92,7 @@ items.append({'exportedFileName':name,'suggestedHumanReadableName':'native-mac-p
             folder=Path(directory)
             for platform in ['tv','vision','phone','watch']:
                 (folder/f'native-{platform}-launch.jpg').write_bytes(b'\xff\xd8\xff'+b'x'*2_500_000)
-            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,CELLULOID_EVIDENCE_PLATFORM='tv'),capture_output=True,text=True)
+            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,CELLULOID_VALIDATION_SCOPE='full',RUNNER_TEMP=directory,CELLULOID_EVIDENCE_PLATFORM='tv'),capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             output=folder/'celluloid-bounded-evidence';total=sum(p.stat().st_size for p in output.iterdir())
             manifest=json.loads((output/'manifest.json').read_text())

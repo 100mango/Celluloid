@@ -212,7 +212,7 @@ class NativeGlyphObservationTests(unittest.TestCase):
                         f"Test Case '-[{owner} {method}]' failed (1.0 seconds)."]
                 (temp/'mac.log').write_text('\n'.join(lines)+'\n')
                 (temp/'domain.log').write_text('optional pressure\n'*200000)
-                result=subprocess.run(['python3',str(root/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=str(temp),GITHUB_SHA='c'*40,CELLULOID_EVIDENCE_PLATFORM='mac'),capture_output=True,text=True,timeout=15)
+                result=subprocess.run(['python3',str(root/'Scripts/collect_native_evidence.py')],env=dict(os.environ,CELLULOID_VALIDATION_SCOPE='full',RUNNER_TEMP=str(temp),GITHUB_SHA='c'*40,CELLULOID_EVIDENCE_PLATFORM='mac'),capture_output=True,text=True,timeout=15)
                 self.assertEqual(result.returncode==0,mutation=='valid',result.stderr)
                 output=temp/'celluloid-bounded-evidence'/'native-glyph-observation.json'
                 if mutation=='valid':

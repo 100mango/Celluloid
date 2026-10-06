@@ -1,0 +1,728 @@
+name: Original shipping UIKit regression (fixed four rows)
+on:
+  push:
+    branches:
+    - codex/uikit-full-shipping
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-platforms-refs/heads/codex/apple-platforms
+  cancel-in-progress: false
+env:
+  CELLULOID_VALIDATION_SCOPE: uikit-full-shipping
+jobs:
+  mac-producer:
+    outputs:
+      artifact_id: ${{ steps.producer_artifact.outputs.artifact-id }}
+      artifact_digest: ${{ steps.producer_artifact.outputs.artifact-digest }}
+      manifest_sha256: ${{ steps.bounded_evidence.outputs.manifest_sha256 }}
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      CELLULOID_EVIDENCE_PLATFORM: mac
+    steps:
+    - name: Reserve the unchanged Mac job budget
+      shell: bash
+      run: |
+        python3 - <<'PY'
+        import json, os, time
+        from pathlib import Path
+        Path(os.environ['RUNNER_TEMP'],'mac-job-clock.json').write_text(json.dumps({
+          'source_sha':os.environ['GITHUB_SHA'], 'started_monotonic':time.monotonic(),
+          'started_unix':time.time(), 'execution_budget_seconds':41*60}))
+        PY
+
+        cat > "$RUNNER_TEMP/full-shipping-mac-shell.sh" <<'SHMAC'
+        mac_clock() {
+          python3 - "$1" <<'PYMACCLOCK'
+        import json,os,sys,time
+        from pathlib import Path
+        r=json.loads(Path(os.environ['RUNNER_TEMP'],'mac-job-clock.json').read_text())
+        assert r['source_sha']==os.environ['GITHUB_SHA'] and r['execution_budget_seconds']==41*60
+        elapsed=time.monotonic()-r['started_monotonic']
+        assert 0<=elapsed<=41*60 and time.time()>=r['started_unix']
+        assert 41*60-elapsed>=int(sys.argv[1]), 'Mac first-step clock allocation exhausted'
+        PYMACCLOCK
+        }
+        SHMAC
+        echo "BASH_ENV=$RUNNER_TEMP/full-shipping-mac-shell.sh" >> "$GITHUB_ENV"
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      timeout-minutes: 2
+      with:
+        persist-credentials: false
+        ref: ${{ github.sha }}
+        fetch-depth: 2
+    - name: Verify exact integrated source and stable toolchain
+      timeout-minutes: 4
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 Scripts/verify_combined_source.py --phase before
+        sw_vers
+        xcodebuild -version | tee "$RUNNER_TEMP/full-shipping-xcode.txt"
+        grep -Fx 'Xcode 27.0' "$RUNNER_TEMP/full-shipping-xcode.txt"
+        python3 -m unittest discover -s Scripts -p 'test_*.py' -v
+        swift -swift-version 5 Scripts/materialize_native_icons.swift
+        python3 Scripts/verify_native_icon_inputs.py
+    - name: Produce fresh Mac fixtures with all original42 native cases
+      id: native_tests
+      timeout-minutes: 12
+      shell: bash
+      run: |
+        set -euo pipefail
+        mac_clock 900
+        python3 Scripts/run_bounded.py --seconds 600 --label same-job-Mac-producer xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMac -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-native" -resultBundlePath "$RUNNER_TEMP/CelluloidMac.xcresult" CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/mac.log"
+
+        mac_clock 300
+    - name: Require the unchanged42 cases and independent native text oracle
+      id: mac_producer
+      if: (success() || failure()) && steps.native_tests.outcome == 'success'
+      timeout-minutes: 1
+      shell: bash
+      run: |
+        python3 Scripts/verify_required_interoperability.py mac --platform-contract --log "$RUNNER_TEMP/mac.log" --output "$RUNNER_TEMP/mac-required-tests.json"
+    - name: Bind the actual same-job producer
+      if: success() && steps.mac_producer.outcome == 'success'
+      shell: bash
+      run: |
+        set -euo pipefail
+        mac_clock 300
+        python3 Scripts/uikit_full_shipping_handoff.py producer
+
+        mac_clock 300
+      timeout-minutes: 2
+    - name: Verify unchanged source and remaining collection allowance
+      if: always()
+      timeout-minutes: 1
+      shell: bash
+      run: |
+        set -euo pipefail
+        mac_clock 300
+        python3 Scripts/verify_combined_source.py --phase after
+        python3 Scripts/verify_native_icon_inputs.py
+
+        mac_clock 240
+    - name: Export within the unchanged2MB Mac evidence allocation
+      id: bounded_evidence
+      if: always()
+      timeout-minutes: 3
+      shell: bash
+      run: |
+        set -euo pipefail
+        mac_clock 240
+        python3 Scripts/collect_native_evidence.py
+        python3 Scripts/uikit_full_shipping_handoff.py manifest-output
+        mac_clock 60
+    - name: Upload exact same-run fixture evidence
+      id: producer_artifact
+      if: always() && steps.bounded_evidence.outcome == 'success'
+      timeout-minutes: 1
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: celluloid-uikit-full-producer-${{ github.sha }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/celluloid-bounded-evidence/
+        retention-days: 1
+        if-no-files-found: error
+    - name: Require completed Mac producer collection and final clock
+      if: always()
+      timeout-minutes: 1
+      env:
+        COLLECTION_OUTCOME: ${{ steps.bounded_evidence.outcome }}
+        UPLOAD_OUTCOME: ${{ steps.producer_artifact.outcome }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        mac_clock 0
+        test "$COLLECTION_OUTCOME" = success
+        test "$UPLOAD_OUTCOME" = success
+  uikit-regression:
+    needs: mac-producer
+    if: always() && needs.mac-producer.result == 'success'
+    name: iOS27 regression (${{ matrix.key }})
+    runs-on: xcode-27
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+        - key: compact-phone
+          device: iPhone SE (3rd generation)
+        - key: large-phone
+          device: iPhone 18 Pro Max
+        - key: small-ipad
+          device: iPad mini (A17 Pro)
+        - key: large-ipad
+          device: iPad Pro 13-inch (M5)
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      DEVICE_NAME: ${{ matrix.device }}
+      CELLULOID_EVIDENCE_PLATFORM: ${{ matrix.key }}
+      CELLULOID_FULL_ROW: ${{ matrix.key }}
+    steps:
+    - name: Start the fixed row clock
+      shell: bash
+      run: |
+        python3 - <<'PYCLOCK'
+        import json,os,time
+        from pathlib import Path
+        Path(os.environ['RUNNER_TEMP'],'full-shipping-clock.json').write_text(json.dumps({
+          'schema':'Celluloid.UIKitFullShippingClock.1','source_sha':os.environ['GITHUB_SHA'],
+          'run_id':os.environ['GITHUB_RUN_ID'],'run_attempt':os.environ['GITHUB_RUN_ATTEMPT'],
+          'row':os.environ['CELLULOID_FULL_ROW'],'started_monotonic':time.monotonic(),
+          'started_unix':time.time(),'execution_budget_seconds':3360}))
+        PYCLOCK
+
+        # Every later shell step receives these workflow-owned adapters. They only
+        # wrap the fixed commands below; limits and phase names remain in the gate.
+        cat > "$RUNNER_TEMP/full-shipping-shell.sh" <<'SHFUNCTIONS'
+        full_gate() {
+          python3 Scripts/uikit_full_shipping_gate.py "$@" --row "$CELLULOID_FULL_ROW" --clock "$RUNNER_TEMP/full-shipping-clock.json"
+        }
+        bounded() {
+          local phase="$1" label="$2" seconds status=0
+          shift 2
+          seconds=$(full_gate admit --phase "$phase") || return $?
+          python3 Scripts/run_bounded.py --seconds "$seconds" --label "$label" "$@" || status=$?
+          full_gate check-clock --phase "$phase" || { if [[ "$status" -eq 0 ]]; then status=1; fi; }
+          return "$status"
+        }
+        record_phase() {
+          python3 - "$1" "$2" <<'PYRECORD'
+        import json,os,sys
+        from pathlib import Path
+        sys.path.insert(0,'Scripts')
+        from uikit_full_shipping_gate import expected_phases
+        phase,code=sys.argv[1],int(sys.argv[2])
+        assert phase in expected_phases(os.environ['CELLULOID_FULL_ROW'])
+        p=Path(os.environ['RUNNER_TEMP'],'full-shipping-phase-outcomes.json')
+        rows=json.loads(p.read_text()) if p.exists() else []
+        assert not any(r['name']==phase for r in rows), 'Duplicate phase outcome'
+        rows.append({'name':phase,'exit_code':code})
+        p.write_text(json.dumps(rows,indent=2)+'\n')
+        PYRECORD
+        }
+        extract_summary() {
+          local bundle="$1" stem="$2" status=0
+          bounded summary "$stem summary" /bin/bash -c 'xcrun xcresulttool get test-results summary --path "$1" > "$2"' -- "$bundle" "$RUNNER_TEMP/$stem.summary.json" || status=$?
+          if [[ -f "$RUNNER_TEMP/$stem.summary.json" ]]; then
+            cat "$RUNNER_TEMP/$stem.summary.json" >> "$GITHUB_STEP_SUMMARY" || status=$?
+          fi
+          return "$status"
+        }
+        test_phase() {
+          local phase="$1" bundle="$2" label="$3" status=0 summary_status=0
+          shift 3
+          # pipefail preserves both the bounded command and tee outcomes. Extract the
+          # finalized summary even after a failed XCTest command; never promote it.
+          bounded "$phase" "$label" "$@" 2>&1 | tee "$RUNNER_TEMP/$phase.log" || status=$?
+          record_phase "$phase" "$status" || return $?
+          extract_summary "$bundle" "$phase" || summary_status=$?
+          if [[ "$status" -ne 0 ]]; then return "$status"; fi
+          return "$summary_status"
+        }
+        record_bootstrap_phase() {
+          python3 - "$1" <<'PYBOOTSTRAP' || return $?
+        import json,math,os,sys,time
+        from datetime import datetime
+        from pathlib import Path
+        sys.path.insert(0,'Scripts')
+        from uikit_full_shipping_gate import phase_files,validate_phase,check_completion,_read_file,WORK_SECONDS
+        from mac_host_transport import load_json
+        phase=sys.argv[1];assert phase in ('bootstrap-readiness','bootstrap-reconcile')
+        root=Path(os.environ['RUNNER_TEMP']);row=os.environ['CELLULOID_FULL_ROW']
+        log_name,summary_name=phase_files(phase)
+        def read(name,maximum=100_000):return load_json(_read_file(root,name,maximum))
+        timing=read(log_name+'.timing.json');code=timing.get('return_code')
+        assert type(code) is int, 'Missing actual bootstrap process result'
+        outcomes=root/'full-shipping-phase-outcomes.json'
+        records=read(outcomes.name) if outcomes.exists() else []
+        assert not any(item['name']==phase for item in records), 'Duplicate bootstrap result'
+        records.append({'name':phase,'exit_code':code})
+        outcomes.write_text(json.dumps(records,indent=2)+'\n')
+        assert timing['command']=='xcodebuild' and type(timing['timeout_seconds']) is int and timing['timeout_seconds']==360
+        assert code==0 and timing['timed_out'] is False, 'Failed or timed-out bootstrap command'
+        assert type(timing['elapsed_seconds']) in (int,float) and math.isfinite(timing['elapsed_seconds']) and timing['elapsed_seconds']>=0
+        clock=read('full-shipping-clock.json')
+        context={key:os.environ[env] for key,env in [('source_sha','GITHUB_SHA'),('run_id','GITHUB_RUN_ID'),('run_attempt','GITHUB_RUN_ATTEMPT'),('row','CELLULOID_FULL_ROW')]}
+        check_completion(clock,context,phase)
+        device=read('full-shipping-device.json')
+        assert all(device[key]==value for key,value in context.items())
+        summary=read(summary_name,2_000_000)
+        validate_phase(row,phase,_read_file(root,log_name,30_000_000),summary,device['device'])
+        started=datetime.fromisoformat(timing['started']);finished=datetime.fromisoformat(timing['finished'])
+        assert started.tzinfo is not None and finished.tzinfo is not None
+        assert clock['started_unix']<=started.timestamp()<=summary['startTime']<summary['finishTime']<=finished.timestamp()<=time.time()
+        assert finished.timestamp()<=clock['started_unix']+WORK_SECONDS
+        method,label={'bootstrap-readiness':('testPhotosLibraryBootstrapReadiness','readiness-before-import'),
+                      'bootstrap-reconcile':('testReconcileSyntheticPhotosAfterImport','reconcile-all')}[phase]
+        command=['xcodebuild','-project','Celluloid.xcodeproj','-scheme','Celluloid','-configuration','Debug',
+                 '-destination','platform=iOS Simulator,id='+device['device']['id'],'-derivedDataPath','.build',
+                 '-resultBundlePath',str(root/('Bootstrap-'+label+'.xcresult')),'-parallel-testing-enabled','NO',
+                 '-collect-test-diagnostics','never','-only-testing:CelluloidTests/EditorRegressionTests/'+method,
+                 'test-without-building','CODE_SIGNING_ALLOWED=NO']
+        outer=_read_file(root,'bootstrap.log',30_000_000).splitlines()
+        assert outer.count('+ '+' '.join(command))==1, 'Bootstrap command differs from original selection'
+        emitted=[load_json(line.split(' ',1)[1]) for line in outer if line.startswith('NATIVE_PROCESS_TIMING ')]
+        assert sum(item==timing for item in emitted)==1, 'Bootstrap timing is not the actual command result'
+        PYBOOTSTRAP
+          full_gate check-clock --phase "$1"
+        }
+        owned_device() {
+          python3 - <<'PYOWNED'
+        import json,os,uuid
+        from pathlib import Path
+        p=Path(os.environ['RUNNER_TEMP'],'full-shipping-device.json')
+        assert p.is_file() and not p.is_symlink()
+        r=json.loads(p.read_text())
+        assert r['schema']=='Celluloid.FullShippingDevice.1'
+        for key,env in [('source_sha','GITHUB_SHA'),('run_id','GITHUB_RUN_ID'),('run_attempt','GITHUB_RUN_ATTEMPT'),('row','CELLULOID_FULL_ROW')]:
+            assert r[key]==os.environ[env], 'Owned simulator identity changed'
+        d=r['device']; uuid.UUID(d['id'])
+        assert d['model']==os.environ['DEVICE_NAME']
+        assert Path('/tmp/current-celluloid-simulator').read_text().strip()==d['id']
+        print(d['id'])
+        PYOWNED
+        }
+        record_cleanup() {
+          python3 - "$1" "$2" <<'PYCLEAN'
+        import json,os,sys
+        from pathlib import Path
+        p=Path(os.environ['RUNNER_TEMP'],'full-shipping-cleanup-actions.json')
+        action,code=sys.argv[1],int(sys.argv[2]);assert action in ('shutdown','delete')
+        rows=json.loads(p.read_text()) if p.exists() else []
+        assert not any(r['action']==action for r in rows)
+        rows.append({'action':action,'exit_code':code})
+        p.write_text(json.dumps(rows,indent=2)+'\n')
+        PYCLEAN
+        }
+        SHFUNCTIONS
+        echo "BASH_ENV=$RUNNER_TEMP/full-shipping-shell.sh" >> "$GITHUB_ENV"
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+        ref: ${{ github.sha }}
+        fetch-depth: 2
+      timeout-minutes: 2
+    - name: Verify exact tested commit
+      id: source_before
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$GITHUB_EVENT_NAME" = push
+        test "$GITHUB_REPOSITORY" = 100mango/Celluloid
+        test "$GITHUB_REF" = refs/heads/codex/uikit-full-shipping
+        test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+        test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+        git diff --exit-code HEAD --
+        bounded source-before source-before python3 Scripts/verify_combined_source.py --phase before
+        echo "Tested commit: $(git rev-parse HEAD)"
+        echo "Tested tree: $(git rev-parse 'HEAD^{tree}')"
+        shasum -a 256 .github/workflows/uikit-full-shipping.yml
+      timeout-minutes: 2
+    - name: Verify reviewed combined application tests and build settings
+      shell: bash
+      run: |
+        set -euo pipefail
+        full_gate admit --phase source-before > /dev/null
+        python3 Scripts/verify_combined_source.py --phase before
+
+        full_gate check-clock --phase source-before
+      timeout-minutes: 3
+    - name: Verify stable Apple environment
+      id: environment
+      shell: bash
+      run: |
+        set -euo pipefail
+        full_gate admit --phase source-before > /dev/null
+        sw_vers
+        xcodebuild -version | tee "$RUNNER_TEMP/full-shipping-xcode.txt"
+        xcodebuild -showsdks
+        xcrun simctl list runtimes
+        xcrun simctl list devices available
+        xcodebuild -version | grep '^Xcode 27.0$'
+        xcrun simctl list runtimes | grep 'iOS 27.0'
+
+        full_gate check-clock --phase source-before
+      timeout-minutes: 3
+    - name: Verify reproducible project
+      id: reproducible
+      shell: bash
+      run: |
+        set -euo pipefail
+        full_gate admit --phase source-before > /dev/null
+        python3 Scripts/generate_native_project.py
+        python3 Scripts/generate_project.py
+        swift -swift-version 5 Scripts/materialize_native_icons.swift
+        python3 Scripts/verify_native_icon_inputs.py
+        python3 Scripts/validate_release.py
+        git diff --exit-code -- Celluloid.xcodeproj Celluloid.xcworkspace
+
+        full_gate check-clock --phase source-before
+      timeout-minutes: 3
+    - name: Compile Release app framework and Photos extension
+      id: release_build
+      if: ${{ matrix.key == 'compact-phone' }}
+      timeout-minutes: 12
+      shell: bash
+      run: |
+        set -euo pipefail
+        bounded release-build Release-shipping-compile xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Release -destination 'generic/platform=iOS Simulator' -derivedDataPath .build/Release -jobs 2 build CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee "$RUNNER_TEMP/release-build.log"
+    - name: Retrieve exact-head manufactured Mac layer fixture
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        artifact-ids: ${{ needs.mac-producer.outputs.artifact_id }}
+        merge-multiple: true
+        path: ${{ runner.temp }}/mac-fixture-evidence/
+      timeout-minutes: 2
+    - name: Verify immutable same-run fixture and producer
+      id: transfer
+      shell: bash
+      env:
+        PRODUCER_ARTIFACT_ID: ${{ needs.mac-producer.outputs.artifact_id }}
+        PRODUCER_MANIFEST_SHA: ${{ needs.mac-producer.outputs.manifest_sha256 }}
+        PRODUCER_ARTIFACT_DIGEST: ${{ needs.mac-producer.outputs.artifact_digest }}
+      run: |
+        set -euo pipefail
+        full_gate admit --phase source-before > /dev/null
+        python3 Scripts/uikit_full_shipping_handoff.py transfer --artifact-id "$PRODUCER_ARTIFACT_ID" --manifest-sha256 "$PRODUCER_MANIFEST_SHA" --reported-artifact-digest "$PRODUCER_ARTIFACT_DIGEST"
+
+        full_gate check-clock --phase source-before
+      timeout-minutes: 3
+    - name: Verify every device selection branch on runner Bash
+      id: device_selection
+      shell: bash
+      run: |
+        set -euo pipefail
+        full_gate admit --phase source-before > /dev/null
+        /bin/bash Scripts/test_matrix_device_selection.sh
+
+        full_gate check-clock --phase source-before
+      timeout-minutes: 3
+    - name: Select build and boot isolated test simulator
+      id: prepare
+      shell: bash
+      run: |
+        set -euo pipefail
+        full_gate admit --phase build > /dev/null
+        python3 Scripts/create_fixture.py
+        /bin/bash Scripts/select_matrix_device.sh "$DEVICE_NAME" > /tmp/test-devices.txt
+        cat /tmp/test-devices.txt
+        test "$(wc -l < /tmp/test-devices.txt | tr -d ' ')" = 1
+        id=$(cut -d' ' -f1 /tmp/test-devices.txt)
+        echo "$id" > /tmp/current-celluloid-simulator
+
+        python3 - <<'PYDEVICE'
+        import json,os,uuid
+        from pathlib import Path
+        udid=Path('/tmp/current-celluloid-simulator').read_text().strip();uuid.UUID(udid)
+        p=Path(os.environ['RUNNER_TEMP'],'full-shipping-device.json');assert not p.exists()
+        p.write_text(json.dumps({'schema':'Celluloid.FullShippingDevice.1',
+          'source_sha':os.environ['GITHUB_SHA'],'run_id':os.environ['GITHUB_RUN_ID'],
+          'run_attempt':os.environ['GITHUB_RUN_ATTEMPT'],'row':os.environ['CELLULOID_FULL_ROW'],
+          'device':{'id':udid,'model':os.environ['DEVICE_NAME']}},indent=2)+'\n')
+        PYDEVICE
+        sysctl hw.memsize hw.ncpu
+        df -h "$HOME" .build 2>/dev/null || df -h "$HOME"
+        bounded build "$DEVICE_NAME build" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -jobs 2 build-for-testing CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee "$RUNNER_TEMP/build.log"
+        bounded pre-boot-memory pre-boot-memory memory_pressure -Q
+        bounded pre-boot-vm pre-boot-vm vm_stat
+        bounded pre-boot-swap pre-boot-swap sysctl vm.swapusage
+        bounded boot "$DEVICE_NAME boot" xcrun simctl boot "$id"
+        bounded bootstatus "$DEVICE_NAME bootstatus" xcrun simctl bootstatus "$id" -b
+      timeout-minutes: 30
+    - name: Stage exact original consumer fixture
+      id: stage_fixture
+      if: success()
+      shell: bash
+      run: |
+        set -euo pipefail
+        id=$(cat /tmp/current-celluloid-simulator)
+        # File-only staging never launches the app or touches Photos.
+        test "$(full_gate admit --phase fixture-stage)" -eq 600
+        stage_started=$(python3 -c 'import time; print(time.monotonic())')
+        python3 Scripts/stage_uikit_layer_fixture.py "$id" .build/Build/Products/Debug-iphonesimulator/Celluloid.app "$RUNNER_TEMP/mac-fixture-evidence" --output "$RUNNER_TEMP/uikit-layer-staging.json"
+        python3 -c 'import sys,time; assert 0<=time.monotonic()-float(sys.argv[1])<=600, "Staging aggregate exceeded600s"' "$stage_started"
+        full_gate check-clock --phase fixture-stage
+      timeout-minutes: 11
+    - name: Run pure unit and decorated export regressions before import
+      id: units
+      timeout-minutes: 17
+      if: ${{ !cancelled() && steps.prepare.conclusion == 'success' && steps.stage_fixture.conclusion == 'success' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        id=$(cat /tmp/current-celluloid-simulator)
+        test_phase units TestResults-units.xcresult "$DEVICE_NAME units" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-units.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests -skip-testing:CelluloidTests/AdjustmentPreservationPhotoKitTests -skip-testing:CelluloidTests/AdaptiveInterfaceTests/testFullLocalizedTitlesFitAtNormalAndLargestTextAcrossViewports -skip-testing:CelluloidTests/CollageCompositionTests -skip-testing:CelluloidTests/OverlayResizeTests/testPhotosExtensionRestartWithoutAdjustmentClearsDecorationsFilterAndCancellation -skip-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation -skip-testing:CelluloidTests/EditorRegressionTests/testPhotosLibraryBootstrapReadiness -skip-testing:CelluloidTests/EditorRegressionTests/testReconcileSyntheticPhotosAfterImport test-without-building CODE_SIGNING_ALLOWED=NO
+    - name: Require actual original UIKit manufactured-layer consumer
+      if: ${{ !cancelled() && steps.prepare.conclusion == 'success' && steps.stage_fixture.conclusion == 'success' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(full_gate admit --phase consumer-contract)" -eq 60
+        consumer_started=$(python3 -c 'import time; print(time.monotonic())')
+        python3 Scripts/verify_required_interoperability.py uikit --platform-contract --result-bundle TestResults-units.xcresult --device-id-file /tmp/current-celluloid-simulator --expected-model "$DEVICE_NAME" --log "$RUNNER_TEMP/units.log" --fixtures "$RUNNER_TEMP/mac-fixture-evidence" --output "$RUNNER_TEMP/uikit-required-tests.json"
+        python3 -c 'import sys,time; assert 0<=time.monotonic()-float(sys.argv[1])<=60, "Consumer proof aggregate exceeded60s"' "$consumer_started"
+        full_gate check-clock --phase consumer-contract
+      id: consumer_contract
+      timeout-minutes: 2
+    - name: Verify PhotoKit readiness and reconcile pristine fixtures
+      id: bootstrap
+      if: ${{ !cancelled() && steps.prepare.conclusion == 'success' && steps.stage_fixture.conclusion == 'success' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        id=$(cat /tmp/current-celluloid-simulator)
+        bounded registration "$DEVICE_NAME registration" xcrun simctl get_app_container "$id" Mango.Celluloid app
+        bounded privacy "$DEVICE_NAME initial-grant" xcrun simctl privacy "$id" grant photos Mango.Celluloid
+        bounded appearance "$DEVICE_NAME initial-light" xcrun simctl ui "$id" appearance light
+        status=0
+        full_gate admit --phase bootstrap > /dev/null
+        python3 -u Scripts/probe_photos_bootstrap.py "$id" --already-prepared 2>&1 | tee "$RUNNER_TEMP/bootstrap.log" || status=$?
+        full_gate check-clock --phase bootstrap || { if [[ "$status" -eq 0 ]]; then status=1; fi; }
+        # The existing helper owns the original readiness/import/reconcile commands.
+        # Retain each actual inner process result and summary even on outer failure.
+        for phase in bootstrap-readiness bootstrap-reconcile; do
+          case "$phase" in
+            bootstrap-readiness) stem=bootstrap-readiness-before-import; bundle=Bootstrap-readiness-before-import.xcresult ;;
+            bootstrap-reconcile) stem=bootstrap-reconcile-all; bundle=Bootstrap-reconcile-all.xcresult ;;
+          esac
+          extract_summary "$RUNNER_TEMP/$bundle" "$stem" || { if [[ "$status" -eq 0 ]]; then status=1; fi; }
+          record_bootstrap_phase "$phase" || { if [[ "$status" -eq 0 ]]; then status=1; fi; }
+        done
+        exit "$status"
+      timeout-minutes: 45
+    - name: Run pristine Photos integration regressions
+      id: photos_integration
+      if: ${{ !cancelled() && steps.prepare.conclusion == 'success' && steps.stage_fixture.conclusion == 'success' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -f /tmp/celluloid-bootstrap-assets-verified
+        id=$(cat /tmp/current-celluloid-simulator)
+        test_phase photos-integration TestResults-Photos-integration.xcresult "$DEVICE_NAME Photos-integration" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-Photos-integration.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests/AdaptiveInterfaceTests/testFullLocalizedTitlesFitAtNormalAndLargestTextAcrossViewports -only-testing:CelluloidTests/CollageCompositionTests -only-testing:CelluloidTests/OverlayResizeTests/testPhotosExtensionRestartWithoutAdjustmentClearsDecorationsFilterAndCancellation -only-testing:CelluloidTests/EditorRegressionTests/testExtensionStartsRendersAndFinishesSeededPhotoWithoutLibraryMutation test-without-building CODE_SIGNING_ALLOWED=NO
+      timeout-minutes: 17
+    - name: Run real Photos permission transitions
+      id: permissions
+      if: ${{ !cancelled() && steps.prepare.conclusion == 'success' && steps.stage_fixture.conclusion == 'success' && matrix.key == 'compact-phone' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Continue independently after reconciled setup errors, but the job stays red.
+        test -f /tmp/celluloid-bootstrap-assets-verified
+        id=$(cat /tmp/current-celluloid-simulator)
+        failures=0
+        for state in granted revoked limited; do
+          case "$state" in
+            granted) action=grant; method=testRealGrantedAccessCanSelectFixture ;;
+            revoked) action=revoke; method=testRealRevokedAccessClearsSelectionAndHasRecovery ;;
+            limited) action=reset; method=testRealLimitedSelectionAndManagement ;;
+          esac
+          bounded privacy "$DEVICE_NAME $state" xcrun simctl privacy "$id" "$action" photos Mango.Celluloid || { failures=$((failures + 1)); continue; }
+          if ! test_phase "permission-$state" "TestResults-permission-$state.xcresult" "$DEVICE_NAME permission-$state" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath "TestResults-permission-$state.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never "-only-testing:CelluloidUITests/CelluloidSystemPermissionTests/$method" test-without-building CODE_SIGNING_ALLOWED=NO; then failures=$((failures + 1)); fi
+        done
+        bounded privacy "$DEVICE_NAME restore-grant" xcrun simctl privacy "$id" grant photos Mango.Celluloid || failures=$((failures + 1))
+        test "$failures" -eq 0
+      timeout-minutes: 23
+    - name: Run strict landscape preflight
+      id: preflight
+      if: ${{ !cancelled() && steps.prepare.conclusion == 'success' && steps.stage_fixture.conclusion == 'success' && matrix.key == 'large-phone' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Continue independently after reconciled setup errors, but the job stays red.
+        test -f /tmp/celluloid-bootstrap-assets-verified
+        id=$(cat /tmp/current-celluloid-simulator)
+        test_phase preflight TestResults-preflight.xcresult "$DEVICE_NAME preflight" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-preflight.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests/testLimitedEmptyPhotosHasManagementAndAdaptiveLayout -only-testing:CelluloidUITests/CelluloidUITests/testSeededPhotoEditingSaveAndReopen test-without-building CODE_SIGNING_ALLOWED=NO
+      timeout-minutes: 17
+    - name: Run core and official accessibility UI regressions
+      id: ui
+      if: ${{ !cancelled() && steps.prepare.conclusion == 'success' && steps.stage_fixture.conclusion == 'success' && (matrix.key != 'large-phone' || steps.preflight.conclusion == 'success') }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Continue independently after reconciled setup errors, but the job stays red.
+        test -f /tmp/celluloid-bootstrap-assets-verified
+        id=$(cat /tmp/current-celluloid-simulator)
+        test_phase ui TestResults-ui.xcresult "$DEVICE_NAME ui" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-ui.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests test-without-building CODE_SIGNING_ALLOWED=NO
+      timeout-minutes: 17
+    - name: Run Dark Mode editing and collage regressions
+      id: dark
+      if: ${{ !cancelled() && steps.prepare.conclusion == 'success' && steps.stage_fixture.conclusion == 'success' && (matrix.key == 'compact-phone' || matrix.key == 'large-ipad') }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Continue independently after reconciled setup errors, but the job stays red.
+        test -f /tmp/celluloid-bootstrap-assets-verified
+        id=$(cat /tmp/current-celluloid-simulator)
+        bounded appearance "$DEVICE_NAME dark-appearance" xcrun simctl ui "$id" appearance dark
+        test_phase dark TestResults-dark.xcresult "$DEVICE_NAME dark" xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-dark.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidUITests/CelluloidUITests/testSeededPhotoEditingSaveAndReopen -only-testing:CelluloidUITests/CelluloidUITests/testTwoPhotoCollageZoomRotateAndSave test-without-building CODE_SIGNING_ALLOWED=NO
+      timeout-minutes: 17
+    - name: Verify actual PhotoKit opaque preservation and output destinations
+      id: preservation
+      if: ${{ success() && matrix.key == 'compact-phone' }}
+      timeout-minutes: 12
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+        git diff --exit-code HEAD --
+        test -f /tmp/celluloid-bootstrap-assets-verified
+        id=$(cat /tmp/current-celluloid-simulator)
+        # Apple's TEST_RUNNER_ prefix forwards only these two explicit public
+        # prerequisites to this one XCTest invocation, without editing the scheme
+        # or enabling the mutation probe for pre-import units/other devices.
+        # https://developer.apple.com/documentation/xcode/environment-variable-reference
+        TEST_RUNNER_CELLULOID_SYNTHETIC_PROBE=1 TEST_RUNNER_CELLULOID_PROBE_SOURCE_SHA="$GITHUB_SHA" \
+          test_phase preservation TestResults-preservation.xcresult actual-PhotoKit-preservation xcodebuild -project Celluloid.xcodeproj -scheme Celluloid -configuration Debug -destination "platform=iOS Simulator,id=$id" -derivedDataPath .build -resultBundlePath TestResults-preservation.xcresult -parallel-testing-enabled NO -collect-test-diagnostics never -only-testing:CelluloidTests/AdjustmentPreservationPhotoKitTests test-without-building CODE_SIGNING_ALLOWED=NO
+        python3 - <<'PYRESULT'
+        import json,os
+        result=json.load(open(os.environ['RUNNER_TEMP']+'/preservation.summary.json'))
+        assert result['totalTestCount']==3 and result['passedTests']==3 and result['failedTests']==0,result
+        PYRESULT
+    - name: Export bounded synthetic UI evidence
+      id: screens
+      if: always()
+      timeout-minutes: 3
+      shell: bash
+      run: |
+        set -euo pipefail
+        bounded evidence-screens evidence-screens python3 -u Scripts/export_permission_screenshot.py 2>&1 | tee "$RUNNER_TEMP/uikit-screens.log"
+    - name: Collect targeted failure diagnostics
+      id: diagnostics
+      if: failure()
+      timeout-minutes: 3
+      shell: bash
+      run: |
+        set -euo pipefail
+        bounded diagnostics diagnostics python3 Scripts/collect_simulator_diagnostics.py 2>&1 | tee "$RUNNER_TEMP/uikit-diagnostics.log"
+    - name: Verify installed shipping product after all tests
+      id: product_after
+      if: always()
+      timeout-minutes: 5
+      shell: bash
+      run: |
+        set -euo pipefail
+        full_gate admit --phase product-readbacks > /dev/null
+        python3 Scripts/uikit_full_shipping_handoff.py product-after
+        full_gate check-clock --phase product-readbacks
+    - name: Shut down owned simulator
+      id: shutdown
+      if: always()
+      timeout-minutes: 2
+      shell: bash
+      run: |
+        set -euo pipefail
+        id=$(owned_device)
+        status=0
+        bounded shutdown "$DEVICE_NAME shutdown" xcrun simctl shutdown "$id" 2>&1 | tee "$RUNNER_TEMP/shutdown.log" || status=$?
+        record_cleanup shutdown "$status"
+        exit "$status"
+    - name: Delete owned simulator
+      id: delete
+      if: always()
+      timeout-minutes: 2
+      shell: bash
+      run: |
+        set -euo pipefail
+        id=$(owned_device)
+        status=0
+        bounded delete "$DEVICE_NAME delete" xcrun simctl delete "$id" 2>&1 | tee "$RUNNER_TEMP/delete.log" || status=$?
+        record_cleanup delete "$status"
+        exit "$status"
+    - name: Verify tested source stayed unchanged
+      id: source_after
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+        git diff --exit-code HEAD --
+        bounded source-after source-after python3 Scripts/verify_combined_source.py --phase after
+        echo "Final tested tree: $(git rev-parse 'HEAD^{tree}')"
+        shasum -a 256 .github/workflows/uikit-full-shipping.yml
+      timeout-minutes: 2
+    - name: Account for every original test and prerequisite
+      id: accounting
+      if: always()
+      timeout-minutes: 2
+      env:
+        FULL_STAGE_OUTCOMES: ${{ toJSON(steps) }}
+        FULL_PRODUCER_RESULT: ${{ needs.mac-producer.result }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PYMANIFEST'
+        import json,os,sys
+        from pathlib import Path
+        sys.path.insert(0,'Scripts')
+        from uikit_full_shipping_gate import EXECUTION_SCHEMA,expected_phases,expected_prerequisites
+        root=Path(os.environ['RUNNER_TEMP']);row=os.environ['CELLULOID_FULL_ROW']
+        identity={key:os.environ[env] for key,env in [('source_sha','GITHUB_SHA'),('run_id','GITHUB_RUN_ID'),('run_attempt','GITHUB_RUN_ATTEMPT')]}
+        stages=json.loads(os.environ['FULL_STAGE_OUTCOMES'])
+        def outcome(name):return stages.get(name,{}).get('outcome','skipped')
+        (root/'full-shipping-stage-outcomes.json').write_text(json.dumps(stages,indent=2)+'\n')
+        prerequisites={name:outcome(name) for name in expected_prerequisites(row)}
+        prerequisites['producer']='success' if os.environ['FULL_PRODUCER_RESULT']=='success' and outcome('transfer')=='success' else 'failure'
+        prerequisites['cleanup']='success' if outcome('shutdown')==outcome('delete')=='success' else 'failure'
+        device_path=root/'full-shipping-device.json'
+        device=json.loads(device_path.read_text())['device'] if device_path.is_file() else {'id':'','model':os.environ['DEVICE_NAME']}
+        actions_path=root/'full-shipping-cleanup-actions.json'
+        actions=json.loads(actions_path.read_text()) if actions_path.is_file() else []
+        (root/'full-shipping-cleanup.json').write_text(json.dumps({**identity,'row':row,'device_id':device['id'],'actions':actions},indent=2)+'\n')
+        phase_path=root/'full-shipping-phase-outcomes.json'
+        actual=json.loads(phase_path.read_text()) if phase_path.is_file() else []
+        assert len({item['name'] for item in actual})==len(actual)
+        assert {item['name'] for item in actual}<=set(expected_phases(row))
+        phase_codes={item['name']:item['exit_code'] for item in actual}
+        manifest={'schema':EXECUTION_SCHEMA,**identity,'row':row,'device':device,
+          'phases':[{'name':name,'exit_code':phase_codes.get(name)} for name in expected_phases(row)],'prerequisites':prerequisites}
+        (root/'full-shipping-execution.json').write_text(json.dumps(manifest,indent=2)+'\n')
+        PYMANIFEST
+        full_gate verify --root "$RUNNER_TEMP" --manifest "$RUNNER_TEMP/full-shipping-execution.json" --output "$RUNNER_TEMP/full-shipping-accounting.json"
+        python3 Scripts/uikit_full_shipping_handoff.py accept-row
+    - name: Export bounded combined evidence
+      id: bounded_evidence
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        bounded collection collection python3 Scripts/collect_native_evidence.py
+      timeout-minutes: 3
+    - name: Admit bounded evidence upload
+      id: upload_admission
+      if: always() && steps.bounded_evidence.outcome == 'success'
+      timeout-minutes: 1
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(full_gate admit --phase upload)" -eq 60
+    - name: Upload bounded combined evidence
+      if: always() && steps.bounded_evidence.outcome == 'success' && steps.upload_admission.outcome == 'success'
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: celluloid-uikit-full-${{ matrix.key }}-${{ github.sha }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/celluloid-bounded-evidence/
+        retention-days: 1
+        if-no-files-found: error
+      id: row_artifact
+      timeout-minutes: 1
+    - name: Require completed collection upload and final row clock
+      if: always()
+      timeout-minutes: 1
+      env:
+        COLLECTION_OUTCOME: ${{ steps.bounded_evidence.outcome }}
+        UPLOAD_OUTCOME: ${{ steps.row_artifact.outcome }}
+        ACCOUNTING_OUTCOME: ${{ steps.accounting.outcome }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        status=0
+        full_gate check-clock --phase upload || status=$?
+        full_gate verify --root "$RUNNER_TEMP" --manifest "$RUNNER_TEMP/full-shipping-execution.json" --output "$RUNNER_TEMP/full-shipping-accounting.json" || status=$?
+        full_gate check-clock || status=$?
+        test "$ACCOUNTING_OUTCOME" = success || status=1
+        test "$COLLECTION_OUTCOME" = success || status=1
+        test "$UPLOAD_OUTCOME" = success || status=1
+        exit "$status"

@@ -2,7 +2,7 @@
 """Bind exact combined app/test/project bytes and workflow to the admitted checkout."""
 from pathlib import Path
 import argparse, hashlib, json, os, subprocess
-from validation_route import current_route,HOST_ONLY,host_only_source_binding
+from validation_route import current_route,HOST_ONLY,host_only_source_binding,UIKIT_FULL,UIKIT_FULL_BASE,UIKIT_FULL_DRIVER_PATHS
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
@@ -23,6 +23,14 @@ def main():
     report={'source_sha':os.environ['GITHUB_SHA'],'tree':git('rev-parse','HEAD^{tree}'),'phase':args.phase,'file_count':len(rows),'source_fingerprint':fingerprint,'reviewed_source_tree':contract['reviewed_source_tree'],'appearance_cancel_patch_sha256':contract.get('appearance_cancel_patch_sha256'),'expected_UIKit_executions':contract.get('expected_UIKit_executions'),'uikit_base':contract['uikit_base'],'native_base':contract['native_base'],'workflow_sha256':hashlib.sha256((ROOT/route['workflow_path']).read_bytes()).hexdigest(),'validation_route':route}
     if route==HOST_ONLY:
         report['host_only_diagnostic']=host_only_source_binding(rows)
+    if route==UIKIT_FULL:
+        assert fingerprint==UIKIT_FULL_BASE['fingerprint'] and len(rows)==547
+        assert git('rev-list','--parents','-n','1','HEAD').split()==[os.environ['GITHUB_SHA'],UIKIT_FULL_BASE['commit']], 'Unreviewed UIKit driver parent'
+        assert git('rev-parse',UIKIT_FULL_BASE['commit']+'^{tree}')==UIKIT_FULL_BASE['tree']
+        changed=set(git('diff','--name-only',UIKIT_FULL_BASE['commit'],'HEAD').splitlines())
+        assert changed<=UIKIT_FULL_DRIVER_PATHS, 'Unreviewed full-shipping source change'
+        report['full_shipping_source']={'base':dict(UIKIT_FULL_BASE),'protected_files':547,'driver_paths':sorted(changed),
+            'scope':'Fresh original UIKit row coverage; Mac Photos host and release remain separate'}
     (Path(os.environ['RUNNER_TEMP'])/('combined-source-'+args.phase+'.json')).write_text(json.dumps(report,indent=2)+'\n')
     print('COMBINED_SOURCE '+json.dumps(report,sort_keys=True))
 if __name__=='__main__':main()

@@ -36,6 +36,10 @@ BRANCH = 'codex/apple-platforms'
 APP_ID = 'Mango.Celluloid'
 EXT_ID = APP_ID + '.CelluloidPhotoExtension'
 ALLOWED = {
+    '.github/workflows/uikit-full-shipping.yml',
+    'Scripts/uikit_full_shipping_gate.py', 'Scripts/test_uikit_full_shipping_gate.py',
+    'Scripts/uikit_full_shipping_handoff.py','Scripts/probe_photos_bootstrap.py', 'Scripts/test_uikit_full_shipping_route.py','Scripts/test_uikit_full_shipping_workflow.py','Scripts/test_uikit_full_shipping_bootstrap.py',
+    'Documentation/uikit-full-shipping.md',
     '.github/workflows/photos-export-observation.yml',
     'Scripts/test_photos_export_observation.py',
     'Scripts/test_mac_host_lifecycle_source.py',

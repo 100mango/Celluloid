@@ -261,7 +261,7 @@ class GenericRuntimeTests(unittest.TestCase):
                         bad=copy.deepcopy(summary);bad['devicesAndConfigurations'][0]['device']['osBuildNumber']='24Z999';path.write_text(json.dumps(bad))
                     if mutation=='oversized':path.write_bytes(b' '*5_000_001)
                     (temp/'domain.log').write_text('optional pressure\n'*150_000)
-                    result=subprocess.run(['python3',str(root/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=str(temp),GITHUB_SHA=self.SOURCE,CELLULOID_EVIDENCE_PLATFORM=platform),text=True,capture_output=True,timeout=15)
+                    result=subprocess.run(['python3',str(root/'Scripts/collect_native_evidence.py')],env=dict(os.environ,CELLULOID_VALIDATION_SCOPE='full',RUNNER_TEMP=str(temp),GITHUB_SHA=self.SOURCE,CELLULOID_EVIDENCE_PLATFORM=platform),text=True,capture_output=True,timeout=15)
                     self.assertEqual(result.returncode==0,mutation=='valid',result.stderr)
                     if mutation=='valid':
                         self.assertEqual((temp/'celluloid-bounded-evidence'/path.name).read_bytes(),path.read_bytes())

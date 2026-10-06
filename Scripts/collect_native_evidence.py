@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Export bounded synthetic evidence under the fixed twelve-job 20 MB allocation; no xcresults."""
 from pathlib import Path
-import base64,hashlib,json,os,re,shutil,subprocess,tempfile
+import base64,hashlib,json,os,re,shutil,subprocess,tempfile,time
 from collections import deque
 ROOT=Path(__file__).resolve().parents[1]
 TEMP=Path(os.environ['RUNNER_TEMP']).resolve()
+COLLECTION_STARTED=time.monotonic()
 OUT=TEMP/'celluloid-bounded-evidence'
 from combined_evidence_budget import BUDGETS,WHOLE_RUN,MAX_FILE
 PLATFORM=os.environ.get("CELLULOID_EVIDENCE_PLATFORM", "local")
@@ -42,6 +43,30 @@ if PLATFORM=='mac':required+=['interop-continuation.json','CelluloidEarlyUIKit2x
 if PLATFORM=='phone':required+=['phone-embedded-watch.json','phone-embedded-watch-release.json','phone-required-tests.json','phone-required-tests.runtime-summary.json']
 if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'}:required+=['uikit-layer-staging.json','uikit-required-tests.json','uikit-required-tests.runtime-summary.json']
 if PLATFORM=='archive':required+=['archive-embedded-watch.json']
+# Fixed original-shipping route: keep complete phase/source/product proof ahead
+# of optional screenshots. Canonical allocation and collection stay unchanged.
+FULL_SHIPPING=os.environ.get('CELLULOID_VALIDATION_SCOPE')=='uikit-full-shipping'
+if FULL_SHIPPING:
+    from validation_route import current_route,UIKIT_FULL
+    if current_route()!=UIKIT_FULL:raise ValueError('Wrong full-shipping collection route')
+    if PLATFORM=='mac':
+        required=['combined-source-before.json','combined-source-after.json','mac-required-tests.json',
+            'full-shipping-producer.json','full-shipping-mac-summary.json','full-shipping-mac-accounting.json']
+    elif PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'}:
+        from uikit_full_shipping_gate import expected_phases,phase_files
+        required += ['full-shipping-clock.json','full-shipping-device.json','full-shipping-transfer.json',
+            'full-shipping-execution.json','full-shipping-accounting.json','full-shipping-row.json',
+            'full-shipping-stage-outcomes.json','full-shipping-phase-outcomes.json',
+            'full-shipping-product-after.json','full-shipping-cleanup.json',
+            'bootstrap-readiness-before-import.log.timing.json','bootstrap-reconcile-all.log.timing.json']
+        required += [phase_files(phase)[1] for phase in expected_phases(PLATFORM)]
+        status_path=TEMP/'full-shipping-row.json'
+        if status_path.is_file():
+            from uikit_full_shipping_handoff import read,accept_row,same_json
+            status=read(status_path)
+            if status.get('row_checks_passed') is True and not same_json(status,accept_row(TEMP)):
+                raise ValueError('Changed accepted original UIKit row proof')
+    else:raise ValueError('Unexpected full-shipping evidence row')
 # A claimed versioned consumer cannot be uploaded without the actual summary
 #it was bound to. Diagnostic-only failures still retain available evidence.
 consumer_name='phone-required-tests' if PLATFORM=='phone' else 'uikit-required-tests' if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'} else None
@@ -114,6 +139,10 @@ for path in [TEMP/'early-uikit-2x-interop.log',TEMP/'early-uikit-3x-interop.log'
                 critical.append({'log':path.name,'line':line})
 if critical and not retain_bytes('shipping-consumer-markers.json',(json.dumps(critical,indent=2)+'\n').encode(),'exact required shipping/consumer log markers'):raise RuntimeError('Required markers exceeded bounded allocation')
 
+if FULL_SHIPPING and PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad'}:
+    from uikit_full_shipping_handoff import pack_phase_logs
+    pack_phase_logs(TEMP,retain_bytes,MAX_TOTAL-RESERVE-size)
+
 # The original UIKit exporter already chooses at most two <=500 KB synthetic
 # JPEGs. Decode only its complete SHA-bound envelope, before optional log tails.
 screens=TEMP/'uikit-screens.log'
@@ -176,6 +205,10 @@ if PLATFORM=='mac':
 # Optional exporter time cannot consume the final two-minute job tail.
 from optional_export_budget import OptionalExportBudget,OptionalExportError
 optional_budget=OptionalExportBudget(TEMP/'mac-job-clock.json',os.environ.get('GITHUB_SHA')) if PLATFORM=='mac' else None
+if FULL_SHIPPING and optional_budget is not None:
+    # The fixed 180-second collection step includes core proof and finalization.
+    # Its existing owned exporters reserve cleanup inside this entry-bound window.
+    optional_budget.deadline=min(optional_budget.deadline,COLLECTION_STARTED+150)
 
 def optional_export(args,timeout):
     if optional_budget is not None:return optional_budget.run(args,timeout)
@@ -220,7 +253,7 @@ if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad','archive
         retain_bytes('uikit-'+name+'.summary.txt',('\n'.join(selected)+'\n').encode(),name+' (test/error markers)')
 for name in [name+'.timing.json' for name in logs]:
     path=TEMP/name
-    if path.is_file():retain_file(name,path,'bounded process/startup/suite/teardown timing')
+    if path.is_file() and not (OUT/name).exists():retain_file(name,path,'bounded process/startup/suite/teardown timing')
 for name in ['early-uikit-interop.json','early-uikit-staging.json','native-icon-provenance-runtime.json','mac-release-packaging.json','tv-release-packaging.json','watch-release-packaging.json','vision-release-packaging.json','vision-runtime-evidence.json','tv-runtime-evidence.json','tv-text-input-probe.json','watch-runtime-evidence.json','watch-small-runtime-evidence.json','watch-large-runtime-evidence.json','phone-runtime-evidence.json','phone-harness-release.json','sandbox-entitlements.plist','sandbox-debug-entitlements.plist','sandbox-debug-actual.plist','sandbox-entitlements-after.plist','sandbox-extension-entitlements.plist']:
     path=TEMP/name
     if path.is_file() and not (OUT/name).exists():retain_file(name,path,name)
@@ -278,6 +311,8 @@ for name in bundles:
 for name in [f'native-{platform}-launch.{extension}' for platform in ['vision','tv','watch','phone'] for extension in ['png','jpg']] + [f'watch{suffix}-launch.jpg' for suffix in ['', '-small', '-large']]:
     path=TEMP/name
     if path.is_file():retain_file(path.name,path,'simctl native launch screenshot')
+if FULL_SHIPPING and PLATFORM=='mac' and time.monotonic()-COLLECTION_STARTED>180:
+    raise RuntimeError('Fixed Mac collection exceeded its180-second allocation')
 if optional_budget is not None:manifest['optional_export_budget']=optional_budget.report()
 manifest['retained_bytes_before_manifest']=size
 payload=(json.dumps(manifest,indent=2,ensure_ascii=False)+'\n').encode()

@@ -993,7 +993,14 @@ class CollectedProofTests(SyntheticHostFixtureCase):
         with mock.patch.dict(os.environ,RUNNER_TEMP=str(root),GITHUB_SHA=self.SOURCE):gate.collect()
         return root/'mac-host-evidence'
     def outer(self,root):
-        return subprocess.run([sys.executable,str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=str(root),GITHUB_SHA=self.SOURCE,CELLULOID_EVIDENCE_PLATFORM='mac'),text=True,capture_output=True,timeout=15)
+        # This is a synthetic canonical collector packet, independent of the
+        # real route/source identity under which the portable suite executes.
+        env=dict(os.environ,RUNNER_TEMP=str(root),GITHUB_SHA=self.SOURCE,GITHUB_WORKFLOW_SHA=self.SOURCE,
+            GITHUB_REPOSITORY='100mango/Celluloid',GITHUB_EVENT_NAME='push',
+            GITHUB_REF='refs/heads/codex/apple-platforms',CELLULOID_VALIDATION_SCOPE='full',
+            GITHUB_WORKFLOW_REF='100mango/Celluloid/.github/workflows/apple-platforms.yml@refs/heads/codex/apple-platforms',
+            CELLULOID_EVIDENCE_PLATFORM='mac')
+        return subprocess.run([sys.executable,str(ROOT/'Scripts/collect_native_evidence.py')],env=env,text=True,capture_output=True,timeout=15)
     def mutate_manifest(self,folder,mutate):
         manifest=json.loads((folder/'manifest.json').read_text());mutate(manifest);gate.write(folder/'manifest.json',manifest)
     def update_file(self,folder,name,mutate):
@@ -1115,6 +1122,19 @@ class CollectedProofTests(SyntheticHostFixtureCase):
             self.assertTrue((folder/'outcome.json').is_file());self.assertTrue((folder/'mac-host-source-before.json').is_file())
             self.assertEqual(json.loads((folder/'mac-host-acceptance.json').read_text())['error'],'AssertionError: extension not registered')
             result=self.outer(root);self.assertEqual(result.returncode,0,result.stderr)
+    def test_synthetic_outer_collector_isolates_enclosing_route_and_source_without_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);self.packet(root,False);self.collect(root)
+            for scope in ('uikit-full-shipping','photos-export-observation'):
+                inherited={'GITHUB_SHA':'b'*40,'GITHUB_WORKFLOW_SHA':'c'*40,
+                    'CELLULOID_VALIDATION_SCOPE':scope,'GITHUB_REF':'refs/heads/codex/'+scope,
+                    'GITHUB_WORKFLOW_REF':'100mango/Celluloid/.github/workflows/'+scope+'.yml@refs/heads/codex/'+scope}
+                with mock.patch.dict(os.environ,inherited):
+                    before=dict(os.environ);result=self.outer(root)
+                    self.assertEqual(result.returncode,0,result.stderr)
+                    self.assertEqual(dict(os.environ),before)
+                __import__('shutil').rmtree(root/'celluloid-bounded-evidence')
+
     def test_diagnostic_boolean_flip_cannot_manufacture_acceptance(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);self.packet(root,False);folder=self.collect(root)

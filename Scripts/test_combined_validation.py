@@ -44,7 +44,7 @@ class CombinedRetentionTests(unittest.TestCase):
             lines='SHIPPING_COMPANION_NAVIGATION actual shipping entry\nSHIPPING_COMPANION_RETURN actual return\nMAC_LAYER_UIKIT_COMPOSITOR bound hashes and strict pixels\n'
             (folder/'phone-runtime-tests.log').write_text(lines+('NATIVE_DIAGNOSTIC '+'x'*1990+'\n')*2000)
             (folder/'domain.log').write_text(('Test Case synthetic passed '+'z'*1990+'\n')*2000)
-            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,RUNNER_TEMP=directory,CELLULOID_EVIDENCE_PLATFORM='phone',GITHUB_SHA='a'*40),capture_output=True,text=True)
+            result=subprocess.run(['python3',str(ROOT/'Scripts/collect_native_evidence.py')],env=dict(os.environ,CELLULOID_VALIDATION_SCOPE='full',RUNNER_TEMP=directory,CELLULOID_EVIDENCE_PLATFORM='phone',GITHUB_SHA='a'*40),capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             output=folder/'celluloid-bounded-evidence'
             for name in names:self.assertEqual((output/name).read_bytes(),(folder/name).read_bytes())
