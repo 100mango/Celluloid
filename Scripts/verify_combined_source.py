@@ -2,7 +2,7 @@
 """Bind exact combined app/test/project bytes and workflow to the admitted checkout."""
 from pathlib import Path
 import argparse, hashlib, json, os, subprocess
-from validation_route import current_route,HOST_ONLY,host_only_source_binding,UIKIT_FULL,UIKIT_FULL_BASE,UIKIT_FULL_DRIVER_PATHS
+from validation_route import current_route,HOST_ONLY,host_only_source_binding,UIKIT_FULL,UIKIT_FULL_BASE,UIKIT_FULL_DRIVER_PATHS,UIKIT_FULL_PREDECESSOR,UIKIT_FULL_REPAIR_PATHS
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
@@ -25,11 +25,14 @@ def main():
         report['host_only_diagnostic']=host_only_source_binding(rows)
     if route==UIKIT_FULL:
         assert fingerprint==UIKIT_FULL_BASE['fingerprint'] and len(rows)==547
-        assert git('rev-list','--parents','-n','1','HEAD').split()==[os.environ['GITHUB_SHA'],UIKIT_FULL_BASE['commit']], 'Unreviewed UIKit driver parent'
+        assert git('rev-list','--parents','-n','1','HEAD').split()==[os.environ['GITHUB_SHA'],UIKIT_FULL_PREDECESSOR['commit']], 'Unreviewed UIKit clock-repair parent'
+        assert git('rev-list','--parents','-n','1',UIKIT_FULL_PREDECESSOR['commit']).split()==[UIKIT_FULL_PREDECESSOR['commit'],UIKIT_FULL_BASE['commit']], 'Changed fixed UIKit predecessor parent'
+        assert git('rev-parse',UIKIT_FULL_PREDECESSOR['commit']+'^{tree}')==UIKIT_FULL_PREDECESSOR['tree'], 'Changed fixed UIKit predecessor tree'
+        assert set(git('diff','--name-only',UIKIT_FULL_PREDECESSOR['commit'],'HEAD').splitlines())==UIKIT_FULL_REPAIR_PATHS, 'Unreviewed UIKit clock-repair delta'
         assert git('rev-parse',UIKIT_FULL_BASE['commit']+'^{tree}')==UIKIT_FULL_BASE['tree']
         changed=set(git('diff','--name-only',UIKIT_FULL_BASE['commit'],'HEAD').splitlines())
         assert changed<=UIKIT_FULL_DRIVER_PATHS, 'Unreviewed full-shipping source change'
-        report['full_shipping_source']={'base':dict(UIKIT_FULL_BASE),'protected_files':547,'driver_paths':sorted(changed),
+        report['full_shipping_source']={'base':dict(UIKIT_FULL_BASE),'fixed_predecessor':dict(UIKIT_FULL_PREDECESSOR),'clock_repair_paths':sorted(UIKIT_FULL_REPAIR_PATHS),'protected_files':547,'driver_paths':sorted(changed),
             'scope':'Fresh original UIKit row coverage; Mac Photos host and release remain separate'}
     (Path(os.environ['RUNNER_TEMP'])/('combined-source-'+args.phase+'.json')).write_text(json.dumps(report,indent=2)+'\n')
     print('COMBINED_SOURCE '+json.dumps(report,sort_keys=True))

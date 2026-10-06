@@ -52,7 +52,8 @@ import runpy, sys
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, str(Path(sys.argv[1]).parent))
-with patch('subprocess.run', side_effect=AssertionError('Collector unexpectedly dispatched a native exporter')):
+# Match the synthetic row clock; the parent subprocess timeout remains real.
+with patch('time.monotonic', return_value=100_300.125), patch('subprocess.run', side_effect=AssertionError('Collector unexpectedly dispatched a native exporter')):
     runpy.run_path(sys.argv[1], run_name='__main__')
 '''
     env = dict(environment(), RUNNER_TEMP=str(folder), CELLULOID_EVIDENCE_PLATFORM='compact-phone',
@@ -67,6 +68,11 @@ class HandoffFixtures(unittest.TestCase):
         self.env = patch.dict(os.environ, environment(), clear=True)
         self.env.start()
         self.addCleanup(self.env.stop)
+        # These fixtures mock every native command. Keep their replay clock
+        # independent of VM uptime; real process-timeout tests live elsewhere.
+        observation = patch.object(accounting.time, 'monotonic', return_value=100_300.125)
+        observation.start()
+        self.addCleanup(observation.stop)
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.temp = Path(self.folder.name)
@@ -534,13 +540,14 @@ class ProductBindingTests(HandoffFixtures):
             shutil.rmtree(self.temp / 'Devices')
 
     def test_product_clock_cannot_be_from_another_attempt_or_exhausted(self):
-        for change in ({'run_attempt': '2'}, {'started_monotonic': time.monotonic() - 3000}):
+        for change, error in (({'run_attempt': '2'}, 'identity differs'),
+                              ({'started_monotonic': 97_300.125}, 'No remaining allocation')):
             app, _ = self.make_product()
             path = self.temp / 'full-shipping-clock.json'
             value = handoff.read(path)
             value.update(change)
             put_json(path, value)
-            with self.subTest(change=change), self.assertRaises(ValueError): self.run_product(app)
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, error): self.run_product(app)
             self.assertFalse((self.temp / 'full-shipping-product-after.json').exists())
             shutil.rmtree(self.temp / 'Devices')
 
@@ -556,7 +563,7 @@ class AcceptRowTests(HandoffFixtures):
         ProductBindingTests.run_product(self, app)
         self.device_id = installed_fixtures.InstalledIdentityTests.UDID
         row_clock = handoff.read(self.temp / 'full-shipping-clock.json')
-        row_clock.update(started_monotonic=time.monotonic() - 300, started_unix=time.time() - 300)
+        row_clock.update(started_monotonic=100_000.125, started_unix=time.time() - 300)
         put_json(self.temp / 'full-shipping-clock.json', row_clock)
         execution_fixtures.write_execution(self.temp)
         for index, phase in enumerate(accounting.expected_phases('compact-phone')):
@@ -759,6 +766,18 @@ class AcceptRowTests(HandoffFixtures):
         value['diagnostics'] = {'outcome': 'failure', 'conclusion': 'failure'}
         put_json(path, value)
         with self.assertRaisesRegex(ValueError, 'diagnostics stage'): handoff.accept_row(self.temp)
+
+
+class FreshUptimeFixtureTests(unittest.TestCase):
+    def test_complete_row_fixture_remains_valid_at_fresh_or_fractional_host_uptime(self):
+        for uptime in (0, .125, 29.5, 299.5, 2700, 2701):
+            with self.subTest(uptime=uptime), patch.object(time, 'monotonic', return_value=uptime):
+                fixture = AcceptRowTests('test_complete_row_replays_every_named_case_consumer_source_product_and_cleanup')
+                try:
+                    fixture.setUp()
+                    fixture.test_complete_row_replays_every_named_case_consumer_source_product_and_cleanup()
+                finally:
+                    fixture.doCleanups()
 
 
 class LosslessPhaseLogTests(unittest.TestCase):

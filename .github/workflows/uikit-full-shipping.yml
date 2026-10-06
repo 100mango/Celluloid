@@ -52,7 +52,7 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ github.sha }}
-        fetch-depth: 2
+        fetch-depth: 3
     - name: Verify exact integrated source and stable toolchain
       timeout-minutes: 4
       shell: bash
@@ -303,7 +303,7 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ github.sha }}
-        fetch-depth: 2
+        fetch-depth: 3
       timeout-minutes: 2
     - name: Verify exact tested commit
       id: source_before

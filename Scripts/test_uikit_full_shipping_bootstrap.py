@@ -100,14 +100,16 @@ class BootstrapAdapterTests(unittest.TestCase):
         self.functions['require_inner_allowance'](480)
 
     def test_successful_command_finishing_late_is_rejected(self):
-        write_clock(self.temp)
         context = {'source_sha': 'a' * 40, 'run_id': '1234567', 'run_attempt': '1', 'row': 'compact-phone'}
-        clock = json.loads((self.temp / 'full-shipping-clock.json').read_text())
-        clock['started_monotonic'] = time.monotonic() - gate.WORK_SECONDS - 1
-        self.functions['require_inner_allowance'] = lambda seconds: None
-        self.functions['row_clock'] = lambda: (clock, context, {'work_remaining_seconds': -1})
-        with patch('native_process.run', return_value=subprocess.CompletedProcess([], 0, 'late success', '')), self.assertRaisesRegex(ValueError, 'Late UIKit phase completion'):
-            self.functions['run']('readiness-before-import', 360, 'xcodebuild')
+        # A fresh VM can have less uptime than the elapsed interval under test.
+        # Synthetic origins/observations exercise lateness, never a negative start.
+        for origin in (1.0, 100_000.125):
+            clock = {'schema': gate.CLOCK_SCHEMA, **context, 'started_monotonic': origin,
+                     'started_unix': 100_000.0, 'execution_budget_seconds': gate.EXECUTION_SECONDS}
+            self.functions['require_inner_allowance'] = lambda seconds: None
+            self.functions['row_clock'] = lambda: (clock, context, {'work_remaining_seconds': -1})
+            with self.subTest(origin=origin), patch.object(gate.time, 'monotonic', return_value=origin + gate.WORK_SECONDS + 1), patch.object(gate.time, 'time', return_value=100_000.0 + gate.WORK_SECONDS + 1), patch('native_process.run', return_value=subprocess.CompletedProcess([], 0, 'late success', '')), self.assertRaisesRegex(ValueError, 'Late UIKit phase completion'):
+                self.functions['run']('readiness-before-import', 360, 'xcodebuild')
 
     def test_timeout_raises_immediately_preserving_partial_log_and_no_later_dispatch(self):
         self.functions['require_inner_allowance'] = lambda seconds: None

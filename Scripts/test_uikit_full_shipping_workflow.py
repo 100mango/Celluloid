@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """Fixed workflow source and shell orchestration checks; no Apple tools execute."""
 from pathlib import Path
+import contextlib
 import hashlib
+import io
 from datetime import datetime, timezone
 import json
 import os
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 import textwrap
 import time
 import unittest
+from unittest.mock import patch
 
 from test_native_workflow_syntax import run_blocks
 import uikit_full_shipping_gate as gate
@@ -135,7 +139,7 @@ class FixedWorkflowTests(unittest.TestCase):
         self.assertIn('PRODUCER_MANIFEST_SHA: ${{ needs.mac-producer.outputs.manifest_sha256 }}', self.row)
         self.assertIn('--manifest-sha256 "$PRODUCER_MANIFEST_SHA"', self.row)
         self.assertEqual(self.source.count('ref: ${{ github.sha }}'), 2)
-        self.assertEqual(self.source.count('fetch-depth: 2'), 2)
+        self.assertEqual(self.source.count('fetch-depth: 3'), 2)
         self.assertEqual(self.source.count('persist-credentials: false'), 2)
         self.assertNotRegex(self.source, r'(?:export\s+|env\s+)?GITHUB_(?:SHA|RUN_ID|RUN_ATTEMPT|WORKFLOW_SHA)=')
         self.assertNotRegex(self.source, r'(?i)(?:queue.*(?:21600|6\s*\*\s*3600)|max[_-]age|created_at)')
@@ -261,13 +265,13 @@ class ShellOutcomeTests(unittest.TestCase):
         source = WORKFLOW.read_text()
         clock_step = body(source, 'Start the fixed row clock')
         self.helper = re.search(r"<<'SHFUNCTIONS'\n(.*?)^SHFUNCTIONS$", clock_step, re.M | re.S).group(1)
-        self.env = dict(os.environ, RUNNER_TEMP=str(self.temp), GITHUB_SHA='a' * 40,
+        self.env = dict(PATH=os.environ.get('PATH', os.defpath), RUNNER_TEMP=str(self.temp), GITHUB_SHA='a' * 40,
                         GITHUB_RUN_ID='12345', GITHUB_RUN_ATTEMPT='1', CELLULOID_FULL_ROW='compact-phone',
                         DEVICE_NAME=gate.ROWS['compact-phone'], GITHUB_STEP_SUMMARY=str(self.temp / 'step-summary'))
-        self.env.pop('BASH_ENV', None)
+        self.observed_monotonic = 100_000.125
         self.clock = {'schema': gate.CLOCK_SCHEMA, 'source_sha': self.env['GITHUB_SHA'],
                       'run_id': '12345', 'run_attempt': '1', 'row': 'compact-phone',
-                      'started_monotonic': time.monotonic(), 'started_unix': time.time(),
+                      'started_monotonic': 100_000.125, 'started_unix': time.time(),
                       'execution_budget_seconds': gate.EXECUTION_SECONDS}
         self.write_clock()
         self.summary_stub = '''extract_summary() {
@@ -280,8 +284,14 @@ class ShellOutcomeTests(unittest.TestCase):
         (self.temp / 'full-shipping-clock.json').write_text(json.dumps(self.clock))
 
     def run_shell(self, script, helper=None):
+        helper = self.helper if helper is None else helper
+        # Only gate observations use synthetic time. Actual shell commands and
+        # their subprocess timeout/cleanup machinery retain the real clock.
+        code = "import sys,time;sys.path.insert(0,'Scripts');from uikit_full_shipping_gate import main;time.monotonic=lambda:" + repr(self.observed_monotonic) + ";main()"
+        helper = helper.replace('python3 Scripts/uikit_full_shipping_gate.py', 'python3 -c ' + shlex.quote(code))
+        helper = helper.replace('import json,math,os,sys,time\n', 'import json,math,os,sys,time\ntime.monotonic=lambda:' + repr(self.observed_monotonic) + '\n')
         return subprocess.run(['bash', '--noprofile', '--norc', '-c', 'set -euo pipefail\n' +
-                               (self.helper if helper is None else helper) + '\n' + script],
+                               helper + '\n' + script],
                               cwd=ROOT, env=self.env, text=True, capture_output=True, timeout=15)
 
     def outcomes(self):
@@ -310,13 +320,32 @@ test_phase units fake.xcresult synthetic python3 -c 'print(123)'
         self.assertTrue((self.temp / 'units.summary.json').is_file())
 
     def test_exhausted_clock_prevents_command_execution_and_records_failure(self):
-        self.clock['started_monotonic'] -= gate.WORK_SECONDS + 1
+        self.observed_monotonic = self.clock['started_monotonic'] + gate.WORK_SECONDS + 1
         self.clock['started_unix'] -= gate.WORK_SECONDS + 1
         self.write_clock()
         result = self.run_shell(self.summary_stub + '''test_phase units fake.xcresult synthetic python3 -c 'import os,pathlib;pathlib.Path(os.environ["RUNNER_TEMP"],"executed").write_text("bad")' ''')
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn('No remaining allocation', result.stdout + result.stderr)
         self.assertFalse((self.temp / 'executed').exists())
         self.assertNotEqual(self.outcomes()[0]['exit_code'], 0)
+
+    def test_fresh_uptime_and_inherited_ci_cannot_change_synthetic_clock_outcomes(self):
+        for uptime in (0, .125, 29.5, 299.5, 2700, 2701):
+            with self.subTest(uptime=uptime), patch.object(time, 'monotonic', return_value=uptime), patch.dict(os.environ, {
+                    'GITHUB_REF': 'refs/heads/unrelated-live-run', 'GITHUB_WORKFLOW_SHA': 'f' * 40,
+                    'CELLULOID_VALIDATION_SCOPE': 'unrelated-live-scope', 'BASH_ENV': '/must-not-source'}):
+                fixture = ShellOutcomeTests()
+                try:
+                    fixture.setUp()
+                    for name in ('GITHUB_REF', 'GITHUB_WORKFLOW_SHA', 'CELLULOID_VALIDATION_SCOPE', 'BASH_ENV'):
+                        self.assertNotIn(name, fixture.env)
+                    fixture.bootstrap_fixture()
+                    result = fixture.run_shell('record_bootstrap_phase bootstrap-readiness || exit "$?"')
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    (fixture.temp / 'full-shipping-phase-outcomes.json').unlink()
+                    fixture.test_exhausted_clock_prevents_command_execution_and_records_failure()
+                finally:
+                    fixture.doCleanups()
 
     def test_late_completion_cannot_promote_failed_or_successful_command(self):
         stub = '''full_gate() { if [[ "$1" == admit ]]; then echo 1; else return 23; fi; }
@@ -374,7 +403,8 @@ test_phase units fake.xcresult synthetic python3 -c 'print(123)'
 
     def bootstrap_fixture(self, phase='bootstrap-readiness', mutate=None):
         now = time.time()
-        self.clock['started_monotonic'] = time.monotonic() - 30
+        self.clock['started_monotonic'] = 100_000.125
+        self.observed_monotonic = self.clock['started_monotonic'] + 30
         self.clock['started_unix'] = now - 30
         self.write_clock()
         raw, summary = execution(gate.expected_cases('compact-phone')[phase], start=now - 20)
@@ -495,6 +525,66 @@ test_phase units fake.xcresult synthetic python3 -c 'print(123)'
         self.assertIn('check-clock --phase upload', calls)
         self.assertIn('verify --root', calls)
         self.assertIn('check-clock\n', calls)
+
+
+class ClockRepairLineageTests(unittest.TestCase):
+    @unittest.skipUnless(__debug__, 'Source binding is intentionally invoked under normal Python')
+    def test_exact_successor_lineage_and_repair_delta_over_actual_protected_bytes(self):
+        import verify_combined_source as source
+        from validation_route import UIKIT_FULL, UIKIT_FULL_BASE, UIKIT_FULL_PREDECESSOR, UIKIT_FULL_REPAIR_PATHS, UIKIT_FULL_DRIVER_PATHS
+        contract = json.loads((ROOT / 'Scripts/combined-source-contract.json').read_text())
+        self.assertEqual(len(contract['files']), 547)
+        actual_paths = subprocess.check_output(['git', 'ls-files', '-z', '--', *contract['roots']], cwd=ROOT, text=True)
+        head = 'c' * 40
+        predecessor = UIKIT_FULL_PREDECESSOR['commit']
+        base = UIKIT_FULL_BASE['commit']
+        responses = {
+            ('rev-parse', 'HEAD'): head,
+            ('status', '--porcelain', '--untracked-files=all'): '',
+            ('ls-files', '-z', '--', *contract['roots']): actual_paths,
+            ('ls-files', '--', '.github/release-controller'): '',
+            ('ls-files', '--', '.github/workflows/cloud-release.yml'): '',
+            ('rev-parse', 'HEAD^{tree}'): 'd' * 40,
+            ('rev-list', '--parents', '-n', '1', 'HEAD'): head + ' ' + predecessor,
+            ('rev-list', '--parents', '-n', '1', predecessor): predecessor + ' ' + base,
+            ('rev-parse', predecessor + '^{tree}'): UIKIT_FULL_PREDECESSOR['tree'],
+            ('diff', '--name-only', predecessor, 'HEAD'): '\n'.join(sorted(UIKIT_FULL_REPAIR_PATHS)),
+            ('rev-parse', base + '^{tree}'): UIKIT_FULL_BASE['tree'],
+            ('diff', '--name-only', base, 'HEAD'): '\n'.join(sorted(UIKIT_FULL_DRIVER_PATHS)),
+        }
+        changes = [None,
+            (('rev-list', '--parents', '-n', '1', 'HEAD'), head + ' ' + base),
+            (('rev-list', '--parents', '-n', '1', 'HEAD'), head + ' ' + predecessor + ' ' + base),
+            (('rev-list', '--parents', '-n', '1', predecessor), predecessor + ' ' + 'e' * 40),
+            (('rev-parse', predecessor + '^{tree}'), 'e' * 40),
+            (('diff', '--name-only', predecessor, 'HEAD'), '\n'.join(sorted(UIKIT_FULL_REPAIR_PATHS - {'Scripts/test_uikit_full_shipping_bootstrap.py'}))),
+            (('diff', '--name-only', predecessor, 'HEAD'), '\n'.join(sorted(UIKIT_FULL_REPAIR_PATHS | {'Scripts/uikit_full_shipping_gate.py'}))),
+            (('diff', '--name-only', base, 'HEAD'), '\n'.join(sorted(UIKIT_FULL_DRIVER_PATHS | {'unreviewed-source.swift'}))),
+        ]
+        with tempfile.TemporaryDirectory() as folder:
+            ref = 'refs/heads/' + UIKIT_FULL['branch']
+            env = {'GITHUB_REPOSITORY': '100mango/Celluloid', 'GITHUB_EVENT_NAME': 'push',
+                   'GITHUB_SHA': head, 'GITHUB_WORKFLOW_SHA': head, 'GITHUB_REF': ref,
+                   'GITHUB_WORKFLOW_REF': '100mango/Celluloid/' + UIKIT_FULL['workflow_path'] + '@' + ref,
+                   'CELLULOID_VALIDATION_SCOPE': UIKIT_FULL['scope'], 'RUNNER_TEMP': folder}
+            for change in changes:
+                replies = dict(responses)
+                if change: replies[change[0]] = change[1]
+                def git(command, **kwargs):
+                    self.assertEqual(command[0], 'git')
+                    return replies[tuple(command[1:])]
+                output = Path(folder) / 'combined-source-before.json'
+                if output.exists(): output.unlink()
+                with self.subTest(change=change), patch.dict(os.environ, env, clear=True), patch.object(sys, 'argv', ['verify_combined_source.py', '--phase', 'before']), patch.object(source.subprocess, 'check_output', side_effect=git), contextlib.redirect_stdout(io.StringIO()):
+                    if change:
+                        with self.assertRaises(AssertionError): source.main()
+                        self.assertFalse(output.exists())
+                    else:
+                        source.main()
+                        report = json.loads(output.read_text())
+                        self.assertEqual(report['file_count'], 547)
+                        self.assertEqual(report['source_fingerprint'], UIKIT_FULL_BASE['fingerprint'])
+                        self.assertEqual(report['full_shipping_source']['clock_repair_paths'], sorted(UIKIT_FULL_REPAIR_PATHS))
 
 
 if __name__ == '__main__':
