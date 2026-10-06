@@ -693,3 +693,14 @@ not claim a separately sampled macOS focus attribute or parse debug descriptions
 for acceptance. Missing/ambiguous controls, input errors, stale or wrong path
 readback, unexpected sheets and wrong destination still fail. Actual persisted
 PNG/profile/pixel and reopen/Cancel/Revert proof remain required and unqualified.
+
+Run 37390285810 retained exact owned-path readbacks and the Return event. Its
+10-second dismissal predicate spent about nine seconds repeatedly traversing
+parent/global AX state and then timed out during another panel lookup. The final
+JPEG shows the Go child gone and destination `saved`; the AX text reached its
+120KB diagnostic cap before the later controls. This is not stored-file proof,
+and the accompanying XCTest internal assertion's cause is not established.
+The narrow successor polls only existence of the exact GoToWindow captured in
+the final validated field observation, within the same remaining 10 seconds.
+The full alert/parent/identity/Where/path/no-overwrite checks still run once after
+that wait and before Export. No timeout, input retry or acceptance gate changes.

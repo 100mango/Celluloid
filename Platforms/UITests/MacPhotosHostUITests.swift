@@ -1082,7 +1082,7 @@ final class MacPhotosHostUITests: XCTestCase {
         guard go.identifier == "GoToWindow" else { throw block("Unexpected export destination child identity") }
         return (panel, go)
     }
-    @MainActor private func destinationPathField(in photos: XCUIApplication, panelLabel: String, expected: String? = nil) throws -> (element: XCUIElement, row: [Any]) {
+    @MainActor private func destinationPathField(in photos: XCUIApplication, panelLabel: String, expected: String? = nil) throws -> (element: XCUIElement, row: [Any], go: XCUIElement) {
         let parent = try destinationPanel(in: photos)
         guard parent.panel.label == panelLabel, let go = parent.go else { throw block("Go to Folder parent changed") }
         let fields = go.children(matching: .textField)
@@ -1093,7 +1093,7 @@ final class MacPhotosHostUITests: XCTestCase {
         guard identifier == "PathTextField", enabled, hittable else { throw block("Unusable observed Go to Folder field") }
         guard let value = input.value as? String, value.utf8.count <= 512,
               expected == nil || value == expected else { throw block("Go to Folder path differs from the trusted owned directory") }
-        return (input, ["ExportSavePanel/GoToWindow", "TextField", identifier, input.title, input.label, value, count, enabled, hittable])
+        return (input, ["ExportSavePanel/GoToWindow", "TextField", identifier, input.title, input.label, value, count, enabled, hittable], go)
     }
     @MainActor private func chooseOwnedExportDirectory(_ directory: URL, in photos: XCUIApplication, original: Bool) throws {
         let root = try XCTUnwrap(lifecycleRoot)
@@ -1134,7 +1134,12 @@ final class MacPhotosHostUITests: XCTestCase {
         guard try JSONSerialization.data(withJSONObject: entered.row) == JSONSerialization.data(withJSONObject: ready.row),
               try JSONSerialization.data(withJSONObject: lifecycleReceipt(photosPID: lifecyclePhotosPID)).count <= 16_000 else { throw block("Go to Folder readback changed or exceeded proof budget") }
         try deadlineKey(ready.element, XCUIKeyboardKey.return, modifierFlags: [])
-        try waitForChild(false)
+        // Poll only the exact child captured by the final owned-path observation.
+        // Full alert/parent/destination guards run once below, before any Export.
+        let childDismissed = NSPredicate { _, _ in !ready.go.exists }
+        guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: childDismissed, object: nil)],
+                            timeout: try remainingTime(10)) == .completed else { throw block("Go to Folder child did not dismiss") }
+        _ = try remainingTime(1)
         let selected = try destinationPanel(in: photos)
         guard selected.go == nil, selected.panel.label == panelLabel else { throw block("Export destination panel changed after Return") }
         let location = try lifecycleControl(selected.panel.descendants(matching: .popUpButton)

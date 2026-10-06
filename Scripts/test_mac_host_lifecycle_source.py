@@ -449,7 +449,7 @@ class BinaryScalarSourceTests(unittest.TestCase):
             ('fresh.scalar.state == initial.scalar.state','true'),('if let observationFailure { throw observationFailure }','if let observationFailure { print(observationFailure) }')]:
             with self.subTest(old=old),self.assertRaises(AssertionError):replay_binary_transition(self.swift.replace(old,new),[binary_sample(1)]*2)
 
-def replay_owned_destination(swift, snapshots, trusted_path, input_error=False):
+def replay_owned_destination(swift, snapshots, trusted_path, input_error=False, remaining_seconds=600):
     """Source-tied direct-parent/input/postcondition model, not a focus-property API."""
     parent=swift.split('@MainActor private func destinationPanel(',1)[1].split('@MainActor private func destinationPathField(',1)[0]
     field=swift.split('@MainActor private func destinationPathField(',1)[1].split('@MainActor private func chooseOwnedExportDirectory(',1)[0]
@@ -459,20 +459,27 @@ def replay_owned_destination(swift, snapshots, trusted_path, input_error=False):
         'childCount <= 1, totalSheetCount == 1 + childCount','go.identifier == "GoToWindow"']
     required_field=['go.children(matching: .textField)','let count = fields.count','guard count == 1',
         'identifier == "PathTextField", enabled, hittable','let value = input.value as? String',
-        'expected == nil || value == expected','"ExportSavePanel/GoToWindow", "TextField"']
+        'expected == nil || value == expected','"ExportSavePanel/GoToWindow", "TextField"',
+        'row: [Any], go: XCUIElement)', 'value, count, enabled, hittable], go)']
     required_choose=['directory == root.appendingPathComponent(directory.lastPathComponent, isDirectory: true)',
         'guard initial.go == nil','"OKButton", finalTitle','catch { failure = error; return true }','if let failure { throw failure }',
         'try deadlineClick(input.element)','try deadlineText(input.element, directory.path)',
         'let entered = try destinationPathField(in: photos, panelLabel: panelLabel, expected: directory.path)',
         'let ready = try destinationPathField(in: photos, panelLabel: panelLabel, expected: directory.path)',
-        'try deadlineKey(ready.element, XCUIKeyboardKey.return, modifierFlags: [])','try waitForChild(false)',
+        'try deadlineKey(ready.element, XCUIKeyboardKey.return, modifierFlags: [])',
+        'let childDismissed = NSPredicate { _, _ in !ready.go.exists }',
+        'XCTNSPredicateExpectation(predicate: childDismissed, object: nil)',
+        'timeout: try remainingTime(10)) == .completed',
         'selected.go == nil, selected.panel.label == panelLabel','"where popup", "Where:"',
         'location.value as? String == directory.lastPathComponent']
     if not all(p in parent for p in required_parent) or not all(p in field for p in required_field) or not all(p in choose for p in required_choose):
         raise AssertionError('Destination source no longer matches exact scoped path model')
     if any(p in parent+field+choose for p in ['hasKeyboardFocus','hasFocus','debugDescription','publicLabel("Go"','allElementsBoundByIndex','suggestion']):
         raise AssertionError('Unadmitted focus/suggestion/fallback access')
-    pending=copy.deepcopy(snapshots);trace={'return_count':0,'export_count':0,'typed':None,'accepted':False,'failure':None}
+    dismissal=choose.split('let childDismissed = NSPredicate',1)[1].split('let selected = try destinationPanel',1)[0]
+    if dismissal.count('.exists')!=1 or any(p in dismissal for p in ['photos.', '.label', '.identifier', '.count', 'destinationPanel(']):
+        raise AssertionError('Dismissal predicate performs more than one scoped existence query')
+    pending=copy.deepcopy(snapshots);trace={'return_count':0,'export_count':0,'typed':None,'accepted':False,'failure':None,'dismissal_queries':0}
     def need(value):
         if not value:raise ValueError('Invalid destination scope/path/input/postcondition')
     def read(child=None):
@@ -497,7 +504,12 @@ def replay_owned_destination(swift, snapshots, trusted_path, input_error=False):
         need(not input_error);trace['typed']=trusted_path
         entered=input_field(trusted_path);ready=input_field(trusted_path);need(entered['value']==ready['value'])
         trace['return_count']+=1
-        while read()['children']==1:pass
+        elapsed=0;budget=min(10,remaining_seconds)
+        while True:
+            need(bool(pending));poll=pending.pop(0);trace['dismissal_queries']+=1
+            need(not poll.get('exists_error',False));elapsed+=poll.get('exists_seconds',1)
+            need(elapsed<=budget and type(poll['go_exists']) is bool)
+            if not poll['go_exists']:break
         final=read(0)
         need(final['where']=='where popup' and final['where_title']=='Where:' and final['where_value']==trusted_path.rsplit('/',1)[1]
              and final['ok']=='OKButton' and final['ok_title']=='Export' and final['owned_tree_valid'])
@@ -509,6 +521,7 @@ def replay_owned_destination(swift, snapshots, trusted_path, input_error=False):
 def destination_sample(child=0,value='prior path'):
     return dict(windows=1,dialogs=0,alerts=0,panels=1,panel='open-panel',panel_scope='MainWindow/directSheet',label='export…',
         children=child,sheets=1+child,child='GoToWindow',child_scope='open-panel/directSheet',fields=1,field='PathTextField',
+        go_exists=bool(child),
         field_scope='GoToWindow/directTextField',enabled=True,hittable=True,value=value,ok='OKButton',ok_title='Export',
         where='where popup',where_title='Where:',where_value='saved',owned_tree_valid=True)
 
@@ -542,11 +555,36 @@ class DestinationSourceTests(unittest.TestCase):
         rows=self.samples();rows.insert(1,destination_sample(1));rows[1]['child']='unrelated'
         result=replay_owned_destination(self.swift,rows,self.path)
         self.assertFalse(result['accepted']);self.assertEqual(result['return_count'],0);self.assertGreater(len(result['unobserved']),0)
-        for changes in [dict(children=1,sheets=2),dict(label='replacement'),dict(where='other'),dict(where_title='Other:'),
+        for changes in [dict(children=1,sheets=2),dict(windows=0),dict(windows=2),dict(panels=2),dict(dialogs=1),dict(alerts=1),
+                        dict(panel='replacement'),dict(label='replacement'),dict(where='other'),dict(where_title='Other:'),
                         dict(where_value='Desktop'),dict(ok='other'),dict(ok_title='Save'),dict(owned_tree_valid=False)]:
             rows=self.samples();rows[-1].update(changes)
             result=replay_owned_destination(self.swift,rows,self.path)
             self.assertFalse(result['accepted']);self.assertEqual(result['return_count'],1);self.assertEqual(result['export_count'],0)
+    def test_disappearance_poll_is_child_only_and_full_guards_follow_once(self):
+        rows=self.samples();rows[5]={'go_exists':False,'exists_seconds':1}
+        result=replay_owned_destination(self.swift,rows,self.path)
+        self.assertTrue(result['accepted']);self.assertEqual(result['dismissal_queries'],1)
+        for change in [dict(windows=0),dict(panels=2),dict(alerts=1),dict(dialogs=1),dict(children=1,sheets=2),
+                       dict(where_value='Desktop'),dict(owned_tree_valid=False)]:
+            rows=self.samples();rows[5]={'go_exists':False};rows[-1].update(change)
+            result=replay_owned_destination(self.swift,rows,self.path)
+            self.assertFalse(result['accepted']);self.assertEqual(result['dismissal_queries'],1);self.assertEqual(result['export_count'],0)
+    def test_persistent_child_deadline_and_exists_error_never_retry_return_or_export(self):
+        for polls,remaining in [([{'go_exists':True}]*11,600),([{'go_exists':False,'exists_seconds':11}],600),
+                                ([{'go_exists':False,'exists_seconds':3}],2),([{'exists_error':True}],600)]:
+            rows=self.samples()[:5]+polls+[destination_sample()]
+            result=replay_owned_destination(self.swift,rows,self.path,remaining_seconds=remaining)
+            self.assertFalse(result['accepted']);self.assertEqual(result['return_count'],1);self.assertEqual(result['export_count'],0)
+    def test_disappearance_source_cannot_restore_global_polling_or_extend_timeout(self):
+        for old,new in [('!ready.go.exists','!photos.sheets.firstMatch.exists'),
+                        ('!ready.go.exists','!ready.go.exists && photos.alerts.count == 0'),
+                        ('timeout: try remainingTime(10)) == .completed','timeout: try remainingTime(30)) == .completed')]:
+            with self.subTest(old=old),self.assertRaises(AssertionError):replay_owned_destination(self.swift.replace(old,new),self.samples(),self.path)
+        choose=self.swift.split('@MainActor private func chooseOwnedExportDirectory(',1)[1].split('private func ownedExportDirectory(',1)[0]
+        self.assertNotIn('try waitForChild(false)',choose)
+        self.assertEqual(choose.count('try deadlineKey(ready.element, XCUIKeyboardKey.return'),1)
+        self.assertLess(choose.index('let childDismissed'),choose.index('let selected = try destinationPanel'))
     def test_source_ties_and_fixed_owned_file_proof_are_preserved(self):
         for old,new in [('go.children(matching: .textField)','photos.descendants(matching: .textField)'),
             ('totalSheetCount == 1 + childCount','true'),('expected == nil || value == expected','true'),

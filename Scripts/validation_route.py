@@ -8,7 +8,7 @@ FOCUSED={'scope':'mac-repair','branch':'codex/mac-repair','workflow_path':'.gith
 HOST_ONLY={'scope':'photos-export-observation','branch':'codex/photos-export-observation','workflow_path':'.github/workflows/photos-export-observation.yml','diagnostic_only':True}
 HOST_ONLY_BASE={'commit':'25b8edc92c3f53cf13208ffa0065746b87ae20e0','tree':'7622774f3291c7b32f46966bebffddd645e57326','fingerprint':'d395f03291d06dc09f0d561b2096fd0bfe32b63f08764753c9d1b31a1069c88b'}
 HOST_ONLY_PROTECTED_FINGERPRINT='c1d88b1bafe0ef55c838e28eccb606d0b7e4701d792d88399f8b03ecc40f984b'
-HOST_ONLY_UI_TEST={'path':'Platforms/UITests/MacPhotosHostUITests.swift','sha256':'1bc352122ee66aac2e405c6b51e5552ed3f4131efd6008fa0a23643995bc5616'}
+HOST_ONLY_UI_TEST={'path':'Platforms/UITests/MacPhotosHostUITests.swift','sha256':'85a5538ed4b1b3bd1434b5cc59376dfd2ac47ff5e473c132be49d76cb0a91a2a'}
 
 def require(ok,message):
     if not ok:raise ValueError(message)
