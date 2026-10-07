@@ -51,7 +51,7 @@ class ContractTests(unittest.TestCase):
             store.admission(ROOT, {'CELLULOID_STORE_ROOT_GO_SHA': 'a'*40}, BINDING)
     def test_wrong_cohort_rejected(self):
         with self.assertRaises(ValueError): store.environment({})
-    def test_first_push_cohort_rejects_manual_or_repeated_attempt(self):
+    def test_update_push_cohort_rejects_manual_or_repeated_attempt(self):
         env = {'GITHUB_REPOSITORY': '100mango/Celluloid', 'GITHUB_REF': store.BRANCH,
             'GITHUB_WORKFLOW_REF': '100mango/Celluloid/'+store.WORKFLOW+'@'+store.BRANCH,
             'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_JOB': 'vision', 'GITHUB_EVENT_NAME': 'push',
@@ -95,18 +95,36 @@ class ContractTests(unittest.TestCase):
     def test_utf8_marker_requires_exact_line(self):
         with self.assertRaises(ValueError): store.RequestLines(lambda _: None)('stdout', ('foreign '+store.REQUEST_PREFIX+REQUEST+'\n').encode())
     def test_exact_upload_budget(self):
-        self.assertLessEqual(sum(store.EVIDENCE_FILES.values()), store.EVIDENCE_CAP)
+        self.assertLessEqual(sum(store.EVIDENCE_FILES.values())+sum(store.DIAGNOSTIC_FILES.values()), store.EVIDENCE_CAP)
         workflow = (ROOT/store.WORKFLOW).read_text()
         enabled = json.loads((ROOT/'Scripts/vision_store_admission.json').read_text())['enabled']
         self.assertIs(type(enabled), bool)
         self.assertTrue(enabled)
         self.assertIn('branches: [codex/vision-store-single]', workflow)
-        self.assertIn("github.event_name == 'push' && github.ref == 'refs/heads/codex/vision-store-single' && github.event.created == true", workflow)
+        self.assertIn("github.event_name == 'push' && github.ref == 'refs/heads/codex/vision-store-single' && github.event.created == false", workflow)
+        self.assertIn("github.event.before == '"+store.BASE+"' && github.run_attempt == 1", workflow)
+        self.assertIn('github.event.deleted == false', workflow)
         self.assertNotIn('workflow_dispatch:', workflow)
         self.assertIn('CELLULOID_STORE_ROOT_GO_SHA: ${{ github.sha }}', workflow)
         paths = {line.strip().split('/')[-1] for line in workflow.splitlines() if '${{ runner.temp }}/vision-store-evidence/' in line}
         self.assertEqual(paths, set(store.EVIDENCE_FILES))
         self.assertNotIn('*.jpeg', workflow); self.assertNotIn('.xcresult', workflow)
+    def test_workflow_diagnostics_independent_and_budgets_reserved(self):
+        import re
+        workflow = (ROOT/store.WORKFLOW).read_text()
+        blocks = workflow.split('      - name: ')[1:]
+        budgets = [int(re.search(r'timeout-minutes: (\d+)', block)[1]) for block in blocks]
+        self.assertIn('    timeout-minutes: 42', workflow)
+        self.assertEqual(sum(budgets), 42)
+        self.assertEqual(budgets, [1,2,32,2,2,2,1])
+        self.assertIn('if: always()\n', blocks[-1])
+        self.assertIn("steps.pack.outcome == 'success'", blocks[4])
+        paths = {line.rsplit('/',1)[-1] for line in blocks[-1].splitlines() if '${{ runner.temp }}/' in line}
+        self.assertEqual(paths, set(store.DIAGNOSTIC_FILES))
+        self.assertNotIn('jpeg', blocks[-1])
+        self.assertLess(store.CLEANUP_END, store.PACK_END)
+        self.assertEqual(store.FINISH_END-store.PACK_END, 240)
+        self.assertLessEqual(store.FINISH_END+60, 42*60)
     def test_swift_case_has_no_edit_or_window_screenshot(self):
         text = (ROOT/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()
         case = text.split('func testStoreSingleHeldEditorCapture()', 1)[1].split('func testSeededDocument', 1)[0]
@@ -211,6 +229,30 @@ class ProcessTests(unittest.TestCase):
         job = self.job(lambda *a, **kw: subprocess.CompletedProcess(a, 1, b'known failure', b''))
         with self.assertRaises(ValueError): job.call('build', ['mock'], 1)
         self.assertFalse(job.blocked)
+    def test_phase_and_failure_tail_are_live_bounded_and_independent(self):
+        output = io.StringIO()
+        def execute(*a, **kw):
+            self.assertIn('VISION_PHASE_START ', output.getvalue())
+            return subprocess.CompletedProcess(a, 1, b'old-prefix'+b'z'*40000, b'end-of-failure')
+        job = self.job(execute)
+        with mock.patch('sys.stdout', output), self.assertRaises(ValueError): job.call('compile-image-helper', ['mock'], 1)
+        text = output.getvalue()
+        self.assertIn('VISION_PHASE_END ', text); self.assertIn('VISION_FAILURE_TAIL ', text)
+        self.assertIn('Known completed command failed: compile-image-helper', text)
+        self.assertNotIn('old-prefix', text)
+        tail = job.diagnostics/'failure-tail.log'
+        self.assertEqual(tail.stat().st_size, store.FAILURE_TAIL_CAP)
+        self.assertTrue(tail.read_bytes().endswith(b'end-of-failure'))
+        self.assertEqual((job.diagnostics/'report.json').read_bytes(), (job.folder/'report.json').read_bytes())
+        (job.folder/'unknown').write_bytes(b'reject strict pack')
+        with self.assertRaises(ValueError): store.pack(self.root, BINDING, 1, 2)
+        self.assertEqual(tail.stat().st_size, store.FAILURE_TAIL_CAP)
+        self.assertEqual(json.loads((job.diagnostics/'report.json').read_text())['operations'][0]['complete'], False)
+    def test_diagnostics_symlink_rejected(self):
+        target = self.root/'untouched'; target.mkdir()
+        (self.root/store.DIAGNOSTICS).symlink_to(target, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'Unsafe diagnostics'): self.job(lambda *a, **kw: None)
+        self.assertEqual(list(target.iterdir()), [])
     def test_unknown_failure_raises_durable_barrier(self):
         def fail(*a, **kw): raise CaptureStopped('duration-limit', True)
         job = self.job(fail)

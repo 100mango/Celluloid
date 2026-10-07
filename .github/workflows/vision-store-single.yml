@@ -9,9 +9,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   vision:
-    # Root authorizes exactly this first publication to the new fixed branch.
-    # Later branch updates, manual dispatches and rerun attempts cannot qualify.
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/vision-store-single' && github.event.created == true }}
+    # Only the reviewed update from failed source68 can qualify, once.
+    # Exact-tree root GO is required before publishing this fixed-ref update.
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/vision-store-single' && github.event.created == false && github.event.deleted == false && github.event.before == '68c035264f5c0ec44e350ac9b57f0308a857026b' && github.run_attempt == 1 }}
     name: Hold one real editor view and capture full-display JPEG
     runs-on: xcode-27
     timeout-minutes: 42
@@ -27,8 +27,15 @@ jobs:
           import json,os,time
           from pathlib import Path
           keys=('GITHUB_REPOSITORY','GITHUB_REF','GITHUB_WORKFLOW_REF','GITHUB_RUN_ATTEMPT','GITHUB_JOB','GITHUB_EVENT_NAME','DEVELOPER_DIR','GITHUB_SHA','GITHUB_WORKFLOW_SHA','GITHUB_RUN_ID')
-          with (Path(os.environ['RUNNER_TEMP'])/'vision-store-clock.json').open('x') as stream:
-              json.dump({'started_monotonic':time.monotonic(),'binding':{k:os.environ[k] for k in keys}},stream)
+          temp=Path(os.environ['RUNNER_TEMP'])
+          row={'started_monotonic':time.monotonic(),'binding':{k:os.environ[k] for k in keys}}
+          diagnostics=temp/'vision-store-diagnostics'
+          diagnostics.mkdir(exist_ok=False)
+          payload=(json.dumps({**row,'complete':False,'scope':'Bootstrap only; no capture acceptance'})+'\n').encode()
+          if len(payload)>16384: raise ValueError('Bootstrap diagnostic cap')
+          with (diagnostics/'bootstrap.json').open('xb') as stream: stream.write(payload)
+          print('VISION_BOOTSTRAP '+json.dumps(row),flush=True)
+          with (temp/'vision-store-clock.json').open('x') as stream: json.dump(row,stream)
           PY
       - name: Check out exact admitted source and sole reviewed parent
         timeout-minutes: 2
@@ -39,17 +46,17 @@ jobs:
           ref: ${{ github.sha }}
       - name: Capture the single held editor state
         id: capture
-        timeout-minutes: 38
-        run: python3 Scripts/run_vision_store_capture.py --execute
+        timeout-minutes: 32
+        run: python3 -u Scripts/run_vision_store_capture.py --execute
       - name: Finalize bounded raw image and receipts
         id: pack
         if: always()
-        timeout-minutes: 1
-        run: python3 Scripts/run_vision_store_capture.py --pack
+        timeout-minutes: 2
+        run: python3 -u Scripts/run_vision_store_capture.py --pack
       - name: Retain exact evidence paths
         id: upload
         if: always() && steps.pack.outcome == 'success'
-        timeout-minutes: 1
+        timeout-minutes: 2
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: celluloid-vision-store-single-${{ github.run_id }}-${{ github.run_attempt }}
@@ -70,7 +77,20 @@ jobs:
           compression-level: 0
       - name: Preserve verdict and final original-clock bound
         if: always()
-        timeout-minutes: 1
+        timeout-minutes: 2
         env:
           VISION_UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
-        run: python3 Scripts/run_vision_store_capture.py --finish-upload
+        run: python3 -u Scripts/run_vision_store_capture.py --finish-upload
+      - name: Retain independent bounded failure diagnostics
+        if: always()
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: celluloid-vision-store-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/vision-store-diagnostics/bootstrap.json
+            ${{ runner.temp }}/vision-store-diagnostics/report.json
+            ${{ runner.temp }}/vision-store-diagnostics/failure-tail.log
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0

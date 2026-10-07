@@ -17,9 +17,9 @@ from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
 from run_vision_remaining import (built_vision_app, write_synthetic_fixture,
     snapshot_fixture, test_command, verify_cases, synthetic_fixture_bytes, FIXTURE_NAME)
 
-BASE = '83f83222cc7589b3b0829f0cb9fbc8342562993b'
+BASE = '68c035264f5c0ec44e350ac9b57f0308a857026b'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = 'f2b9115f3702c8e540cbbc2a47a466c2049367ba'
+BASE_TREE = 'e496cda69aa0ede3ffb0374c2b97bfea070dab68'
 BRANCH = 'refs/heads/codex/vision-store-single'
 WORKFLOW = '.github/workflows/vision-store-single.yml'
 SELECTOR = 'CelluloidVisionUITests/NativeVisionUITests/testStoreSingleHeldEditorCapture'
@@ -28,7 +28,10 @@ RUNNER_ID = 'Mango.Celluloid.CelluloidVisionUITests.xctrunner'
 CLOCK = 'vision-store-clock.json'
 FOLDER = 'vision-store-evidence'
 BARRIER = 'vision-store-device-uncertain.json'
-WORK_END, CLEANUP_END, PACK_END, FINISH_END = 2100, 2220, 2280, 2400
+WORK_END, CLEANUP_END, PACK_END, FINISH_END = 1800, 1920, 2160, 2400
+FAILURE_TAIL_CAP = 32_768
+DIAGNOSTICS = 'vision-store-diagnostics'
+DIAGNOSTIC_FILES = {'bootstrap.json': 16_384, 'report.json': 500_000, 'failure-tail.log': FAILURE_TAIL_CAP}
 # Parent-approved local bounds only; native admission remains disabled.
 ORIGINAL_CAP, STORE_CAP, EVIDENCE_CAP = 16_000_000, 3_000_000, 24_000_000
 REPORT_CAP = 500_000
@@ -38,11 +41,9 @@ EVIDENCE_FILES = {name: cap for name, cap in (
     ('build.log', 524_298), ('ui.log', 524_298), ('screenshot.log', 524_298),
     ('shutdown.log', 524_298), ('delete.log', 524_298),
     (BARRIER, 32_768), ('native-icon-provenance-runtime.json', 1_000_000))}
-ADDED = ('Documentation/vision-store-single.md', WORKFLOW,
-    'Scripts/run_vision_store_capture.py', 'Scripts/vision_store_stream.py',
-    'Scripts/vision_store_image.swift', 'Scripts/vision_store_admission.json',
-    'Scripts/test_vision_store_capture.py')
-MODIFIED = ('Platforms/VisionUITests/NativeVisionUITests.swift',)
+ADDED = ()
+MODIFIED = ('Documentation/vision-store-single.md', WORKFLOW,
+    'Scripts/run_vision_store_capture.py', 'Scripts/test_vision_store_capture.py')
 REQUEST_PREFIX = 'CELLULOID_STORE_CAPTURE_REQUEST '
 
 
@@ -192,6 +193,10 @@ class Job:
         self.devices_root = Path.home() / 'Library/Developer/CoreSimulator/Devices'
         need(not (self.temp / BARRIER).exists(), 'Existing uncertainty barrier')
         self.folder = self.temp / FOLDER; self.folder.mkdir(exist_ok=False)
+        self.diagnostics = self.temp / DIAGNOSTICS
+        need(not self.diagnostics.is_symlink(), 'Unsafe diagnostics directory')
+        self.diagnostics.mkdir(exist_ok=True)
+        need(self.diagnostics.is_dir(), 'Missing diagnostics directory')
         self.report = {'schema': 'Celluloid.StoreCapture.1', 'binding': binding,
             'started_monotonic': started, 'scope': 'One real held editor image; synthetic INPUT only; no functionality or store-acceptance claim',
             'complete': False, 'visual_review_status': 'pending', 'store_ready': False,
@@ -201,6 +206,10 @@ class Job:
         data = (json.dumps(self.report, indent=2)+'\n').encode()
         need(len(data) <= REPORT_CAP, 'Report retention cap')
         (self.folder/'report.json').write_bytes(data)
+        # Independent small artifact survives strict image-pack rejection.
+        destination = self.diagnostics/'report.json'
+        need(not destination.is_symlink() and (not destination.exists() or destination.is_file()), 'Unsafe diagnostics report')
+        destination.write_bytes(data)
     def barrier(self, row):
         self.blocked = True
         data = (json.dumps(row, indent=2)+'\n').encode()
@@ -231,7 +240,9 @@ class Job:
         if self.checkpoint_deadline is not None: boundary = min(boundary, self.checkpoint_deadline)
         need(self.clock()+seconds+20 <= boundary, 'Original wall-time reserve unavailable: '+phase)
         row = {'phase': phase, 'command': list(map(str, command)), 'seconds': seconds, 'complete': False, 'started_monotonic': self.clock()}
-        self.report['operations'].append(row); self.persist()
+        self.report['operations'].append(row)
+        print('VISION_PHASE_START '+json.dumps({'phase':phase,'timeout_seconds':seconds,'elapsed_seconds':self.clock()-self.started,'barrier':self.blocked}),flush=True)
+        self.persist()
         stdout = stderr = b''; complete = False
         try:
             executor = stream_capture if observer is not None else self.execute
@@ -262,6 +273,18 @@ class Job:
             row['finished_monotonic'] = self.clock()
             retain_archive_output(row, stdout, stderr, capture_complete=complete)
             text = row.pop('stdout')+'\n[stderr]\n'+row.pop('stderr')
+            # Same flushed, bounded phase/tail reporting used by successful base83.
+            print('VISION_PHASE_END '+json.dumps({'phase':phase,'complete':row['complete'],'return_code':row.get('return_code'),
+                'error':row.get('error'),'barrier':self.blocked,'capture_complete':complete,
+                'elapsed_seconds':row['finished_monotonic']-row['started_monotonic']}),flush=True)
+            if not row['complete']:
+                tail=(stdout+b'\n[stderr]\n'+stderr)[-FAILURE_TAIL_CAP:]
+                print('VISION_FAILURE_TAIL '+json.dumps({'phase':phase,'retained_bytes':len(tail),'tail_only':True})+'\n'+tail.decode('utf-8','replace'),flush=True)
+                destination = self.diagnostics/'failure-tail.log'
+                need(not destination.is_symlink(), 'Unsafe diagnostics tail')
+                # Keep the first failure rather than replacing it with cleanup output.
+                if not destination.exists():
+                    with destination.open('xb') as stream: stream.write(tail)
             if phase+'.log' in EVIDENCE_FILES:
                 path = self.folder/(phase+'.log'); path.write_text(text)
                 row['retained_log'] = file_record(path, EVIDENCE_FILES[path.name])
@@ -429,7 +452,9 @@ class Job:
                     self.report['cleanup'].append({'action': action, 'success': False, 'error': str(error)}); break
         self.report['device_uncertain'] = self.blocked
         self.report['complete'] = bool(self.report.get('capture_qualified') and not self.blocked and len(self.report['cleanup']) == 2 and all(r['success'] for r in self.report['cleanup']))
-        self.report['elapsed_seconds'] = self.clock()-self.started; self.persist()
+        self.report['elapsed_seconds'] = self.clock()-self.started
+        print('VISION_JOB_END '+json.dumps({k:self.report.get(k) for k in ('complete','device_uncertain','error','elapsed_seconds')}),flush=True)
+        self.persist()
 
 
 def json_or_plist(path):
@@ -533,15 +558,30 @@ def main():
     started, now = clock.get('started_monotonic'), time.monotonic()
     need(type(started) in (int, float) and math.isfinite(started) and 0 < started <= now, 'Invalid original clock')
     if args.pack:
-        pack(temp, binding, started, now); need(time.monotonic()+120 <= started+FINISH_END, 'Upload reserve missing'); return 0
+        print('VISION_PACK_START '+json.dumps({'elapsed_seconds':now-started}),flush=True)
+        try:
+            pack(temp, binding, started, now)
+            need(time.monotonic() <= started+PACK_END and time.monotonic()+240 <= started+FINISH_END, 'Pack/upload/verdict reserve missing')
+            print('VISION_PACK_END '+json.dumps({'complete':True,'elapsed_seconds':time.monotonic()-started}),flush=True)
+        except BaseException as error:
+            print('VISION_PACK_FAILURE '+json.dumps({'error':str(error),'elapsed_seconds':time.monotonic()-started}),flush=True)
+            raise
+        return 0
     if args.finish_upload:
         need(now <= started+FINISH_END and os.environ.get('VISION_UPLOAD_OUTCOME') == 'success', 'Upload/deadline failed')
         return 0 if verify_packed_images(temp, binding, started).get('complete') is True else 1
     job = Job(root, temp, binding, started); job.report['admission'] = authorization
     try: job.work()
-    except BaseException as error: job.report['error'] = str(error)
+    except BaseException as error:
+        job.report['error'] = str(error)
+        print('VISION_JOB_FAILURE '+json.dumps({'error':str(error),'barrier':job.blocked}),flush=True)
     finally: job.finish()
     return 0 if job.report['complete'] else 1
 
 
-if __name__ == '__main__': raise SystemExit(main())
+if __name__ == '__main__':
+    try: verdict = main()
+    except BaseException as error:
+        print('VISION_DRIVER_FAILURE '+json.dumps({'type':type(error).__name__,'error':str(error)}),flush=True)
+        raise
+    raise SystemExit(verdict)
