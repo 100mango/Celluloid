@@ -5,6 +5,9 @@ import os
 import sys
 import time
 import hashlib
+import io
+import selectors
+from unittest.mock import patch
 import plistlib
 import struct
 import zlib
@@ -12,7 +15,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from run_vision_remaining import Job, HOSTED, EDIT, PRIVACY, SELECTORS, verify_cases, pack, load_origin, environment, CLOCK, WORK_END, CLEANUP_END, BRANCH, WORKFLOW, fixture_metadata, snapshot_fixture, synthetic_fixture_bytes, write_synthetic_fixture, NATIVE_RECIPE_SHA, NATIVE_SEED_ID
+from run_vision_remaining import Job, HOSTED, EDIT, PRIVACY, SELECTORS, verify_cases, pack, load_origin, environment, CLOCK, WORK_END, CLEANUP_END, BRANCH, WORKFLOW, fixture_metadata, snapshot_fixture, synthetic_fixture_bytes, write_synthetic_fixture, NATIVE_RECIPE_SHA, NATIVE_SEED_ID, EVIDENCE_FILES, EVIDENCE_CAP, FAILURE_TAIL_CAP
 from mac_archive_capture import capture, CaptureStopped
 from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
 
@@ -363,6 +366,58 @@ class RemainingTests(unittest.TestCase):
             return result
         report=self.exercise(outside);self.assertFalse(report['complete']);self.assertNotIn('ui',[p for p,_,_ in fake.calls])
         self.assertIn('Container outside owned simulator',report['error'])
+    def test_phase_start_is_flushed_before_real_host_child_finishes(self):
+        root=Path(__file__).resolve().parents[1]
+        code="import sys,tempfile;sys.path.insert(0,'Scripts');from run_vision_remaining import Job;d=tempfile.TemporaryDirectory();j=Job('.',d.name,'f'*40);j.call('synthetic-host',[sys.executable,'-c','import time;time.sleep(2)'],10)"
+        proc=subprocess.Popen([sys.executable,'-c',code],cwd=root,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(proc.stdout,selectors.EVENT_READ)
+                self.assertTrue(selector.select(1), 'Start marker must be flushed while child is still running')
+                line=proc.stdout.readline();self.assertIn(b'VISION_PHASE_START',line);self.assertIsNone(proc.poll())
+            out,err=proc.communicate(timeout=5);self.assertEqual(proc.returncode,0,err);self.assertIn(b'VISION_PHASE_END',out)
+        finally:
+            if proc.poll() is None:proc.kill();proc.communicate()
+    def test_failure_tail_is_bounded_and_every_marker_flushes(self):
+        with tempfile.TemporaryDirectory() as d:
+            raw=b'first-sentinel'+b'x'*(FAILURE_TAIL_CAP*2)+b'actual-last-line'
+            def failed(argv,**kwargs):return subprocess.CompletedProcess(argv,65,raw,b'')
+            job=Job('.',d,'f'*40,execute=failed)
+            with patch('builtins.print') as output:
+                with self.assertRaises(ValueError):job.call('ui',['synthetic-command'],10)
+            lines=[x.args[0] for x in output.call_args_list]
+            self.assertTrue(all(x.kwargs.get('flush') is True for x in output.call_args_list))
+            self.assertTrue(lines[0].startswith('VISION_PHASE_START '));self.assertTrue(lines[1].startswith('VISION_PHASE_END '))
+            tail=next(x for x in lines if x.startswith('VISION_FAILURE_TAIL '));body=tail.split('\n',1)[1]
+            self.assertLessEqual(len(body.encode()),FAILURE_TAIL_CAP);self.assertIn('actual-last-line',body);self.assertNotIn('first-sentinel',body)
+    def test_actual_pack_timeout_cannot_gate_fixed_always_upload(self):
+        import yaml
+        root=Path(__file__).resolve().parents[1];workflow=yaml.safe_load((root/WORKFLOW).read_text())
+        steps=workflow['jobs']['vision']['steps'];upload=next(x for x in steps if x.get('id')=='upload');packing=next(x for x in steps if x.get('id')=='pack')
+        self.assertEqual(upload['if'],'always()');self.assertEqual(packing['timeout-minutes'],2)
+        self.assertNotIn('steps.pack.outputs',upload['if'])
+        identity={'GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_REF':BRANCH,'GITHUB_WORKFLOW_REF':'100mango/Celluloid/'+WORKFLOW+'@'+BRANCH,'GITHUB_RUN_ATTEMPT':'1','GITHUB_JOB':'vision','GITHUB_EVENT_NAME':'push','DEVELOPER_DIR':'/Applications/Xcode_27.app/Contents/Developer','GITHUB_SHA':'f'*40,'GITHUB_WORKFLOW_SHA':'f'*40,'GITHUB_RUN_ID':'1234'}
+        with tempfile.TemporaryDirectory() as d:
+            folder=Path(d)/'vision-remaining-evidence';folder.mkdir();report=folder/'report.json';report.write_text('{"complete":false}')
+            (Path(d)/CLOCK).write_text(json.dumps({'started_monotonic':time.monotonic(),'binding':environment(identity)}))
+            code="import sys,time;sys.path.insert(0,'Scripts');import run_vision_remaining as m;m.pack=lambda *a:time.sleep(5);sys.argv=['driver','--pack'];m.main()"
+            with self.assertRaises(subprocess.TimeoutExpired) as stopped:
+                subprocess.run([sys.executable,*(['-O'] if not __debug__ else []),'-c',code],cwd=root,env=dict(os.environ,**identity,RUNNER_TEMP=d),capture_output=True,timeout=0.5)
+            self.assertIn(b'VISION_PACK_START',stopped.exception.stdout or b'')
+            self.assertEqual(report.read_text(),'{"complete":false}')
+            self.assertIn('${{ runner.temp }}/vision-remaining-evidence/report.json',upload['with']['path'].splitlines())
+    def test_fixed_upload_whitelist_has_a_producer_bounded_total(self):
+        import yaml
+        workflow=yaml.safe_load((Path(__file__).resolve().parents[1]/WORKFLOW).read_text())
+        upload=next(x for x in workflow['jobs']['vision']['steps'] if x.get('id')=='upload')
+        paths=upload['with']['path'].splitlines();prefix='${{ runner.temp }}/vision-remaining-evidence/'
+        self.assertEqual(set(paths),{prefix+name for name in EVIDENCE_FILES})
+        self.assertTrue(all('*' not in p and '..' not in p for p in paths));self.assertLessEqual(sum(EVIDENCE_FILES.values()),EVIDENCE_CAP)
+        with tempfile.TemporaryDirectory() as d:
+            folder=Path(d)/'vision-remaining-evidence';folder.mkdir();(folder/'report.json').write_text('{"complete":false}')
+            (folder/'ui.log').write_bytes(b'actual bounded failure log');(folder/'source-before-head.log').write_bytes(b'not in fallback upload set')
+            manifest=pack(d,{},10,11)
+            self.assertEqual({x['name'] for x in manifest['members']},{'report.json','ui.log'})
     def test_browser_uses_observed_location_exact_unique_items_and_full_scan(self):
         root=Path(__file__).resolve().parents[1]
         source=(root/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()

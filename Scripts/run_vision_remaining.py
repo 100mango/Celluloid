@@ -25,13 +25,20 @@ HOSTED = 'CelluloidVisionTests/NativeVisionTests/testPrepareVisionRemainingDocum
 EDIT = 'CelluloidVisionUITests/NativeVisionUITests/testSeededDocumentSequentialTextUndoRedoAndRelaunch'
 PRIVACY = 'CelluloidVisionUITests/NativeVisionUITests/testSimplifiedChineseDocumentPrivacyAndLargeText'
 SELECTORS = (EDIT,)
-BASE = '997dd5a53781423ed3ff91a6e559874fd8814f7b'
-BASE_TREE = '009333fa7fe4e6371d3504d9892c317f6240050e'
+BASE = 'e20c7ce5fde3300ca4ef13480bed3de19718874a'
+BASE_TREE = 'edee686354ad23fa928c46b6751467fe9ce5b97d'
 BRANCH = 'refs/heads/codex/vision-edit-final'
 WORKFLOW = '.github/workflows/vision-remaining.yml'
 CLOCK = 'vision-remaining-clock.json'
 WORK_END, CLEANUP_END, PACK_END, FINISH_END = 3000, 3150, 3200, 3360
 EVIDENCE_CAP = 8_000_000
+REPORT_CAP = 1_000_000
+FAILURE_TAIL_CAP = 32_768
+# Fixed producer-bounded upload set. The worst-case sum is below8MB even if
+# --pack never completes. No directory glob or xcresult/archive is uploaded.
+EVIDENCE_FILES = {**{name+'.log':524_298 for name in ('build','bootstatus','install','seed-before-ui','ui','seed-after-ui','shutdown','delete','create')},
+                  'report.json':REPORT_CAP,'vision-remaining-device-uncertain.json':1_000_000,
+                  'native-icon-provenance-runtime.json':1_000_000,'manifest.json':32_768}
 MODIFIED = (WORKFLOW,'Documentation/vision-remaining.md','Scripts/run_vision_remaining.py','Scripts/test_vision_remaining.py')
 ADDED = ()
 HISTORICAL_PACKAGE = {'source_sha':'db4d719abdf11504e99e211ffc27d7555883acb3','run_id':37608605492,'artifact_id':11477245993,
@@ -46,7 +53,7 @@ FIXTURE_NAME = 'VisionRemaining.celluloid'
 # run37637767590/artifact11490979202. That run failed on xcodebuild finalization.
 NATIVE_SEED_ID = 'C669EEEC-B101-4A5B-8579-42479B800FE7'
 NATIVE_RECIPE_SHA = '3fc3d7275c3e1e802dccb8daa63e688944b70c00a4d636c93d39f32f9b755b6e'
-HISTORICAL_FIXTURE = {'source_sha':BASE,'run_id':37637767590,'artifact_id':11490979202,
+HISTORICAL_FIXTURE = {'source_sha':'997dd5a53781423ed3ff91a6e559874fd8814f7b','run_id':37637767590,'artifact_id':11490979202,
     'artifact_sha256':'dacfe58716acceb6d1cce8c45c4581a8d0de69c8b50f905906e4353568736970',
     'scope':'Native fixture case passed0.166s; xcodebuild timed out, invocation failed and UI never started'}
 
@@ -203,10 +210,12 @@ class Job:
         self.folder=self.temp/'vision-remaining-evidence'; self.folder.mkdir(exist_ok=False)
         self.output=self.folder/'report.json'
         if (self.temp/'vision-remaining-device-uncertain.json').exists(): raise ValueError('Prior device uncertainty')
-        self.output.write_text(json.dumps(self.report,indent=2)+'\n')
+        self.persist()
 
     def persist(self):
-        self.output.write_text(json.dumps(self.report,indent=2)+'\n')
+        data=(json.dumps(self.report,indent=2)+'\n').encode()
+        if len(data)>REPORT_CAP: raise ValueError('Report evidence cap exceeded')
+        self.output.write_bytes(data)
 
     def call(self, phase, command, seconds, cleanup=False):
         if self.blocked: raise RuntimeError('Device/process uncertainty blocks further commands')
@@ -215,7 +224,9 @@ class Job:
         if self.clock()+seconds+20>boundary: raise ValueError('Insufficient original job wall time before '+phase)
         row={'phase':phase,'command':list(map(str,command)),'timeout_seconds':seconds,
              'started_monotonic':self.clock(),'cleanup_reserve_seconds':20,'complete':False}
-        self.report['operations'].append(row); self.persist()
+        self.report['operations'].append(row)
+        print('VISION_PHASE_START '+json.dumps({'phase':phase,'timeout_seconds':seconds,'elapsed_seconds':self.clock()-self.started,'barrier':self.blocked}),flush=True)
+        self.persist()
         stdout=stderr=b''; complete=False
         try:
             result=self.execute(command,seconds=seconds,cap=ARCHIVE_RAW_CAP,cleanup_grace=10)
@@ -230,13 +241,18 @@ class Job:
             result_text=stdout.decode('utf-8','replace')
             if phase in ('hosted','ui'): result_text+='\n'+stderr.decode('utf-8','replace')
             return result_text
+        except ValueError as error:
+            row['error']=str(error); raise
         except (CaptureStopped,TimeoutError,OSError,KeyboardInterrupt) as error:
             self.blocked=True; row['uncertain']=True; row['error']=str(error)
             if isinstance(error,CaptureStopped):
                 stdout=getattr(error,'stdout_prefix',b''); stderr=getattr(error,'stderr_capture',b'')
                 row['owned_cleanup_confirmed']=error.cleanup_confirmed
                 row['cancelled_signal']=error.cancelled_signal
-            (self.temp/'vision-remaining-device-uncertain.json').write_text(json.dumps(row,indent=2)+'\n')
+            marker=(json.dumps(row,indent=2)+'\n').encode()
+            if len(marker)>1_000_000: raise ValueError('Uncertainty marker evidence cap exceeded')
+            (self.temp/'vision-remaining-device-uncertain.json').write_bytes(marker)
+            (self.folder/'vision-remaining-device-uncertain.json').write_bytes(marker)
             raise
         finally:
             row['finished_monotonic']=self.clock()
@@ -249,6 +265,13 @@ class Job:
             # Full bounded bytes are parsed before the exact mature prefix/tail
             # retention adapter. Never treat the retained 512 KiB as full capture.
             text=row.pop('stdout')+'\n[stderr]\n'+row.pop('stderr')
+            print('VISION_PHASE_END '+json.dumps({'phase':phase,'complete':row['complete'],'return_code':row.get('return_code'),
+                'error':row.get('error'),'barrier':self.blocked,'capture_complete':complete,
+                'elapsed_seconds':row['finished_monotonic']-row['started_monotonic'],
+                'observed_test_terminals':row.get('observed_test_terminals')}),flush=True)
+            if not row['complete']:
+                tail=(stdout+b'\n[stderr]\n'+stderr)[-FAILURE_TAIL_CAP:]
+                print('VISION_FAILURE_TAIL '+json.dumps({'phase':phase,'retained_bytes':len(tail),'tail_only':True})+'\n'+tail.decode('utf-8','replace'),flush=True)
             log=self.folder/(phase+'.log'); log.write_text(text)
             row['retained_log']={'name':log.name,'bytes':log.stat().st_size,
                                  'sha256':hashlib.sha256(log.read_bytes()).hexdigest()}
@@ -348,6 +371,7 @@ class Job:
         self.report['complete'] = bool(self.report.get('functional_cases_passed') and not self.blocked and
                                        len(self.report['cleanup']) == 2 and all(x['success'] for x in self.report['cleanup']))
         self.report['elapsed_seconds'] = self.clock()-self.started
+        print('VISION_JOB_END '+json.dumps({k:self.report.get(k) for k in ('source_sha','complete','device_uncertain','error','elapsed_seconds','ui')}),flush=True)
         self.persist()
 
 
@@ -358,21 +382,24 @@ def pack(temp, binding, started, now):
     report=folder/'report.json'
     if not report.exists(): report.write_text(json.dumps({'complete':False,'error':'Driver produced no final report','binding':binding})+'\n')
     # Retain existing local package/icon receipts even when later tests fail.
-    for name in ('vision-release-packaging.json','native-icon-provenance-runtime.json','vision-remaining-device-uncertain.json'):
+    for name in ('native-icon-provenance-runtime.json','vision-remaining-device-uncertain.json'):
         source=temp/name
         if source.exists():
             if source.is_symlink() or not source.is_file() or source.stat().st_size>1_000_000: raise ValueError('Unsafe/oversized receipt')
             (folder/name).write_bytes(source.read_bytes())
     members=[]
-    for path in sorted(folder.iterdir()):
-        if path.name=='manifest.json': continue
-        if path.is_symlink() or not path.is_file() or not re.fullmatch(r'[a-z0-9-]+\.(json|log)',path.name): raise ValueError('Unexpected evidence file')
+    for name,cap in sorted(EVIDENCE_FILES.items()):
+        if name=='manifest.json': continue
+        path=folder/name
+        if path.is_symlink(): raise ValueError('Unsafe evidence file')
+        if not path.exists(): continue
+        if not path.is_file() or path.stat().st_size>cap: raise ValueError('Evidence file cap/type')
         data=path.read_bytes()
-        if len(data)>2_000_000: raise ValueError('Evidence file cap')
-        members.append({'name':path.name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+        members.append({'name':name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
     if len(members)>64: raise ValueError('Evidence member cap')
     manifest={'binding':binding,'started_monotonic':started,'packed_monotonic':now,'members':members,'max_bytes':EVIDENCE_CAP}
     encoded=(json.dumps(manifest,indent=2)+'\n').encode()
+    if len(encoded)>EVIDENCE_FILES['manifest.json']: raise ValueError('Manifest evidence cap')
     if sum(x['bytes'] for x in members)+len(encoded)>EVIDENCE_CAP: raise ValueError('Evidence aggregate cap')
     (folder/'manifest.json').write_bytes(encoded)
     return manifest
@@ -386,9 +413,14 @@ def main():
     if Path.cwd().resolve()!=root: raise ValueError('Run from the exact candidate repository')
     binding=environment(os.environ); started=load_origin(temp,binding,time.monotonic())
     if args.pack:
-        pack(temp,binding,started,time.monotonic())
-        if time.monotonic()+120>started+FINISH_END: raise ValueError('Full upload/finalization reserve unavailable')
-        with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('evidence_ready=true\n')
+        print('VISION_PACK_START '+json.dumps({'elapsed_seconds':time.monotonic()-started}),flush=True)
+        try:
+            pack(temp,binding,started,time.monotonic())
+            if time.monotonic()>started+PACK_END or time.monotonic()+120>started+FINISH_END: raise ValueError('Original pack/upload deadline reserve unavailable')
+            print('VISION_PACK_END '+json.dumps({'complete':True,'elapsed_seconds':time.monotonic()-started}),flush=True)
+        except BaseException as error:
+            print('VISION_PACK_FAILURE '+json.dumps({'error':str(error),'elapsed_seconds':time.monotonic()-started}),flush=True)
+            raise
         return 0
     if args.finish_upload:
         if time.monotonic()>started+FINISH_END: raise ValueError('Original upload deadline exceeded')
@@ -397,7 +429,9 @@ def main():
         return 0 if report.get('complete') else 1
     job=Job(root,temp,binding['GITHUB_SHA'],started=started,binding=binding)
     try: job.work()
-    except BaseException as error: job.report['error']=str(error)
+    except BaseException as error:
+        job.report['error']=str(error)
+        print('VISION_JOB_FAILURE '+json.dumps({'error':str(error),'barrier':job.blocked}),flush=True)
     finally: job.finish()
     return 0 if job.report['complete'] else 1
 

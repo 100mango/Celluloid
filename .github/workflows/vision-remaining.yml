@@ -41,21 +41,34 @@ jobs:
       - name: Retain existing receipts and bounded logs even after failure
         id: pack
         if: always()
-        timeout-minutes: 1
+        timeout-minutes: 2
         run: python3 Scripts/run_vision_remaining.py --pack
       - name: Upload this cohort's bounded evidence only
         id: upload
-        if: ${{ always() && steps.pack.outputs.evidence_ready == 'true' }}
+        if: always()
         timeout-minutes: 1
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: celluloid-vision-remaining-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/vision-remaining-evidence/
+          path: |
+            ${{ runner.temp }}/vision-remaining-evidence/report.json
+            ${{ runner.temp }}/vision-remaining-evidence/build.log
+            ${{ runner.temp }}/vision-remaining-evidence/bootstatus.log
+            ${{ runner.temp }}/vision-remaining-evidence/install.log
+            ${{ runner.temp }}/vision-remaining-evidence/seed-before-ui.log
+            ${{ runner.temp }}/vision-remaining-evidence/ui.log
+            ${{ runner.temp }}/vision-remaining-evidence/seed-after-ui.log
+            ${{ runner.temp }}/vision-remaining-evidence/shutdown.log
+            ${{ runner.temp }}/vision-remaining-evidence/delete.log
+            ${{ runner.temp }}/vision-remaining-evidence/create.log
+            ${{ runner.temp }}/vision-remaining-evidence/vision-remaining-device-uncertain.json
+            ${{ runner.temp }}/vision-remaining-evidence/native-icon-provenance-runtime.json
+            ${{ runner.temp }}/vision-remaining-evidence/manifest.json
           if-no-files-found: error
           retention-days: 1
           compression-level: 9
       - name: Preserve failed verdict and verify original upload clock
-        if: ${{ always() && steps.pack.outputs.evidence_ready == 'true' }}
+        if: always()
         timeout-minutes: 1
         env:
           VISION_UPLOAD_OUTCOME: ${{ steps.upload.outcome }}

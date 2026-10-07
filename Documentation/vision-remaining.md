@@ -1,11 +1,42 @@
 # Vision editing with a synthetic document input
 
-Exact parent: 997dd5a53781423ed3ff91a6e559874fd8814f7b, tree
-009333fa7fe4e6371d3504d9892c317f6240050e, codex/vision-edit-final.
+Exact parent: e20c7ce5fde3300ca4ef13480bed3de19718874a, tree
+edee686354ad23fa928c46b6751467fe9ce5b97d, codex/vision-edit-final.
 This is a local candidate until separate exact-tree admission. No automatic
 rerun follows from this document.
 
-## Observed parent failure and reusable components
+## Current parent: unknown native phase, failed evidence packing
+
+Run37643046041/e20c7ce remains FAILED. Its proof process exited1 at15:27:26;
+the following host-only packing step timed out at its self-imposed1minute cap,
+and upload was skipped by the pack-success condition. The artifact list is
+empty. The retained GitHub job log cannot identify the failed native phase or
+establish whether UI started. Its13002 bytes have SHA256
+32aeca42e3921898eabbe81fbb6d0e7e178b4401171cb020dd9afe3e9f5df3c6.
+Scheduler/log delays were observed, but their root cause is unknown.
+
+This successor changes observability only. Every admitted command phase emits
+start/end records with flush=True, its return code, timeout/error, capture
+completeness and device barrier. Only failures append the last32KiB of captured
+command/UI bytes. Job failures and final outcomes are flushed too. These actual
+stdout records survive artifact-packing failure and do not turn a partial test
+marker into a successful invocation.
+
+The host-only pack step has2minutes of scheduling allowance inside the same
+60minute job, with original work/cleanup/pack/finalization clocks unchanged.
+Upload and final verification run in the always path independently of pack
+success. Upload names a fixed set of9 bounded phase logs, the bounded report,
+uncertainty/icon receipts and optional manifest. Producer caps sum to7751450
+bytes, below the original8MB total. No directory glob can add arbitrary files.
+The manifest, when available, describes exactly that uploaded set. Local tests
+actually time out a host pack process, verify preserved input files and the
+independent upload condition, and observe flushed stdout before a real host
+child exits. These are local driver tests, not a new native execution.
+
+All Swift, fixtures, single editing assertions, native timeouts and simulator
+barrier behavior are unchanged. No new native run is authorized by this patch.
+
+## Earlier failed cohorts and reusable components
 
 Run37637767590 remains FAILED. Its Debug build-for-testing passed69.870s,
 icon prerequisites passed and bootstatus completed206.310s. The actual native
@@ -81,8 +112,8 @@ and Unicode typing, Undo/Redo, termination/relaunch and named-document reopen.
 Actual field values and dimensions must pass, followed by physical disk readback.
 No final-text fixture or scripted focus substitutes for editing.
 
-Only four paths change: this document, driver, its local tests and descriptive
-workflow titles. All Swift tests, production, resources, project and mature
+Only four paths change: this document, driver, its local tests and workflow
+retention conditions/paths. All Swift tests, production, resources, project and mature
 capture/retention helpers remain byte-identical. Release archive, passed
 functional hosted tests, Chinese privacy, Files-import/PNG-save chains and the
 fixture hosted selector are not selected again.
