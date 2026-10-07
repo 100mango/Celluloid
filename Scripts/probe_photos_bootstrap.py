@@ -133,7 +133,10 @@ def test(label, method):
         '-resultBundlePath', str(evidence_root / ('Bootstrap-' + label + '.xcresult')), '-parallel-testing-enabled', 'NO', '-collect-test-diagnostics', 'never',
         '-only-testing:CelluloidTests/EditorRegressionTests/' + method, 'test-without-building', 'CODE_SIGNING_ALLOWED=NO')
     if code: raise RuntimeError('PhotoKit probe failed: ' + label)
-    rows = [json.loads(line.split('PHOTOS_LIBRARY_READINESS ', 1)[1]) for line in output.splitlines() if line.startswith('PHOTOS_LIBRARY_READINESS ')]
+    from store_display_assets import is_capture
+    from mac_host_transport import load_json
+    decode = load_json if is_capture() else json.loads
+    rows = [decode(line.split('PHOTOS_LIBRARY_READINESS ', 1)[1]) for line in output.splitlines() if line.startswith('PHOTOS_LIBRARY_READINESS ')]
     if len(rows) != 1: raise RuntimeError('Missing unambiguous actual PhotoKit readiness result')
     return rows[0]
 
@@ -164,8 +167,12 @@ else:
 host('before-PhotoKit-readiness')
 initial = test('readiness-before-import', 'testPhotosLibraryBootstrapReadiness')
 assert initial['synthetic'] == [], initial
+from store_display_assets import is_capture, staged_assets, verify_initial, verify_library
+display_capture = is_capture()
+if display_capture: verify_initial(initial)
 host('before-import')
-paths = [pathlib.Path('/tmp/celluloid-fixture.png'), pathlib.Path('/tmp/celluloid-fixture-2.png')] + sorted(pathlib.Path('/tmp').glob('celluloid-composition-*.png'))
+paths = (staged_assets() if display_capture else
+         [pathlib.Path('/tmp/celluloid-fixture.png'), pathlib.Path('/tmp/celluloid-fixture-2.png')] + sorted(pathlib.Path('/tmp').glob('celluloid-composition-*.png')))
 expected = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
 for index, path in enumerate(paths):
     print('BOOTSTRAP_INTENDED_FIXTURE', path.name, path.stat().st_size, expected[path.name], flush=True)
@@ -189,8 +196,11 @@ assert len(final['synthetic']) == len(expected), final
 for name, digest in expected.items():
     matches = [r for r in final['synthetic'] if r['filename'] == name]
     assert len(matches) == 1 and matches[0]['sha256'] == digest, (name, matches)
-print('BOOTSTRAP_EXACT_SIX_ASSETS_VERIFIED', flush=True)
-pathlib.Path('/tmp/celluloid-bootstrap-assets-verified').write_text('verified\n')
+if display_capture:
+    verify_library(initial, final)
+else:
+    print('BOOTSTRAP_EXACT_SIX_ASSETS_VERIFIED', flush=True)
+    pathlib.Path('/tmp/celluloid-bootstrap-assets-verified').write_text('verified\n')
 host('after-import')
 if errors:
     print('BOOTSTRAP_RECOVERED_COMMAND_FAILURES', json.dumps(errors), flush=True)

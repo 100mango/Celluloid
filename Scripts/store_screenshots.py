@@ -22,14 +22,16 @@ import zlib
 from mac_host_transport import load_json
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE_TREE = '4613b47d2699bdbe5608635c8716ab2db4b0ff82'
-PUBLIC_BASE = '91580d8453d47612fb1f83e075951acc763b0157'
+BASE_TREE = '517543d6ceefcbce905a0e0d5db06607a270ca0f'
+PUBLIC_BASE = '0da1ea8954b45365c4d0379c569d85809c135648'
 PRODUCT_SOURCE = 'da9d4abd6484ddaff469677d96caf24362645d7c'
 PRODUCT_TREE = '304ee9c0e4197e4a282ae3933c9f510219b2106d'
 CONTRACT_SHA = 'cc2c2db6140e4062ac4259092573d2085318d63baf0ce95b92d04e5582f2c481'
 UI_PATH = 'CelluloidUITests/CelluloidUITests.swift'
 UI_BASE_SHA = '94f9fffbbf2693038fe85867bd31426959bf099af7f05b681182ef6e97361256'
-UI_CAPTURE_SHA = '7462b8288c2768fe3ebe76f44c2d5f425b71627d56b6596b66c5f1b3dc7f8f41'
+UI_PRIOR_CAPTURE_SHA = '7462b8288c2768fe3ebe76f44c2d5f425b71627d56b6596b66c5f1b3dc7f8f41'
+UI_CAPTURE_SHA = '409fe9b478a56a57682d0af4c7f17d64e1eb7c8eb35e40057fea5254fb1e9ff5'
+DISPLAY_BLOCK_SHA = '1c32507d42c9e75f97135fe11ef713d8548c6aa6ae30e82b65e38b796ad15796'
 INSERTION = '''        if ProcessInfo.processInfo.environment["CELLULOID_STORE_CAPTURE"] == "1" {
             guard ["edited-fixture", "collage-preview"].contains(name),
                   UIScreen.main.traitCollection.userInterfaceStyle == .dark else { return }
@@ -47,21 +49,26 @@ TARGETS = (
     {'row': 'large-ipad', 'model': 'iPad Pro 13-inch (M5)', 'pixels': [2064, 2752],
      'store_category': 'iPad 13-inch display'},
 )
-CASES = {'edited-fixture': 'testSeededPhotoEditingSaveAndReopen',
-         'collage-preview': 'testTwoPhotoCollageZoomRotateAndSave'}
+CASES = {'edited-fixture': 'testStoreNormalEditorScreenshot',
+         'collage-preview': 'testStoreNormalCollageScreenshot'}
 SETUP_CASES = ('testPhotosLibraryBootstrapReadiness', 'testReconcileSyntheticPhotosAfterImport')
-FIXTURE_NAMES = ('celluloid-fixture.png', 'celluloid-fixture-2.png',
-                 'celluloid-composition-0.png', 'celluloid-composition-1.png',
-                 'celluloid-composition-2.png', 'celluloid-composition-3.png')
 MAX_FILE = 5_000_000
+MAX_SCREENSHOT = 8_000_000
+SCREENSHOT_PIXELS = {target['row'] + '-' + label + '.png': target['pixels']
+                     for target in TARGETS for label in CASES}
 MAX_PACKET = 20_000_000
 MAX_ATTACHMENT_MANIFEST = 1_000_000
 CAPTURE_CLEANUP_SECONDS = 15
 CAPTURE_FINALIZATION_SECONDS = 5
 CAPTURE_PATHS = {
-    'Documentation/store-screenshots.md',
+    '.github/workflows/store-screenshots.yml',
+    'Documentation/store-screenshots.md', UI_PATH,
     'Scripts/store_screenshots.py', 'Scripts/test_store_screenshots.py',
     'Scripts/probe_photos_bootstrap.py', 'Scripts/test_store_screenshots_route.py',
+    'Scripts/store_display_assets.py', 'Scripts/test_store_display_assets.py',
+    'Scripts/test_store_display_ui_source.py', 'StoreCaptureAssets/README.md',
+    'StoreCaptureAssets/manifest.json', 'StoreCaptureAssets/demo-coast-sunny.png',
+    'StoreCaptureAssets/demo-citrus-sunny.png',
 }
 
 
@@ -96,7 +103,7 @@ def git(root, *args):
 
 
 def verify_source(root=ROOT, runtime=False):
-    """545 exact prior inputs and one exact insertion; never all546 unchanged."""
+    """545 exact prior inputs plus one precisely reversible UI instrumentation file."""
     root = Path(root)
     raw = (root / 'Scripts/original-ios-source-contract.json').read_bytes()
     need(sha(raw) == CONTRACT_SHA, 'Changed qualified source contract')
@@ -114,8 +121,15 @@ def verify_source(root=ROOT, runtime=False):
         if path == UI_PATH:
             need(digest == UI_BASE_SHA and actual == UI_CAPTURE_SHA, 'Unreviewed UI instrumentation')
             data = source.read_bytes()
-            need(data.count(INSERTION) == 1 and sha(data.replace(INSERTION, b'')) == UI_BASE_SHA,
-                 'Changes exceed the exact screenshot-only insertion')
+            start = b'    // BEGIN FIXED STORE DISPLAY METHODS\n'
+            end = b'    private func emitScreenshot(_ name: String) {\n'
+            need(data.count(start) == data.count(end) == 1, 'Ambiguous display method block')
+            a, b = data.index(start), data.index(end)
+            need(a < b and sha(data[a:b]) == DISPLAY_BLOCK_SHA, 'Changed fixed display methods')
+            prior = data[:a] + data[b:]
+            need(sha(prior) == UI_PRIOR_CAPTURE_SHA and prior.count(INSERTION) == 1
+                 and sha(prior.replace(INSERTION, b'')) == UI_BASE_SHA,
+                 'Changes exceed the exact display additions and inherited screenshot insertion')
         else:
             need(actual == digest, 'Changed protected source: ' + path)
             unchanged.append([path, actual])
@@ -125,9 +139,14 @@ def verify_source(root=ROOT, runtime=False):
               'supervision_public_base_sha': PUBLIC_BASE, 'unchanged_protected_files': 545,
               'unchanged_protected_fingerprint': sha(json.dumps(unchanged, separators=(',', ':')).encode()),
               'ui_test_instrumentation': {'path': UI_PATH, 'prior_sha256': UI_BASE_SHA,
-                                         'capture_sha256': UI_CAPTURE_SHA, 'insert_sha256': sha(INSERTION)},
+                                         'prior_capture_sha256': UI_PRIOR_CAPTURE_SHA,
+                                         'capture_sha256': UI_CAPTURE_SHA, 'insert_sha256': sha(INSERTION),
+                                         'display_block_sha256': DISPLAY_BLOCK_SHA},
               'existing_test_bodies_and_assertions_unchanged': True,
+              'new_display_methods': list(CASES.values()), 'original_qualification_methods': 106,
               'release_qualification': False, 'source_equivalence': False}
+    from store_display_assets import verify_sources
+    result['approved_demo_asset_manifest'] = verify_sources(root)
     if runtime:
         from validation_route import current_route, STORE_SCREENSHOTS
         need(current_route() == STORE_SCREENSHOTS, 'Wrong capture route')
@@ -184,21 +203,8 @@ def select_devices(runtimes, types, devices):
     return output
 
 
-def fixture_files(folder=Path('/tmp')):
-    folder = Path(folder)
-    expected = {folder / name for name in FIXTURE_NAMES}
-    actual = {folder / FIXTURE_NAMES[0], folder / FIXTURE_NAMES[1]} | set(folder.glob('celluloid-composition-*.png'))
-    need(actual == expected, 'Unexpected synthetic fixture membership; no extra imports allowed')
-    result = []
-    for name in FIXTURE_NAMES:
-        path = folder / name
-        need(path.is_file() and not path.is_symlink() and path.stat().st_size <= MAX_FILE, 'Unsafe/missing synthetic fixture')
-        result.append({'name': name, 'bytes': path.stat().st_size, 'sha256': sha(path.read_bytes())})
-    return result
-
-
 def png_metadata(data):
-    need(0 < len(data) <= MAX_FILE and data.startswith(b'\x89PNG\r\n\x1a\n'), 'Invalid or oversized original PNG')
+    need(0 < len(data) <= MAX_SCREENSHOT and data.startswith(b'\x89PNG\r\n\x1a\n'), 'Invalid or oversized original PNG')
     offset = 8
     chunks = []
     compressed = []
@@ -282,7 +288,7 @@ def select_pngs(folder, device, source, product):
         need(isinstance(filename, str) and filename == Path(filename).name, 'Unsafe attachment filename')
         path = folder / filename
         need(path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(folder), 'Unsafe attachment path')
-        need(path.stat().st_size <= MAX_FILE, 'Original PNG exceeds5MB; resizing forbidden')
+        need(path.stat().st_size <= MAX_SCREENSHOT, 'Original PNG exceeds8MB; resizing forbidden')
         data = path.read_bytes()
         metadata = png_metadata(data)
         need([metadata['width'], metadata['height']] == device['pixels'], 'Wrong native screenshot dimensions; no fallback')
@@ -432,8 +438,9 @@ class Capture:
         require_clear()
         check_completion(self.clock, self.context, 'bootstrap')
         log = (self.row_root / 'bootstrap.log').read_text()
-        need(log.count('BOOTSTRAP_EXACT_SIX_ASSETS_VERIFIED') == 1 and 'BOOTSTRAP_RECOVERED_' not in log,
-             'Synthetic fixture bootstrap did not complete cleanly')
+        from store_display_assets import MARKER
+        need(log.count(MARKER) == 1 and 'BOOTSTRAP_EXACT_SIX_ASSETS_VERIFIED' not in log
+             and 'BOOTSTRAP_RECOVERED_' not in log, 'Two-image display bootstrap did not complete cleanly')
 
     def create_device(self, specification):
         """Create once from exact observed type/runtime, then confirm ownership."""
@@ -497,9 +504,9 @@ class Capture:
         self.preexisting_device_ids = {str(item['udid']).upper() for group in observed[2]['devices'].values() for item in group}
         self.preexisting_device_names = {item.get('name') for group in observed[2]['devices'].values() for item in group}
         self.persist()
-        need(not any((Path('/tmp') / name).is_symlink() for name in FIXTURE_NAMES), 'Unsafe synthetic fixture destination')
-        runpy.run_path(str(ROOT / 'Scripts/create_fixture.py'), run_name='__main__')
-        self.fixtures = fixture_files()
+        from store_display_assets import ASSETS, no_legacy_files, prepare
+        no_legacy_files()
+        self.fixtures = list(ASSETS)
         self.persist()
         first_device = self.create_device(self.selected_models[0])
         first_id = first_device['id']
@@ -520,7 +527,7 @@ class Capture:
             udid = device['id']
             self.command('boot', 'boot', ['xcrun', 'simctl', 'boot', udid])
             self.command('bootstatus', 'bootstatus', ['xcrun', 'simctl', 'bootstatus', udid, '-b'])
-            self.command('fixture-stage', 'install', ['xcrun', 'simctl', 'install', udid, str(app)], 300)
+            self.command('fixture-stage', 'install', ['xcrun', 'simctl', 'install', udid, str(app)], 600)
             installed = self.command('fixture-stage', 'installed-container',
                          ['xcrun', 'simctl', 'get_app_container', udid, 'Mango.Celluloid', 'app'], 120).stdout.strip()
             installed_path = Path(installed)
@@ -531,7 +538,7 @@ class Capture:
             need(product_manifest(installed_path) == self.product, 'Installed product differs from built app')
             staging = {'installed_app': str(installed_path), 'binary_sha256': sha((app / 'Celluloid').read_bytes())}
             self.command('privacy', 'photos-grant', ['xcrun', 'simctl', 'privacy', udid, 'grant', 'photos', 'Mango.Celluloid'])
-            need(fixture_files() == self.fixtures, 'Synthetic fixture bytes changed before bootstrap')
+            prepare(ROOT)
             self.bootstrap(device)
             self.command('appearance', 'dark-appearance', ['xcrun', 'simctl', 'ui', udid, 'appearance', 'dark'])
             bundle = self.row_root / 'StoreCapture.xcresult'
@@ -594,6 +601,7 @@ class Capture:
                   'selected_models': self.selected_models, 'creations': self.creations,
                   'commands': self.commands, 'cleanup': self.cleanup, 'error': error,
                   'ui_cases_per_device': list(CASES.values()), 'setup_cases_per_device': list(SETUP_CASES),
+                  'ui_cases_are_new_display_checks': True, 'original_ui_qualification_methods_rerun': False,
                   'full412_reexecuted': False, 'release_qualification': False,
                   'visual_approval': 'pending', 'store_submission_approved': False}
         for row in ('large-phone', 'large-ipad'):
@@ -601,7 +609,8 @@ class Capture:
             if not folder.is_dir():
                 continue
             for name in ('original-ios-process-failure.json', 'original-ios-process-inflight.json',
-                         'full-shipping-clock.json', 'capture-summary.json', 'capture-execution.json'):
+                         'full-shipping-clock.json', 'capture-summary.json', 'capture-execution.json',
+                         'store-display-preparation.json', 'store-display-photos.json'):
                 path = folder / name
                 if path.is_file() and not path.is_symlink() and path.stat().st_size <= MAX_FILE:
                     shutil.copyfile(path, self.packet / (row + '-' + name))
@@ -633,11 +642,27 @@ class Capture:
                              for p in sorted(self.packet.iterdir()) if p.is_file() and not p.is_symlink()
                              and p.name != 'manifest.json']})
         files = list(self.packet.iterdir())
-        need(all(p.is_file() and not p.is_symlink() and p.stat().st_size <= MAX_FILE for p in files), 'Capture packet file cap')
-        need(sum(p.stat().st_size for p in files) <= MAX_PACKET, 'Capture packet20MB cap; no image conversion allowed')
+        validate_packet_files(files)
         print('STORE_CAPTURE_PACKET', json.dumps({'directory': str(self.packet), 'complete': report['complete'],
                                                 'files': len(files), 'bytes': sum(p.stat().st_size for p in files)}))
         need(report['complete'] or not completed, report['error'])
+
+
+def validate_packet_files(files):
+    """Only the four fixed native screenshot names receive the 8MB allowance."""
+    need(files, 'Empty capture packet')
+    for path in files:
+        need(path.is_file() and not path.is_symlink(), 'Unsafe capture packet file')
+        pixels = SCREENSHOT_PIXELS.get(path.name)
+        if pixels is not None:
+            need(path.stat().st_size <= MAX_SCREENSHOT, 'Fixed screenshot exceeds8MB')
+            metadata = png_metadata(path.read_bytes())
+            need([metadata['width'], metadata['height']] == pixels, 'Fixed screenshot has wrong native dimensions')
+        else:
+            need(path.suffix.lower() != '.png', 'Unexpected screenshot filename')
+            need(path.stat().st_size <= MAX_FILE, 'Metadata/log exceeds5MB')
+    need(sum(path.stat().st_size for path in files) <= MAX_PACKET,
+         'Capture packet20MB cap; no image conversion allowed')
 
 
 def main():
@@ -696,8 +721,7 @@ def main():
         first = load_json((outer / 'store-capture-clock.json').read_text())
         need(0 <= time.monotonic() - first['started_monotonic'] <= 3300, 'No fixed upload allocation remains')
         files = list((outer / 'store-capture-evidence').iterdir())
-        need(files and all(p.is_file() and not p.is_symlink() and p.stat().st_size <= MAX_FILE for p in files)
-             and sum(p.stat().st_size for p in files) <= MAX_PACKET, 'Unsafe or oversized capture packet')
+        validate_packet_files(files)
         return
     capture = Capture(outer)
     try:

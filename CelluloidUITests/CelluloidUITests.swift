@@ -397,6 +397,124 @@ final class CelluloidUITests: XCTestCase {
         XCTAssertTrue(app.buttons["make-collage"].waitForExistence(timeout: 5))
     }
 
+    // BEGIN FIXED STORE DISPLAY METHODS
+    // Separate display checks; the original qualification methods above remain unchanged.
+    func testStoreNormalEditorScreenshot() {
+        XCTAssertEqual(ProcessInfo.processInfo.environment["CELLULOID_STORE_CAPTURE"], "1")
+        launch(diagnostics: false, photosAccess: true)
+        XCTAssertGreaterThan(app.frame.height, app.frame.width)
+        app.buttons["edit-photo"].tap()
+        XCTAssertTrue(waitForFullPhotoAccessPicker(app))
+        assertFullPhotoAccessPicker(app)
+        XCTAssertTrue(app.descendants(matching: .any)["photo-1"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["photo-2"].exists)
+        app.descendants(matching: .any)["photo-0"].tap()
+        app.buttons["picker-done"].tap()
+        let done = app.buttons["editor-done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 15))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true AND hittable == true"), object: done)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed)
+        waitForStableLayout(["editor-done", "tool-filter", "tool-bubble", "tool-sticker"], landscape: false)
+        XCTAssertEqual(app.images.matching(identifier: "attachment-image").count, 0)
+        // Fresh input resets the shipping editor to Original and scaleAspectFit.
+        // photo-0 is one of the two hash-verified samples, not a promise of coast order.
+        emitScreenshot("edited-fixture")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 5))
+    }
+
+    func testStoreNormalCollageScreenshot() {
+        XCTAssertEqual(ProcessInfo.processInfo.environment["CELLULOID_STORE_CAPTURE"], "1")
+        launch(diagnostics: false, photosAccess: true)
+        XCTAssertGreaterThan(app.frame.height, app.frame.width)
+        app.buttons["make-collage"].tap()
+        XCTAssertTrue(waitForFullPhotoAccessPicker(app))
+        assertFullPhotoAccessPicker(app)
+        XCTAssertTrue(app.descendants(matching: .any)["photo-1"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["photo-2"].exists)
+        app.descendants(matching: .any)["photo-0"].tap()
+        app.descendants(matching: .any)["photo-1"].tap()
+        app.buttons["picker-done"].tap()
+        let done = app.buttons["collage-done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 15))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true AND hittable == true"), object: done)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed)
+        waitForStableLayout(["collage-done", "collage-image"], landscape: false)
+        let initialImages = app.scrollViews.matching(identifier: "collage-image").allElementsBoundByIndex
+        XCTAssertEqual(initialImages.count, 2)
+        guard initialImages.count == 2 else { return }
+        let imageBottom = initialImages.map { $0.frame.maxY }.max()!
+        let panels = app.collectionViews.allElementsBoundByIndex.filter {
+            let frame = $0.frame
+            return frame.width >= app.frame.width - 2 && abs(frame.height - 120) <= 2
+                && frame.minY >= imageBottom - 1 && app.frame.insetBy(dx: -1, dy: -1).contains(frame)
+        }
+        XCTAssertEqual(panels.count, 1, "Require the unique shipping bottom style panel")
+        guard let panel = panels.first, panels.count == 1 else { return }
+        let panelFrame = panel.frame
+        let cells = panel.cells.allElementsBoundByIndex.filter {
+            let visible = $0.frame.intersection(panelFrame)
+            return !visible.isNull && visible.width > 1 && visible.height > 1
+        }.sorted { $0.frame.minX < $1.frame.minX }
+        XCTAssertTrue((4...5).contains(cells.count))
+        guard cells.count >= 4 else { return }
+        // The unchanged flow layout starts at x10 with100-point cells and5-point gaps.
+        // No style-panel scrolling precedes this check, so ordinal3 is compose_2_4.
+        for index in 0..<4 {
+            let frame = cells[index].frame
+            XCTAssertEqual(frame.minX, panelFrame.minX + 10 + CGFloat(index) * 105, accuracy: 2)
+            XCTAssertEqual(frame.minY, panelFrame.minY + 10, accuracy: 2)
+            XCTAssertEqual(frame.width, 100, accuracy: 2)
+            XCTAssertEqual(frame.height, 100, accuracy: 2)
+        }
+        let target = cells[3]
+        let targetFrame = target.frame
+        let visible = targetFrame.intersection(panelFrame).intersection(app.frame)
+        XCTAssertTrue(target.isHittable && visible.width >= 20 && visible.height >= 80)
+        guard target.isHittable && visible.width >= 20 && visible.height >= 80 else { return }
+        let point = CGVector(dx: (visible.midX - targetFrame.minX) / targetFrame.width,
+                             dy: (visible.midY - targetFrame.minY) / targetFrame.height)
+        target.coordinate(withNormalizedOffset: point).tap()
+        XCTAssertTrue(waitForStoreDiagonalCollage())
+        XCTAssertTrue(done.isEnabled && done.isHittable)
+        emitScreenshot("collage-preview")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.buttons["make-collage"].waitForExistence(timeout: 5))
+    }
+
+    private func waitForStoreDiagonalCollage() -> Bool {
+        let app = self.app!
+        var prior: [CGRect] = []
+        var stableSince = ProcessInfo.processInfo.systemUptime
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard let snapshot = try? app.snapshot() else { return false }
+            func descendants(_ node: XCUIElementSnapshot) -> [XCUIElementSnapshot] {
+                [node] + node.children.flatMap { descendants($0) }
+            }
+            let frames = descendants(snapshot).filter { $0.elementType == .scrollView && $0.identifier == "collage-image" }
+                .map { $0.frame }.sorted { $0.minX < $1.minX }
+            guard frames.count == 2, frames.allSatisfy({ $0.width > 0 && $0.height > 0
+                && $0.minX.isFinite && $0.minY.isFinite && snapshot.frame.insetBy(dx: -1, dy: -1).contains($0) }) else { return false }
+            let left = frames[0], right = frames[1]
+            // Exact existing compose_2_4 polygon bounding boxes, not an injected layout.
+            guard abs(left.minY - right.minY) <= 2, abs(left.height - right.height) <= 2,
+                  abs(left.width / left.height - 0.6167) <= 0.005,
+                  abs(right.width / right.height - 0.5667) <= 0.005,
+                  abs((right.minX - left.minX) / left.height - 0.4333) <= 0.005 else { return false }
+            let unchanged = prior.count == frames.count && zip(prior, frames).allSatisfy { pair in
+                let (a, b) = pair
+                return abs(a.minX - b.minX) < 0.25 && abs(a.minY - b.minY) < 0.25
+                    && abs(a.width - b.width) < 0.25 && abs(a.height - b.height) < 0.25
+            }
+            if unchanged { return ProcessInfo.processInfo.systemUptime - stableSince >= 0.4 }
+            prior = frames
+            stableSince = ProcessInfo.processInfo.systemUptime
+            return false
+        }, object: nil)
+        return XCTWaiter.wait(for: [ready], timeout: 15) == .completed
+    }
+    // END FIXED STORE DISPLAY METHODS
+
     private func emitScreenshot(_ name: String) {
         if ProcessInfo.processInfo.environment["CELLULOID_STORE_CAPTURE"] == "1" {
             guard ["edited-fixture", "collage-preview"].contains(name),

@@ -1,0 +1,26 @@
+{
+  "schema": "Celluloid.StoreDisplayAssets.1",
+  "provenance": "Original synthetic demonstration images generated with OpenAI image generation on 2026-10-06; not real-user photography or claims about a real location.",
+  "assets": [
+    {
+      "filename": "demo-coast-sunny.png",
+      "staged_filename": "celluloid-fixture-store-coast.png",
+      "bytes": 2997725,
+      "sha256": "505e1348a049a9f88cf86b4fb936702b45323f5d411ebce8f0a3415150fedcda",
+      "format": "PNG",
+      "width": 1254,
+      "height": 1254,
+      "color_mode": "RGB"
+    },
+    {
+      "filename": "demo-citrus-sunny.png",
+      "staged_filename": "celluloid-fixture-store-citrus.png",
+      "bytes": 2880485,
+      "sha256": "cd4c5178d550003b452b75904caba58a72c6eadc4658a083469c7684b4c00b03",
+      "format": "PNG",
+      "width": 1254,
+      "height": 1254,
+      "color_mode": "RGB"
+    }
+  ]
+}

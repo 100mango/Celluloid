@@ -36,7 +36,7 @@ jobs:
         persist-credentials: false
         ref: ${{ github.sha }}
         fetch-depth: 2
-    - name: Capture only the two existing UI cases after their original setup
+    - name: Capture two new normal display checks after the original setup
       id: capture
       timeout-minutes: 52
       shell: bash

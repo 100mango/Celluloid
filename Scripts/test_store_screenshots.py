@@ -118,8 +118,8 @@ class FileProofTests(unittest.TestCase):
             return answers[args]
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, environment(directory), clear=True), patch.object(capture, 'git', side_effect=git), patch('subprocess.Popen', side_effect=AssertionError('source test must not dispatch')):
             proof = capture.verify_source(runtime=True)
-            self.assertEqual(proof['supervision_public_base_sha'], '91580d8453d47612fb1f83e075951acc763b0157')
-            self.assertEqual(proof['supervision_base_tree'], '4613b47d2699bdbe5608635c8716ab2db4b0ff82')
+            self.assertEqual(proof['supervision_public_base_sha'], '0da1ea8954b45365c4d0379c569d85809c135648')
+            self.assertEqual(proof['supervision_base_tree'], '517543d6ceefcbce905a0e0d5db06607a270ca0f')
             parent[0] = '1d28' + '0' * 36
             with self.assertRaisesRegex(ValueError, 'public capture parent'):
                 capture.verify_source(runtime=True)
@@ -138,7 +138,7 @@ class FileProofTests(unittest.TestCase):
         good = png()
         corrupt = bytearray(good)
         corrupt[25] ^= 1
-        for raw in (b'jpeg', good[:-1], good + b'x', bytes(corrupt), b'x' * (capture.MAX_FILE + 1)):
+        for raw in (b'jpeg', good[:-1], good + b'x', bytes(corrupt), b'x' * (capture.MAX_SCREENSHOT + 1)):
             with self.subTest(size=len(raw)), self.assertRaises(ValueError):
                 capture.png_metadata(raw)
 
@@ -148,6 +148,42 @@ class FileProofTests(unittest.TestCase):
         raw[29:33] = struct.pack('>I', zlib.crc32(raw[12:29]) & 0xffffffff)
         with self.assertRaisesRegex(ValueError, 'raster'):
             capture.png_metadata(bytes(raw))
+
+    def test_only_four_native_png_names_receive_eight_mb_and_packet_still_twenty_mb(self):
+        self.assertEqual((capture.MAX_FILE, capture.MAX_SCREENSHOT, capture.MAX_PACKET),
+                         (5_000_000, 8_000_000, 20_000_000))
+        self.assertEqual(len(capture.SCREENSHOT_PIXELS), 4)
+        def padded(raw, size):
+            payload = b'comment\0' + b'x' * (size - len(raw) - 20)
+            kind = b'tEXt'
+            chunk = struct.pack('>I', len(payload)) + kind + payload + struct.pack('>I', zlib.crc32(kind + payload) & 0xffffffff)
+            result = raw[:33] + chunk + raw[33:]
+            self.assertEqual(len(result), size)
+            return result
+        with tempfile.TemporaryDirectory() as name:
+            folder = Path(name)
+            path = folder / 'large-ipad-edited-fixture.png'
+            raw = padded(png(2064, 2752), 5_500_000)
+            path.write_bytes(raw)
+            capture.validate_packet_files([path])
+            self.assertEqual(path.read_bytes(), raw)
+            for filename, data in [('foreign.png', png()), ('metadata.json', b'x' * 5_000_001),
+                                   ('large-phone-edited-fixture.png', b'jpeg'),
+                                   ('large-phone-collage-preview.png', png()),
+                                   ('large-ipad-collage-preview.png', b'x' * 8_000_001)]:
+                other = folder / filename
+                other.write_bytes(data)
+                with self.subTest(filename=filename), self.assertRaises(ValueError):
+                    capture.validate_packet_files([other])
+                other.unlink()
+            for filename, pixels in capture.SCREENSHOT_PIXELS.items():
+                (folder / filename).write_bytes(padded(png(*pixels), 5_000_000))
+            files = list(folder.iterdir())
+            capture.validate_packet_files(files)
+            metadata = folder / 'manifest.json'
+            metadata.write_bytes(b'{}')
+            with self.assertRaisesRegex(ValueError, '20MB'):
+                capture.validate_packet_files(files + [metadata])
 
     def test_missing_exact_device_type_has_no_substitute(self):
         values = device_catalog()
@@ -188,16 +224,6 @@ class FileProofTests(unittest.TestCase):
                 selected = capture.select_devices(*values)
                 self.assertEqual([d['model'] for d in selected], [t['model'] for t in capture.TARGETS])
                 self.assertTrue(all('id' not in d for d in selected))
-
-    def test_stale_seventh_fixture_is_rejected_before_import(self):
-        with tempfile.TemporaryDirectory() as name:
-            root = Path(name)
-            for filename in capture.FIXTURE_NAMES:
-                (root / filename).write_bytes(png())
-            self.assertEqual(len(capture.fixture_files(root)), 6)
-            (root / 'celluloid-composition-extra.png').write_bytes(png())
-            with self.assertRaisesRegex(ValueError, 'membership'):
-                capture.fixture_files(root)
 
     def test_exact_attachment_test_device_dimensions_and_bytes(self):
         with tempfile.TemporaryDirectory() as name:
@@ -436,6 +462,7 @@ class RunnerInterfacesTests(unittest.TestCase):
             next(d for d in next(iter(self.catalog[2]['devices'].values())) if d['udid'] == args[3])['state'] = 'Booted'
         elif args[:3] == ['xcrun', 'simctl', 'install']:
             self.assertIn(args[3], self.confirmed_ids)
+            self.assertEqual(timeout, 600)
             self.installed = self.base / 'Library/Developer/CoreSimulator/Devices' / self.current['id'] / 'data/Containers/Bundle/Application' / str(uuid.uuid4()) / 'Celluloid.app'
             shutil.copytree(self.app, self.installed)
         elif args[:3] == ['xcrun', 'simctl', 'get_app_container']:
@@ -483,7 +510,7 @@ class RunnerInterfacesTests(unittest.TestCase):
         def bootstrap(instance, device):
             self.bootstrap_calls.append(device['id'])
         with patch.object(capture, 'ROOT', self.root), patch.object(capture, 'verify_source', return_value=self.source), \
-             patch.object(capture, 'fixture_files', return_value=[{'name': name, 'sha256': 'f' * 64} for name in capture.FIXTURE_NAMES]), \
+             patch('store_display_assets.prepare', return_value={}), patch('store_display_assets.no_legacy_files'), \
              patch.object(capture.runpy, 'run_path', return_value={}), patch.object(capture.Capture, 'bootstrap', bootstrap), \
              patch('native_process.run', side_effect=self.native), patch('sys.stdout', io.StringIO()):
             runner.run()
@@ -492,6 +519,10 @@ class RunnerInterfacesTests(unittest.TestCase):
     def test_complete_fixed_command_interfaces_share_clock_and_require_cleanup(self):
         runner = self.run_capture()
         self.assertEqual(len(self.bootstrap_calls), 2)
+        receipt = json.loads((runner.packet / 'capture.json').read_text())
+        self.assertIs(receipt['original_ui_qualification_methods_rerun'], False)
+        self.assertNotIn('original_qualification_methods_rerun', receipt)
+        self.assertEqual(receipt['setup_cases_per_device'], list(capture.SETUP_CASES))
         self.assertEqual(sum('build-for-testing' in c for c in self.calls), 1)
         self.assertEqual(sum('test-without-building' in c for c in self.calls), 2)
         boot_positions = [i for i, c in enumerate(self.calls) if c[:3] == ['xcrun', 'simctl', 'boot']]
@@ -653,6 +684,17 @@ class RunnerInterfacesTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Full fixed command'):
                 runner.command('ui', 'capture-ui', ['xcodebuild'])
             run.assert_not_called()
+        self.assertFalse(runner.commands)
+
+    def test_install_six_hundred_plus_reserve_cannot_fit_by_shortening_to_old_allowance(self):
+        runner = capture.Capture(self.outer)
+        runner.enter_row('large-phone')
+        start = runner.clock['started_monotonic']
+        for remaining in (619.99, 600, 320):
+            with self.subTest(remaining=remaining), patch('time.monotonic', return_value=start + 2700 - remaining), patch('native_process.run') as dispatch:
+                with self.assertRaisesRegex(ValueError, 'Full fixed command'):
+                    runner.command('fixture-stage', 'install', ['xcrun', 'simctl', 'install', 'owned', 'app'], 600)
+                dispatch.assert_not_called()
         self.assertFalse(runner.commands)
 
     def test_late_progress_persistence_refuses_before_native_owner(self):

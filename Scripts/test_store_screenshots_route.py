@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 import original_ios_process_guard as guard
 import uikit_full_shipping_gate as gate
 import validation_route as routes
+import store_display_assets as assets
 from test_uikit_full_shipping_bootstrap import load_functions, SOURCE, DEVICE
 
 HOST_COMMANDS = [['vm_stat'], ['memory_pressure', '-Q'], ['sysctl', 'vm.swapusage'],
@@ -222,17 +223,15 @@ class StoreRouteTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True), self.assertRaises(ValueError):
             gate.admit_phase(value, self.context, 'ui', 10_000, 100_000)
 
-    def test_bootstrap_executes_existing_two_methods_and_six_owned_imports(self):
+    def test_bootstrap_executes_unchanged_two_methods_and_two_exact_owned_imports(self):
         """Run actual host/clock checks and the real sequence; fake native work."""
-        fixtures = self.root / 'fixtures'
-        fixtures.mkdir()
-        names = ['celluloid-fixture.png', 'celluloid-fixture-2.png'] + ['celluloid-composition-' + str(i) + '.png' for i in range(4)]
-        for name in names:
-            (fixtures / name).write_bytes(name.encode())
+        legacy = self.root / 'legacy'
+        legacy.mkdir()
+        assets.prepare(legacy_root=legacy)
+        names = [a['staged_filename'] for a in assets.ASSETS]
         value = clock(self.context, time.monotonic(), time.time())
         (self.root / 'full-shipping-clock.json').write_text(json.dumps(value))
         functions = load_functions(self.root)
-        functions['pathlib'] = SimpleNamespace(Path=lambda raw: fixtures / str(raw)[5:] if str(raw).startswith('/tmp/celluloid-') else fixtures if str(raw) == '/tmp' else Path(raw))
         body = ast.Module(body=[node for node in ast.parse(SOURCE.read_text()).body
                                 if not isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef))], type_ignores=[])
         calls, imported = [], []
@@ -245,16 +244,19 @@ class StoreRouteTests(unittest.TestCase):
             output = ''
             if command[:3] == ('xcrun', 'simctl', 'addmedia'):
                 path = Path(command[-1])
-                imported.append({'filename': path.name, 'sha256': functions['hashlib'].sha256(path.read_bytes()).hexdigest()})
+                imported.append({'filename': path.name, 'sha256': functions['hashlib'].sha256(path.read_bytes()).hexdigest(),
+                                 'bytes': path.stat().st_size, 'width': 1254, 'height': 1254, 'identifier': 'owned-' + path.name})
             if command[0] == 'xcodebuild':
-                output = 'PHOTOS_LIBRARY_READINESS ' + json.dumps({'synthetic': copy.deepcopy(imported)}) + '\n'
+                output = 'PHOTOS_LIBRARY_READINESS ' + json.dumps({'synthetic': copy.deepcopy(imported),
+                    'asset_count': len(imported), 'authorization': 3, 'library_mutation': False,
+                    'hash_resources': any('testReconcileSyntheticPhotosAfterImport' in arg for arg in command)}) + '\n'
             owner.completed(0)
             return subprocess.CompletedProcess(command, 0, output, '')
 
         output = io.StringIO()
         with patch.object(sys, 'argv', [str(SOURCE), DEVICE, '--already-prepared']), patch('native_process.run', side_effect=native), patch('subprocess.run', side_effect=AssertionError('unowned dispatch')), contextlib.redirect_stdout(output):
             exec(compile(body, str(SOURCE), 'exec'), functions)
-        self.assertEqual(len(calls), 9)
+        self.assertEqual(len(calls), 5)
         self.assertFalse(any(command[0] in {cmd[0] for cmd in HOST_COMMANDS} for command, _ in calls))
         self.assertTrue(all(kwargs['capture_deadline'] == value['started_monotonic'] + gate.WORK_SECONDS for _, kwargs in calls))
         omissions = [json.loads(line[len(HOST_OMISSION):]) for line in output.getvalue().splitlines() if line.startswith(HOST_OMISSION)]
@@ -268,11 +270,58 @@ class StoreRouteTests(unittest.TestCase):
                           ['-only-testing:CelluloidTests/EditorRegressionTests/testReconcileSyntheticPhotosAfterImport']])
         self.assertEqual([kwargs['timeout'] for _, kwargs in tests], [360, 360])
         imports = [(command, kwargs) for command, kwargs in calls if command[:3] == ('xcrun', 'simctl', 'addmedia')]
-        self.assertEqual(len(imports), 6)
-        self.assertEqual([kwargs['timeout'] for _, kwargs in imports], [480, 180, 180, 180, 180, 180])
+        self.assertEqual(len(imports), 2)
+        self.assertEqual([kwargs['timeout'] for _, kwargs in imports], [480, 180])
         self.assertEqual({item['filename'] for item in imported}, set(names))
+        self.assertIn(assets.MARKER, output.getvalue())
+        self.assertNotIn('BOOTSTRAP_EXACT_SIX_ASSETS_VERIFIED', output.getvalue())
+        receipt = json.loads((self.root / 'store-display-photos.json').read_text())
+        self.assertEqual(receipt['verified_asset_count'], 2)
+        self.assertEqual(receipt['initial']['asset_count'], 0)
+        self.assertEqual(receipt['final']['asset_count'], 2)
         self.assertIsNone(guard.read_inflight(self.root, self.context))
         self.assertEqual(json.loads((self.root / 'full-shipping-clock.json').read_text()), value)
+
+    def test_original_and_uikit_bootstrap_keep_six_imports_and_original_marker(self):
+        fixtures = self.root / 'original-fixtures'
+        fixtures.mkdir()
+        names = ['celluloid-fixture.png', 'celluloid-fixture-2.png'] + ['celluloid-composition-' + str(i) + '.png' for i in range(4)]
+        for name in names:
+            (fixtures / name).write_bytes(name.encode())
+        body = ast.Module(body=[node for node in ast.parse(SOURCE.read_text()).body
+                               if not isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef))], type_ignores=[])
+        for route in (routes.ORIGINAL_IOS, routes.UIKIT_FULL):
+            env = dict(self.env, GITHUB_REF='refs/heads/' + route['branch'],
+                       CELLULOID_VALIDATION_SCOPE=route['scope'],
+                       GITHUB_WORKFLOW_REF=routes.REPOSITORY + '/' + route['workflow_path'] + '@refs/heads/' + route['branch'])
+            context = {key: self.context[key] for key in guard.CONTEXT_KEYS}
+            value = clock(context, time.monotonic(), time.time())
+            (self.root / 'full-shipping-clock.json').write_text(json.dumps(value))
+            functions = load_functions(self.root)
+            functions['pathlib'] = SimpleNamespace(Path=lambda raw: fixtures / str(raw)[5:] if str(raw).startswith('/tmp/celluloid-') else fixtures if str(raw) == '/tmp' else Path(raw))
+            # Host behavior is independently exercised for all three old routes below.
+            functions['host'] = lambda label: None
+            calls, imported = [], []
+            def native(command, **kwargs):
+                calls.append((command, kwargs))
+                output = ''
+                if command[:3] == ('xcrun', 'simctl', 'addmedia'):
+                    path = Path(command[-1])
+                    imported.append({'filename': path.name, 'sha256': functions['hashlib'].sha256(path.read_bytes()).hexdigest()})
+                if command[0] == 'xcodebuild':
+                    output = 'PHOTOS_LIBRARY_READINESS ' + json.dumps({'synthetic': copy.deepcopy(imported)}) + '\n'
+                return subprocess.CompletedProcess(command, 0, output, '')
+            output = io.StringIO()
+            with self.subTest(route=route['scope']), patch.dict(os.environ, env, clear=True), patch.object(sys, 'argv', [str(SOURCE), DEVICE, '--already-prepared']), patch('native_process.run', side_effect=native), patch('store_display_assets.staged_assets', side_effect=AssertionError('display preparation on legacy route')), patch('subprocess.run', side_effect=AssertionError('unowned dispatch')), contextlib.redirect_stdout(output):
+                exec(compile(body, str(SOURCE), 'exec'), functions)
+            imports = [(command, kwargs) for command, kwargs in calls if command[:3] == ('xcrun', 'simctl', 'addmedia')]
+            self.assertEqual(len(calls), 9)
+            self.assertEqual([kwargs['timeout'] for _, kwargs in imports], [480, 180, 180, 180, 180, 180])
+            self.assertTrue(all('capture_deadline' not in kwargs for _, kwargs in calls))
+            self.assertEqual({item['filename'] for item in imported}, set(names))
+            self.assertIn('BOOTSTRAP_EXACT_SIX_ASSETS_VERIFIED', output.getvalue())
+            self.assertNotIn(assets.MARKER, output.getvalue())
+            self.assertEqual((fixtures / 'celluloid-bootstrap-assets-verified').read_text(), 'verified\n')
 
     def host_functions(self):
         value = clock(self.context, time.monotonic(), time.time())
