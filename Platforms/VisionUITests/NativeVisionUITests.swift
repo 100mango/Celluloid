@@ -250,24 +250,23 @@ extension NativeVisionUITests {
         let documents = app.navigationBars.buttons["Documents"].firstMatch
         if documents.exists && documents.isHittable { documents.tap() }
         recordRemainingBrowser(app, stage: "initial")
-        if namedBrowserItems(in: app, names: names).count != 1 {
-            // This exact location cell was observed while Recents was selected.
-            let local = app.cells["DOC.sidebar.item.On My Apple Vision Pro"]
-            let exists = local.waitForExistence(timeout: 10)
-            if !exists || !local.isHittable { recordRemainingBrowser(app, stage: "local-location-unavailable") }
-            XCTAssertTrue(exists); XCTAssertTrue(local.isHittable); local.tap()
-            let destination = NSPredicate { _, _ in
-                let documents = self.namedBrowserItems(in: app, names: names).count
-                return documents == 1 || (documents == 0 && self.namedBrowserItems(in: app, names: ["Celluloid"]).count == 1)
-            }
-            let arrived = XCTWaiter.wait(for: [expectation(for: destination, evaluatedWith: app)], timeout: 20) == .completed
-            if !arrived { recordRemainingBrowser(app, stage: "local-location-content-unavailable") }
-            XCTAssertTrue(arrived, "The local location must show the exact seed or the owned app folder")
-            if namedBrowserItems(in: app, names: names).count != 1 {
-                let folder = try requireBrowserItem(in: app, names: ["Celluloid"], stage: "owned-app-folder")
-                folder.tap()
-            }
-        }
+        // Normalize to the observed local root on both launch and real reopen.
+        let locations = app.cells.matching(identifier: "DOC.sidebar.item.On My Apple Vision Pro")
+        let local = locations.firstMatch
+        let localReady = local.waitForExistence(timeout: 10)
+        if !localReady || locations.count != 1 || !local.isHittable { recordRemainingBrowser(app, stage: "local-location-unavailable") }
+        XCTAssertTrue(localReady); XCTAssertEqual(locations.count, 1); XCTAssertTrue(local.isHittable); local.tap()
+        // Exact Cell and accessibility identifier observed in run37648299628.
+        // A direct readiness query replaces the slow multi-query block predicate.
+        let folders = app.cells.matching(identifier: "Celluloid, Container")
+        let folder = folders.firstMatch
+        let folderReady = folder.waitForExistence(timeout: 20)
+        let titleMatches = folderReady && (folder.label == "Celluloid, 1 item" || folder.staticTexts["Celluloid"].exists)
+        if !folderReady || folders.count != 1 || !titleMatches || !folder.isHittable { recordRemainingBrowser(app, stage: "owned-app-folder-unavailable") }
+        XCTAssertTrue(folderReady); XCTAssertEqual(folders.count, 1); XCTAssertTrue(titleMatches)
+        XCTAssertTrue(folder.isEnabled); XCTAssertTrue(folder.isHittable)
+        print("VISION_REMAINING_BROWSER_ITEM stage=owned-app-folder identifier=\(folder.identifier) label=\(folder.label) frame=\(folder.frame)")
+        folder.tap()
         let document = try requireBrowserItem(in: app, names: names, stage: "exact-seed-document")
         document.tap()
         XCTAssertTrue(app.buttons["editor.import-files"].waitForExistence(timeout: 30))

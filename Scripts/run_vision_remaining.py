@@ -25,8 +25,8 @@ HOSTED = 'CelluloidVisionTests/NativeVisionTests/testPrepareVisionRemainingDocum
 EDIT = 'CelluloidVisionUITests/NativeVisionUITests/testSeededDocumentSequentialTextUndoRedoAndRelaunch'
 PRIVACY = 'CelluloidVisionUITests/NativeVisionUITests/testSimplifiedChineseDocumentPrivacyAndLargeText'
 SELECTORS = (EDIT,)
-BASE = 'e20c7ce5fde3300ca4ef13480bed3de19718874a'
-BASE_TREE = 'edee686354ad23fa928c46b6751467fe9ce5b97d'
+BASE = '45bad07f2fa88ff70578321ed6ea36a255f74ab1'
+BASE_TREE = '002266e39fbd9577dd71a9b3caa823f44f8d6f7c'
 BRANCH = 'refs/heads/codex/vision-edit-final'
 WORKFLOW = '.github/workflows/vision-remaining.yml'
 CLOCK = 'vision-remaining-clock.json'
@@ -39,7 +39,7 @@ FAILURE_TAIL_CAP = 32_768
 EVIDENCE_FILES = {**{name+'.log':524_298 for name in ('build','bootstatus','install','seed-before-ui','ui','seed-after-ui','shutdown','delete','create')},
                   'report.json':REPORT_CAP,'vision-remaining-device-uncertain.json':1_000_000,
                   'native-icon-provenance-runtime.json':1_000_000,'manifest.json':32_768}
-MODIFIED = (WORKFLOW,'Documentation/vision-remaining.md','Scripts/run_vision_remaining.py','Scripts/test_vision_remaining.py')
+MODIFIED = ('Documentation/vision-remaining.md','Scripts/run_vision_remaining.py','Scripts/test_vision_remaining.py','Platforms/VisionUITests/NativeVisionUITests.swift')
 ADDED = ()
 HISTORICAL_PACKAGE = {'source_sha':'db4d719abdf11504e99e211ffc27d7555883acb3','run_id':37608605492,'artifact_id':11477245993,
     'artifact_sha256':'126ecef09c9fac1f8d0972071cceb82513c0f2fcba7a113a4da1fbd6fc8aa46d',
@@ -128,7 +128,9 @@ def validate_fixture_metadata(row):
 
 def snapshot_fixture(container, metadata, *, after_ui=False):
     container=Path(container)
-    if container.is_symlink() or container.resolve()!=Path(metadata['data_home']).resolve(): raise ValueError('App data container changed between fixture staging and UI')
+    if container.is_symlink() or not container.is_dir(): raise ValueError('Unsafe app data container')
+    changed=container.resolve()!=Path(metadata['data_home']).resolve()
+    if changed and not after_ui: raise ValueError('Pre-UI fixture container does not match staging')
     documents=container/'Documents'
     if documents.is_symlink() or not documents.is_dir(): raise ValueError('Unsafe native Documents directory')
     package=documents/FIXTURE_NAME
@@ -144,10 +146,14 @@ def snapshot_fixture(container, metadata, *, after_ui=False):
         if (not after_ui or child.name!='recipe.json') and record!=expected[child.name]: raise ValueError('Fixture changed before editing or original source changed')
         if child.name=='recipe.json':recipe=json.loads(data)
     if recipe.get('format')!='Celluloid.Document' or recipe.get('version')!=1: raise ValueError('Wrong native package format')
+    sources=recipe.get('sources')
+    if type(sources) is not list or len(sources)!=1: raise ValueError('Native recipe lost its original source')
+    source=sources[0]
+    if str(uuid.UUID(source['id'])).upper()+'.image' not in expected or (source.get('pixelWidth'),source.get('pixelHeight'))!=(120,80): raise ValueError('Native recipe original source changed')
     overlays=recipe.get('overlays')
     if type(overlays) is not list or len(overlays)>1: raise ValueError('Unexpected fixture overlays')
     if not after_ui and (overlays or (recipe.get('canvasWidth'),recipe.get('canvasHeight'))!=(120,80)): raise ValueError('Native fixture was not pristine before UI')
-    return {'container':str(container),'package_path':str(package),'files':records,'overlay_texts':[x.get('text') for x in overlays],
+    return {'container':str(container),'data_container_changed':changed,'fixture_contents_verified':True,'package_path':str(package),'files':records,'overlay_texts':[x.get('text') for x in overlays],
             'source_width':recipe.get('canvasWidth'),'source_height':recipe.get('canvasHeight')}
 
 

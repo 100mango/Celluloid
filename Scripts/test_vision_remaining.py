@@ -7,6 +7,7 @@ import time
 import hashlib
 import io
 import selectors
+import shutil
 from unittest.mock import patch
 import plistlib
 import struct
@@ -71,7 +72,7 @@ class Fake:
                 self.fixture_home=self.seed_base/DEVICE/'data/Containers/Data/Application'/'11223344-5566-4788-9911-223344556677'
                 package=self.fixture_home/'Documents/VisionRemaining.celluloid';package.mkdir(parents=True)
                 (package/'12345678-1234-4234-9234-123456789012.image').write_bytes(b'owned synthetic source')
-                (package/'recipe.json').write_text(json.dumps({'format':'Celluloid.Document','version':1,'canvasWidth':120,'canvasHeight':80,'overlays':[]}))
+                (package/'recipe.json').write_text(json.dumps({'format':'Celluloid.Document','version':1,'canvasWidth':120,'canvasHeight':80,'sources':[{'id':'12345678-1234-4234-9234-123456789012','pixelWidth':120,'pixelHeight':80}],'overlays':[]}))
                 records=[{'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(package.iterdir())]
                 self.metadata={'schema':'Celluloid.VisionFixture.1','bundle_identifier':'Mango.Celluloid','data_home':str(self.fixture_home),'documents_path':str(self.fixture_home/'Documents'),'package_path':str(package),'package_name':'VisionRemaining.celluloid','pixel_width':120,'pixel_height':80,'initial_overlays':0,'files':records}
                 out+='\nVISION_REMAINING_FIXTURE_JSON '+json.dumps(self.metadata)
@@ -418,6 +419,36 @@ class RemainingTests(unittest.TestCase):
             (folder/'ui.log').write_bytes(b'actual bounded failure log');(folder/'source-before-head.log').write_bytes(b'not in fallback upload set')
             manifest=pack(d,{},10,11)
             self.assertEqual({x['name'] for x in manifest['members']},{'report.json','ui.log'})
+    def test_migrated_owned_container_requires_actual_fixture_content(self):
+        for failure in (None,'missing','image','source'):
+            with self.subTest(failure=failure):
+                fake=Fake()
+                def relocate(args,**kwargs):
+                    result=fake(args,**kwargs)
+                    if fake.calls[-1][0]=='seed-after-ui':
+                        migrated=fake.fixture_home.with_name('5F4DF0C5-5F2A-4E09-BC2E-CC54286A6D3D')
+                        shutil.copytree(fake.fixture_home,migrated)
+                        package=migrated/'Documents/VisionRemaining.celluloid'
+                        if failure=='missing':shutil.rmtree(package)
+                        if failure=='image':next(package.glob('*.image')).write_bytes(b'not original')
+                        if failure=='source':
+                            path=package/'recipe.json';recipe=json.loads(path.read_text());recipe['sources'][0]['id']='AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA';path.write_text(json.dumps(recipe))
+                        result.stdout=str(migrated).encode()
+                    return result
+                report=self.exercise(relocate)
+                self.assertFalse(report['seed-after-ui']['same_container'])
+                if failure is None:
+                    self.assertTrue(report['complete']);self.assertTrue(report['seed-after-ui']['fixture_contents_verified'])
+                    self.assertTrue(report['seed-after-ui']['data_container_changed']);self.assertEqual(report['seed-after-ui']['overlay_texts'],['Vision 世界'])
+                else:
+                    self.assertFalse(report['complete']);self.assertIn('seed_after_ui_error',report)
+    def test_folder_route_uses_only_observed_unique_accessibility_identifier(self):
+        source=(Path(__file__).resolve().parents[1]/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()
+        route=source.split('    private func openRemainingDocument',1)[1].split('    func testSimplifiedChineseDocumentPrivacyAndLargeText',1)[0]
+        self.assertIn('app.cells.matching(identifier: "Celluloid, Container")',route)
+        self.assertIn('XCTAssertEqual(folders.count, 1)',route);self.assertIn('folder.staticTexts["Celluloid"].exists',route)
+        self.assertNotIn('NSPredicate',route);self.assertNotIn('namedBrowserItems',route)
+        self.assertIn('requireBrowserItem(in: app, names: names',route);self.assertIn('recordRemainingBrowser',route)
     def test_browser_uses_observed_location_exact_unique_items_and_full_scan(self):
         root=Path(__file__).resolve().parents[1]
         source=(root/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()

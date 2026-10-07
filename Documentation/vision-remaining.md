@@ -1,11 +1,46 @@
 # Vision editing with a synthetic document input
 
-Exact parent: e20c7ce5fde3300ca4ef13480bed3de19718874a, tree
-edee686354ad23fa928c46b6751467fe9ce5b97d, codex/vision-edit-final.
+Exact parent: 45bad07f2fa88ff70578321ed6ea36a255f74ab1, tree
+002266e39fbd9577dd71a9b3caa823f44f8d6f7c, codex/vision-edit-final.
 This is a local candidate until separate exact-tree admission. No automatic
 rerun follows from this document.
 
-## Current parent: unknown native phase, failed evidence packing
+## Current parent: observed folder route and changed container identity
+
+Run37648299628/45bad07 remains FAILED. Debug82.877s, bootstatus192.095s,
+install215.203s and both owned-container queries completed. The one UI case
+actually ran and failed357.324s before bubble insertion/editing. The20s block
+predicate consumed its opportunity in serial broad queries. Retained full AX
+then showed the exact Cell identifier "Celluloid, Container", label "Celluloid,
+1 item" and descendant title "Celluloid". The browser had selected On My Apple
+Vision Pro. No file-item role was established because the app folder was not
+opened. Artifact11495359210,11 manifest members, ZIP SHA256:
+c73886fa81b1739974ba60bc8e4ff5187bb1f74ef357d1412715bef042aef58a.
+There was no uncertain process; shutdown/delete and pack/upload succeeded.
+
+The fixed-device/fixed-bundle lookup returned data UUID C021EF16-2FA6-412D-
+8040-19A1F30EF1CA before UI, then5F4DF0C5-5F2A-4E09-BC2E-CC54286A6D3D.
+The old equality guard refused before reading the new location's package.
+Consequently this evidence does not prove the seed was lost or preserved there.
+
+This successor makes two targeted corrections. The browser always navigates
+through the observed local root and exact unique "Celluloid, Container" Cell,
+checking its displayed label/title and operability. It replaces the broad folder
+probe with a direct20s existence query; failure AX is retained. The actual file
+still requires an exact, unique operable name match, without guessing its role.
+All typing, single-tap A/B, Unicode, Undo/Redo and real restart assertions remain.
+
+After the completed UI invocation, the same owned-device/bundle query remains
+the sole authority for the current container. A changed UUID is recorded as
+same_container=false, not silently relabeled or treated as a product failure.
+No alternative directories are searched. The fixed package must actually exist,
+be non-linked with exactly its two expected children, retain the original image
+hash/size, and contain a valid recipe referring to that same source and120x80
+geometry. Final success still needs actual "Vision 世界" text. Missing, changed,
+linked or foreign data fails. Container change alone never establishes seed
+continuity: fixture_contents_verified is recorded only after all content reads.
+
+## Earlier observability gap, preserved as failed
 
 Run37643046041/e20c7ce remains FAILED. Its proof process exited1 at15:27:26;
 the following host-only packing step timed out at its self-imposed1minute cap,
@@ -15,7 +50,7 @@ establish whether UI started. Its13002 bytes have SHA256
 32aeca42e3921898eabbe81fbb6d0e7e178b4401171cb020dd9afe3e9f5df3c6.
 Scheduler/log delays were observed, but their root cause is unknown.
 
-This successor changes observability only. Every admitted command phase emits
+The prior successor changed observability only. Every admitted command phase emits
 start/end records with flush=True, its return code, timeout/error, capture
 completeness and device barrier. Only failures append the last32KiB of captured
 command/UI bytes. Job failures and final outcomes are flushed too. These actual
@@ -33,8 +68,8 @@ actually time out a host pack process, verify preserved input files and the
 independent upload condition, and observe flushed stdout before a real host
 child exits. These are local driver tests, not a new native execution.
 
-All Swift, fixtures, single editing assertions, native timeouts and simulator
-barrier behavior are unchanged. No new native run is authorized by this patch.
+That observability change preserved all Swift, fixtures, editing assertions,
+native timeouts and simulator barriers; those protections remain here. No new native run is authorized by this patch.
 
 ## Earlier failed cohorts and reusable components
 
@@ -100,8 +135,9 @@ native-writer result. The historical native writer is not rerun.
 
 ## One unchanged, real editing UI test
 
-Only testSeededDocumentSequentialTextUndoRedoAndRelaunch is selected. Its Swift
-source is byte-identical to the parent. It uses the formal document browser,
+Only testSeededDocumentSequentialTextUndoRedoAndRelaunch is selected. Its actual
+editing/relaunch assertions are byte-identical; only the browser routing helper
+changes. It uses the formal document browser,
 the observed Recents-to-On My Apple Vision Pro route when needed, an exact
 Celluloid folder if shown, and the unique operable exact seed filename. Cell/
 button role is resolved by the runtime query, not assumed from missing AX.
@@ -112,9 +148,9 @@ and Unicode typing, Undo/Redo, termination/relaunch and named-document reopen.
 Actual field values and dimensions must pass, followed by physical disk readback.
 No final-text fixture or scripted focus substitutes for editing.
 
-Only four paths change: this document, driver, its local tests and workflow
-retention conditions/paths. All Swift tests, production, resources, project and mature
-capture/retention helpers remain byte-identical. Release archive, passed
+Only four paths change: this document, driver, its local tests and the Vision
+UI browser helper. Production, other Swift tests, resources, project, workflow
+and mature capture/retention helpers remain byte-identical. Release archive, passed
 functional hosted tests, Chinese privacy, Files-import/PNG-save chains and the
 fixture hosted selector are not selected again.
 
