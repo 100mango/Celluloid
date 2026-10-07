@@ -17,9 +17,9 @@ from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
 from run_vision_remaining import (built_vision_app, write_synthetic_fixture,
     snapshot_fixture, test_command, verify_cases, synthetic_fixture_bytes, FIXTURE_NAME)
 
-BASE = '68c035264f5c0ec44e350ac9b57f0308a857026b'
+BASE = '52075925e3e05481b57219f5ef9333d9f2e8d843'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = 'e496cda69aa0ede3ffb0374c2b97bfea070dab68'
+BASE_TREE = 'c83c181c0e1847d30ab3a16da2a22b49e991fda1'
 BRANCH = 'refs/heads/codex/vision-store-single'
 WORKFLOW = '.github/workflows/vision-store-single.yml'
 SELECTOR = 'CelluloidVisionUITests/NativeVisionUITests/testStoreSingleHeldEditorCapture'
@@ -43,7 +43,8 @@ EVIDENCE_FILES = {name: cap for name, cap in (
     (BARRIER, 32_768), ('native-icon-provenance-runtime.json', 1_000_000))}
 ADDED = ()
 MODIFIED = ('Documentation/vision-store-single.md', WORKFLOW,
-    'Scripts/run_vision_store_capture.py', 'Scripts/test_vision_store_capture.py')
+    'Scripts/run_vision_store_capture.py', 'Scripts/test_vision_store_capture.py',
+    'Platforms/VisionUITests/NativeVisionUITests.swift')
 REQUEST_PREFIX = 'CELLULOID_STORE_CAPTURE_REQUEST '
 
 
@@ -290,7 +291,7 @@ class Job:
                 row['retained_log'] = file_record(path, EVIDENCE_FILES[path.name])
             self.persist()
     def container(self, phase, bundle, kind='Data'):
-        value = self.call(phase, ['xcrun', 'simctl', 'get_app_container', self.device, bundle, 'data' if kind == 'Data' else 'app'], 10).strip()
+        value = self.call(phase, ['xcrun', 'simctl', 'get_app_container', self.device, bundle, 'data' if kind == 'Data' else 'app'], 180 if phase in ('seed-data', 'capture-data', 'after-data') else 10).strip()
         if kind == 'Bundle':
             app = Path(value)
             safe_container(app.parent, self.devices_root, self.device, kind)
@@ -315,7 +316,7 @@ class Job:
     def checkpoint(self, request_id):
         self.check_active()
         need(self.capture_count == 0, 'Second capture forbidden'); self.capture_count += 1
-        self.checkpoint_deadline = self.clock()+100
+        self.checkpoint_deadline = self.clock()+260
         ack = None; outcome = {'id': request_id, 'success': False}
         try:
             self.report['installed_at_checkpoint'] = self.container('capture-installed', APP_ID, 'Bundle')
@@ -430,7 +431,7 @@ class Job:
         self.report['sample_input'] = write_synthetic_fixture(container)
         self.report['sample_before'] = pristine_snapshot(container, self.report['sample_input']); self.persist()
         lines = RequestLines(self.checkpoint)
-        ui = self.call('ui', test_command(self.temp, self.device, [SELECTOR], 'VisionStoreSingle'), 360, observer=lines)
+        ui = self.call('ui', test_command(self.temp, self.device, [SELECTOR], 'VisionStoreSingle'), 600, observer=lines)
         lines.finish(); self.report['xctest'] = verify_cases(ui, [SELECTOR])
         need(self.capture_count == 1 and self.report.get('capture', {}).get('success') is True, 'Missing single successful capture')
         expected_ack = 'CELLULOID_STORE_CAPTURE_ACK '+lines.ids[0]+' sha256='+self.report['original']['sha256']

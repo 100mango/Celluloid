@@ -131,7 +131,7 @@ class ContractTests(unittest.TestCase):
         for forbidden in ('typeText(', '.screenshot()', 'undo.tap', 'redo.tap', 'editor.export"].tap', 'add-bubble"].tap'):
             self.assertNotIn(forbidden, case)
         self.assertIn('openRemainingDocument(in: app)', case)
-        self.assertIn('timeout: 120', case); self.assertIn('Edited photo preview', case)
+        self.assertIn('timeout: 280', case); self.assertIn('Edited photo preview', case)
     def test_stream_preserves_owned_cleanup_with_guarded_observer(self):
         base = (ROOT/'Scripts/mac_archive_capture.py').read_text()
         current = (ROOT/'Scripts/vision_store_stream.py').read_text()
@@ -225,6 +225,23 @@ class ProcessTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
     def job(self, execute): return store.Job(ROOT, self.root, BINDING, 1, execute=execute, clock=lambda: 2)
+    def test_only_exact_app_data_phases_use_evidenced_180_second_budget(self):
+        container = self.root/DEVICE/'data/Containers/Data/Application'/CONTAINER
+        container.mkdir(parents=True)
+        caps = []
+        def execute(command, **kwargs):
+            caps.append(kwargs['seconds'])
+            return subprocess.CompletedProcess(command, 0, str(container).encode(), b'')
+        job = self.job(execute); job.device = DEVICE; job.devices_root = self.root
+        for phase in ('seed-data', 'capture-data', 'capture-runner', 'after-data'):
+            self.assertEqual(job.container(phase, store.APP_ID), container)
+        self.assertEqual(caps, [180, 180, 10, 180])
+    def test_seed_data_budget_still_reserves_original_wall_clock(self):
+        execute = mock.Mock(side_effect=AssertionError('late native command forbidden'))
+        job = store.Job(ROOT, self.root, BINDING, 1, execute=execute, clock=lambda: store.WORK_END-190)
+        job.device = DEVICE
+        with self.assertRaisesRegex(ValueError, 'wall-time reserve'): job.container('seed-data', store.APP_ID)
+        execute.assert_not_called()
     def test_known_failure_is_not_uncertainty(self):
         job = self.job(lambda *a, **kw: subprocess.CompletedProcess(a, 1, b'known failure', b''))
         with self.assertRaises(ValueError): job.call('build', ['mock'], 1)
@@ -337,7 +354,7 @@ class CheckpointTests(unittest.TestCase):
         self.assertFalse(self.job.report['store_ready'])
         with self.assertRaises(ValueError): self.job.checkpoint(REQUEST)
         self.assertEqual(sum('screenshot' in c for c in self.calls), 1)
-    def run_observer(self, callback, seconds=60):
+    def run_observer(self, callback, seconds=600):
         parser = store.RequestLines(callback)
         script = 'import time; print('+repr(store.REQUEST_PREFIX+REQUEST)+', flush=True); time.sleep(10)'
         with self.assertRaises(CaptureStopped):
@@ -348,6 +365,37 @@ class CheckpointTests(unittest.TestCase):
         count = len(self.calls); self.job.finish()
         self.assertEqual(self.job.report['cleanup'], [])
         self.assertEqual(len(self.calls), count)
+    def test_held_full_command_budgets_fit_and_after_data_is_outside_hold(self):
+        now = [2.0]; self.job.clock = lambda: now[0]
+        caps = []; ordinary = self.job.execute
+        def execute(command, **kwargs):
+            caps.append(kwargs['seconds'])
+            result = ordinary(command, **kwargs)
+            now[0] += kwargs['seconds'] - .01
+            return result
+        self.job.execute = execute
+        self.job.checkpoint(REQUEST)
+        self.assertEqual(caps, [10, 180, 10, 15, 10])
+        self.assertTrue(json.loads(self.ack.read_text())['success'])
+        self.assertLess(now[0], 2+260-20)
+        self.assertIsNone(self.job.checkpoint_deadline)
+        # This second 180-second lookup belongs to post-UI work, not held work.
+        self.job.container('after-data', store.APP_ID)
+        self.assertEqual(caps, [10, 180, 10, 15, 10, 180])
+        self.assertGreater(now[0], 2+260)
+    def test_remaining_held_budget_blocks_full_data_cap_before_spawn(self):
+        now = [2.0]; self.job.clock = lambda: now[0]
+        # Simulate bounded host validation taking extra time after the first call.
+        real_container = self.job.container
+        def container(phase, bundle, kind='Data'):
+            result = real_container(phase, bundle, kind)
+            if phase == 'capture-installed': now[0] = 2+61
+            return result
+        with mock.patch.object(self.job, 'container', side_effect=container), self.assertRaises(ValueError):
+            self.job.checkpoint(REQUEST)
+        self.assertEqual(len(self.calls), 1)
+        self.assertFalse(self.ack.exists())
+        self.assertTrue(self.job.blocked)
     def test_exited_producer_cannot_trigger_held_checkpoint(self):
         def callback(request_id):
             time.sleep(.1)
@@ -389,7 +437,7 @@ class CheckpointTests(unittest.TestCase):
         ordinary = self.job.execute
         def execute(command, **kwargs):
             result = ordinary(command, **kwargs)
-            if '--inspect' in command: now[0] = 103
+            if '--inspect' in command: now[0] = 263
             return result
         self.job.execute = execute
         self.run_observer(self.job.checkpoint)

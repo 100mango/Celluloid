@@ -9,9 +9,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   vision:
-    # Only the reviewed update from failed source68 can qualify, once.
+    # Only the reviewed update from failed source520 can qualify, once.
     # Exact-tree root GO is required before publishing this fixed-ref update.
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/vision-store-single' && github.event.created == false && github.event.deleted == false && github.event.before == '68c035264f5c0ec44e350ac9b57f0308a857026b' && github.run_attempt == 1 }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/vision-store-single' && github.event.created == false && github.event.deleted == false && github.event.before == '52075925e3e05481b57219f5ef9333d9f2e8d843' && github.run_attempt == 1 }}
     name: Hold one real editor view and capture full-display JPEG
     runs-on: xcode-27
     timeout-minutes: 42

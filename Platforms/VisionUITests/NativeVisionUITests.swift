@@ -195,7 +195,7 @@ extension NativeVisionUITests {
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             FileManager.default.fileExists(atPath: acknowledgement.path)
         }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 120), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 280), .completed)
         let result = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: acknowledgement)) as? [String: Any])
         XCTAssertEqual(result["id"] as? String, id)
         XCTAssertEqual(result["success"] as? Bool, true)
