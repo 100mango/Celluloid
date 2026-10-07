@@ -25,6 +25,11 @@ REQUEST = '44444444-4444-4444-8444-444444444444'
 IMAGE = {'format': 'JPEG', 'mode': 'RGB', 'width': 3840, 'height': 2160, 'alpha': False, 'decoded': True}
 BINDING = {'GITHUB_SHA': 'a'*40}
 
+def write_container_metadata(path, bundle=store.APP_ID):
+    (path/store.METADATA_NAME).write_bytes(plistlib.dumps({
+        'MCMMetadataIdentifier': bundle, 'MCMMetadataUUID': path.name}, fmt=plistlib.FMT_BINARY))
+    return path
+
 def request():
     return {'schema': 'Celluloid.StoreRequest.1', 'id': REQUEST, 'bundle_identifier': store.APP_ID,
         'document': store.FIXTURE_NAME, 'locale': 'en_US', 'language': 'en', 'sample_width': 120,
@@ -303,20 +308,31 @@ class ProcessTests(unittest.TestCase):
                 self.assertFalse(any(command[:3] == ['xcrun', 'simctl', 'install'] for command in calls))
                 self.assertEqual(job.blocked, result != 1)
                 self.assertEqual(job.device, DEVICE)
-    def test_all_fixed_container_queries_use_finite_180_second_budget(self):
+    def test_all_fixed_container_queries_use_bounded_metadata_and_no_simctl(self):
         container = self.root/DEVICE/'data/Containers/Data/Application'/CONTAINER
-        container.mkdir(parents=True)
+        container.mkdir(parents=True); write_container_metadata(container)
+        runner = container.parent/REQUEST; runner.mkdir(); write_container_metadata(runner, store.RUNNER_ID)
+        bundle = self.root/DEVICE/'data/Containers/Bundle/Application'/CONTAINER
+        bundle.mkdir(parents=True); write_container_metadata(bundle)
+        app = bundle/'CelluloidVision.app'; app.mkdir()
+        (app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': store.APP_ID,
+            'CFBundleExecutable': 'CelluloidVision', 'DTPlatformName': 'xrsimulator'}))
+        (app/'CelluloidVision').write_bytes(b'mock binary')
         caps = []
         def execute(command, **kwargs):
             caps.append(kwargs['seconds'])
-            return subprocess.CompletedProcess(command, 0, str(container).encode(), b'')
+            self.assertNotIn('simctl', command); self.assertNotIn('get_app_container', command)
+            self.assertEqual(command[:3], [sys.executable,str(Path(store.__file__).resolve()),'--resolve-container'])
+            return subprocess.CompletedProcess(command, 0, json.dumps(store.resolve_container_metadata(self.root, *command[-3:])).encode(), b'')
         job = self.job(execute); job.device = DEVICE; job.devices_root = self.root
-        for phase in ('seed-data', 'capture-data', 'capture-runner', 'after-data'):
-            self.assertEqual(job.container(phase, store.APP_ID), container)
-        self.assertEqual(caps, [180, 180, 180, 180])
+        job.report['built_app'] = {'binary_sha256':store.file_record(app/'CelluloidVision',100)['sha256']}
+        for phase, (target, kind) in store.CONTAINER_PHASES.items():
+            result = job.container(phase, target, kind)
+            self.assertEqual(result if kind == 'Data' else Path(result['path']), runner if target == store.RUNNER_ID else app if kind == 'Bundle' else container)
+        self.assertEqual(caps, [30]*6)
     def test_seed_data_budget_still_reserves_original_wall_clock(self):
         execute = mock.Mock(side_effect=AssertionError('late native command forbidden'))
-        job = store.Job(ROOT, self.root, BINDING, 1, execute=execute, clock=lambda: store.WORK_END-190)
+        job = store.Job(ROOT, self.root, BINDING, 1, execute=execute, clock=lambda: store.WORK_END-40)
         job.device = DEVICE
         with self.assertRaisesRegex(ValueError, 'wall-time reserve'): job.container('seed-data', store.APP_ID)
         execute.assert_not_called()
@@ -396,6 +412,148 @@ class ProcessTests(unittest.TestCase):
             stream_capture([sys.executable, '-c', 'import time; time.sleep(10)'], seconds=.05, cap=100)
         self.assertTrue(caught.exception.cleanup_confirmed)
 
+class MetadataTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.devices = self.root/'home/Library/Developer/CoreSimulator/Devices'
+        self.base = self.devices/DEVICE/'data/Containers/Data/Application'
+        self.target = self.base/CONTAINER; self.target.mkdir(parents=True)
+        write_container_metadata(self.target)
+    def resolve(self): return store.resolve_container_metadata(self.devices, DEVICE, store.APP_ID, 'Data')
+    def reject(self):
+        with self.assertRaisesRegex(ValueError, 'Owned-device container metadata lookup rejected'):
+            self.resolve()
+    def test_exact_identity_without_reading_unrelated_app_data(self):
+        unrelated = self.base/OTHER; unrelated.mkdir(); write_container_metadata(unrelated, 'other.private.application')
+        secret = unrelated/'Documents'; secret.symlink_to(self.root/'missing-private-target')
+        opened = []; ordinary = os.open
+        def inspect(path, *args, **kwargs):
+            opened.append(str(path)); self.assertNotIn('Documents', str(path))
+            return ordinary(path, *args, **kwargs)
+        with mock.patch.object(store.os, 'open', side_effect=inspect): result = self.resolve()
+        self.assertEqual(result['path'], str(self.target)); self.assertEqual(result['entries_examined'], 2)
+        self.assertNotIn('other.private.application', json.dumps(result)); self.assertNotIn(OTHER, json.dumps(result))
+        self.assertEqual(store.validate_container_receipt(result, self.devices, DEVICE, store.APP_ID, 'Data'), self.target)
+    def test_missing_match_rejected(self):
+        write_container_metadata(self.target, 'other.private.application'); self.reject()
+    def test_ambiguous_match_rejected(self):
+        another = self.base/OTHER; another.mkdir(); write_container_metadata(another); self.reject()
+    def test_other_device_is_never_searched(self):
+        write_container_metadata(self.target, 'other.private.application')
+        another = self.devices/OTHER/'data/Containers/Data/Application'/CONTAINER
+        another.mkdir(parents=True); write_container_metadata(another); self.reject()
+    def test_wrong_device_bundle_kind_rejected(self):
+        for device, bundle, kind in [('../outside',store.APP_ID,'Data'),(DEVICE,'other.private.application','Data'),
+                                   (DEVICE,store.RUNNER_ID,'Bundle'),(DEVICE,store.APP_ID,'Shared')]:
+            with self.subTest(device=device,bundle=bundle,kind=kind), self.assertRaises(ValueError):
+                store.resolve_container_metadata(self.devices,device,bundle,kind)
+    def test_symlink_ancestor_rejected(self):
+        moved = self.root/'real-devices'; self.devices.rename(moved); self.devices.symlink_to(moved); self.reject()
+    def test_symlink_container_rejected(self):
+        moved = self.root/'real-container'; self.target.rename(moved); self.target.symlink_to(moved); self.reject()
+    def test_symlink_metadata_rejected(self):
+        path = self.target/store.METADATA_NAME; moved = self.root/'real-metadata'; path.rename(moved); path.symlink_to(moved); self.reject()
+    def test_hardlinked_metadata_rejected(self):
+        os.link(self.target/store.METADATA_NAME,self.root/'metadata-hardlink'); self.reject()
+    def test_nonregular_metadata_rejected_without_blocking(self):
+        path = self.target/store.METADATA_NAME; path.unlink(); os.mkfifo(path); self.reject()
+    def test_missing_or_oversized_metadata_rejected(self):
+        path = self.target/store.METADATA_NAME; path.unlink(); self.reject()
+        path.write_bytes(b'x'*(store.METADATA_CAP+1)); self.reject()
+    def test_invalid_uuid_directory_and_identity_rejected(self):
+        path = self.target/store.METADATA_NAME
+        path.write_bytes(plistlib.dumps({'MCMMetadataIdentifier':store.APP_ID,'MCMMetadataUUID':OTHER})); self.reject()
+        write_container_metadata(self.target); self.target.rename(self.base/'not-a-uuid'); self.reject()
+    def test_malformed_identity_and_duplicate_keys_rejected(self):
+        path = self.target/store.METADATA_NAME
+        for row in [{}, {'MCMMetadataIdentifier':True,'MCMMetadataUUID':CONTAINER},
+                    {'MCMMetadataIdentifier':store.APP_ID,'MCMMetadataUUID':True}, []]:
+            with self.subTest(row=row): path.write_bytes(plistlib.dumps(row)); self.reject()
+        path.write_bytes(('<plist><dict><key>MCMMetadataIdentifier</key><string>'+store.APP_ID+'</string>'
+            '<key>MCMMetadataIdentifier</key><string>'+store.APP_ID+'</string>'
+            '<key>MCMMetadataUUID</key><string>'+CONTAINER+'</string></dict></plist>').encode()); self.reject()
+        path.write_bytes(b'<plist><dict><key>malformed'); self.reject()
+    def test_entry_and_aggregate_caps_rejected(self):
+        another = self.base/OTHER; another.mkdir(); write_container_metadata(another,'other.private.application')
+        with mock.patch.object(store,'METADATA_ENTRIES',1): self.reject()
+        with mock.patch.object(store,'METADATA_TOTAL_CAP',(self.target/store.METADATA_NAME).stat().st_size): self.reject()
+    def test_growing_plist_cannot_read_past_remaining_byte_budget(self):
+        path = self.target/store.METADATA_NAME; budget = path.stat().st_size
+        ordinary = os.read; consumed = []; changed = [False]
+        def grow(fd, count):
+            if not changed[0]:
+                changed[0] = True; path.write_bytes(b'x'*store.METADATA_CAP)
+            chunk = ordinary(fd,count); consumed.append(len(chunk)); return chunk
+        fd = store.open_directory(self.target)
+        try:
+            with mock.patch.object(store.os,'read',side_effect=grow), self.assertRaises(ValueError):
+                store.metadata_identity(fd,CONTAINER,budget)
+        finally: os.close(fd)
+        self.assertLessEqual(sum(consumed),budget)
+    def test_failure_diagnostic_never_exposes_unrelated_identity(self):
+        another = self.base/OTHER; another.mkdir()
+        (another/store.METADATA_NAME).write_bytes(b'<plist>other.private.application')
+        with self.assertRaises(ValueError) as result: self.resolve()
+        for forbidden in ('other.private.application',OTHER,str(another)):
+            self.assertNotIn(forbidden,str(result.exception))
+    def test_receipt_rejects_tampering_and_metadata_replacement(self):
+        receipt = self.resolve()
+        for key,value in [('device',OTHER),('bundle_identifier',store.RUNNER_ID),('kind','Bundle'),
+                          ('container_uuid',OTHER),('path',str(self.root)),('entries_examined',True)]:
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                store.validate_container_receipt({**receipt,key:value},self.devices,DEVICE,store.APP_ID,'Data')
+        write_container_metadata(self.target,'other.private.application')
+        with self.assertRaises(ValueError): store.validate_container_receipt(receipt,self.devices,DEVICE,store.APP_ID,'Data')
+    def test_migration_is_rediscovered_not_cached(self):
+        first = self.resolve(); self.target.rename(self.root/'retired-container')
+        new = self.base/OTHER; new.mkdir(); write_container_metadata(new)
+        second = self.resolve(); self.assertNotEqual(first['path'],second['path'])
+        with self.assertRaises(ValueError): store.validate_container_receipt(first,self.devices,DEVICE,store.APP_ID,'Data')
+        self.assertEqual(store.validate_container_receipt(second,self.devices,DEVICE,store.APP_ID,'Data'),new)
+    def operation_report(self):
+        folder = self.root/store.FOLDER; folder.mkdir(exist_ok=True)
+        command = [sys.executable,str(Path(store.__file__).resolve()),'--resolve-container',DEVICE,store.APP_ID,'Data']
+        report = {'binding':BINDING,'started_monotonic':1,'device':DEVICE,
+            'source-before':{'base':store.BASE,'unchanged_product_scope':True},
+            'operations':[{'phase':phase,'complete':True,'return_code':0} for phase in ('create','boot','install')]
+                +[{'phase':'seed-data','complete':False,'seconds':store.METADATA_SECONDS,'command':command}]}
+        return folder/'report.json',report
+    def test_lookup_requires_persisted_fresh_device_and_exact_operation(self):
+        path,report = self.operation_report(); path.write_text(json.dumps(report))
+        store.validate_metadata_operation(self.root,BINDING,1,DEVICE,store.APP_ID,'Data')
+        for change in ('binding','device','create','boot','install','uncertain','phase','command','complete','source'):
+            row = copy.deepcopy(report)
+            if change in ('binding','device'): row[change] = 'wrong'
+            elif change in ('create','boot','install'): row['operations'] = [r for r in row['operations'] if r['phase'] != change]
+            elif change == 'uncertain': row['operations'][1]['uncertain'] = True
+            elif change == 'source': row['source-before']['base'] = 'f'*40
+            else: row['operations'][-1][change] = True if change == 'complete' else 'wrong'
+            path.write_text(json.dumps(row))
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                store.validate_metadata_operation(self.root,BINDING,1,DEVICE,store.APP_ID,'Data')
+        path.write_text(json.dumps(report)); (self.root/store.BARRIER).write_text('{}')
+        with self.assertRaises(ValueError): store.validate_metadata_operation(self.root,BINDING,1,DEVICE,store.APP_ID,'Data')
+    def test_main_lookup_only_reads_metadata_and_never_executes_native(self):
+        path,report = self.operation_report(); path.write_text(json.dumps(report))
+        (self.root/store.CLOCK).write_text(json.dumps({'binding':BINDING,'started_monotonic':1}))
+        with mock.patch.object(sys,'argv',['runner','--resolve-container',DEVICE,store.APP_ID,'Data']), \
+             mock.patch.object(store,'environment',return_value=BINDING), mock.patch.object(store,'admission',return_value={}), \
+             mock.patch.dict(os.environ,{'RUNNER_TEMP':str(self.root),'HOME':str(self.root/'home')}), \
+             mock.patch.object(store.time,'monotonic',return_value=2), \
+             mock.patch.object(store,'capture',side_effect=AssertionError('native forbidden')), \
+             mock.patch('sys.stdout',new_callable=io.StringIO) as output:
+            self.assertEqual(store.main(),0)
+        self.assertEqual(json.loads(output.getvalue())['path'],str(self.target))
+    def test_uncertain_lookup_never_falls_back_to_cli_or_cleanup(self):
+        execute = mock.Mock(side_effect=CaptureStopped('duration-limit',True))
+        job = store.Job(ROOT,self.root,BINDING,1,execute=execute,clock=lambda:2); job.device = DEVICE
+        with self.assertRaises(CaptureStopped): job.container('seed-data',store.APP_ID)
+        self.assertTrue(job.blocked); self.assertEqual(execute.call_count,1)
+        self.assertNotIn('simctl',execute.call_args.args[0]); job.finish()
+        self.assertEqual(execute.call_count,1); self.assertEqual(job.report['cleanup'],[])
+
+
 class CheckpointTests(unittest.TestCase):
     # Mocked image bytes below are never native UI evidence or delivered assets.
     def setUp(self):
@@ -408,6 +566,7 @@ class CheckpointTests(unittest.TestCase):
         self.job.image_helper = self.root/'image-helper'
         self.app_data = self.container(CONTAINER)
         metadata = store.write_synthetic_fixture(self.app_data)
+        self.app_data.rename(self.root/'retired-app-data')
         self.migrated = self.container(OTHER); store.write_synthetic_fixture(self.migrated)
         self.job.report['sample_input'] = metadata
         app_parent = self.container(CONTAINER, 'Bundle'); self.app = app_parent/'CelluloidVision.app'; self.app.mkdir()
@@ -418,12 +577,12 @@ class CheckpointTests(unittest.TestCase):
         self.request = self.runner/'tmp'/('Celluloid-store-'+REQUEST+'.json'); self.request.write_text(json.dumps(request()))
         self.ack = self.request.with_suffix('.ack')
     def container(self, name, kind='Data'):
-        path = self.devices/DEVICE/'data/Containers'/kind/'Application'/name; path.mkdir(parents=True); return path
+        path = self.devices/DEVICE/'data/Containers'/kind/'Application'/name; path.mkdir(parents=True)
+        return write_container_metadata(path, store.RUNNER_ID if name == REQUEST else store.APP_ID)
     def execute(self, command, **kwargs):
         self.calls.append(command)
-        if 'get_app_container' in command:
-            result = self.runner if command[-2] == store.RUNNER_ID else self.app if command[-1] == 'app' else self.migrated
-            output = str(result).encode()
+        if '--resolve-container' in command:
+            output = json.dumps(store.resolve_container_metadata(self.devices, *command[-3:])).encode()
         elif 'screenshot' in command:
             Path(command[-1]).write_bytes(b'mocked raw JPEG bytes, not an image'); output = b''
         elif '--inspect' in command: output = json.dumps(IMAGE).encode()
@@ -461,13 +620,14 @@ class CheckpointTests(unittest.TestCase):
             return result
         self.job.execute = execute
         self.job.checkpoint(REQUEST)
-        self.assertEqual(caps, [180, 180, 180, 15, 10])
+        self.assertEqual(caps, [30, 30, 30, 15, 10])
         self.assertTrue(json.loads(self.ack.read_text())['success'])
         self.assertLess(now[0], 2+600-20)
         self.assertIsNone(self.job.checkpoint_deadline)
-        # This second 180-second lookup belongs to post-UI work, not held work.
+        # The later lookup remains allowed after the held checkpoint has ended.
+        now[0] = 603
         self.job.container('after-data', store.APP_ID)
-        self.assertEqual(caps, [180, 180, 180, 15, 10, 180])
+        self.assertEqual(caps, [30, 30, 30, 15, 10, 30])
         self.assertGreater(now[0], 2+600)
     def test_remaining_held_budget_blocks_full_data_cap_before_spawn(self):
         now = [2.0]; self.job.clock = lambda: now[0]
@@ -475,7 +635,7 @@ class CheckpointTests(unittest.TestCase):
         real_container = self.job.container
         def container(phase, bundle, kind='Data'):
             result = real_container(phase, bundle, kind)
-            if phase == 'capture-installed': now[0] = 2+401
+            if phase == 'capture-installed': now[0] = 2+551
             return result
         with mock.patch.object(self.job, 'container', side_effect=container), self.assertRaises(ValueError):
             self.job.checkpoint(REQUEST)

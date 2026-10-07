@@ -7,6 +7,7 @@ import math
 import os
 import plistlib
 import re
+import stat
 import sys
 import time
 import uuid
@@ -17,9 +18,9 @@ from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
 from run_vision_remaining import (built_vision_app, write_synthetic_fixture,
     snapshot_fixture, test_command, verify_cases, synthetic_fixture_bytes, FIXTURE_NAME)
 
-BASE = 'd7c5459c29b2852d184931fc49ff96a418a2f3ab'
+BASE = '2fc23ee9f905db1972a72bc4d3f6b529b89f07b5'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = '433499ab0c80182d3e16410fa2dd8944f92ff780'
+BASE_TREE = 'de0eb3a309030b95b176118d11a26300af3b8da2'
 BRANCH = 'refs/heads/codex/vision-store-single'
 WORKFLOW = '.github/workflows/vision-store-single.yml'
 SELECTOR = 'CelluloidVisionUITests/NativeVisionUITests/testStoreSingleHeldEditorCapture'
@@ -45,6 +46,12 @@ ADDED = ()
 MODIFIED = (WORKFLOW,
     'Scripts/run_vision_store_capture.py', 'Scripts/test_vision_store_capture.py')
 REQUEST_PREFIX = 'CELLULOID_STORE_CAPTURE_REQUEST '
+METADATA_NAME = '.com.apple.mobile_container_manager.metadata.plist'
+# Conservative resource ceilings, not a claim about unmeasured visionOS counts.
+METADATA_CAP, METADATA_TOTAL_CAP, METADATA_ENTRIES, METADATA_SECONDS = 262_144, 16_777_216, 4096, 30
+CONTAINER_PHASES = {'seed-data': (APP_ID, 'Data'), 'capture-data': (APP_ID, 'Data'),
+    'capture-runner': (RUNNER_ID, 'Data'), 'after-data': (APP_ID, 'Data'),
+    'capture-installed': (APP_ID, 'Bundle'), 'after-installed': (APP_ID, 'Bundle')}
 
 
 def need(value, message):
@@ -97,11 +104,146 @@ def safe_container(path, devices_root, device, kind='Data'):
     fixed_uuid(device); fixed_uuid(path.name)
     expected = devices_root / device / 'data' / 'Containers' / kind / 'Application'
     need(path.is_absolute() and path.parent == expected, 'Container outside exact owned device')
-    # Reject symlink ancestors, not merely the leaf. No adjacent-container scan.
+    # Reject symlink ancestors, not merely the leaf; inspect no sibling data.
     for node in (path, *path.parents):
         need(not node.is_symlink(), 'Symlink in owned container path')
     need(path.is_dir(), 'Missing owned container')
     return path
+
+
+class UniqueMetadata(dict):
+    def __setitem__(self, key, value):
+        need(key not in self, 'Duplicate metadata key')
+        super().__setitem__(key, value)
+
+
+def open_directory(path):
+    """Open each absolute ancestor without following symlinks."""
+    path = Path(path)
+    need(path.is_absolute() and '..' not in path.parts, 'Noncanonical metadata root')
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    fd = os.open('/', flags)
+    try:
+        for part in path.parts[1:]:
+            child = os.open(part, flags, dir_fd=fd)
+            os.close(fd); fd = child
+        return fd
+    except BaseException:
+        os.close(fd); raise
+
+
+def metadata_identity(container_fd, container_uuid, byte_budget=METADATA_CAP):
+    """Read only the standard identity plist, with finite bytes and no links."""
+    fd = os.open(METADATA_NAME, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+        dir_fd=container_fd)
+    try:
+        before = os.fstat(fd)
+        need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+            and 0 < before.st_size <= min(METADATA_CAP, byte_budget), 'Unsafe metadata file')
+        data = bytearray()
+        while len(data) < before.st_size:
+            chunk = os.read(fd, min(4096, before.st_size-len(data)))
+            if not chunk: break
+            data.extend(chunk)
+        after = os.fstat(fd)
+        need((before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+            == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+            and len(data) == before.st_size, 'Metadata changed during read')
+        row = plistlib.loads(data, dict_type=UniqueMetadata)
+        need(isinstance(row, dict) and type(row.get('MCMMetadataIdentifier')) is str
+            and 0 < len(row['MCMMetadataIdentifier']) <= 255, 'Malformed metadata identity')
+        need(fixed_uuid(row.get('MCMMetadataUUID')).upper() == container_uuid.upper(), 'Metadata UUID mismatch')
+        return row['MCMMetadataIdentifier'], {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
+            'device': before.st_dev, 'inode': before.st_ino,
+            'mtime_ns': before.st_mtime_ns, 'ctime_ns': before.st_ctime_ns}
+    finally:
+        os.close(fd)
+
+
+def resolve_container_metadata(devices_root, device, bundle, kind):
+    """One bounded scan of this cohort's device; no app-data or CLI fallback."""
+    fixed_uuid(device)
+    need((bundle, kind) in set(CONTAINER_PHASES.values()), 'Unexpected container target')
+    root = Path(devices_root)/device/'data/Containers'/kind/'Application'
+    root_fd = None; matches = []; entries = total = 0; stage = 'root'
+    try:
+        root_fd = open_directory(root)
+        with os.scandir(root_fd) as scan:
+            for entry in scan:
+                stage = 'entry-limit'
+                entries += 1; need(entries <= METADATA_ENTRIES, 'Metadata entry count exceeded')
+                stage = 'container-entry'
+                info = entry.stat(follow_symlinks=False)
+                need(not stat.S_ISLNK(info.st_mode), 'Metadata directory link rejected')
+                # A regular file at the root is not an application container.
+                if not stat.S_ISDIR(info.st_mode): continue
+                container_uuid = fixed_uuid(entry.name)
+                fd = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                    dir_fd=root_fd)
+                try:
+                    current = os.fstat(fd)
+                    need((info.st_dev, info.st_ino) == (current.st_dev, current.st_ino), 'Container changed during scan')
+                    stage = 'identity-plist'
+                    identifier, metadata = metadata_identity(fd, container_uuid, METADATA_TOTAL_CAP-total)
+                    total += metadata['bytes']; need(total <= METADATA_TOTAL_CAP, 'Metadata total bytes exceeded')
+                    if identifier == bundle:
+                        matches.append({'path': str(root/container_uuid), 'container_uuid': container_uuid,
+                            'container_device': current.st_dev, 'container_inode': current.st_ino,
+                            'metadata': metadata})
+                finally:
+                    os.close(fd)
+        stage = 'target-missing' if not matches else 'target-ambiguous'
+        need(len(matches) == 1, 'Container identity missing or ambiguous')
+        return {'schema': 'Celluloid.ContainerMetadata.1', 'device': device,
+            'bundle_identifier': bundle, 'kind': kind, 'entries_examined': entries,
+            'metadata_bytes_examined': total, **matches[0]}
+    except Exception:
+        # Do not expose unrelated app names, UUIDs, plist values or paths.
+        raise ValueError('Owned-device container metadata lookup rejected: '+stage) from None
+    finally:
+        if root_fd is not None: os.close(root_fd)
+
+
+def validate_container_receipt(row, devices_root, device, bundle, kind):
+    expected = {'schema','device','bundle_identifier','kind','entries_examined','metadata_bytes_examined',
+        'path','container_uuid','container_device','container_inode','metadata'}
+    need(type(row) is dict and set(row) == expected and row['schema'] == 'Celluloid.ContainerMetadata.1', 'Malformed container receipt')
+    need((row['device'], row['bundle_identifier'], row['kind']) == (device,bundle,kind), 'Wrong container receipt target')
+    path = safe_container(row['path'], devices_root, device, kind)
+    need(path.name == row['container_uuid'], 'Wrong container receipt UUID')
+    need(type(row['entries_examined']) is int and 0 < row['entries_examined'] <= METADATA_ENTRIES
+        and type(row['metadata_bytes_examined']) is int and 0 < row['metadata_bytes_examined'] <= METADATA_TOTAL_CAP, 'Wrong metadata scan bounds')
+    fd = open_directory(path)
+    try:
+        info = os.fstat(fd)
+        need((info.st_dev, info.st_ino) == (row['container_device'],row['container_inode']), 'Resolved container changed')
+        identifier, metadata = metadata_identity(fd, path.name)
+        need(identifier == bundle and metadata == row['metadata'], 'Resolved metadata changed')
+    finally:
+        os.close(fd)
+    return path
+
+
+def validate_metadata_operation(temp, binding, started, device, bundle, kind):
+    """Host helper can run only for a persisted, fresh owned-device operation."""
+    fixed_uuid(device)
+    need(not (temp/BARRIER).exists() and not (temp/BARRIER).is_symlink(), 'Existing uncertainty barrier')
+    report = json_file(temp/FOLDER/'report.json', REPORT_CAP)
+    need(report.get('binding') == binding and report.get('started_monotonic') == started
+        and report.get('device') == device and not report.get('device_uncertain')
+        and not report.get('error'), 'Wrong metadata operation binding')
+    need(report.get('source-before', {}).get('base') == BASE
+        and report.get('source-before', {}).get('unchanged_product_scope') is True, 'Fresh source identity missing')
+    operations = report.get('operations', [])
+    need(operations and not any(row.get('uncertain') or row.get('error') for row in operations), 'Uncertain metadata operation')
+    for phase in ('create','boot','install'):
+        rows = [row for row in operations if row.get('phase') == phase]
+        need(len(rows) == 1 and rows[0].get('complete') is True
+            and type(rows[0].get('return_code')) is int and rows[0]['return_code'] == 0, 'Fresh device operation missing')
+    current = operations[-1]
+    need(CONTAINER_PHASES.get(current.get('phase')) == (bundle,kind) and current.get('complete') is False
+        and current.get('seconds') == METADATA_SECONDS, 'Unbound metadata operation')
+    need(current.get('command') == [sys.executable,str(Path(__file__).resolve()),'--resolve-container',device,bundle,kind], 'Wrong metadata operation command')
 
 
 def pristine_snapshot(container, metadata):
@@ -299,9 +441,17 @@ class Job:
                 row['retained_log'] = file_record(path, EVIDENCE_FILES[path.name])
             self.persist()
     def container(self, phase, bundle, kind='Data'):
-        value = self.call(phase, ['xcrun', 'simctl', 'get_app_container', self.device, bundle, 'data' if kind == 'Data' else 'app'], 180).strip()
+        need(CONTAINER_PHASES.get(phase) == (bundle,kind), 'Wrong metadata resolution phase')
+        value = self.call(phase, [sys.executable,str(Path(__file__).resolve()),'--resolve-container',
+            self.device,bundle,kind], METADATA_SECONDS)
+        self.check_active()
+        receipt = json.loads(value)
+        path = validate_container_receipt(receipt, self.devices_root, self.device, bundle, kind)
+        self.check_active()
+        self.report.setdefault('container_resolutions', []).append({'phase':phase, **receipt})
+        self.persist()
         if kind == 'Bundle':
-            app = Path(value)
+            app = path/'CelluloidVision.app'
             safe_container(app.parent, self.devices_root, self.device, kind)
             need(app.name == 'CelluloidVision.app' and not app.is_symlink() and app.is_dir(), 'Wrong installed app path')
             info = json_or_plist(app/'Info.plist')
@@ -309,7 +459,7 @@ class Job:
             binary = file_record(app/'CelluloidVision', 200_000_000)
             need(binary['sha256'] == self.report['built_app']['binary_sha256'], 'Installed binary differs from exact build')
             return {'path': str(app), 'binary_sha256': binary['sha256']}
-        return safe_container(value, self.devices_root, self.device)
+        return path
     def source_identity(self, stage):
         def git(label, *args): return self.call(stage+'-'+label, ['git', *args], 10).strip()
         sha = self.binding['GITHUB_SHA']
@@ -554,8 +704,9 @@ def verify_packed_images(temp, binding, started):
 def main():
     parser = argparse.ArgumentParser(); mode = parser.add_mutually_exclusive_group()
     for option in ('execute', 'pack', 'finish-upload'): mode.add_argument('--'+option, action='store_true')
+    mode.add_argument('--resolve-container', nargs=3, metavar=('DEVICE','BUNDLE','KIND'))
     args = parser.parse_args()
-    if not any((args.execute, args.pack, args.finish_upload)):
+    if not any((args.execute, args.pack, args.finish_upload, args.resolve_container)):
         print(json.dumps({'candidate_only': True, 'native_execution_enabled': False, 'case': SELECTOR,
             'scope': 'One held real editor capture; no native run by default', 'visual_review_required': True}, indent=2)); return 0
     root = Path(__file__).resolve().parents[1]
@@ -567,6 +718,15 @@ def main():
     need(clock.get('binding') == binding, 'Original clock binding mismatch')
     started, now = clock.get('started_monotonic'), time.monotonic()
     need(type(started) in (int, float) and math.isfinite(started) and 0 < started <= now, 'Invalid original clock')
+    if args.resolve_container:
+        device, bundle, kind = args.resolve_container
+        need(now+METADATA_SECONDS <= started+WORK_END, 'Metadata resolution original deadline missing')
+        validate_metadata_operation(temp, binding, started, device, bundle, kind)
+        row = resolve_container_metadata(Path.home()/'Library/Developer/CoreSimulator/Devices', device, bundle, kind)
+        payload = json.dumps(row)
+        need(len(payload.encode()) <= 16_384, 'Metadata receipt cap')
+        print(payload, flush=True)
+        return 0
     if args.pack:
         print('VISION_PACK_START '+json.dumps({'elapsed_seconds':now-started}),flush=True)
         try:
