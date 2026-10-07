@@ -83,7 +83,7 @@ def validate_profile(profile,device_type):
         evidence['process']=proc.stdout;assert 'CelluloidWatch' in proc.stdout
         evidence['launch_screenshot']=optional_diagnostic(['xcrun','simctl','io',udid,'screenshot','--type=jpeg',temp/(prefix+'-launch.jpg')],timeout=45)
         command=['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidWatch','-destination',f'platform=watchOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-watch','-resultBundlePath',temp/(bundle+'.xcresult'),'CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO','-collect-test-diagnostics','never','-maximum-concurrent-test-simulator-destinations','1','test-without-building']
-        command += ['-only-testing:'+FOCUSED_CASE, '-test-iterations','1']
+        command += ['-only-testing:'+FOCUSED_CASE]
         result=run(command,timeout=600 if profile == 'baseline' else 420,check=False,log_name=prefix+'-runtime-tests.log')
         assert hashlib.sha256(binary.read_bytes()).hexdigest()==binary_sha, 'The built executable changed between endpoint tests'
         evidence['test_exit_code']=result.returncode
