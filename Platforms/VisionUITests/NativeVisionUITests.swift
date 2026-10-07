@@ -193,32 +193,6 @@ extension NativeVisionUITests {
         XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertEqual(text.value as? String, "Vision 世界")
         print("VISION_REMAINING_REOPEN actual relaunch retained source dimensions and exact text")
     }
-    private func namedBrowserItems(in app: XCUIApplication, names: [String]) -> [XCUIElement] {
-        // Exact title/identifier, either directly or on a title descendant.
-        // Do not guess whether this native file item is a cell or a button.
-        let exact = NSPredicate(format: "label IN %@ OR identifier IN %@", names as NSArray, names as NSArray)
-        var unique: [String: XCUIElement] = [:]
-        for query in [app.cells, app.buttons] {
-            let elements = query.matching(exact).allElementsBoundByIndex + query.containing(exact).allElementsBoundByIndex
-            if elements.count > 24 { return [] }
-            for element in elements where element.exists && element.isEnabled && element.isHittable {
-                let key = "\(element.elementType.rawValue)|\(element.identifier)|\(element.frame)"
-                unique[key] = element
-            }
-        }
-        return Array(unique.values)
-    }
-    private func requireBrowserItem(in app: XCUIApplication, names: [String], stage: String) throws -> XCUIElement {
-        let predicate = NSPredicate { _, _ in self.namedBrowserItems(in: app, names: names).count == 1 }
-        let ready = XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: 20) == .completed
-        let items = namedBrowserItems(in: app, names: names)
-        if !ready || items.count != 1 { recordRemainingBrowser(app, stage: stage) }
-        XCTAssertTrue(ready, "Exactly one operable item with the exact filename/title is required")
-        XCTAssertEqual(items.count, 1)
-        let item = try XCTUnwrap(items.first)
-        print("VISION_REMAINING_BROWSER_ITEM stage=\(stage) type=\(item.elementType.rawValue) identifier=\(item.identifier) label=\(item.label) frame=\(item.frame)")
-        return item
-    }
     private func recordRemainingBrowser(_ app: XCUIApplication, stage: String) {
         // Scan the whole snapshot first. The former prefix cut off the file region.
         let lines = app.debugDescription.components(separatedBy: "\n")
@@ -246,7 +220,6 @@ extension NativeVisionUITests {
         }
     }
     private func openRemainingDocument(in app: XCUIApplication) throws {
-        let names = ["VisionRemaining", "VisionRemaining.celluloid"]
         let documents = app.navigationBars.buttons["Documents"].firstMatch
         if documents.exists && documents.isHittable { documents.tap() }
         recordRemainingBrowser(app, stage: "initial")
@@ -267,7 +240,16 @@ extension NativeVisionUITests {
         XCTAssertTrue(folder.isEnabled); XCTAssertTrue(folder.isHittable)
         print("VISION_REMAINING_BROWSER_ITEM stage=owned-app-folder identifier=\(folder.identifier) label=\(folder.label) frame=\(folder.frame)")
         folder.tap()
-        let document = try requireBrowserItem(in: app, names: names, stage: "exact-seed-document")
+        // Exact Cell identifier and title observed in run37654222192. The
+        // mutable timestamp/byte-count label is diagnostic only, never a key.
+        let files = app.cells.matching(identifier: "VisionRemaining, celluloid")
+        let document = files.firstMatch
+        let documentReady = document.waitForExistence(timeout: 20)
+        let documentTitleMatches = documentReady && document.staticTexts["VisionRemaining"].exists
+        if !documentReady || files.count != 1 || !documentTitleMatches || !document.isHittable { recordRemainingBrowser(app, stage: "exact-seed-document") }
+        XCTAssertTrue(documentReady); XCTAssertEqual(files.count, 1); XCTAssertTrue(documentTitleMatches)
+        XCTAssertTrue(document.isEnabled); XCTAssertTrue(document.isHittable)
+        print("VISION_REMAINING_BROWSER_ITEM stage=exact-seed-document identifier=\(document.identifier) label=\(document.label) frame=\(document.frame)")
         document.tap()
         XCTAssertTrue(app.buttons["editor.import-files"].waitForExistence(timeout: 30))
     }

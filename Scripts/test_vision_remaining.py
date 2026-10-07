@@ -448,14 +448,17 @@ class RemainingTests(unittest.TestCase):
         self.assertIn('app.cells.matching(identifier: "Celluloid, Container")',route)
         self.assertIn('XCTAssertEqual(folders.count, 1)',route);self.assertIn('folder.staticTexts["Celluloid"].exists',route)
         self.assertNotIn('NSPredicate',route);self.assertNotIn('namedBrowserItems',route)
-        self.assertIn('requireBrowserItem(in: app, names: names',route);self.assertIn('recordRemainingBrowser',route)
-    def test_browser_uses_observed_location_exact_unique_items_and_full_scan(self):
+        self.assertIn('app.cells.matching(identifier: "VisionRemaining, celluloid")',route)
+        self.assertIn('XCTAssertEqual(files.count, 1)',route);self.assertIn('document.staticTexts["VisionRemaining"].exists',route)
+        self.assertIn('recordRemainingBrowser',route);self.assertNotIn('548 bytes',route);self.assertNotIn('PM',route)
+    def test_browser_uses_observed_cell_ids_and_full_failure_scan(self):
         root=Path(__file__).resolve().parents[1]
         source=(root/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()
-        helper=source.split('    private func namedBrowserItems',1)[1].split('    func testSimplifiedChineseDocumentPrivacyAndLargeText',1)[0]
+        helper=source.split('    private func recordRemainingBrowser',1)[1].split('    func testSimplifiedChineseDocumentPrivacyAndLargeText',1)[0]
         self.assertIn('DOC.sidebar.item.On My Apple Vision Pro',helper)
-        self.assertIn('label IN %@ OR identifier IN %@',helper)
-        self.assertIn('app.cells, app.buttons',helper);self.assertIn('XCTAssertEqual(items.count, 1)',helper)
+        self.assertIn('app.cells.matching(identifier: "VisionRemaining, celluloid")',helper)
+        self.assertNotIn('NSPredicate',helper);self.assertNotIn('allElementsBoundByIndex',helper)
+        self.assertIn('XCTAssertEqual(files.count, 1)',helper)
         self.assertNotIn('BEGINSWITH',helper);self.assertNotIn('prefix(16000)',helper)
         self.assertIn('for line in lines',helper);self.assertIn('content.append(line)',helper)
         self.assertNotIn('let kinds',helper);self.assertIn('complete=false',helper)

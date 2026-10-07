@@ -1,11 +1,37 @@
 # Vision editing with a synthetic document input
 
-Exact parent: 45bad07f2fa88ff70578321ed6ea36a255f74ab1, tree
-002266e39fbd9577dd71a9b3caa823f44f8d6f7c, codex/vision-edit-final.
+Exact parent: 59d1d38f1519c6a8a1395ae11156cdade0c9f01f, tree
+95d15a28cb487611a6a13b9b2005259a29011af8, codex/vision-edit-final.
 This is a local candidate until separate exact-tree admission. No automatic
 rerun follows from this document.
 
-## Current parent: observed folder route and changed container identity
+## Current parent: exact file Cell now observed, contents preserved
+
+Run37654222192/59d1d38 remains FAILED. The direct "Celluloid, Container" folder
+query actually passed and the real folder was tapped. The remaining generic
+20s document predicate then expired while doing serial queries. Its subsequent
+query found the operable file, but the earlier wait result was already false.
+Full AX identifies exactly one Cell with identifier "VisionRemaining, celluloid"
+and descendant StaticText "VisionRemaining". Its display label also contains a
+variable time and548-byte size, which must not be hard-coded into a selector.
+The editor was not opened and no editing assertion executed. The case failed
+285.931s; xcodebuild returned65 normally. Cleanup and pack/upload succeeded.
+Artifact11498233960,11 manifest members, ZIP SHA256:
+b320d6a07ed0797f208c30b40017960bc36549c9546d5800812eba1dd5312d4f.
+
+The owned container changed1915D6DB-ED7A-4E95-9B38-2EBAD6750BDC to
+8A15F278-77AF-4CDF-AEC2-14154F80BC5A. Actual reads in the new container verified
+the same fixed package,267-byte original image and281-byte recipe hashes, zero
+overlays and120x80 dimensions. Fixture preservation across that relocation is
+now demonstrated; it is no longer an unobserved assumption.
+
+This successor only replaces the document's broad matcher with the observed
+exact Cell identifier, requires one match and its exact static title, and checks
+operability. The same20s existence bound remains. Generic cell/button enumeration
+and the block predicate are removed from this path. All actual editing, Undo,
+relaunch, content verification, workflow and native budgets remain unchanged.
+
+## Earlier folder route and changed container identity
 
 Run37648299628/45bad07 remains FAILED. Debug82.877s, bootstatus192.095s,
 install215.203s and both owned-container queries completed. The one UI case
@@ -23,11 +49,11 @@ The fixed-device/fixed-bundle lookup returned data UUID C021EF16-2FA6-412D-
 The old equality guard refused before reading the new location's package.
 Consequently this evidence does not prove the seed was lost or preserved there.
 
-This successor makes two targeted corrections. The browser always navigates
+The prior successor made two targeted corrections. The browser always navigates
 through the observed local root and exact unique "Celluloid, Container" Cell,
 checking its displayed label/title and operability. It replaces the broad folder
-probe with a direct20s existence query; failure AX is retained. The actual file
-still requires an exact, unique operable name match, without guessing its role.
+probe with a direct20s existence query; failure AX is retained. The actual file now uses its subsequently observed exact Cell identifier and
+requires one operable match plus its exact title.
 All typing, single-tap A/B, Unicode, Undo/Redo and real restart assertions remain.
 
 After the completed UI invocation, the same owned-device/bundle query remains
