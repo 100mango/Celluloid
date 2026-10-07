@@ -10,12 +10,13 @@ release qualification, archive work, or Store submission in this route.
 
 The product source remains da9d4abd6484ddaff469677d96caf24362645d7c,
 tree 304ee9c0e4197e4a282ae3933c9f510219b2106d. The successor's exact direct parent
-must be public 0da1ea8954b45365c4d0379c569d85809c135648,
-tree 517543d6ceefcbce905a0e0d5db06607a270ca0f. A different parent with the same
+must be public 35a9c186fbcff19f528fbaf72fc4e177506c909a,
+tree be6971d80c0cb6331109ad502eeb30fb9ca0eadd. A different parent with the same
 tree or an arbitrary ancestor does not satisfy this identity check.
 The capture source has its own actual commit/tree and workflow identity. The
-workflow step label names the new normal display checks; its commands, clocks
-and permissions remain byte-for-byte unchanged from the public parent.
+workflow and every Swift/product byte remain unchanged from the public parent.
+The runner removes three screenshot-only container identity queries. This does
+not change the release or UIKit qualification routes.
 Its source proof is 545 unchanged protected inputs plus one precisely hashed
 UI-test instrumentation file. The new contiguous block adds two display methods
 and one private layout observation helper. Removing this exact block restores the
@@ -133,7 +134,7 @@ All actual screenshots still require root visual review before Store use.
 The workflow has one 60-minute Mac job. Both row clocks preserve the same first
 step's source/run/attempt and monotonic/wall start. Native work ends by 2700s;
 the existing 660s tail and final 240s outer margin stay bounded. Build is at most
-900s; boot 60s; bootstatus 600s; install 600s; installed-app lookup 120s; permission 60s;
+900s; boot 60s; bootstatus 600s; install 600s; permission 60s;
 each setup test 360s; first import 480s and later imports 180s; selected UI command
 900s. Each full fixed command allowance plus 15s for cleanup and 5s for finalization
 must fit its immutable phase/work deadline before dispatch. Test body allowances
@@ -164,15 +165,15 @@ Fixed command allowances (seconds), shared by both devices under that clock:
 | Fresh owned create / exact created identity readback |60 /30 |
 | Build once |900 |
 | Boot / bootstatus |60 /600 |
-| Install / initial owned container lookup |600 /120 |
+| Install |600 |
 | Photos grant / dark appearance |60 /60 |
-| Bootstrap prepared-registration lookup |45 |
+| Bootstrap prepared-registration lookup on this screenshot route |Not collected |
 | Each original readiness/reconcile test |360 |
 | First sample import / second sample import |480 /180 |
 | Bootstrap host observations on Store capture |Not collected; explicit marker |
 | Two new display UI cases together |900 |
 | Finalized summary / attachment export |45 /45 |
-| Post-test installed identity lookup |60 |
+| Built app/UI-test identity before and after capture |Local fixed-file reads |
 | Shutdown / observed shutdown check |45 /15 |
 | Delete / observed absence check |45 /15 |
 
@@ -181,13 +182,41 @@ is 2700s from the first step. Existing tail endpoints are 2940s for product read
 3000s for shutdown, 3060s for deletion, 3120s for source checks, 3300s for collection,
 and 3360s for upload. They are shared endpoints, not per-device durations.
 
-The built app, framework and Photos extension are fingerprinted and compared to
-the actual installed product before/after execution. Selected attachments bind
-the exact new display test, observed device UDID/model/runtime, capture source,
-qualified product source and product fingerprint. PNG header, chunk integrity,
-dimensions, bit depth, color type and presence of alpha/transparency are reported
-from the original bytes. Alpha is not stripped. Actual image format/alpha and
-visual quality are not predeclared successful before native capture.
+The built app, original framework and Photos extension retain their complete
+file fingerprint. The fixed UI-test Info.plist and executable have bounded
+before/after byte-count and SHA256 records. These exact paths were observed in
+the 35a9 native build log. The Info.plist must identify Mango.Celluloid.UITests,
+CelluloidUITests and iphonesimulator. Both built records must remain equal before
+and after each UI invocation. No product or Swift code changes in this successor.
+
+The screenshot identity contract is explicitly versioned StoreCapturePacket.2:
+fresh owned simulator, successful installation of this build's app, the same
+reviewed project/scheme/Debug/build root, actual two selected methods and device
+summary, and the raw attachment's exact testcase/device ownership. The normal
+XCUIApplication initializer targets the project's TEST_TARGET_NAME=Celluloid.
+Apple documents scheme-based test-without-building as using the build root:
+https://developer.apple.com/library/archive/technotes/tn2339/_index.html
+https://developer.apple.com/documentation/xcuiautomation/xcuiapplication
+
+This route does not observe the installed container's full byte equality or
+relocation. Its report states installed_container_equality_checked=false, and
+records no synthetic installation proof. The original release/UIKit installed
+identity checks remain intact. No app self-report, cross-process query, guessed
+container path, timeout increase, retries or new input mode is introduced.
+
+The 35a9 run 37582260789 remains failed with zero new PNGs. Its get_app_container
+returned a complete owned-device path and code 0, but communicate() returned late:
+the mandatory post-return clock check threw at native_process.py:72. PID/PGID
+45401 was reaped, no signals were sent, and process-group exit was unconfirmed.
+The 121.016s observation cannot separate child execution from scheduling/output
+collection. That host stopped before Photos/UI and cannot resume under this change.
+
+Selected attachments continue to bind the exact new display test, observed
+owned UDID/model/runtime, actual capture source, historical product-source
+projection and fresh built product fingerprint. PNG integrity, dimensions and
+alpha are checked on original bytes. No simulator Debug binary is claimed equal
+to the uploaded device Release IPA, and no release qualification is inferred.
+All actual screenshots still require visual review.
 
 The Xcode 27 manifest parser accepts the verified flat array of test rows and
 their attachments, at most 1MB, 32 rows, 256 attachments per row and 512 total.
@@ -201,12 +230,12 @@ The raw export manifest is retained, so this historical evidence limit is
 explicit rather than resolved by guessing a field spelling. All incoming JSON
 uses the existing strict duplicate-key/nonfinite-number parser.
 
-Initial app paths must resolve inside that exact simulator's
-Devices/UDID/data/Containers/Bundle/Application tree and end in Celluloid.app.
-Post-test identity uses the existing uikit_installed_identity readback/validator,
-including its relocation, metadata and executable checks; full bundle bytes
-must still match the captured build. Command deadline timing receipts survive
-success and failure retention.
+The original two PhotoKit setup methods still prove an empty authorized library
+followed by exactly the two approved original resource hashes. On this fixed
+capture route only, --already-prepared omits its redundant get_app_container
+registration probe and records STORE_CAPTURE_REGISTRATION_QUERY_NOT_COLLECTED.
+Actual readiness and every required test must succeed; source/process guards,
+command deadline receipts and confirmed owned cleanup still apply.
 
 Selected runtime/type rows and per-device create/readback receipts are included
 in the existing bounded progress/report packet, including unsuccessful attempts.

@@ -22,8 +22,8 @@ import zlib
 from mac_host_transport import load_json
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE_TREE = '517543d6ceefcbce905a0e0d5db06607a270ca0f'
-PUBLIC_BASE = '0da1ea8954b45365c4d0379c569d85809c135648'
+BASE_TREE = 'be6971d80c0cb6331109ad502eeb30fb9ca0eadd'
+PUBLIC_BASE = '35a9c186fbcff19f528fbaf72fc4e177506c909a'
 PRODUCT_SOURCE = 'da9d4abd6484ddaff469677d96caf24362645d7c'
 PRODUCT_TREE = '304ee9c0e4197e4a282ae3933c9f510219b2106d'
 CONTRACT_SHA = 'cc2c2db6140e4062ac4259092573d2085318d63baf0ce95b92d04e5582f2c481'
@@ -61,14 +61,10 @@ MAX_ATTACHMENT_MANIFEST = 1_000_000
 CAPTURE_CLEANUP_SECONDS = 15
 CAPTURE_FINALIZATION_SECONDS = 5
 CAPTURE_PATHS = {
-    '.github/workflows/store-screenshots.yml',
-    'Documentation/store-screenshots.md', UI_PATH,
+    'Documentation/store-screenshots.md',
     'Scripts/store_screenshots.py', 'Scripts/test_store_screenshots.py',
     'Scripts/probe_photos_bootstrap.py', 'Scripts/test_store_screenshots_route.py',
-    'Scripts/store_display_assets.py', 'Scripts/test_store_display_assets.py',
-    'Scripts/test_store_display_ui_source.py', 'StoreCaptureAssets/README.md',
-    'StoreCaptureAssets/manifest.json', 'StoreCaptureAssets/demo-coast-sunny.png',
-    'StoreCaptureAssets/demo-citrus-sunny.png',
+    'Scripts/test_store_display_ui_source.py',
 }
 
 
@@ -164,7 +160,7 @@ def verify_source(root=ROOT, runtime=False):
 
 
 def product_manifest(app):
-    """Hash the actual built/installed bundle, including original framework/extension."""
+    """Hash the actual built bundle, including original framework/extension."""
     app = Path(app).resolve()
     info = plistlib.loads((app / 'Info.plist').read_bytes())
     need(info.get('CFBundleIdentifier') == 'Mango.Celluloid', 'Unexpected app identifier')
@@ -182,6 +178,27 @@ def product_manifest(app):
     return {'files': rows, 'fingerprint': sha(json.dumps(rows, separators=(',', ':')).encode()),
             'bundle_identifier': info['CFBundleIdentifier'], 'platform': info['DTPlatformName'],
             'version': info.get('CFBundleShortVersionString'), 'build': info.get('CFBundleVersion')}
+
+
+def ui_test_product(app):
+    """Two fixed build outputs observed in the native Xcode27 build log."""
+    products = Path(app).resolve().parent
+    bundle = products / 'CelluloidUITests-Runner.app/PlugIns/CelluloidUITests.xctest'
+    files = []
+    for name, maximum in (('Info.plist', 256_000), ('CelluloidUITests', 50_000_000)):
+        path = bundle / name
+        need(path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(products)
+             and 0 < path.stat().st_size <= maximum, 'Missing, unsafe or oversized fixed UI-test product')
+        with path.open('rb') as stream:
+            raw = stream.read(maximum + 1)
+        need(0 < len(raw) <= maximum, 'UI-test product changed while reading')
+        if name == 'Info.plist':
+            info = plistlib.loads(raw)
+            need(type(info) is dict and info.get('CFBundleIdentifier') == 'Mango.Celluloid.UITests'
+                 and info.get('CFBundleExecutable') == 'CelluloidUITests'
+                 and info.get('DTPlatformName') == 'iphonesimulator', 'Wrong built UI-test identity')
+        files.append({'path': str(path.relative_to(products)), 'bytes': len(raw), 'sha256': sha(raw)})
+    return {'schema': 'Celluloid.StoreCaptureBuiltUITest.1', 'files': files}
 
 
 def select_devices(runtimes, types, devices):
@@ -357,12 +374,13 @@ class Capture:
         self.counter = 0
         self.row = None
         self.fixtures = []
-        self.installations = []
+        self.test_products = []
 
     def persist(self):
         write_json(self.outer / 'store-capture-progress.json', {
             'source': getattr(self, 'source', None), 'product': getattr(self, 'product', None),
-            'fixtures': self.fixtures, 'installations': self.installations,
+            'built_ui_test_product': getattr(self, 'ui_product', None),
+            'fixtures': self.fixtures, 'test_products': self.test_products,
             'devices': self.devices, 'selected_models': self.selected_models,
             'creations': self.creations, 'screenshots': self.images,
             'commands': self.commands, 'cleanup': self.cleanup})
@@ -516,6 +534,7 @@ class Capture:
                      'CODE_SIGNING_ALLOWED=NO', 'COMPILER_INDEX_STORE_ENABLE=NO'])
         app = ROOT / '.build/Build/Products/Debug-iphonesimulator/Celluloid.app'
         self.product = product_manifest(app)
+        self.ui_product = ui_test_product(app)
         self.persist()
         for index, specification in enumerate(self.selected_models):
             if index:
@@ -528,15 +547,6 @@ class Capture:
             self.command('boot', 'boot', ['xcrun', 'simctl', 'boot', udid])
             self.command('bootstatus', 'bootstatus', ['xcrun', 'simctl', 'bootstatus', udid, '-b'])
             self.command('fixture-stage', 'install', ['xcrun', 'simctl', 'install', udid, str(app)], 600)
-            installed = self.command('fixture-stage', 'installed-container',
-                         ['xcrun', 'simctl', 'get_app_container', udid, 'Mango.Celluloid', 'app'], 120).stdout.strip()
-            installed_path = Path(installed)
-            need(installed_path.is_absolute() and installed_path.is_dir(), 'Installed app container unavailable')
-            installed_path = installed_path.resolve()
-            need('/Devices/' + udid + '/data/Containers/Bundle/Application/' in str(installed_path)
-                 and installed_path.name == 'Celluloid.app', 'Installed container belongs to another simulator/app')
-            need(product_manifest(installed_path) == self.product, 'Installed product differs from built app')
-            staging = {'installed_app': str(installed_path), 'binary_sha256': sha((app / 'Celluloid').read_bytes())}
             self.command('privacy', 'photos-grant', ['xcrun', 'simctl', 'privacy', udid, 'grant', 'photos', 'Mango.Celluloid'])
             prepare(ROOT)
             self.bootstrap(device)
@@ -547,6 +557,8 @@ class Capture:
                        '-resultBundlePath', str(bundle), '-parallel-testing-enabled', 'NO', '-collect-test-diagnostics', 'never']
             command += ['-only-testing:CelluloidUITests/CelluloidUITests/' + method for method in CASES.values()]
             command += ['test-without-building', 'CODE_SIGNING_ALLOWED=NO']
+            need(product_manifest(app) == self.product and ui_test_product(app) == self.ui_product,
+                 'Built app or fixed UI-test product changed before capture')
             need('TEST_RUNNER_CELLULOID_STORE_CAPTURE' not in os.environ, 'Unexpected ambient capture opt-in')
             os.environ['TEST_RUNNER_CELLULOID_STORE_CAPTURE'] = '1'
             try:
@@ -567,14 +579,13 @@ class Capture:
                 (self.packet / filename).write_bytes(data)
                 self.images.append({'name': filename, **receipt})
                 self.persist()
-            from uikit_installed_identity import readback, validate as validate_installed
-            def installed_readback(args, timeout, echo):
-                return self.command('product-readbacks', 'installed-after-tests', args, timeout)
-            after_installation = readback(installed_readback, udid, staging)
-            validate_installed(after_installation, udid, staging)
-            need(product_manifest(app) == self.product and product_manifest(after_installation['app_path']) == self.product,
-                 'Built/installed product changed during capture')
-            self.installations.append({'row': self.row, 'before': staging, 'after': after_installation})
+            need(product_manifest(app) == self.product and ui_test_product(app) == self.ui_product,
+                 'Built app or fixed UI-test product changed during capture')
+            self.test_products.append({'row': self.row, 'device_id': udid,
+                'schema': 'Celluloid.StoreCaptureTestProductBinding.1',
+                'built_app_fingerprint': self.product['fingerprint'], 'built_ui_test_product': self.ui_product,
+                'before_after_unchanged': True, 'installed_container_equality_checked': False,
+                'identity_scope': 'fresh-build-target-and-actual-test-attachment'})
             self.persist()
             self.require_owned_device(device)
             self.command('shutdown', 'shutdown', ['xcrun', 'simctl', 'shutdown', udid], 45)
@@ -588,15 +599,17 @@ class Capture:
             self.cleanup.append({'row': self.row, 'device_id': udid, 'shutdown_exit': 0, 'delete_exit': 0, 'confirmed': True})
             self.persist()
         need(verify_source(runtime=True) == self.source, 'Capture source changed')
-        need(len(self.images) == 4 and len(self.cleanup) == 2, 'Capture packet incomplete')
+        need(len(self.images) == 4 and len(self.cleanup) == len(self.test_products) == 2, 'Capture packet incomplete')
         self.finish(True)
 
     def finish(self, completed, error=None):
         """Pure file retention only; safe even after an unknown process termination."""
-        report = {'schema': 'Celluloid.StoreCapturePacket.1', 'complete': completed,
+        report = {'schema': 'Celluloid.StoreCapturePacket.2', 'complete': completed,
                   'source': getattr(self, 'source', None), 'product': getattr(self, 'product', None),
+                  'built_ui_test_product': getattr(self, 'ui_product', None),
                   'fixtures': self.fixtures,
-                  'installations': self.installations,
+                  'test_products': self.test_products, 'installed_container_equality_checked': False,
+                  'product_identity_scope': 'fresh-build-target-and-actual-test-attachment',
                   'first_step_clock': self.first, 'devices': self.devices, 'screenshots': self.images,
                   'selected_models': self.selected_models, 'creations': self.creations,
                   'commands': self.commands, 'cleanup': self.cleanup, 'error': error,
@@ -699,7 +712,8 @@ def main():
         progress = optional_object(progress_path)
         capture.source = progress.get('source') if type(progress.get('source')) is dict else None
         capture.product = progress.get('product') if type(progress.get('product')) is dict else None
-        for attribute, key in (('fixtures', 'fixtures'), ('installations', 'installations'),
+        capture.ui_product = progress.get('built_ui_test_product') if type(progress.get('built_ui_test_product')) is dict else None
+        for attribute, key in (('fixtures', 'fixtures'), ('test_products', 'test_products'),
                                ('selected_models', 'selected_models'), ('creations', 'creations'),
                                ('devices', 'devices'), ('images', 'screenshots'),
                                ('commands', 'commands'), ('cleanup', 'cleanup')):

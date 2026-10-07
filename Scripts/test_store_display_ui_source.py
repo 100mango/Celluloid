@@ -109,14 +109,11 @@ class StoreDisplaySourceTests(unittest.TestCase):
         for value in ('0.6167', '0.5667', '0.4333', '>= 0.4', 'timeout: 15'):
             self.assertIn(value, helper)
 
-    def test_workflow_changes_only_the_new_display_step_label(self):
-        path = '.github/workflows/store-screenshots.yml'
-        previous = subprocess.check_output(['git', 'show', capture.PUBLIC_BASE + ':' + path], cwd=ROOT, timeout=15)
-        old = b'Capture only the two existing UI cases after their original setup'
-        new = b'Capture two new normal display checks after the original setup'
-        self.assertEqual(previous.count(old), 1)
-        self.assertEqual((ROOT / path).read_bytes(), previous.replace(old, new))
-        self.assertIn(path, capture.CAPTURE_PATHS)
+    def test_container_proof_successor_keeps_workflow_and_all_swift_bytes(self):
+        for path in ('.github/workflows/store-screenshots.yml', 'CelluloidUITests/CelluloidUITests.swift'):
+            previous = subprocess.check_output(['git', 'show', capture.PUBLIC_BASE + ':' + path], cwd=ROOT, timeout=15)
+            self.assertEqual((ROOT / path).read_bytes(), previous)
+            self.assertNotIn(path, capture.CAPTURE_PATHS)
 
     def test_original_setup_file_and_shipping_project_exclude_nonshipping_assets(self):
         contract = json.loads((ROOT / 'Scripts/original-ios-source-contract.json').read_text())

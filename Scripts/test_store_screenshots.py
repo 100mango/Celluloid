@@ -118,8 +118,8 @@ class FileProofTests(unittest.TestCase):
             return answers[args]
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, environment(directory), clear=True), patch.object(capture, 'git', side_effect=git), patch('subprocess.Popen', side_effect=AssertionError('source test must not dispatch')):
             proof = capture.verify_source(runtime=True)
-            self.assertEqual(proof['supervision_public_base_sha'], '0da1ea8954b45365c4d0379c569d85809c135648')
-            self.assertEqual(proof['supervision_base_tree'], '517543d6ceefcbce905a0e0d5db06607a270ca0f')
+            self.assertEqual(proof['supervision_public_base_sha'], '35a9c186fbcff19f528fbaf72fc4e177506c909a')
+            self.assertEqual(proof['supervision_base_tree'], 'be6971d80c0cb6331109ad502eeb30fb9ca0eadd')
             parent[0] = '1d28' + '0' * 36
             with self.assertRaisesRegex(ValueError, 'public capture parent'):
                 capture.verify_source(runtime=True)
@@ -369,7 +369,8 @@ class RunnerInterfacesTests(unittest.TestCase):
         self.current = None
         self.fail_label = None
         self.keep_deleted = False
-        self.foreign_container = False
+        self.product_mutation = None
+        self.mutation_stage = None
         self.guarded_ui_failure = None
         self.app = self.root / '.build/Build/Products/Debug-iphonesimulator/Celluloid.app'
 
@@ -380,6 +381,21 @@ class RunnerInterfacesTests(unittest.TestCase):
             out.write_bytes(b'unit-test-only product bytes')
         (self.app / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': 'Mango.Celluloid', 'CFBundleExecutable': 'Celluloid',
                     'DTPlatformName': 'iphonesimulator', 'CFBundleShortVersionString': '1.1', 'CFBundleVersion': '2'}))
+        self.ui_bundle = self.app.parent / 'CelluloidUITests-Runner.app/PlugIns/CelluloidUITests.xctest'
+        self.ui_bundle.mkdir(parents=True)
+        (self.ui_bundle / 'CelluloidUITests').write_bytes(b'fixed UI test executable')
+        (self.ui_bundle / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': 'Mango.Celluloid.UITests',
+            'CFBundleExecutable': 'CelluloidUITests', 'DTPlatformName': 'iphonesimulator'}))
+
+    def mutate_product(self):
+        path = (self.app / 'Celluloid' if self.product_mutation == 'app' else
+                self.ui_bundle / ('Info.plist' if self.product_mutation == 'test-info' else 'CelluloidUITests'))
+        if self.product_mutation == 'test-info':
+            info = plistlib.loads(path.read_bytes()); info['extra'] = 'changed'; path.write_bytes(plistlib.dumps(info))
+        elif self.product_mutation == 'missing':
+            path.unlink()
+        else:
+            path.write_bytes(b'changed product bytes')
 
     def native(self, args, timeout, check, log_name, echo, capture_deadline=None):
         args = list(map(str, args))
@@ -466,12 +482,9 @@ class RunnerInterfacesTests(unittest.TestCase):
             self.installed = self.base / 'Library/Developer/CoreSimulator/Devices' / self.current['id'] / 'data/Containers/Bundle/Application' / str(uuid.uuid4()) / 'Celluloid.app'
             shutil.copytree(self.app, self.installed)
         elif args[:3] == ['xcrun', 'simctl', 'get_app_container']:
-            if self.foreign_container:
-                foreign = self.base / 'foreign-readable/Celluloid.app'
-                shutil.copytree(self.app, foreign)
-                output = str(foreign)
-            else:
-                output = str(self.installed)
+            self.fail('The capture route must not query installed containers')
+        elif args[:3] == ['xcrun', 'simctl', 'privacy'] and self.mutation_stage == 'before':
+            self.mutate_product()
         elif args[0] == 'xcodebuild' and 'test-without-building' in args:
             if self.guarded_ui_failure:
                 process = MagicMock(pid=48123, returncode=None)
@@ -487,6 +500,8 @@ class RunnerInterfacesTests(unittest.TestCase):
             self.bundle = Path(args[args.index('-resultBundlePath') + 1])
             self.bundle.mkdir()
             self.result_summary, output = summary(self.current, self.bundle)
+            if self.mutation_stage == 'during':
+                self.mutate_product()
         elif args[:4] == ['xcrun', 'xcresulttool', 'get', 'test-results']:
             output = json.dumps(self.result_summary)
         elif args[:4] == ['xcrun', 'xcresulttool', 'export', 'attachments']:
@@ -545,6 +560,12 @@ class RunnerInterfacesTests(unittest.TestCase):
         result = json.loads((runner.packet / 'capture.json').read_text())
         self.assertTrue(result['complete'])
         self.assertEqual(len(result['screenshots']), 4)
+        self.assertEqual(result['schema'], 'Celluloid.StoreCapturePacket.2')
+        self.assertIs(result['installed_container_equality_checked'], False)
+        self.assertNotIn('installations', result)
+        self.assertEqual(len(result['test_products']), 2)
+        self.assertTrue(all(row['before_after_unchanged'] is True and row['installed_container_equality_checked'] is False for row in result['test_products']))
+        self.assertFalse(any(c[:3] == ['xcrun', 'simctl', 'get_app_container'] for c in self.calls))
         self.assertEqual(len(result['selected_models']), 2)
         self.assertEqual(len(result['creations']), 2)
         self.assertTrue(all(record['confirmed'] is True and record['create_exit_code'] == 0 for record in result['creations']))
@@ -669,12 +690,40 @@ class RunnerInterfacesTests(unittest.TestCase):
             self.run_capture()
         self.assertFalse(any(c[:3] in (['xcrun', 'simctl', 'create'], ['xcrun', 'simctl', 'delete']) for c in self.calls))
 
-    def test_readable_identical_bundle_outside_owned_container_is_rejected(self):
-        self.foreign_container = True
-        with self.assertRaisesRegex(ValueError, 'another simulator/app'):
-            self.run_capture()
-        self.assertFalse(self.bootstrap_calls)
-        self.assertEqual(self.calls[-1][:3], ['xcrun', 'simctl', 'get_app_container'])
+    def test_changed_built_app_or_ui_test_stops_without_claiming_installed_identity(self):
+        for stage in ('before', 'during'):
+            for mutation in ('app', 'test-executable', 'test-info', 'missing'):
+                with self.subTest(stage=stage, mutation=mutation), isolated_runner() as case:
+                    case.mutation_stage, case.product_mutation = stage, mutation
+                    with self.assertRaisesRegex(ValueError, 'product|UI-test'):
+                        case.run_capture()
+                    self.assertEqual(sum(c[:3] == ['xcrun', 'simctl', 'create'] for c in case.calls), 1)
+                    self.assertFalse(any(c[:3] in (['xcrun', 'simctl', 'get_app_container'],
+                                                   ['xcrun', 'simctl', 'shutdown']) for c in case.calls))
+                    if stage == 'before':
+                        self.assertFalse(any('test-without-building' in c for c in case.calls))
+                    self.assertFalse(case.runner.test_products)
+
+    def test_fixed_ui_product_rejects_wrong_identity_symlink_and_oversize(self):
+        self.make_app()
+        expected = capture.ui_test_product(self.app)
+        self.assertEqual(len(expected['files']), 2)
+        info_path = self.ui_bundle / 'Info.plist'
+        original = info_path.read_bytes()
+        for key in ('CFBundleIdentifier', 'CFBundleExecutable', 'DTPlatformName'):
+            info = plistlib.loads(original); info[key] = 'foreign'
+            info_path.write_bytes(plistlib.dumps(info))
+            with self.assertRaisesRegex(ValueError, 'identity'):
+                capture.ui_test_product(self.app)
+        info_path.write_bytes(original)
+        binary = self.ui_bundle / 'CelluloidUITests'
+        binary.unlink(); binary.symlink_to(self.app / 'Celluloid')
+        with self.assertRaisesRegex(ValueError, 'unsafe'):
+            capture.ui_test_product(self.app)
+        binary.unlink(); binary.write_bytes(b'x')
+        info_path.write_bytes(b'x' * 256_001)
+        with self.assertRaisesRegex(ValueError, 'oversized'):
+            capture.ui_test_product(self.app)
 
     def test_command_does_not_shrink_full_allowance_to_remaining_work_time(self):
         runner = capture.Capture(self.outer)

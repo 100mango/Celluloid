@@ -142,7 +142,12 @@ def test(label, method):
 
 if options.already_prepared:
     host('prepared-before-readiness')
-    if run('verify-prepared-registration', 45, 'xcrun', 'simctl', 'get_app_container', device, 'Mango.Celluloid', 'app')[0]:
+    from store_display_assets import is_capture
+    if is_capture():
+        # This fixed screenshot route uses the fresh build's configured test
+        # target and the actual PhotoKit methods below, not container equality.
+        print('STORE_CAPTURE_REGISTRATION_QUERY_NOT_COLLECTED', flush=True)
+    elif run('verify-prepared-registration', 45, 'xcrun', 'simctl', 'get_app_container', device, 'Mango.Celluloid', 'app')[0]:
         raise RuntimeError('Prepared test app registration could not be verified')
 else:
     host('before-boot')

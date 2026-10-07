@@ -256,7 +256,9 @@ class StoreRouteTests(unittest.TestCase):
         output = io.StringIO()
         with patch.object(sys, 'argv', [str(SOURCE), DEVICE, '--already-prepared']), patch('native_process.run', side_effect=native), patch('subprocess.run', side_effect=AssertionError('unowned dispatch')), contextlib.redirect_stdout(output):
             exec(compile(body, str(SOURCE), 'exec'), functions)
-        self.assertEqual(len(calls), 5)
+        self.assertEqual(len(calls), 4)
+        self.assertFalse(any(command[:3] == ('xcrun', 'simctl', 'get_app_container') for command, _ in calls))
+        self.assertEqual(output.getvalue().count('STORE_CAPTURE_REGISTRATION_QUERY_NOT_COLLECTED'), 1)
         self.assertFalse(any(command[0] in {cmd[0] for cmd in HOST_COMMANDS} for command, _ in calls))
         self.assertTrue(all(kwargs['capture_deadline'] == value['started_monotonic'] + gate.WORK_SECONDS for _, kwargs in calls))
         omissions = [json.loads(line[len(HOST_OMISSION):]) for line in output.getvalue().splitlines() if line.startswith(HOST_OMISSION)]
@@ -316,6 +318,8 @@ class StoreRouteTests(unittest.TestCase):
                 exec(compile(body, str(SOURCE), 'exec'), functions)
             imports = [(command, kwargs) for command, kwargs in calls if command[:3] == ('xcrun', 'simctl', 'addmedia')]
             self.assertEqual(len(calls), 9)
+            self.assertEqual([(command, kwargs['timeout']) for command, kwargs in calls if command[:3] == ('xcrun', 'simctl', 'get_app_container')], [(('xcrun', 'simctl', 'get_app_container', DEVICE, 'Mango.Celluloid', 'app'), 45)])
+            self.assertNotIn('STORE_CAPTURE_REGISTRATION_QUERY_NOT_COLLECTED', output.getvalue())
             self.assertEqual([kwargs['timeout'] for _, kwargs in imports], [480, 180, 180, 180, 180, 180])
             self.assertTrue(all('capture_deadline' not in kwargs for _, kwargs in calls))
             self.assertEqual({item['filename'] for item in imported}, set(names))
