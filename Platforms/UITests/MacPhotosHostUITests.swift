@@ -81,7 +81,7 @@ final class MacPhotosHostUITests: XCTestCase {
         XCTAssertEqual(context["host_entry_contract"] as? String, Self.hostEntryContract)
         let route = try XCTUnwrap(context["validation_route"] as? [String: Any])
         let clock = try XCTUnwrap(context["host_clock_profile"] as? [String: Any])
-        let hostOnly = route["scope"] as? String == "photos-export-observation"
+        let hostOnly = ["photos-export-observation", "photos-boundary-observation"].contains(route["scope"] as? String ?? "")
         lifecycleDeadlineSeconds = hostOnly ? 900 : 600
         XCTAssertEqual(clock["name"] as? String, hostOnly ? "photos-export-observation-900-v1" : "canonical-600-v1")
         XCTAssertEqual(clock["case_seconds"] as? Int, lifecycleDeadlineSeconds)
@@ -279,6 +279,45 @@ final class MacPhotosHostUITests: XCTestCase {
         try runFilterLifecycle(in: photos, photosPID: photosPID, fixtureHash: fixtureHash,
             assetLabel: selectedAssetLabel, baselineIdentity: firstIdentity.raw)
 
+    }
+
+    @MainActor private func armOwnedBoundary(in photos: XCUIApplication, fixtureHash: String, identity: String) throws {
+        _ = try remainingTime(1)
+        let probe = try XCTUnwrap(context["boundary_probe"] as? [String: Any])
+        let lease = try XCTUnwrap(probe["lease"] as? [String: String])
+        guard fixtureHash == "6138992615dd7d5bd499b80d9f11e39a0815111feccd5d4d3e59a676f4384772",
+              lease["fixture_sha256"] == fixtureHash, lease["source_sha"] == (try value("source_sha")),
+              lease["run_attempt"] == "1", lease["raw_cap"] == "131072",
+              let nonce = lease["nonce"], nonce.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil,
+              let own = try JSONSerialization.jsonObject(with: Data(identity.utf8)) as? [String: Any],
+              let generation = own["generation"] as? String else { throw block("Invalid owned boundary lease") }
+        let editors = editorMatches(in: photos)
+        guard editors.count == 1 else { throw block("Boundary editor changed") }
+        let editor = editors.element(boundBy: 0)
+        let fields = editor.textFields.matching(identifier: "photos-extension.boundary-token")
+        guard fields.count == 1 else { throw block("Missing unique Debug boundary token input") }
+        let field = fields.element(boundBy: 0)
+        guard field.isEnabled, field.isHittable, (field.value as? String ?? "").isEmpty else { throw block("Boundary token input is not empty and ready") }
+        try deadlineClick(field); try deadlineText(field, nonce)
+        try deadlineKey(field, XCUIKeyboardKey.return, modifierFlags: [])
+        let receipts = editor.staticTexts.matching(identifier: "photos-extension.boundary-arm")
+        guard receipts.count == 1 else { throw block("Owned boundary arm failed") }
+        let raw = receipts.element(boundBy: 0).label
+        guard raw.utf8.count <= 4096, let data = raw.data(using: .utf8),
+              let arm = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              arm["schema"] as? String == "Celluloid.OwnedPhotosBoundaryArm.1",
+              arm["lease"] as? [String: String] == lease,
+              arm["identity_sha256"] as? String == digest(Data(identity.utf8)),
+              arm["generation"] as? String == generation else { throw block("Wrong boundary arm receipt") }
+        let binding: [String: Any] = ["schema": "Celluloid.OwnedPhotosBoundaryHostArm.1",
+            "context_sha256": contextHash, "source_sha": try value("source_sha"), "arm": arm]
+        let encoded = try JSONSerialization.data(withJSONObject: binding, options: [.sortedKeys])
+        guard encoded.count <= 8192 else { throw block("Oversized boundary arm binding") }
+        print("MAC_PHOTOS_BOUNDARY_ARM " + String(decoding: encoded, as: UTF8.self))
+        // Reuse the old ready identity and product/fixture guards immediately
+        // before Save; the token action itself grants no host/pixel acceptance.
+        guard try selfIdentityObservation(in: photos, allowWait: false).raw == identity else { throw block("Identity changed after boundary arm") }
+        try lifecycleGuard(photos, photosPID: lifecyclePhotosPID, fixtureHash: fixtureHash, assetLabel: lifecycleAssetLabel)
     }
 
     @MainActor private func importFixture(_ fixture: URL, into photos: XCUIApplication) throws {
@@ -765,6 +804,9 @@ final class MacPhotosHostUITests: XCTestCase {
         let beforeSaveIdentity = try selfIdentityObservation(in: photos, allowWait: false)
         guard beforeSaveIdentity.raw == baselineIdentity else { throw block("Initial editing identity changed before Save Changes") }
         try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel)
+        if context["boundary_probe"] != nil {
+            try armOwnedBoundary(in: photos, fixtureHash: fixtureHash, identity: beforeSaveIdentity.raw)
+        }
         try closeExtension(in: photos, save: true)
         try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
         let saved = try exportRaster("saved", in: photos, original: false)
@@ -773,6 +815,9 @@ final class MacPhotosHostUITests: XCTestCase {
         try retainLifecycleImage(saved, named: "lifecycle-saved.png")
         guard savedDelta <= 2 else { throw block("Stored saved raster disagrees with independent JPEG-aware reference", operation: ["max_channel_delta": savedDelta]) }
         try lifecyclePhase("saved-export", details: ["max_channel_delta": savedDelta, "limit": 2, "sole_asset_count": 1])
+        // A boundary observation cannot qualify the original full lifecycle.
+        // The old <=2 assertion above is always evaluated, even in this mode.
+        if context["boundary_probe"] != nil { return }
         stage = "lifecycle-reopen-fade"
         let reopened = try reenter(in: photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel,
             filter: "Fade", previousGenerations: [initialGeneration])

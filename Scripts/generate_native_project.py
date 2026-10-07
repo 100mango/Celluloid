@@ -16,6 +16,10 @@ def configs(key,settings):
     for name in ['Debug','Release']:
         values=dict(settings,SWIFT_OPTIMIZATION_LEVEL='-Onone' if name=='Debug' else '-O')
         if name=='Debug': values.update(ENABLE_TESTABILITY='YES',SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG',ONLY_ACTIVE_ARCH='YES')
+        if key=='CelluloidMacPhotosExtension' and name=='Debug':
+            values.update(CELLULOID_MAC_PHOTOS_BOUNDARY_INFO_PLIST='Platforms/macOSExtension/Info.plist',
+                INFOPLIST_FILE='$(CELLULOID_MAC_PHOTOS_BOUNDARY_INFO_PLIST)',
+                SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG $(CELLULOID_MAC_PHOTOS_BOUNDARY_CONDITION)')
         result.append(add(key+name,'XCBuildConfiguration',name=name,buildSettings=values))
     return add(key+'configs','XCConfigurationList',buildConfigurations=result,defaultConfigurationIsVisible='0',defaultConfigurationName='Release')
 def reference(path):

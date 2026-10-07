@@ -1,0 +1,47 @@
+name: Owned Photos boundary observation (diagnostic only)
+on:
+  push:
+    branches: [codex/photos-boundary-observation]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-platforms-refs/heads/codex/apple-platforms
+  cancel-in-progress: false
+jobs:
+  owned-photos-boundary:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      CELLULOID_VALIDATION_SCOPE: photos-boundary-observation
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Start the original fixed Mac job clock
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          # Same 41-minute first-step clock as the original 45-minute host job.
+          Path(os.environ['RUNNER_TEMP'],'mac-job-clock.json').write_text(json.dumps({
+            'source_sha':os.environ['GITHUB_SHA'],'started_monotonic':time.monotonic(),
+            'started_unix':time.time(),'execution_budget_seconds':41*60}))
+          PY
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Admit exact source and observe one owned Photos Save
+        timeout-minutes: 41
+        shell: bash
+        run: python3 Scripts/run_mac_photos_boundary.py
+      - name: Upload bounded synthetic boundary evidence
+        if: always()
+        timeout-minutes: 5
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: celluloid-photos-boundary-${{ github.sha }}
+          path: ${{ runner.temp }}/celluloid-photos-boundary-evidence/
+          retention-days: 1
+          if-no-files-found: error
