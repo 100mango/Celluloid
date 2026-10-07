@@ -61,15 +61,20 @@ jobs:
         need(os.environ['GITHUB_EVENT_NAME']=='push' and os.environ['GITHUB_RUN_ATTEMPT']=='1','push/first attempt only')
         need(os.environ['GITHUB_WORKFLOW_SHA']==sha and os.environ['GITHUB_WORKFLOW_REF']=='100mango/Celluloid/.github/workflows/watch-focused-case.yml@refs/heads/codex/watch-delete-singlecase','wrong workflow source')
         need(git('rev-parse','HEAD')==sha,'wrong checkout')
-        need(git('rev-list','--parents','-n','1','HEAD').split()==[sha,'2a5cf695c2a6c5ef3c2eaede47ea0353e2da9983'],'not one child of exact combined parent')
+        need(git('rev-list','--parents','-n','1','HEAD').split()==[sha,'92ea6e63c13d282399afb7e21a0f4d935aeacf3e'],'not one child of exact combined parent')
         need(git('status','--porcelain=v1','--untracked-files=all')=='','dirty source')
-        observed=git('diff','--name-status','--no-renames','2a5cf695c2a6c5ef3c2eaede47ea0353e2da9983','HEAD','--').splitlines()
-        need(sorted(observed)==['A\t.github/workflows/watch-focused-case.yml', 'M\tScripts/run_native_watch.py'],'changed-path scope mismatch')
-        record={'sha':sha,'tree':git('rev-parse','HEAD^{tree}'),'parent':'2a5cf695c2a6c5ef3c2eaede47ea0353e2da9983','changes':observed,'clean':True}
+        observed=git('diff','--name-status','--no-renames','92ea6e63c13d282399afb7e21a0f4d935aeacf3e','HEAD','--').splitlines()
+        need(sorted(observed)==['M\t.github/workflows/watch-focused-case.yml'],'changed-path scope mismatch')
+        record={'sha':sha,'tree':git('rev-parse','HEAD^{tree}'),'parent':'92ea6e63c13d282399afb7e21a0f4d935aeacf3e','changes':observed,'clean':True}
         (Path(os.environ['RUNNER_TEMP'])/'watch-focused-evidence/source-before.json').write_text(json.dumps(record)+'\n')
         PYTHON
         set -euo pipefail
-        sw_vers -buildVersion | grep -Fx 26A428
+        host_build="$(sw_vers -buildVersion)"
+        printf '%s\n' "$host_build" | tee "$RUNNER_TEMP/watch-focused-host-build.log"
+        case "$host_build" in
+          26A428|26A434) ;;
+          *) printf 'Unreviewed standard runner host build: %s\n' "$host_build" >&2; exit 1 ;;
+        esac
         xcodebuild -version | tee "$RUNNER_TEMP/watch-focused-xcode.log"
         grep -Fx 'Xcode 27.0' "$RUNNER_TEMP/watch-focused-xcode.log"
         grep -Fx 'Build version 27A266a' "$RUNNER_TEMP/watch-focused-xcode.log"
