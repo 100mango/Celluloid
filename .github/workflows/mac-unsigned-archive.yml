@@ -1,0 +1,50 @@
+name: Fixed universal Mac unsigned archive proof
+on:
+  push:
+    branches: [codex/mac-unsigned-archive]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-mac-unsigned-archive
+  cancel-in-progress: false
+jobs:
+  archive:
+    name: Observe one unsigned universal Mac archive
+    runs-on: xcode-27
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+    steps:
+      - name: Check out exact source and reviewed base
+        timeout-minutes: 1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+          ref: ${{ github.sha }}
+      - name: Archive once and retain bounded proof
+        id: proof
+        timeout-minutes: 17
+        run: python3 Scripts/mac_unsigned_archive.py
+      - name: Admit the full upload and finalization reserve
+        id: admit-upload
+        if: ${{ always() && steps.proof.outputs.evidence_ready == 'true' }}
+        timeout-minutes: 1
+        run: python3 Scripts/mac_unsigned_archive.py admit-upload
+      - name: Retain proof and bounded logs only
+        id: upload
+        if: ${{ always() && steps.admit-upload.outcome == 'success' && steps.admit-upload.outputs.upload_admitted == 'true' }}
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mac-unsigned-archive-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/archive-proof/report.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
+      - name: Verify upload outcome and original evidence clock
+        if: ${{ always() && steps.admit-upload.outputs.upload_admitted == 'true' }}
+        timeout-minutes: 1
+        env:
+          CELLULOID_ARCHIVE_UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: python3 Scripts/mac_unsigned_archive.py finish-upload
