@@ -9,6 +9,9 @@ import hashlib
 import math
 import json
 import os
+import plistlib
+import struct
+import zlib
 from pathlib import Path
 import re
 import subprocess
@@ -21,32 +24,83 @@ from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
 HOSTED = 'CelluloidVisionTests/NativeVisionTests/testPrepareVisionRemainingDocumentFixture'
 EDIT = 'CelluloidVisionUITests/NativeVisionUITests/testSeededDocumentSequentialTextUndoRedoAndRelaunch'
 PRIVACY = 'CelluloidVisionUITests/NativeVisionUITests/testSimplifiedChineseDocumentPrivacyAndLargeText'
-SELECTORS = (HOSTED, EDIT)
-BASE = '2cf9160fa043f7ef0f89e42d022240a8b9f77322'
-BASE_TREE = '48661b87523efcc1fc0fda603c5477b814dfbe76'
-BRANCH = 'refs/heads/codex/vision-remaining'
+SELECTORS = (EDIT,)
+BASE = '997dd5a53781423ed3ff91a6e559874fd8814f7b'
+BASE_TREE = '009333fa7fe4e6371d3504d9892c317f6240050e'
+BRANCH = 'refs/heads/codex/vision-edit-final'
 WORKFLOW = '.github/workflows/vision-remaining.yml'
 CLOCK = 'vision-remaining-clock.json'
 WORK_END, CLEANUP_END, PACK_END, FINISH_END = 3000, 3150, 3200, 3360
 EVIDENCE_CAP = 8_000_000
-MODIFIED = (WORKFLOW,'Documentation/vision-remaining.md','Scripts/run_vision_remaining.py','Scripts/test_vision_remaining.py',
-            'Platforms/VisionTests/NativeVisionTests.swift','Platforms/VisionUITests/NativeVisionUITests.swift')
+MODIFIED = (WORKFLOW,'Documentation/vision-remaining.md','Scripts/run_vision_remaining.py','Scripts/test_vision_remaining.py')
 ADDED = ()
 HISTORICAL_PACKAGE = {'source_sha':'db4d719abdf11504e99e211ffc27d7555883acb3','run_id':37608605492,'artifact_id':11477245993,
     'artifact_sha256':'126ecef09c9fac1f8d0972071cceb82513c0f2fcba7a113a4da1fbd6fc8aa46d',
     'scope':'Historical component reference only; no archive/package execution in this runtime-only cohort'}
 
-HISTORICAL_RUNTIME = {'source_sha':BASE,'run_id':37612385100,'artifact_id':11479451487,
+HISTORICAL_RUNTIME = {'source_sha':'2cf9160fa043f7ef0f89e42d022240a8b9f77322','run_id':37612385100,'artifact_id':11479451487,
     'artifact_sha256':'bdd05d117f26f5beedf27f61050fdffd3f91db2d872829d6e900803dabe258c3',
     'scope':'Previously passed field/Undo hosted component and Chinese normal/largest policy UI; neither reruns'}
 FIXTURE_NAME = 'VisionRemaining.celluloid'
+# Exact source UUID and recipe bytes/hash printed by the actual native writer in
+# run37637767590/artifact11490979202. That run failed on xcodebuild finalization.
+NATIVE_SEED_ID = 'C669EEEC-B101-4A5B-8579-42479B800FE7'
+NATIVE_RECIPE_SHA = '3fc3d7275c3e1e802dccb8daa63e688944b70c00a4d636c93d39f32f9b755b6e'
+HISTORICAL_FIXTURE = {'source_sha':BASE,'run_id':37637767590,'artifact_id':11490979202,
+    'artifact_sha256':'dacfe58716acceb6d1cce8c45c4581a8d0de69c8b50f905906e4353568736970',
+    'scope':'Native fixture case passed0.166s; xcodebuild timed out, invocation failed and UI never started'}
+
+
+def synthetic_fixture_bytes():
+    # Python-authored INPUT only, not an app result or a rendered output image.
+    recipe={'format':'Celluloid.Document','version':1,'filter':'Original','overlays':[],
+            'canvasWidth':120,'canvasHeight':80,'sources':[{'id':NATIVE_SEED_ID,'displayName':'Synthetic.png',
+            'pixelWidth':120,'pixelHeight':80,'crop':{'centerX':0.5,'centerY':0.5,'zoom':1}}]}
+    encoded=json.dumps(recipe,sort_keys=True,separators=(',',':')).encode()
+    if len(encoded)!=281 or hashlib.sha256(encoded).hexdigest()!=NATIVE_RECIPE_SHA: raise ValueError('Recipe differs from actual native fixture')
+    def chunk(kind,data):return struct.pack('>I',len(data))+kind+data+struct.pack('>I',zlib.crc32(kind+data)&0xffffffff)
+    png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',120,80,8,6,0,0,0))+chunk(b'IDAT',zlib.compress((b'\0'+b'\x1a\x80\xcc\xff'*120)*80))+chunk(b'IEND',b'')
+    return {'recipe.json':encoded,NATIVE_SEED_ID+'.image':png}
+
+
+def write_synthetic_fixture(container):
+    container=Path(container)
+    if container.is_symlink() or not container.is_dir(): raise ValueError('Unsafe app data container')
+    documents=container/'Documents'
+    if documents.is_symlink(): raise ValueError('Unsafe Documents link')
+    documents.mkdir(exist_ok=True)
+    fixture=documents/FIXTURE_NAME
+    # Only a fresh, fixed-name test package is created. Never overwrite an item.
+    if fixture.exists() or fixture.is_symlink(): raise ValueError('Fixture already exists')
+    fixture.mkdir()
+    for name,data in synthetic_fixture_bytes().items():
+        with (fixture/name).open('xb') as stream:stream.write(data)
+    files=[{'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(fixture.iterdir())]
+    return validate_fixture_metadata({'schema':'Celluloid.VisionFixture.1','bundle_identifier':'Mango.Celluloid',
+        'origin':'Python-generated synthetic INPUT; not a native test result or rendered output',
+        'data_home':str(container),'documents_path':str(documents),'package_path':str(fixture),'package_name':FIXTURE_NAME,
+        'pixel_width':120,'pixel_height':80,'initial_overlays':0,'files':files})
+
+
+def built_vision_app(temp):
+    app=Path(temp)/'celluloid-vision/Build/Products/Debug-xrsimulator/CelluloidVision.app'
+    if app.is_symlink() or not app.is_dir(): raise ValueError('Built Vision app missing or unsafe')
+    info=plistlib.loads((app/'Info.plist').read_bytes())
+    if (info.get('CFBundleIdentifier'),info.get('CFBundleExecutable'),info.get('DTPlatformName'))!=('Mango.Celluloid','CelluloidVision','xrsimulator'): raise ValueError('Wrong built Vision app')
+    binary=app/'CelluloidVision'
+    if binary.is_symlink() or not binary.is_file(): raise ValueError('Built Vision executable missing or unsafe')
+    return app,hashlib.sha256(binary.read_bytes()).hexdigest()
+
 
 
 def fixture_metadata(log):
     prefix='VISION_REMAINING_FIXTURE_JSON '
     lines=[line[len(prefix):] for line in log.splitlines() if line.startswith(prefix)]
     if len(lines)!=1 or len(lines[0].encode())>16_384: raise ValueError('Missing/duplicate/oversized native fixture metadata')
-    row=json.loads(lines[0])
+    return validate_fixture_metadata(json.loads(lines[0]))
+
+
+def validate_fixture_metadata(row):
     if row.get('schema')!='Celluloid.VisionFixture.1' or row.get('bundle_identifier')!='Mango.Celluloid': raise ValueError('Wrong native fixture owner/schema')
     if row.get('package_name')!=FIXTURE_NAME or (row.get('pixel_width'),row.get('pixel_height'),row.get('initial_overlays'))!=(120,80,0): raise ValueError('Wrong synthetic fixture')
     for key in ('data_home','documents_path','package_path'):
@@ -67,7 +121,7 @@ def fixture_metadata(log):
 
 def snapshot_fixture(container, metadata, *, after_ui=False):
     container=Path(container)
-    if container.is_symlink() or container.resolve()!=Path(metadata['data_home']).resolve(): raise ValueError('App data container changed across XCTest invocations')
+    if container.is_symlink() or container.resolve()!=Path(metadata['data_home']).resolve(): raise ValueError('App data container changed between fixture staging and UI')
     documents=container/'Documents'
     if documents.is_symlink() or not documents.is_dir(): raise ValueError('Unsafe native Documents directory')
     package=documents/FIXTURE_NAME
@@ -141,7 +195,8 @@ class Job:
         self.binding = binding
         self.report = {'source_sha':source,'selectors':list(SELECTORS),'operations':[],
                        'binding':binding,'started_monotonic':self.started,
-                       'scope':'Only real editing UI; fixture-only setup. No prior field/Undo, privacy or archive rerun.',
+                       'scope':'Only real editing UI; Python synthetic input staging. No hosted XCTest, privacy or archive rerun.',
+                       'historical_fixture':dict(HISTORICAL_FIXTURE),
                        'historical_runtime':dict(HISTORICAL_RUNTIME),
                        'historical_unsigned_archive':dict(HISTORICAL_PACKAGE),'archive_executed_in_this_cohort':False,
                        'signed':False,'uploaded':False,'complete':False}
@@ -210,12 +265,16 @@ class Job:
         if sorted(actual)!=sorted(expected): raise ValueError('Unexpected source scope')
         self.report[phase]={'tree':git('tree','rev-parse','HEAD^{tree}'),'parent':BASE,'scope_verified':True}
 
-    def observe_fixture(self, phase, metadata, *, after_ui=False):
+    def owned_container(self, phase):
         value=self.call(phase,['xcrun','simctl','get_app_container',self.device,'Mango.Celluloid','data'],180).strip()
         container=Path(value); expected_parent=self.simulator_devices_root/self.device/'data/Containers/Data/Application'
-        if not container.is_absolute() or container.parent.resolve()!=expected_parent.resolve(): raise ValueError('Container outside owned simulator data scope')
+        if not container.is_absolute() or container.is_symlink() or container.parent.resolve()!=expected_parent.resolve(): raise ValueError('Container outside owned simulator data scope')
         uuid.UUID(container.name)
-        self.report[phase]={'observed_container':value,'declared_native_data_home':metadata['data_home'],
+        return container
+
+    def observe_fixture(self, phase, metadata, *, after_ui=False):
+        container=self.owned_container(phase)
+        self.report[phase]={'observed_container':str(container),'declared_fixture_data_home':metadata['data_home'],
                             'same_container':container.resolve()==Path(metadata['data_home']).resolve()}
         self.persist()
         snapshot=snapshot_fixture(container,metadata,after_ui=after_ui)
@@ -248,12 +307,16 @@ class Job:
         self.report['device'] = self.device; self.report['runtime'] = runtime
         self.call('boot',['xcrun','simctl','boot',self.device],60)
         self.call('bootstatus',['xcrun','simctl','bootstatus',self.device,'-b'],240)
-        # XCTest installs/launches the actual host and writes the native fixture.
-        # There is no simctl install/container lookup/launch/ps/screenshot/terminate preflight.
-        hosted = self.call('hosted',test_command(self.temp,self.device,[HOSTED],'VisionRemainingHosted'),360)
-        self.report['fixture_setup'] = verify_cases(hosted,[HOSTED])
-        metadata=fixture_metadata(hosted);self.report['fixture_metadata']=metadata;self.persist()
-        self.observe_fixture('seed-before-ui',metadata)
+        # Install the exact fresh build, then stage a safe synthetic input in
+        # its own Documents. No hosted XCTest or redundant app launch is needed.
+        app,binary_sha=built_vision_app(self.temp)
+        self.report['built_app']={'path':str(app),'binary_sha256':binary_sha};self.persist()
+        self.call('install',['xcrun','simctl','install',self.device,str(app)],300)
+        container=self.owned_container('seed-before-ui')
+        metadata=write_synthetic_fixture(container);self.report['fixture_metadata']=metadata
+        self.report['seed-before-ui']={'observed_container':str(container),'declared_fixture_data_home':metadata['data_home'],
+                                      'same_container':True,**snapshot_fixture(container,metadata)}
+        self.persist()
         ui_failure=None;ui=None
         try:ui=self.call('ui',test_command(self.temp,self.device,[EDIT],'VisionRemainingUI'),900)
         except ValueError as error:ui_failure=error

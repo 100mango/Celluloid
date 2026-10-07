@@ -1,7 +1,7 @@
 name: Complete remaining Celluloid Vision functions
 on:
   push:
-    branches: [codex/vision-remaining]
+    branches: [codex/vision-edit-final]
 permissions:
   contents: read
 concurrency:
@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   vision:
-    name: Prepare native document and finish Vision editing
+    name: Stage synthetic input and finish Vision editing
     runs-on: xcode-27
     timeout-minutes: 60
     env:
@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 2
           ref: ${{ github.sha }}
-      - name: Run fixture-only setup and the one remaining editing case
+      - name: Stage owned synthetic input and run only the remaining editing case
         id: proof
         timeout-minutes: 54
         run: python3 Scripts/run_vision_remaining.py --execute

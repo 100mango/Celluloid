@@ -5,11 +5,14 @@ import os
 import sys
 import time
 import hashlib
+import plistlib
+import struct
+import zlib
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from run_vision_remaining import Job, HOSTED, EDIT, PRIVACY, SELECTORS, verify_cases, pack, load_origin, environment, CLOCK, WORK_END, CLEANUP_END, BRANCH, WORKFLOW, fixture_metadata, snapshot_fixture
+from run_vision_remaining import Job, HOSTED, EDIT, PRIVACY, SELECTORS, verify_cases, pack, load_origin, environment, CLOCK, WORK_END, CLEANUP_END, BRANCH, WORKFLOW, fixture_metadata, snapshot_fixture, synthetic_fixture_bytes, write_synthetic_fixture, NATIVE_RECIPE_SHA, NATIVE_SEED_ID
 from mac_archive_capture import capture, CaptureStopped
 from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
 
@@ -51,6 +54,14 @@ class Fake:
         if phase=='runtimes':out=json.dumps({'runtimes':[{'isAvailable':True,'identifier':RUNTIME,'supportedDeviceTypes':[{'identifier':TYPE}]}]})
         if phase=='types':out=json.dumps({'devicetypes':[{'identifier':TYPE}]})
         if phase=='create':out=DEVICE
+        if phase=='build':
+            app=Path(args[args.index('-derivedDataPath')+1])/'Build/Products/Debug-xrsimulator/CelluloidVision.app'
+            app.mkdir(parents=True)
+            (app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':'Mango.Celluloid','CFBundleExecutable':'CelluloidVision','DTPlatformName':'xrsimulator'}))
+            (app/'CelluloidVision').write_bytes(b'command-double executable, not a native build')
+        if phase=='install':
+            self.fixture_home=self.seed_base/DEVICE/'data/Containers/Data/Application'/'11223344-5566-4788-9911-223344556677'
+            self.fixture_home.mkdir(parents=True)
         if phase=='hosted':
             out=passed([HOSTED])
             if not self.missing_seed:
@@ -61,7 +72,7 @@ class Fake:
                 records=[{'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(package.iterdir())]
                 self.metadata={'schema':'Celluloid.VisionFixture.1','bundle_identifier':'Mango.Celluloid','data_home':str(self.fixture_home),'documents_path':str(self.fixture_home/'Documents'),'package_path':str(package),'package_name':'VisionRemaining.celluloid','pixel_width':120,'pixel_height':80,'initial_overlays':0,'files':records}
                 out+='\nVISION_REMAINING_FIXTURE_JSON '+json.dumps(self.metadata)
-        if phase in ('seed-before-ui','seed-after-ui'):out=str(self.fixture_home)
+        if phase in ('seed-before-ui','seed-after-ui'):out='relative-unregistered' if self.missing_seed else str(self.fixture_home)
         if phase=='ui':
             recipe=self.fixture_home/'Documents/VisionRemaining.celluloid/recipe.json'
             value=json.loads(recipe.read_text());value['overlays']=[{'text':'Vision 世界'}];recipe.write_text(json.dumps(value))
@@ -78,14 +89,16 @@ class RemainingTests(unittest.TestCase):
             try:job.work()
             except (ValueError,TimeoutError,CaptureStopped) as error:job.report['error']=str(error)
             job.finish();return job.report
-    def test_fixture_only_setup_and_single_edit_case_direct_xctest_launch(self):
+    def test_synthetic_input_and_single_edit_case_direct_xctest_launch(self):
         fake=Fake(); report=self.exercise(fake)
         self.assertTrue(report['complete'])
         tests=[args for _,args,_ in fake.calls if 'test-without-building' in args]
-        self.assertEqual(len(tests),2)
+        self.assertEqual(len(tests),1)
         self.assertEqual([x[len('-only-testing:'):] for args in tests for x in args if x.startswith('-only-testing:')],list(SELECTORS))
-        self.assertFalse(any(any(x in args for x in ['launch','install','terminate','screenshot']) for _,args,_ in fake.calls))
+        self.assertFalse(any(any(x in args for x in ['launch','terminate','screenshot']) for _,args,_ in fake.calls))
         self.assertEqual([p for p,_,_ in fake.calls][:4],['toolchain','icons','icon-inputs','build'])
+        self.assertNotIn('hosted',[p for p,_,_ in fake.calls]);self.assertEqual(sum(p=='install' for p,_,_ in fake.calls),1)
+        self.assertIn('Python-generated synthetic INPUT',report['fixture_metadata']['origin'])
     def test_icon_materialization_and_validation_are_build_hard_dependencies(self):
         for failed in ['icons','icon-inputs']:
             with self.subTest(failed=failed):
@@ -97,12 +110,12 @@ class RemainingTests(unittest.TestCase):
         self.assertFalse(report['archive_executed_in_this_cohort'])
         self.assertEqual(report['historical_unsigned_archive']['run_id'],37608605492)
         self.assertIn('Historical component reference only',report['historical_unsigned_archive']['scope'])
-    def test_hosted_failure_or_missing_real_fixture_prevents_ui(self):
-        for fake in [Fake(bad='hosted'),Fake(missing_seed=True)]:
+    def test_install_failure_or_unregistered_container_prevents_ui(self):
+        for fake in [Fake(bad='install'),Fake(missing_seed=True)]:
             report=self.exercise(fake); self.assertFalse(report['complete'])
             self.assertNotIn('ui',[p for p,_,_ in fake.calls])
     def test_every_native_timeout_stops_all_subsequent_commands(self):
-        for phase in ['toolchain','icons','icon-inputs','build','runtimes','types','create','boot','bootstatus','hosted','seed-before-ui','ui','seed-after-ui','icons-after','shutdown','delete']:
+        for phase in ['toolchain','icons','icon-inputs','build','runtimes','types','create','boot','bootstatus','install','seed-before-ui','ui','seed-after-ui','icons-after','shutdown','delete']:
             with self.subTest(phase=phase):
                 fake=Fake(bad=phase,timeout=True);report=self.exercise(fake)
                 self.assertTrue(report['device_uncertain']);self.assertFalse(report['complete'])
@@ -209,7 +222,7 @@ class RemainingTests(unittest.TestCase):
             self.assertEqual(len(verify_cases(value,[EDIT,PRIVACY])),2)
     def test_late_pack_retains_existing_files_without_clock_reset(self):
         with tempfile.TemporaryDirectory() as d:
-            fake=Fake(bad='hosted');job=Job('.',d,'f'*40,execute=fake,clock=lambda:10)
+            fake=Fake(bad='build');job=Job('.',d,'f'*40,execute=fake,clock=lambda:10)
             try:job.work()
             except ValueError:pass
             job.finish();before=(Path(d)/'vision-remaining-evidence/report.json').read_bytes()
@@ -309,6 +322,47 @@ class RemainingTests(unittest.TestCase):
             image=next((fake.fixture_home/'Documents/VisionRemaining.celluloid').glob('*.image'))
             image.unlink();image.symlink_to(Path(d)/'outside')
             with self.assertRaises(ValueError):snapshot_fixture(fake.fixture_home,row)
+    def test_python_fixture_recipe_matches_actual_native_hash_and_png_is_only_input(self):
+        files=synthetic_fixture_bytes();self.assertEqual(set(files),{'recipe.json',NATIVE_SEED_ID+'.image'})
+        recipe=files['recipe.json'];self.assertEqual(len(recipe),281);self.assertEqual(hashlib.sha256(recipe).hexdigest(),NATIVE_RECIPE_SHA)
+        self.assertEqual(json.loads(recipe)['overlays'],[]);self.assertNotIn('Vision 世界'.encode(),recipe)
+        png=files[NATIVE_SEED_ID+'.image'];self.assertEqual(png[:8],b'\x89PNG\r\n\x1a\n')
+        offset=8;chunks=[]
+        while offset<len(png):
+            size=struct.unpack('>I',png[offset:offset+4])[0];kind=png[offset+4:offset+8];data=png[offset+8:offset+8+size]
+            crc=struct.unpack('>I',png[offset+8+size:offset+12+size])[0]
+            self.assertEqual(crc,zlib.crc32(kind+data)&0xffffffff);chunks.append((kind,data));offset+=12+size
+        self.assertEqual([x[0] for x in chunks],[b'IHDR',b'IDAT',b'IEND'])
+        self.assertEqual(struct.unpack('>IIBBBBB',chunks[0][1]),(120,80,8,6,0,0,0))
+        self.assertEqual(zlib.decompress(chunks[1][1]),(b'\0'+b'\x1a\x80\xcc\xff'*120)*80)
+    def test_fixture_staging_never_overwrites_or_follows_documents_link(self):
+        with tempfile.TemporaryDirectory() as d:
+            home=Path(d)/'owned';home.mkdir();other=Path(d)/'outside';other.mkdir()
+            (home/'Documents').symlink_to(other,target_is_directory=True)
+            with self.assertRaises(ValueError):write_synthetic_fixture(home)
+            self.assertEqual(list(other.iterdir()),[]);(home/'Documents').unlink()
+            metadata=write_synthetic_fixture(home);before={p.name:p.read_bytes() for p in (home/'Documents/VisionRemaining.celluloid').iterdir()}
+            with self.assertRaises(ValueError):write_synthetic_fixture(home)
+            self.assertEqual(before,{p.name:p.read_bytes() for p in (home/'Documents/VisionRemaining.celluloid').iterdir()})
+            self.assertEqual(snapshot_fixture(home,metadata)['overlay_texts'],[])
+    def test_wrong_built_app_never_installs_or_launches(self):
+        fake=Fake()
+        def wrong_app(args,**kwargs):
+            result=fake(args,**kwargs)
+            if fake.calls[-1][0]=='build':
+                app=Path(args[args.index('-derivedDataPath')+1])/'Build/Products/Debug-xrsimulator/CelluloidVision.app'
+                (app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier':'not.owned.Celluloid'}))
+            return result
+        report=self.exercise(wrong_app);self.assertFalse(report['complete'])
+        self.assertNotIn('install',[p for p,_,_ in fake.calls]);self.assertNotIn('ui',[p for p,_,_ in fake.calls])
+    def test_driver_does_not_stage_fixture_outside_owned_simulator(self):
+        fake=Fake()
+        def outside(args,**kwargs):
+            result=fake(args,**kwargs)
+            if fake.calls[-1][0]=='seed-before-ui':result.stdout=b'/tmp/not-owned-simulator'
+            return result
+        report=self.exercise(outside);self.assertFalse(report['complete']);self.assertNotIn('ui',[p for p,_,_ in fake.calls])
+        self.assertIn('Container outside owned simulator',report['error'])
     def test_browser_uses_observed_location_exact_unique_items_and_full_scan(self):
         root=Path(__file__).resolve().parents[1]
         source=(root/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()
