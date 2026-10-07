@@ -33,6 +33,9 @@ final class MacPhotosHostUITests: XCTestCase {
     private var lifecycleAssetLabel = ""
     private var singlePhotoTopologies: [String] = []
     private var lifecycleComplete = false
+    private var observeSavedPixelDifference = false
+    private var functionalObservationComplete = false
+    private var deferredSavedPixelDelta: Int?
     private var lifecycleRows: [[String: Any]] = []
     private var lifecycleControls: [Int] = []
     private var lifecycleControlCatalog: [[Any]] = []
@@ -81,12 +84,18 @@ final class MacPhotosHostUITests: XCTestCase {
         XCTAssertEqual(context["host_entry_contract"] as? String, Self.hostEntryContract)
         let route = try XCTUnwrap(context["validation_route"] as? [String: Any])
         let clock = try XCTUnwrap(context["host_clock_profile"] as? [String: Any])
-        let hostOnly = ["photos-export-observation", "photos-boundary-observation"].contains(route["scope"] as? String ?? "")
+        let hostOnly = ["photos-export-observation", "photos-boundary-observation", "photos-lifecycle-observation"].contains(route["scope"] as? String ?? "")
         lifecycleDeadlineSeconds = hostOnly ? 900 : 600
         XCTAssertEqual(clock["name"] as? String, hostOnly ? "photos-export-observation-900-v1" : "canonical-600-v1")
         XCTAssertEqual(clock["case_seconds"] as? Int, lifecycleDeadlineSeconds)
         XCTAssertEqual(clock["test_seconds"] as? Int, hostOnly ? 960 : 660)
         XCTAssertEqual(clock["process_seconds"] as? Int, hostOnly ? 1020 : 720)
+        if let observation = context["owned_saved_pixel_observation"] {
+            XCTAssertEqual(observation as? String, "defer-known-saved-pixel-assertion-v1")
+            XCTAssertEqual(route["scope"] as? String, "photos-lifecycle-observation")
+            XCTAssertNil(context["boundary_probe"])
+            observeSavedPixelDifference = true
+        }
         contextHash = digest(data)
         XCTAssertEqual(try digest(URL(fileURLWithPath: value("script_path"))), try value("script_sha256"))
         XCTAssertEqual(try digest(URL(fileURLWithPath: value("test_source_path"))), try value("test_source_sha256"))
@@ -120,6 +129,7 @@ final class MacPhotosHostUITests: XCTestCase {
             if let firstBlockedOperation { outcome["first_blocked_operation"] = firstBlockedOperation }
             if !exportPNGDiagnostics.isEmpty { outcome["export_png_diagnostics"] = exportPNGDiagnostics }
             if let extensionMenuObservation { outcome["extension_menu_observation"] = extensionMenuObservation }
+            if observeSavedPixelDifference { outcome["functional_observation_complete"] = functionalObservationComplete }
             if retainedSource != nil {
                 try? report(lifecycleReceipt(photosPID: lifecyclePhotosPID), named: "lifecycle.json")
             }
@@ -596,7 +606,7 @@ final class MacPhotosHostUITests: XCTestCase {
         lifecycleControls.removeAll()
     }
     private func lifecycleReceipt(photosPID: pid_t) throws -> [String: Any] {
-        return ["schema": Self.lifecycleContract, "host_entry_contract": Self.hostEntryContract,
+        var receipt: [String: Any] = ["schema": Self.lifecycleContract, "host_entry_contract": Self.hostEntryContract,
             "source_sha": try value("source_sha"), "context_sha256": contextHash,
             "test_source_sha256": try value("test_source_sha256"), "verifier_sha256": try value("script_sha256"),
             "photos_pid": photosPID, "fixture_sha256": retainedSource.map { digest($0.bytes) } ?? "",
@@ -607,6 +617,8 @@ final class MacPhotosHostUITests: XCTestCase {
             "export_option_bindings": exportOptionBindings,
             "binary_states": exportBinaryStates, "binary_scalar_self_tested": binaryScalarSelfTested,
             "srgb_icc_reference": lifecycleICC.map { $0 as Any } ?? NSNull()]
+        if observeSavedPixelDifference { receipt["functional_observation_complete"] = functionalObservationComplete }
+        return receipt
     }
     @MainActor private func lifecycleGuard(_ photos: XCUIApplication, photosPID: pid_t,
         fixtureHash: String, assetLabel: String, normal: Bool = false) throws {
@@ -854,7 +866,19 @@ final class MacPhotosHostUITests: XCTestCase {
         try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
         let savedDelta = try maximumDelta(saved.rgba, reference.raster.rgba)
         try retainLifecycleImage(saved, named: "lifecycle-saved.png")
-        guard savedDelta <= 2 else { throw block("Stored saved raster disagrees with independent JPEG-aware reference", operation: ["max_channel_delta": savedDelta]) }
+        if observeSavedPixelDifference && savedDelta > 2 {
+            // Only the already-retained synthetic discrepancy is deferred.
+            // A new image/difference remains an immediate stop, never a tolerance change.
+            guard savedDelta == 3,
+                  fixtureHash == "6138992615dd7d5bd499b80d9f11e39a0815111feccd5d4d3e59a676f4384772",
+                  digest(saved.rgba) == "744dfa09d6ab997552cdb11393a53761c8e098ffd37e6a8c3a9febdfd0972c99",
+                  digest(reference.raster.rgba) == "eacc2ada4af742470b52d2ed14996d07e71db7c2b68b2da4f7947efcc7f9855a" else {
+                throw block("Stored saved raster disagrees with independent JPEG-aware reference", operation: ["max_channel_delta": savedDelta])
+            }
+            deferredSavedPixelDelta = savedDelta
+        } else {
+            guard savedDelta <= 2 else { throw block("Stored saved raster disagrees with independent JPEG-aware reference", operation: ["max_channel_delta": savedDelta]) }
+        }
         try lifecyclePhase("saved-export", details: ["max_channel_delta": savedDelta, "limit": 2, "sole_asset_count": 1])
         // A boundary observation cannot qualify the original full lifecycle.
         // The old <=2 assertion above is always evaluated, even in this mode.
@@ -907,6 +931,15 @@ final class MacPhotosHostUITests: XCTestCase {
             throw block("Incomplete/oversized mandatory lifecycle proof")
         }
         _ = try remainingTime(1)
+        if observeSavedPixelDifference {
+            functionalObservationComplete = true
+            stage = "photos-filter-lifecycle-observed"
+            print("MAC_HOST_FILTER_LIFECYCLE_OBSERVED owned Save, Fade reentry, nonmutating Cancel, Revert, original bytes and Original reentry observed; strict saved-pixel result remains separate")
+            if let deferredSavedPixelDelta {
+                throw block("Stored saved raster disagrees with independent JPEG-aware reference",
+                    operation: ["max_channel_delta": deferredSavedPixelDelta, "deferred_from": "lifecycle-save-and-export"])
+            }
+        }
         lifecycleComplete = true
         stage = "photos-filter-lifecycle-passed"
         print("MAC_HOST_FILTER_LIFECYCLE_PASSED owned static sRGB Fade Save, reopen, nonmutating Cancel, Revert and mandatory Original reentry; dirty Cancel untested")

@@ -7,6 +7,7 @@ FOCUSED={'scope':'mac-repair','branch':'codex/mac-repair','workflow_path':'.gith
 
 HOST_ONLY={'scope':'photos-export-observation','branch':'codex/photos-export-observation','workflow_path':'.github/workflows/photos-export-observation.yml','diagnostic_only':True}
 BOUNDARY={'scope':'photos-boundary-observation','branch':'codex/photos-boundary-observation','workflow_path':'.github/workflows/photos-boundary-observation.yml','diagnostic_only':True}
+LIFECYCLE={'scope':'photos-lifecycle-observation','branch':'codex/photos-lifecycle-observation','workflow_path':'.github/workflows/photos-lifecycle-observation.yml','diagnostic_only':True}
 HOST_ONLY_BASE={'commit':'25b8edc92c3f53cf13208ffa0065746b87ae20e0','tree':'7622774f3291c7b32f46966bebffddd645e57326','fingerprint':'d395f03291d06dc09f0d561b2096fd0bfe32b63f08764753c9d1b31a1069c88b'}
 HOST_ONLY_PROTECTED_FINGERPRINT='c1d88b1bafe0ef55c838e28eccb606d0b7e4701d792d88399f8b03ecc40f984b'
 HOST_ONLY_UI_TEST={'path':'Platforms/UITests/MacPhotosHostUITests.swift','sha256':'67bdca402040600b35a2e452a13049b4a44bd55df797596a32e8c460e9eb4fb0'}
@@ -16,7 +17,7 @@ def require(ok,message):
 
 def validate_route(value):
     require(type(value) is dict and set(value)==set(FULL) and type(value.get('diagnostic_only')) is bool,'Malformed validation route')
-    require(value==FULL or value==FOCUSED or value==HOST_ONLY or value==BOUNDARY,'Unknown validation route')
+    require(value==FULL or value==FOCUSED or value==HOST_ONLY or value==BOUNDARY or value==LIFECYCLE,'Unknown validation route')
     return dict(value)
 
 def current_route(environment=None):
@@ -25,7 +26,7 @@ def current_route(environment=None):
     if ref=='refs/heads/'+FULL['branch']:
         # Preserve canonical admission; a caller flag cannot relabel this branch.
         return dict(FULL)
-    selected=next((value for value in (FOCUSED,HOST_ONLY,BOUNDARY) if ref=='refs/heads/'+value['branch']),None)
+    selected=next((value for value in (FOCUSED,HOST_ONLY,BOUNDARY,LIFECYCLE) if ref=='refs/heads/'+value['branch']),None)
     require(selected is not None,'Unreviewed validation branch')
     require(env.get('GITHUB_REPOSITORY')==REPOSITORY and env.get('GITHUB_EVENT_NAME')=='push','Wrong focused repository/event')
     require(env.get('CELLULOID_VALIDATION_SCOPE')==selected['scope'],'Missing focused diagnostic scope')
@@ -52,7 +53,7 @@ def host_only_source_binding(rows):
 
 def host_clock_profile(route):
     """Two fixed reviewed allocations, not caller-selectable timeout values."""
-    if validate_route(route) in (HOST_ONLY,BOUNDARY):
+    if validate_route(route) in (HOST_ONLY,BOUNDARY,LIFECYCLE):
         return {'name':'photos-export-observation-900-v1','case_seconds':900,'test_seconds':960,
             'process_seconds':1020,'pretest_seconds':240,'tail_seconds':360,'step_margin_seconds':60,
             'step_seconds':1680,'before_prepare_seconds':1980,'before_host_seconds':1740,'evidence_seconds':300}

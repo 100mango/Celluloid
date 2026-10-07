@@ -1,5 +1,5 @@
 """Strict replay of the bounded, owned real Photos filter lifecycle receipt."""
-from validation_route import context_clock
+from validation_route import context_clock,LIFECYCLE
 import base64,hashlib,json,math,re
 from pathlib import Path,PurePosixPath
 from uuid import UUID
@@ -14,6 +14,8 @@ META={'bytes','sha256','rgba_sha256','format','width','height','bit_depth','colo
 FIELDS={'schema','host_entry_contract','source_sha','context_sha256','test_source_sha256','verifier_sha256','photos_pid','fixture_sha256','asset_label','single_photo_topologies','export_option_bindings','binary_states','binary_scalar_self_tested','complete','dirty_cancel_tested','deadline_seconds','control_columns','control_catalog','phases','images','raw_exports','srgb_icc_reference'}
 SINGLE_PHOTO_TOPOLOGIES=('collection-present','collection-absent')
 FILENAME='Celluloid-Owned-Host.png'
+KNOWN_SAVED_RGBA='744dfa09d6ab997552cdb11393a53761c8e098ffd37e6a8c3a9febdfd0972c99'
+KNOWN_REFERENCE_RGBA='eacc2ada4af742470b52d2ed14996d07e71db7c2b68b2da4f7947efcc7f9855a'
 
 def require(ok,message):
     if not ok:raise ValueError(message)
@@ -33,13 +35,18 @@ def validate_metadata(row,decoded):
     encoding='srgb-chunk' if decoded['profile']=='sRGB' else 'icc-reference'
     require(row['profile_encoding']==encoding,'Lifecycle profile encoding mismatch')
 
-def validate(row,context,photos,ownership,baseline,images,context_hash):
-    exact(row,FIELDS,'Unknown/missing lifecycle receipt field')
+def validate(row,context,photos,ownership,baseline,images,context_hash,*,observe_saved_pixel_difference=False):
+    require(type(observe_saved_pixel_difference) is bool,'Invalid lifecycle observation switch')
+    if observe_saved_pixel_difference:
+        require(context.get('validation_route')==LIFECYCLE and context.get('owned_saved_pixel_observation')=='defer-known-saved-pixel-assertion-v1'
+            and 'boundary_probe' not in context,'Wrong fixed lifecycle observation context')
+    exact(row,FIELDS|({'functional_observation_complete'} if observe_saved_pixel_difference else set()),'Unknown/missing lifecycle receipt field')
     require(row['schema']==SCHEMA and row['host_entry_contract']==HOST_CONTRACT,'Wrong lifecycle contract')
     for key,expected in [('source_sha',context['source_sha']),('context_sha256',context_hash),('test_source_sha256',context['test_source_sha256']),('verifier_sha256',context['script_sha256']),('fixture_sha256',ownership['fixture_sha256']),('asset_label',ownership['asset_label'])]:
         require(row[key]==expected,'Wrong lifecycle binding: '+key)
     require(type(row['photos_pid']) is int and row['photos_pid']==photos['pid']>0,'Wrong lifecycle Photos PID')
-    require(row['complete'] is True and row['dirty_cancel_tested'] is False and type(row['deadline_seconds']) is int and row['deadline_seconds']==context_clock(context)['case_seconds'],'Incomplete/overclaimed lifecycle')
+    require((row.get('functional_observation_complete') is True and type(row['complete']) is bool if observe_saved_pixel_difference else row['complete'] is True)
+        and row['dirty_cancel_tested'] is False and type(row['deadline_seconds']) is int and row['deadline_seconds']==context_clock(context)['case_seconds'],'Incomplete/overclaimed lifecycle')
     topologies=row['single_photo_topologies']
     require(type(topologies) is list and 1<=len(topologies)<=2 and
             all(type(value) is str and value in SINGLE_PHOTO_TOPOLOGIES for value in topologies) and
@@ -87,19 +94,28 @@ def validate(row,context,photos,ownership,baseline,images,context_hash):
         require(exports[name]['relative_path']==name+'/'+FILENAME and exports[name]['image']==image,'Wrong fixed export path/image')
         require(type(exports[name]['bytes']) is int and exports[name]['bytes']==decoded[image]['bytes'] and exports[name]['sha256']==decoded[image]['png_sha256'],'Retained PNG is not the actual exported file')
     saved=compare(decoded[NAMES[2]],decoded[NAMES[1]])
-    require(saved['maximum_channel_difference']<=2,'Stored filter pixels differ from independent reference')
+    saved_passed=saved['maximum_channel_difference']<=2
+    if observe_saved_pixel_difference and not saved_passed:
+        require(saved['maximum_channel_difference']==3
+            and ownership['fixture_sha256']=='6138992615dd7d5bd499b80d9f11e39a0815111feccd5d4d3e59a676f4384772'
+            and decoded[NAMES[2]]['rgba_sha256']==KNOWN_SAVED_RGBA
+            and decoded[NAMES[1]]['rgba_sha256']==KNOWN_REFERENCE_RGBA,'Unobserved saved pixel discrepancy')
+    else:require(saved_passed,'Stored filter pixels differ from independent reference')
+    if observe_saved_pixel_difference:require(row['complete'] is saved_passed,'Strict lifecycle completion contradicts saved pixel result')
     d=details['saved-export'];exact(d,{'max_channel_delta','limit','sole_asset_count'},'Malformed stored save comparison')
-    require(integer(d['max_channel_delta'],0,2) and d['max_channel_delta']==saved['maximum_channel_difference'] and type(d['limit']) is int and d['limit']==2 and type(d['sole_asset_count']) is int and d['sole_asset_count']==1,'Wrong stored save comparison')
+    require(integer(d['max_channel_delta'],0,255) and d['max_channel_delta']==saved['maximum_channel_difference'] and type(d['limit']) is int and d['limit']==2 and type(d['sole_asset_count']) is int and d['sole_asset_count']==1,'Wrong stored save comparison')
     for name,expected,a,b in [('cancelled-export',{'rgba_equal_saved':True,'new_edit_made':False,'sole_asset_count':1},NAMES[3],NAMES[2]),('reverted-export',{'rgba_equal_source':True,'sole_asset_count':1},NAMES[4],NAMES[0])]:
         d=details[name];exact(d,expected,'Malformed preservation comparison')
         require(d==expected and type(d['sole_asset_count']) is int and all(type(d[k]) is bool for k in expected if k!='sole_asset_count'),'Wrong preservation comparison')
         require(decoded[a]['rgba']==decoded[b]['rgba'],'Actual Cancel/Revert stored pixels changed')
     d=details['unmodified-original'];expected={'bytes_equal_source':True,'sha256_equal_source':True,'sole_asset_count':1};exact(d,expected,'Malformed original equality')
     require(d==expected and type(d['sole_asset_count']) is int and d['bytes_equal_source'] is True and d['sha256_equal_source'] is True,'Original export preservation unproved')
-    return {'schema':SCHEMA,'filter_lifecycle_accepted':True,'dirty_cancel_tested':False,'complete_host_e2e':False,
+    result={'schema':SCHEMA,'filter_lifecycle_accepted':saved_passed,'dirty_cancel_tested':False,'complete_host_e2e':False,
         'single_photo_topologies':list(topologies),
         'phase_count':len(phases),'editing_generations':sorted(generations),'saved_comparison':saved,
         'images':{name:{key:d[key] for key in ['bytes','png_sha256','rgba_sha256','profile','profile_sha256','rendering_intent']} for name,d in decoded.items()}}
+    if observe_saved_pixel_difference:result.update(functional_lifecycle_qualified=True,strict_saved_pixel_passed=saved_passed,strict_saved_pixel_limit=2)
+    return result
 
 def validate_binary_states(states,catalog):
     require(type(states) is list and 2<=len(states)<=12,'Missing/oversized export binary scalar evidence')
