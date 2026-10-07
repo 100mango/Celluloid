@@ -197,11 +197,53 @@ struct MacPhotoBoundaryProbeView: View {
                     .onSubmit { probe.arm(session: session, identity: identity) }
             }
             if !probe.receipt.isEmpty {
-                Text(probe.receipt).font(.system(size: 1)).lineLimit(1).frame(height: 1)
-                    .accessibilityIdentifier("photos-extension.boundary-arm")
-                    .accessibilityLabel(probe.receipt)
+                MacPhotoBoundaryReceiptAccessibility(probe: probe).frame(width: 1, height: 1)
             }
         }
+    }
+}
+
+/// The same live AppKit value pattern already used by the own-bundle identity.
+/// This leaf observes only the current one-shot synthetic receipt and draws nothing.
+struct MacPhotoBoundaryReceiptAccessibility: NSViewRepresentable {
+    @ObservedObject var probe: MacPhotoBoundaryProbe
+    func makeNSView(context: Context) -> MacPhotoBoundaryReceiptAccessibilityView {
+        MacPhotoBoundaryReceiptAccessibilityView(frame: .zero)
+    }
+    func updateNSView(_ view: MacPhotoBoundaryReceiptAccessibilityView, context: Context) {
+        view.probe = probe
+        view.setAccessibilityRole(.staticText)
+        view.setAccessibilityIdentifier("photos-extension.boundary-arm")
+        view.setAccessibilityLabel("CELLULOID_OWNED_PHOTOS_BOUNDARY_ARM_V1")
+        view.refreshAccessibility()
+    }
+    static func dismantleNSView(_ view: MacPhotoBoundaryReceiptAccessibilityView, coordinator: ()) {
+        view.probe = nil
+        view.refreshAccessibility()
+    }
+}
+
+final class MacPhotoBoundaryReceiptAccessibilityView: NSView {
+    weak var probe: MacPhotoBoundaryProbe?
+    private var lastNotifiedValue: String?
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        refreshAccessibility()
+    }
+    func refreshAccessibility() {
+        let next = currentValue
+        guard next != lastNotifiedValue else { return }
+        lastNotifiedValue = next
+        NSAccessibility.post(element: superview ?? self, notification: .layoutChanged, userInfo: [.uiElements: [self]])
+        if next != nil { NSAccessibility.post(element: self, notification: .valueChanged) }
+    }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override var acceptsFirstResponder: Bool { false }
+    override func isAccessibilityElement() -> Bool { currentValue != nil }
+    override func accessibilityValue() -> Any? { currentValue }
+    private var currentValue: String? {
+        guard window != nil, !isHiddenOrHasHiddenAncestor, let probe, !probe.receipt.isEmpty else { return nil }
+        return probe.receipt
     }
 }
 #endif

@@ -300,16 +300,56 @@ final class MacPhotosHostUITests: XCTestCase {
         guard field.isEnabled, field.isHittable, (field.value as? String ?? "").isEmpty else { throw block("Boundary token input is not empty and ready") }
         try deadlineClick(field); try deadlineText(field, nonce)
         try deadlineKey(field, XCUIKeyboardKey.return, modifierFlags: [])
-        let receipts = editor.staticTexts.matching(identifier: "photos-extension.boundary-arm")
-        guard receipts.count == 1 else { throw block("Owned boundary arm failed") }
-        let raw = receipts.element(boundBy: 0).label
-        guard !raw.isEmpty, raw.utf8.count <= 4096, let data = raw.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              let arm = object as? [String: Any],
-              arm["schema"] as? String == "Celluloid.OwnedPhotosBoundaryArm.1",
-              arm["lease"] as? [String: String] == lease,
-              arm["identity_sha256"] as? String == digest(Data(identity.utf8)),
-              arm["generation"] as? String == generation else { throw block("Wrong boundary arm receipt") }
+        let receipts = editor.descendants(matching: .any).matching(identifier: "photos-extension.boundary-arm")
+        let receiptCount = receipts.count
+        guard receiptCount == 1 else {
+            throw block("Owned boundary arm failed", operation: ["failure": "missing-or-ambiguous", "count": receiptCount])
+        }
+        let leaf = receipts.element(boundBy: 0)
+        let observedLabel = leaf.label
+        let observedValue = leaf.value // The sole payload read; never fall back to label or retry.
+        var checks: [String: Bool] = [:]
+        func rejected(_ failure: String) -> NSError {
+            let valueType = observedValue.map { String(reflecting: Swift.type(of: $0)) } ?? "nil"
+            var observation: [String: Any] = ["failure": failure, "count": receiptCount, "checks": checks,
+                "label_bytes": observedLabel.utf8.count,
+                "label_content": String(decoding: observedLabel.utf8.prefix(128), as: UTF8.self),
+                "value_type": String(decoding: valueType.utf8.prefix(128), as: UTF8.self)]
+            if let raw = observedValue as? String {
+                observation["value_bytes"] = raw.utf8.count
+                observation["value_content"] = String(decoding: raw.utf8.prefix(4096), as: UTF8.self)
+                observation["value_truncated"] = raw.utf8.count > 4096
+                if let data = try? JSONSerialization.data(withJSONObject: observation), data.count > 12_000 {
+                    observation["value_content"] = String(decoding: raw.utf8.prefix(1024), as: UTF8.self)
+                    observation["value_truncated"] = raw.utf8.count > 1024
+                }
+            }
+            // Use the existing bounded outcome proof, never a new AX dump or attachment.
+            guard let data = try? JSONSerialization.data(withJSONObject: observation), data.count <= 12_000 else {
+                return block("Wrong boundary arm receipt", operation: ["failure": failure, "observation_incomplete": true])
+            }
+            return block("Wrong boundary arm receipt", operation: observation)
+        }
+        guard observedLabel == "CELLULOID_OWNED_PHOTOS_BOUNDARY_ARM_V1" else { throw rejected("marker") }
+        guard let raw = observedValue as? String else { throw rejected(observedValue == nil ? "missing" : "type") }
+        guard !raw.isEmpty else { throw rejected("empty") }
+        guard raw.utf8.count <= 4096 else { throw rejected("oversize") }
+        guard let data = raw.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) else { throw rejected("parse") }
+        guard let arm = object as? [String: Any] else { throw rejected("dictionary") }
+        checks["schema"] = arm["schema"] as? String == "Celluloid.OwnedPhotosBoundaryArm.1"
+        let observedLease = arm["lease"] as? [String: String]
+        checks["lease_type"] = observedLease != nil
+        checks["lease_keys"] = observedLease.map { Set($0.keys) == Set(lease.keys) } ?? false
+        checks["lease"] = observedLease == lease
+        for key in ["schema", "source_sha", "source_tree", "run_id", "run_attempt", "fixture_sha256", "nonce", "raw_cap"] {
+            checks["lease_" + key] = observedLease?[key] == lease[key]
+        }
+        checks["identity_sha256"] = arm["identity_sha256"] as? String == digest(Data(identity.utf8))
+        checks["generation"] = arm["generation"] as? String == generation
+        guard checks["schema"] == true else { throw rejected("schema") }
+        guard checks["lease"] == true else { throw rejected("lease") }
+        guard checks["identity_sha256"] == true else { throw rejected("identity_sha256") }
+        guard checks["generation"] == true else { throw rejected("generation") }
         let binding: [String: Any] = ["schema": "Celluloid.OwnedPhotosBoundaryHostArm.1",
             "context_sha256": contextHash, "source_sha": try value("source_sha"), "arm": arm]
         let encoded = try JSONSerialization.data(withJSONObject: binding, options: [.sortedKeys])

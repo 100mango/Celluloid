@@ -305,42 +305,89 @@ class BoundarySourceTests(unittest.TestCase):
         self.assertNotIn("CELLULOID_MAC_PHOTOS_BOUNDARY_CONDITION='CELLULOID",source)
         info=plistlib.loads((ROOT/'Platforms/macOSExtension/Info.plist').read_bytes())
         self.assertNotIn('CelluloidOwnedPhotosBoundaryLease',info)
-    def test_existing_receipt_text_has_explicit_label_and_bad_json_blocks(self):
-        # Portable source-tied AX consumer model, not an AppKit/SwiftUI run.
-        # The producer's existing Text is only present for a nonempty receipt;
-        # bind that same JSON explicitly to the one attribute the consumer reads.
-        view=(ROOT/'Platforms/macOSExtension/MacPhotoBoundaryProbe.swift').read_text()
-        arm_view=view.split('            if !probe.receipt.isEmpty {',1)[1]
-        self.assertIn('.accessibilityIdentifier("photos-extension.boundary-arm")',arm_view)
-        self.assertIn('.accessibilityLabel(probe.receipt)',arm_view)
+    def test_receipt_uses_live_appkit_value_without_input_interception(self):
+        source=(ROOT/'Platforms/macOSExtension/MacPhotoBoundaryProbe.swift').read_text()
+        view=source.split('struct MacPhotoBoundaryReceiptAccessibility: NSViewRepresentable',1)[1]
+        for text in ['view.probe = probe','view.probe = nil','view.setAccessibilityRole(.staticText)',
+            'view.setAccessibilityIdentifier("photos-extension.boundary-arm")',
+            'view.setAccessibilityLabel("CELLULOID_OWNED_PHOTOS_BOUNDARY_ARM_V1")',
+            'weak var probe: MacPhotoBoundaryProbe?', 'override func hitTest(_ point: NSPoint) -> NSView? { nil }',
+            'override var acceptsFirstResponder: Bool { false }',
+            'override func accessibilityValue() -> Any? { currentValue }',
+            'guard window != nil, !isHiddenOrHasHiddenAncestor, let probe, !probe.receipt.isEmpty else { return nil }',
+            'return probe.receipt']:
+            self.assertIn(text,view)
+        self.assertNotIn('Text(probe.receipt)',source)
+        current=view.split('    private var currentValue: String? {',1)[1]
+        self.assertNotIn('lastNotifiedValue',current)
+        # Live-value semantics: replacing or clearing the receipt is visible
+        # without updateNSView, and detached/hidden/dismantled views expose none.
+        state={'receipt':'first'}
+        def value(probe,window=True,hidden=False):
+            return probe['receipt'] if window and not hidden and probe and probe['receipt'] else None
+        self.assertEqual(value(state),'first');state['receipt']='second';self.assertEqual(value(state),'second')
+        state['receipt']='';self.assertIsNone(value(state))
+        state['receipt']='second'
+        self.assertIsNone(value(state,window=False));self.assertIsNone(value(state,hidden=True));self.assertIsNone(value(None))
+
+    def test_value_consumer_failure_causes_and_bounded_owned_observation(self):
+        # Portable source-tied consumer/diagnostic model, never an AppKit run.
         swift=(ROOT/'Platforms/UITests/MacPhotosHostUITests.swift').read_text()
         body=swift.split('    @MainActor private func armOwnedBoundary(',1)[1].split('    @MainActor private func importFixture(',1)[0]
-        self.assertIn('let raw = receipts.element(boundBy: 0).label',body)
-        self.assertIn('guard !raw.isEmpty, raw.utf8.count <= 4096',body)
-        self.assertIn('let object = try? JSONSerialization.jsonObject(with: data)',body)
-        self.assertIn('let arm = object as? [String: Any]',body)
-        self.assertNotIn('let arm = try JSONSerialization.jsonObject(with: data)',body)
-        self.assertIn('throw block("Wrong boundary arm receipt")',body)
-        self.assertNotIn('while ',body);self.assertNotIn('waitForExistence',body)
-        lease={'nonce':'c'*64};identity=b'actual same-generation identity';generation='actual same-generation'
-        original={'schema':'Celluloid.OwnedPhotosBoundaryArm.1','lease':lease,
-            'identity_sha256':p.sha(identity),'generation':generation}
-        def consume(label,value=None):
-            # Value is an adversarial decoy; this route has one explicit label
-            # contract and never falls back to another attribute or retries.
-            if not label or len(label.encode())>4096:raise ValueError('Wrong boundary arm receipt')
-            try:arm=json.loads(label)
-            except (ValueError,TypeError):raise ValueError('Wrong boundary arm receipt') from None
-            if not isinstance(arm,dict) or any(arm.get(k)!=v for k,v in original.items()):
-                raise ValueError('Wrong boundary arm receipt')
+        self.assertEqual(body.count('let observedValue = leaf.value'),1)
+        self.assertIn('let observedLabel = leaf.label',body)
+        self.assertIn('guard let raw = observedValue as? String',body)
+        for cause in ['marker','type','empty','oversize','parse','dictionary','schema','lease','identity_sha256','generation']:
+            self.assertIn('"'+cause+'"',body)
+        self.assertIn('raw.utf8.prefix(4096)',body);self.assertIn('raw.utf8.prefix(1024)',body)
+        self.assertIn('data.count <= 12_000',body);self.assertIn('"observation_incomplete": true',body)
+        for forbidden in ['while ', 'waitForExistence', 'debugDescription', 'let raw = leaf.label']:
+            self.assertNotIn(forbidden,body)
+        marker='CELLULOID_OWNED_PHOTOS_BOUNDARY_ARM_V1'
+        lease=dict(schema='Celluloid.OwnedPhotosBoundaryLease.1',source_sha='a'*40,source_tree='b'*40,
+            run_id='123',run_attempt='1',fixture_sha256=p.FIXTURE,nonce='c'*64,raw_cap='131072')
+        original=dict(schema='Celluloid.OwnedPhotosBoundaryArm.1',lease=lease,identity_sha256='d'*64,generation='GENERATION')
+        def observe(label,value,cause,checks):
+            result=dict(failure=cause,count=1,checks=checks,label_bytes=len(label.encode()),
+                label_content=label.encode()[:128].decode(errors='replace'),value_type=type(value).__name__)
+            if isinstance(value,str):
+                raw=value.encode();result.update(value_bytes=len(raw),value_content=raw[:4096].decode(errors='replace'),value_truncated=len(raw)>4096)
+                if len(json.dumps(result).encode())>12000:result.update(value_content=raw[:1024].decode(errors='replace'),value_truncated=len(raw)>1024)
+            if len(json.dumps(result).encode())>12000:return dict(failure=cause,observation_incomplete=True)
+            return result
+        def consume(label,value):
+            checks={}
+            def bad(cause):return observe(label,value,cause,checks)
+            if label!=marker:return bad('marker')
+            if value is None:return bad('missing')
+            if not isinstance(value,str):return bad('type')
+            if not value:return bad('empty')
+            if len(value.encode())>4096:return bad('oversize')
+            try:arm=json.loads(value)
+            except ValueError:return bad('parse')
+            if not isinstance(arm,dict):return bad('dictionary')
+            observed=arm.get('lease');typed=isinstance(observed,dict) and all(isinstance(k,str) and isinstance(v,str) for k,v in observed.items())
+            checks.update(schema=arm.get('schema')==original['schema'],lease_type=typed,
+                lease_keys=typed and set(observed)==set(lease),lease=typed and observed==lease,
+                identity_sha256=arm.get('identity_sha256')==original['identity_sha256'],generation=arm.get('generation')==original['generation'])
+            checks.update({'lease_'+key:typed and observed.get(key)==val for key,val in lease.items()})
+            for key in ['schema','lease','identity_sha256','generation']:
+                if not checks[key]:return bad(key)
             return arm
-        raw=json.dumps(original);self.assertEqual(consume(raw),original)
-        for label in ['', ' ', '{', '[]', 'null', '"text"', 'x'*4097]:
-            with self.subTest(label=label[:16]),self.assertRaisesRegex(ValueError,'Wrong boundary arm receipt'):
-                consume(label,value=raw)
-        for key,value in [('schema','other'),('lease',{'nonce':'d'*64}),('identity_sha256','0'*64),('generation','stale')]:
-            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'Wrong boundary arm receipt'):
-                consume(json.dumps(dict(original,**{key:value})))
+        raw=json.dumps(original);self.assertEqual(consume(marker,raw),original)
+        for value,cause in [(None,'missing'),(True,'type'),(1,'type'),({},'type'),('','empty'),('x'*4097,'oversize'),
+            (' ','parse'),('{','parse'),('[]','dictionary'),('null','dictionary'),('"text"','dictionary')]:
+            result=consume(marker,value);self.assertEqual(result['failure'],cause)
+            self.assertLessEqual(len(json.dumps(result).encode()),12000)
+        self.assertEqual(consume(raw,raw)['failure'],'marker') # JSON in label never admits value.
+        for key,value in [('schema','wrong'),('lease',dict(lease,nonce='e'*64)),('identity_sha256','0'*64),('generation','stale')]:
+            result=consume(marker,json.dumps(dict(original,**{key:value})));self.assertEqual(result['failure'],key)
+        result=consume(marker,json.dumps(dict(original,lease=dict(lease,unknown='x'))))
+        self.assertEqual(result['failure'],'lease');self.assertFalse(result['checks']['lease_keys'])
+        result=consume(marker,'\0'*4096);self.assertEqual(result['failure'],'parse')
+        self.assertTrue(result['value_truncated']);self.assertLessEqual(len(json.dumps(result).encode()),12000)
+        result=consume(marker,'界'*2000);self.assertEqual(result['failure'],'oversize')
+        self.assertEqual(result['value_bytes'],6000);self.assertLessEqual(len(json.dumps(result).encode()),12000)
 
     def test_reference_uses_actual_input_and_retains_all_three_differentials(self):
         source=(ROOT/'Scripts/compare_owned_photos_boundary.swift').read_text()

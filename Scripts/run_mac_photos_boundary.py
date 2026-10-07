@@ -9,7 +9,7 @@ from mac_photos_boundary_probe import prepare_lease,bind_context,bound_arm,read_
 from validation_route import BOUNDARY,current_route,host_clock_profile
 
 ROOT=Path(__file__).resolve().parents[1]
-BASE='3702e507aba69061062fc5b9a09abd8a5474bac8'
+BASE='fb673b1fb72130ea87142e011e7b585a7d5d06e3'
 MANIFEST='Scripts/mac-photos-boundary-source.json'
 WORKFLOW=BOUNDARY['workflow_path']
 SELECTION=CASE[0].replace('.','/')+'/'+CASE[1]
@@ -45,7 +45,7 @@ def admit_source():
     require(re.fullmatch('[1-9][0-9]*',run_id) is not None and os.environ.get('GITHUB_RUN_ATTEMPT')=='1','wrong run/attempt')
     head=git('rev-parse','HEAD').decode().strip()
     require(head==os.environ.get('GITHUB_SHA')==os.environ.get('GITHUB_WORKFLOW_SHA') and re.fullmatch('[0-9a-f]{40}',head),'wrong source/workflow SHA')
-    require(git('rev-list','--parents','-n','1','HEAD').decode().strip().split()==[head,BASE],'candidate must have sole 3702 parent')
+    require(git('rev-list','--parents','-n','1','HEAD').decode().strip().split()==[head,BASE],'candidate must have sole fb673 parent')
     require(not git('status','--porcelain','--untracked-files=all').strip(),'dirty source')
     raw=(ROOT/MANIFEST).read_bytes();require(len(raw)<=256*1024,'source manifest cap')
     manifest=load_json(raw)
