@@ -1,0 +1,192 @@
+{
+  "schema": 1,
+  "scope": "local source/package candidate; no native outcome or execution authority",
+  "base_source_sha": "baea0ae3b3c9d9911937e9dd95a9fba6cbdf9d73",
+  "native_execution_authorized": false,
+  "signing_authorized": false,
+  "upload_authorized": false,
+  "current_source_version": {
+    "marketing": "1.1",
+    "build": "2",
+    "upload_eligible": false
+  },
+  "future_version_proposal": {
+    "marketing": "1.2",
+    "build": "3",
+    "status": "proposal only; freeze separately before distribution"
+  },
+  "archive_command": [
+    "xcodebuild",
+    "archive",
+    "-project",
+    "Celluloid-iOS-Watch.xcodeproj",
+    "-scheme",
+    "Celluloid",
+    "-configuration",
+    "Release",
+    "-destination",
+    "generic/platform=iOS",
+    "-derivedDataPath",
+    "build/iOS-Watch-Archive",
+    "-clonedSourcePackagesDirPath",
+    "build/SourcePackages",
+    "-onlyUsePackageVersionsFromResolvedFile",
+    "-archivePath",
+    "build/Celluloid-iOS-Watch.xcarchive",
+    "-jobs",
+    "2",
+    "ONLY_ACTIVE_ARCH=NO",
+    "DEBUG_INFORMATION_FORMAT=dwarf-with-dsym",
+    "CODE_SIGNING_ALLOWED=NO",
+    "CODE_SIGNING_REQUIRED=NO",
+    "CODE_SIGN_IDENTITY=",
+    "DEVELOPMENT_TEAM=",
+    "PROVISIONING_PROFILE=",
+    "PROVISIONING_PROFILE_SPECIFIER=",
+    "OTHER_CODE_SIGN_FLAGS="
+  ],
+  "expected_products": [
+    {
+      "role": "phone",
+      "path": "Products/Applications/Celluloid.app",
+      "bundle_id": "Mango.Celluloid",
+      "executable": "Celluloid",
+      "platform": "iphoneos",
+      "minimum_os": "15.0",
+      "architectures": [
+        "arm64"
+      ],
+      "architecture_minimum_os": {
+        "arm64": "15.0"
+      },
+      "sdk": [
+        27,
+        0,
+        0
+      ],
+      "dsym": "dSYMs/Celluloid.app.dSYM",
+      "version": "1.1",
+      "build": "2"
+    },
+    {
+      "role": "watch",
+      "path": "Products/Applications/Celluloid.app/Watch/CelluloidWatch.app",
+      "bundle_id": "Mango.Celluloid.watchkitapp",
+      "executable": "CelluloidWatch",
+      "platform": "watchos",
+      "minimum_os": "9.0",
+      "architectures": [
+        "arm64",
+        "arm64_32"
+      ],
+      "architecture_minimum_os": {
+        "arm64": "26.0",
+        "arm64_32": "9.0"
+      },
+      "sdk": [
+        27,
+        0,
+        0
+      ],
+      "dsym": "dSYMs/CelluloidWatch.app.dSYM",
+      "version": "1.1",
+      "build": "2",
+      "companion_bundle_id": "Mango.Celluloid",
+      "independent_key": "absent; dependent mode preserved"
+    },
+    {
+      "role": "kit",
+      "path": "Products/Applications/Celluloid.app/Frameworks/CelluloidKit.framework",
+      "bundle_id": "Mango.CelluloidKit",
+      "executable": "CelluloidKit",
+      "platform": "iphoneos",
+      "minimum_os": "15.0",
+      "architectures": [
+        "arm64"
+      ],
+      "architecture_minimum_os": {
+        "arm64": "15.0"
+      },
+      "sdk": [
+        27,
+        0,
+        0
+      ],
+      "dsym": "dSYMs/CelluloidKit.framework.dSYM",
+      "version": "1.1",
+      "build": "2"
+    },
+    {
+      "role": "extension",
+      "path": "Products/Applications/Celluloid.app/PlugIns/CelluloidPhotoExtension.appex",
+      "bundle_id": "Mango.Celluloid.CelluloidPhotoExtension",
+      "executable": "CelluloidPhotoExtension",
+      "platform": "iphoneos",
+      "minimum_os": "15.0",
+      "architectures": [
+        "arm64"
+      ],
+      "architecture_minimum_os": {
+        "arm64": "15.0"
+      },
+      "sdk": [
+        27,
+        0,
+        0
+      ],
+      "dsym": "dSYMs/CelluloidPhotoExtension.appex.dSYM",
+      "version": "1.1",
+      "build": "2"
+    },
+    {
+      "role": "snapkit",
+      "path": "Products/Applications/Celluloid.app/Frameworks/SnapKit_3965163F11347F41_PackageProduct.framework",
+      "bundle_id": "snapkit.SnapKit",
+      "executable": "SnapKit_3965163F11347F41_PackageProduct",
+      "platform": "iphoneos",
+      "minimum_os": "15.0",
+      "architectures": [
+        "arm64"
+      ],
+      "architecture_minimum_os": {
+        "arm64": "15.0"
+      },
+      "sdk": [
+        15,
+        0,
+        0
+      ],
+      "dsym": "dSYMs/SnapKit_3965163F11347F41_PackageProduct.framework.dSYM",
+      "version": "1.0",
+      "build": "1"
+    }
+  ],
+  "required_native_proof": [
+    "Exact frozen source/workflow and unchanged before/after source inventory",
+    "Timely clean xcodebuild exit, bounded full capture and failure diagnostics, no repeated native attempt",
+    "Exactly one parent, its one fixed Watch product, existing Photos extension, CelluloidKit and pinned SnapKit frameworks; no XCTest, harness, arbitrary nested app or unknown executable",
+    "Per-product plist, Mach-O platforms, slices, deployment minimums and matching executable/dSYM UUIDs",
+    "Actual nested Watch versus producer inventory; exact match or only already witnessed deterministic Release copy-strip transform",
+    "Compiled parent/Watch icons, exact declared privacy manifests and absence of unexpected manifests, localizations, original notices, two local-package resources, no Release diagnostic markers",
+    "Explicitly unsigned products and no provisioning/signature artifacts"
+  ],
+  "not_covered": [
+    "simulator runtime",
+    "physical Watch Photos selection",
+    "WatchConnectivity file delivery",
+    "signing",
+    "upload",
+    "review submission",
+    "integrated shipping phone companion smoke and iPad absence scope",
+    "remaining narrow 40mm unavailable-companion/cancel/relaunch/delete/privacy case"
+  ],
+  "execution_prerequisite": "This source includes one fixed unsigned archive workflow. Publication and a root-reviewed one-run GO are still required; this plan grants no native, signing or upload authority.",
+  "expected_resource_bundles": [
+    "Products/Applications/Celluloid.app/CelluloidCore_CelluloidDomain.bundle",
+    "Products/Applications/Celluloid.app/CelluloidRendering_CelluloidRendering.bundle",
+    "Products/Applications/Celluloid.app/Frameworks/SnapKit_3965163F11347F41_PackageProduct.framework/SnapKit_SnapKit.bundle",
+    "Products/Applications/Celluloid.app/PlugIns/CelluloidPhotoExtension.appex/SnapKit_SnapKit.bundle",
+    "Products/Applications/Celluloid.app/SnapKit_SnapKit.bundle",
+    "Products/Applications/Celluloid.app/Watch/CelluloidWatch.app/CelluloidCore_CelluloidDomain.bundle"
+  ]
+}
