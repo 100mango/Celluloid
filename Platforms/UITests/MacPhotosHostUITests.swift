@@ -303,8 +303,9 @@ final class MacPhotosHostUITests: XCTestCase {
         let receipts = editor.staticTexts.matching(identifier: "photos-extension.boundary-arm")
         guard receipts.count == 1 else { throw block("Owned boundary arm failed") }
         let raw = receipts.element(boundBy: 0).label
-        guard raw.utf8.count <= 4096, let data = raw.data(using: .utf8),
-              let arm = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard !raw.isEmpty, raw.utf8.count <= 4096, let data = raw.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let arm = object as? [String: Any],
               arm["schema"] as? String == "Celluloid.OwnedPhotosBoundaryArm.1",
               arm["lease"] as? [String: String] == lease,
               arm["identity_sha256"] as? String == digest(Data(identity.utf8)),

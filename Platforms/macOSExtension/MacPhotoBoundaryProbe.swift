@@ -199,6 +199,7 @@ struct MacPhotoBoundaryProbeView: View {
             if !probe.receipt.isEmpty {
                 Text(probe.receipt).font(.system(size: 1)).lineLimit(1).frame(height: 1)
                     .accessibilityIdentifier("photos-extension.boundary-arm")
+                    .accessibilityLabel(probe.receipt)
             }
         }
     }

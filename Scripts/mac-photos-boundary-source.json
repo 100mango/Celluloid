@@ -1,6 +1,6 @@
 {
   "schema": "Celluloid.OwnedPhotosBoundarySource.1",
-  "parent": "ab66806a959401ab6b5b22370662dbed726842a0",
+  "parent": "3702e507aba69061062fc5b9a09abd8a5474bac8",
   "files": [
     {
       "path": ".github/workflows/apple-platforms.yml",
@@ -2933,8 +2933,8 @@
     {
       "path": "Platforms/UITests/MacPhotosHostUITests.swift",
       "mode": "100644",
-      "bytes": 123302,
-      "sha256": "369b98b6a028e004a13a5eed8ca967dac21b321e8eda472aa215b4e330868137"
+      "bytes": 123352,
+      "sha256": "7e2f851751bcd43e54831f682377252af57d6288796e1c6f853f74bae71f7b7d"
     },
     {
       "path": "Platforms/UITests/NativeEditorUITests.swift",
@@ -3131,8 +3131,8 @@
     {
       "path": "Platforms/macOSExtension/MacPhotoBoundaryProbe.swift",
       "mode": "100644",
-      "bytes": 12375,
-      "sha256": "db0614d8e1721064f71702675a396e36af8fc756a2022e71c55c366111bc9dfc"
+      "bytes": 12430,
+      "sha256": "da67cbae18205193e92715f21e9c4fe4d07e68db0d11bd978b970e06623a3f44"
     },
     {
       "path": "Platforms/macOSExtension/MacPhotoEditingController.swift",
@@ -4775,8 +4775,8 @@
     {
       "path": "Scripts/consumer_runtime_binding.py",
       "mode": "100644",
-      "bytes": 14542,
-      "sha256": "634b1544c23c9f20559eb702234cc9e11a996d68b26e759d4ceb51de0df1ba03"
+      "bytes": 17336,
+      "sha256": "3cb2e3a9482a83d90e10dcc066e8dddb1dc020c282dc91e74e216ec1fa5ccbdf"
     },
     {
       "path": "Scripts/create_fixture.py",
@@ -4883,8 +4883,8 @@
     {
       "path": "Scripts/mac_photos_boundary_probe.py",
       "mode": "100644",
-      "bytes": 22978,
-      "sha256": "314b9b3dfd36e76fc370cf491d77b52b47571f4c8723d5f26be0e5497a70c954"
+      "bytes": 23017,
+      "sha256": "50ba68b81390e4ce037e3d1146d2f82735ec5fff6c261b41d92f050de81a7873"
     },
     {
       "path": "Scripts/mac_photos_host_gate.py",
@@ -4985,8 +4985,8 @@
     {
       "path": "Scripts/run_mac_photos_boundary.py",
       "mode": "100644",
-      "bytes": 27249,
-      "sha256": "1c6477e2e498c79075595ac5e7c5056423398503943e0e6ada8c8f5482e7730e"
+      "bytes": 27248,
+      "sha256": "8d8add1cb186005d50fc9a44c22c69087ec0633541441257943dfecf9508442c"
     },
     {
       "path": "Scripts/run_mac_photos_host_gate.sh",
@@ -5145,10 +5145,16 @@
       "sha256": "a5d0656aa71ab5393a4f86e9c8a2aee11a2f4922c7e5f06d5be84006394c8867"
     },
     {
+      "path": "Scripts/test_mac_photos_boundary_framework.py",
+      "mode": "100644",
+      "bytes": 5421,
+      "sha256": "865de82e633bafd6cad3d35b2c3300c3fa3829b98ac66bbdc60a17d7aa644d30"
+    },
+    {
       "path": "Scripts/test_mac_photos_boundary_probe.py",
       "mode": "100644",
-      "bytes": 25638,
-      "sha256": "2b19bb0b55d78b4f8f3a410ee0cea143d79194e083495f36bf3a64abfaa88934"
+      "bytes": 28504,
+      "sha256": "edb71d0fbb1ae9ed9652257a4ac667fff375da1b9af26fa20d1fce9bdac5a2b8"
     },
     {
       "path": "Scripts/test_mac_photos_boundary_route.py",

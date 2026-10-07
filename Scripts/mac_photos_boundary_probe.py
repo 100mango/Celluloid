@@ -167,7 +167,7 @@ def bound_arm(context_bytes,raw_log,summary):
     lease=lease_valid(context['boundary_probe']['lease']);env=context['runner_environment']
     require(env.get('GITHUB_RUN_ID')==lease['run_id'] and env.get('GITHUB_RUN_ATTEMPT')=='1'
         and env.get('GITHUB_SHA')==env.get('GITHUB_WORKFLOW_SHA')==context['source_sha']==lease['source_sha'],'wrong original run/source')
-    accounting=validate_raw_execution(raw_log,summary)
+    accounting=validate_raw_execution(raw_log,summary,photos_import_snapshot_diagnostic=True)
     bundle=str(Path(context['runner_environment']['RUNNER_TEMP'])/'MacPhotosHost.xcresult')
     require(accounting['result_session_path_observation']==bundle,'wrong finalized result path')
     begin=decode(next(line[len('BOUNDED_COMMAND_BEGIN '):] for line in raw_log.splitlines() if line.startswith('BOUNDED_COMMAND_BEGIN ')))

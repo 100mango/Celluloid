@@ -31,10 +31,14 @@ def validate(summary,receipt,expected_device):
         'summary_sha256':hashlib.sha256(json.dumps(summary,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
         'summary_hash_encoding':'canonical sorted compact JSON','source':'Actual finalized xcresult summary; raw named consumer must independently start and pass once'}
 
-def validate_raw_execution(log,summary):
+def validate_raw_execution(log,summary,*,photos_import_snapshot_diagnostic=False):
     """Consistent failed aggregates retain passed consumer evidence, never a green row."""
     import re
+    require(type(photos_import_snapshot_diagnostic) is bool,'Invalid Photos diagnostic classification opt-in')
     lines=log.splitlines();cases={};active={};suites={};totals=[];terminals=[];errors=[];unclassified=[];failure_headers=[];writing_headers=[];result_headers=[];result_paths=[]
+    framework=[]
+    framework_text='*** Assertion failure in -[XCUIApplication commonInitWithApplicationSpecifier:device:], XCUIApplication.m:226'
+    framework_re=re.compile(r'[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}\+0000 CelluloidMacUITests-Runner\[[1-9][0-9]{0,19}:[1-9][0-9]{0,19}\] \[general\] '+re.escape(framework_text))
     case_re=re.compile(r"Test Case '(.+)' (started\.|(passed|failed|skipped) \([0-9]+(?:\.[0-9]+)? seconds\)\.)")
     suite_re=re.compile(r"Test Suite '([^']+)' (started|passed|failed) at [0-9-]+ [0-9:.]+\.")
     total_re=re.compile(r'Executed (\d+) test(?:s)?, with (?:(\d+) test(?:s)? skipped and )?(\d+) failure(?:s)? \((\d+) unexpected\)(?: in [0-9.]+ \([0-9.]+\) seconds)?')
@@ -65,6 +69,11 @@ def validate_raw_execution(log,summary):
             require(stripped=='Test session results, code coverage, and logs:','Malformed result-session header');result_headers.append(index)
         elif stripped.startswith('/') and stripped.endswith('.xcresult'):
             require(re.fullmatch(r'/[^\r\n\x00]{1,1024}\.xcresult',stripped) is not None,'Malformed result-session path');result_paths.append((stripped,index))
+        elif photos_import_snapshot_diagnostic and framework_re.fullmatch(line):
+            # One observed framework log, not an XCTest issue. Its original
+            # bytes remain in the log and in the returned diagnostic record.
+            require(not framework,'Duplicate Photos import framework diagnostic')
+            framework.append((line,index))
         elif authoritative.search(line):errors.append((line,index))
         elif re.search(r'\b(?:failed|failure|error|warning)\b',line,re.I):
             # Non-authoritative console observations are retained, not treated
@@ -88,6 +97,24 @@ def validate_raw_execution(log,summary):
             require(first[0]=='started' and last[0] in {'passed','failed'} and first[1]<last[1]<end,'Malformed raw suite outcome')
             if outcome=='Passed':require(last[0]=='passed','Failed suite contradicts Passed summary')
             suite_intervals.append({'name':name,'start':first[1],'end':last[1],'state':last[0]})
+    if framework:
+        expected_case='-[CelluloidMacUITests.MacPhotosHostUITests testInstalledExtensionIsInvokedByActualPhotos]'
+        require(set(cases)=={expected_case},'Framework diagnostic belongs to an unadmitted case inventory')
+        configs=summary.get('devicesAndConfigurations')
+        require(type(configs) is list and len(configs)==1 and type(configs[0]) is dict,'Unknown framework diagnostic runtime')
+        device=configs[0].get('device',{})
+        require(type(device) is dict and (device.get('platform'),device.get('osVersion'),device.get('osBuildNumber'),device.get('architecture'))
+            ==('macOS','27.0','26A428','arm64'),'Unknown framework diagnostic runtime')
+        initial=[i for i,line in enumerate(lines) if line=='MAC_HOST_STAGE photos-first-use-and-synthetic-import snapshot=initial']
+        imported=[i for i,line in enumerate(lines) if line=='MAC_HOST_STAGE photos-first-use-and-synthetic-import snapshot=imported']
+        case=cases[expected_case];position=framework[0][1]
+        require(len(initial)==len(imported)==1 and case['start_line']<initial[0]<position<imported[0]<case['end_line'],
+            'Framework diagnostic outside original import snapshot phase')
+        issues=summary.get('testFailures')
+        require(type(issues) is list and all(type(item) is dict and type(item.get('failureText')) is str for item in issues),
+            'Missing case issue text for framework classification')
+        require(not any('commonInitWithApplicationSpecifier:device:' in item['failureText'] or 'XCUIApplication.m:226' in item['failureText'] for item in issues),
+            'Framework diagnostic is reported as a real XCTest issue')
     failed={name:row for name,row in cases.items() if row['state']=='failed'}
     scoped_errors=[]
     for line,position in errors:
@@ -160,8 +187,11 @@ def validate_raw_execution(log,summary):
         target=item.get('targetName');identifier=item.get('testIdentifierString','')
         match=re.fullmatch(r'([^/]+)/([^/]+)\(\)',identifier)
         require(match is not None and '-['+str(target)+'.'+match[1]+' '+match[2]+']' in failed,'Finalized failure belongs to no failed raw testcase')
-    return {'scope':'Complete enclosing XCTest accounting; passed renderer consumer is separate from aggregate failures',
+    result={'scope':'Complete enclosing XCTest accounting; passed renderer consumer is separate from aggregate failures',
         'aggregate_result':outcome,'aggregate_execution_passed':outcome=='Passed','case_counts':counts,
         'failed_cases':sorted(failed),'scoped_errors':scoped_errors,'terminal':terminals[0][0],
         'result_session_path_observation':result_paths[-1][0] if result_paths else None,
         'unclassified_console_diagnostics':unclassified,'console_diagnostics_classified':False}
+    if photos_import_snapshot_diagnostic:
+        result['non_case_framework_diagnostics']=[{'kind':'observed-Photos-import-XCTest-snapshot-diagnostic','line_number':position+1,'raw':line} for line,position in framework]
+    return result
