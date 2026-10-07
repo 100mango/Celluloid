@@ -1,0 +1,80 @@
+name: Fixed unpaired iPhone smoke
+'on':
+  push:
+    branches: [codex/ios-watch-phone-smoke]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-ios-watch-phone-smoke
+  cancel-in-progress: false
+jobs:
+  smoke:
+    name: One fresh iPhone and one production XCTest
+    if: ${{ github.repository == '100mango/Celluloid' && github.ref == 'refs/heads/codex/ios-watch-phone-smoke' && github.event_name == 'push' && github.run_attempt == '1' }}
+    runs-on: xcode-27
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Initialize fixed evidence before checkout or proof
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import json, os, time
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'ios-watch-phone-smoke-evidence'
+          out.mkdir(exist_ok=False)
+          (out / 'report.json').write_text(json.dumps({'schema': 1, 'qualified': False, 'state': 'bootstrap-only', 'started_monotonic': time.monotonic()}) + '\n')
+          for name in ('phases.jsonl', 'test.stdout.log', 'test.stderr.log', 'test.errors.log'):
+              (out / name).write_bytes(b'')
+          (out / 'xcresult-summary.json').write_text('{"available":false,"reason":"not exported yet"}\n')
+          print('PHONE_SMOKE bootstrap complete', flush=True)
+          PYTHON
+      - name: Check out one reviewed-base child
+        timeout-minutes: 1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+          ref: ${{ github.sha }}
+      - name: Execute one bounded phone case and retain evidence
+        id: proof
+        timeout-minutes: 17
+        run: python3 Scripts/ios_watch_phone_smoke.py
+      - name: Always retain fixed bounded logs and proof
+        id: upload
+        if: ${{ always() }}
+        timeout-minutes: 2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: celluloid-phone-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ios-watch-phone-smoke-evidence/report.json
+            ${{ runner.temp }}/ios-watch-phone-smoke-evidence/phases.jsonl
+            ${{ runner.temp }}/ios-watch-phone-smoke-evidence/test.stdout.log
+            ${{ runner.temp }}/ios-watch-phone-smoke-evidence/test.stderr.log
+            ${{ runner.temp }}/ios-watch-phone-smoke-evidence/test.errors.log
+            ${{ runner.temp }}/ios-watch-phone-smoke-evidence/xcresult-summary.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
+      - name: Require proof, upload, and original outer clock
+        if: ${{ always() }}
+        timeout-minutes: 1
+        env:
+          PROOF_OUTCOME: ${{ steps.proof.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, time
+          from pathlib import Path
+          report = json.loads((Path(os.environ['RUNNER_TEMP']) / 'ios-watch-phone-smoke-evidence/report.json').read_bytes())
+          if os.environ['PROOF_OUTCOME'] != 'success' or os.environ['UPLOAD_OUTCOME'] != 'success' or report.get('qualified') is not True:
+              raise SystemExit('Phone proof and fixed evidence upload must both succeed')
+          if not 0 <= time.monotonic() - report['started_monotonic'] < 1180:
+              raise SystemExit('Original 20-minute outer clock exceeded finalization reserve')
+          print('PHONE_SMOKE_FINAL proof passed, evidence upload passed, outer reserve intact', flush=True)
+          PYTHON

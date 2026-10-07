@@ -232,6 +232,38 @@ final class CelluloidUITests: XCTestCase {
         }
     }
 
+    func testProductionWatchPhotosEmptyAndReturn() throws {
+        print("PHONE_SMOKE_PHASE app=Celluloid phase=normal-launch")
+        XCUIDevice.shared.orientation = .portrait
+        launch(diagnostics: false)
+        XCTAssertEqual(app.launchArguments, ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"])
+        let home = app.buttons["edit-photo"]
+        let collage = app.buttons["make-collage"]
+        let open = app.buttons["watch-photos"]
+        XCTAssertTrue(home.isEnabled && home.isHittable)
+        XCTAssertTrue(collage.isEnabled && collage.isHittable)
+        try XCTSkipUnless(open.waitForExistence(timeout: 5), "Watch entry smoke applies only to the iOS-Watch projection; its dedicated runner rejects every skip")
+        XCTAssertTrue(open.isEnabled && open.isHittable)
+        open.tap()
+        let empty = app.staticTexts["companion.empty"]
+        XCTAssertTrue(empty.waitForExistence(timeout: 5))
+        XCTAssertTrue(empty.label.contains("No Watch processing results yet."))
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "companion.result.")).count, 0)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "companion.resume.")).count, 0)
+        print("PHONE_SMOKE_PHASE app=Celluloid phase=empty-watch-photos")
+        let close = app.buttons["companion.close"]
+        XCTAssertTrue(close.isEnabled && close.isHittable)
+        close.tap()
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: empty)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 5), .completed)
+        XCTAssertTrue(home.waitForExistence(timeout: 5))
+        XCTAssertTrue(home.isEnabled && home.isHittable)
+        XCTAssertTrue(collage.isEnabled && collage.isHittable)
+        XCTAssertTrue(open.isEnabled && open.isHittable)
+        XCTAssertEqual(app.state, .runningForeground)
+        print("PHONE_SMOKE_PHASE app=Celluloid phase=home-returned")
+    }
+
     func testPrivacyPolicyEntryRemainsAccessibleAndCanClose() {
         launch()
         let policy = app.buttons["privacy-policy"]

@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "repository": "100mango/Celluloid",
+  "base": "2a5cf695c2a6c5ef3c2eaede47ea0353e2da9983",
+  "project": "Celluloid-iOS-Watch.xcodeproj",
+  "scheme": "Celluloid",
+  "case": "CelluloidUITests/CelluloidUITests/testProductionWatchPhotosEmptyAndReturn",
+  "expected_changes": [
+    "A\t.github/workflows/ios-watch-phone-smoke.yml",
+    "A\tScripts/ios_watch_phone_smoke.py",
+    "A\tScripts/ios_watch_phone_smoke_config.json",
+    "A\tScripts/test_ios_watch_phone_smoke.py",
+    "M\tCelluloidUITests/CelluloidUITests.swift"
+  ]
+}
