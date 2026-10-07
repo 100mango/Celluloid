@@ -148,6 +148,66 @@ extension NativeVisionUITests {
             return false // Report every real issue; this callback suppresses nothing.
         } }
     }
+    func testSeededDocumentSequentialTextUndoRedoAndRelaunch() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(); defer { app.terminate() }
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        try openRemainingDocument(in: app)
+        XCTAssertTrue(app.staticTexts["120 × 80 px"].waitForExistence(timeout: 20))
+        app.buttons["editor.add-bubble"].tap()
+        let bubble = app.buttons["asset.say1"]
+        XCTAssertTrue(bubble.waitForExistence(timeout: 10)); XCTAssertTrue(bubble.isHittable); bubble.tap()
+        // Observe the real transition implicated by 9ff before the first tap.
+        // Do not force focus, retry the tap or inject a final-text fixture.
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: bubble)], timeout: 10), .completed)
+        print("VISION_REMAINING_PALETTE_DISMISSED real bubble insertion")
+        let fields = app.textViews.matching(identifier: "editor.bubble-text")
+        let text = fields.firstMatch
+        XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertEqual(fields.count, 1)
+        XCTAssertEqual(text.value as? String, "Hello"); XCTAssertTrue(text.isHittable)
+        print("VISION_REMAINING_PRE_TAP " + String(text.debugDescription.prefix(4000)))
+        text.tap() // Exactly one ordinary tap; no scripted focus or text injection.
+        text.typeText("A"); let first = String(describing: text.value ?? "")
+        text.typeText("B"); let second = String(describing: text.value ?? "")
+        print("VISION_REMAINING_SEQUENTIAL first=\(first) second=\(second)")
+        XCTAssertTrue(first.contains("A") && second.contains("AB"), "Consecutive keys must retain focus without retapping")
+        text.press(forDuration: 1.1)
+        let selectMenu = app.menuItems["Select All"].firstMatch
+        let selectButton = app.buttons["Select All"].firstMatch
+        if selectMenu.waitForExistence(timeout: 3) { selectMenu.tap() }
+        else { XCTAssertTrue(selectButton.waitForExistence(timeout: 3)); selectButton.tap() }
+        text.typeText("Vision 世界")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "value == %@", "Vision 世界"), evaluatedWith: text)], timeout: 10), .completed)
+        let undo = app.buttons["editor.undo"], redo = app.buttons["editor.redo"]
+        XCTAssertTrue(undo.isEnabled); undo.tap()
+        XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertNotEqual(text.value as? String, "Vision 世界")
+        XCTAssertTrue(redo.isEnabled); redo.tap(); XCTAssertEqual(text.value as? String, "Vision 世界")
+        print("VISION_REMAINING_UNDO_REDO exact multilingual replacement restored")
+        let documents = app.navigationBars.buttons["Documents"].firstMatch
+        XCTAssertTrue(documents.exists); documents.tap()
+        app.terminate(); app.launch(); try openRemainingDocument(in: app)
+        XCTAssertTrue(app.staticTexts["120 × 80 px"].waitForExistence(timeout: 20))
+        let reopened = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'layer.' AND label == %@", "Select layer: Vision 世界")).firstMatch
+        XCTAssertTrue(reopened.waitForExistence(timeout: 10)); reopened.tap()
+        XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertEqual(text.value as? String, "Vision 世界")
+        print("VISION_REMAINING_REOPEN actual relaunch retained source dimensions and exact text")
+    }
+    private func openRemainingDocument(in app: XCUIApplication) throws {
+        if app.buttons["editor.import-files"].exists {
+            // Force real named-document selection rather than accepting any last-open document.
+            let documents = app.navigationBars.buttons["Documents"].firstMatch
+            XCTAssertTrue(documents.exists); documents.tap()
+        } else {
+            let documents = app.navigationBars.buttons["Documents"].firstMatch
+            if documents.exists && documents.isHittable { documents.tap() }
+        }
+        let document = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH %@", "VisionRemaining,")).firstMatch
+        let found = document.waitForExistence(timeout: 30)
+        if !found { print("VISION_REMAINING_DOCUMENT_AX " + String(app.debugDescription.prefix(16000))) }
+        XCTAssertTrue(found); XCTAssertTrue(document.isHittable); document.tap()
+        XCTAssertTrue(app.buttons["editor.import-files"].waitForExistence(timeout: 30))
+    }
     func testSimplifiedChineseDocumentPrivacyAndLargeText() throws {
         continueAfterFailure = false
         let app = XCUIApplication(); defer { app.terminate() }
@@ -176,7 +236,9 @@ extension NativeVisionUITests {
             let done = app.buttons["完成"].firstMatch
             XCTAssertTrue(done.waitForExistence(timeout: 10)); XCTAssertTrue(done.isHittable)
             XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "本地数据可通过相应应用或系统删除，权限可在系统设置中撤回。")).firstMatch.exists)
-            capture(app, name: large ? "vision-zh-Hans-large-privacy" : "vision-zh-Hans-privacy")
+            // Keep one ordinary screenshot; the largest-text pass establishes
+            // the actual policy/Done path without a second optional capture.
+            if !large { capture(app, name: "vision-zh-Hans-privacy") }
             if #available(visionOS 27.0, *) {
                 let previous = continueAfterFailure; continueAfterFailure = true
                 defer { continueAfterFailure = previous }

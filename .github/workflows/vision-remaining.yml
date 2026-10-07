@@ -1,0 +1,62 @@
+name: Complete remaining Celluloid Vision functions
+on:
+  push:
+    branches: [codex/vision-remaining]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-vision-remaining
+  cancel-in-progress: false
+jobs:
+  vision:
+    name: Three Vision cases and unsigned device archive
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+    steps:
+      - name: Record original fixed-cohort clock before checkout
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,time
+          from pathlib import Path
+          keys=('GITHUB_REPOSITORY','GITHUB_REF','GITHUB_WORKFLOW_REF','GITHUB_RUN_ATTEMPT','GITHUB_JOB','GITHUB_EVENT_NAME','DEVELOPER_DIR','GITHUB_SHA','GITHUB_WORKFLOW_SHA','GITHUB_RUN_ID')
+          output=Path(os.environ['RUNNER_TEMP'])/'vision-remaining-clock.json'
+          with output.open('x') as stream:
+              json.dump({'started_monotonic':time.monotonic(),'binding':{k:os.environ[k] for k in keys}},stream)
+          PY
+      - name: Check out exact source and sole reviewed parent
+        timeout-minutes: 2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+          ref: ${{ github.sha }}
+      - name: Run three exact cases with hard icon preparation
+        id: proof
+        timeout-minutes: 54
+        run: python3 Scripts/run_vision_remaining.py --execute
+      - name: Retain existing receipts and bounded logs even after failure
+        id: pack
+        if: always()
+        timeout-minutes: 1
+        run: python3 Scripts/run_vision_remaining.py --pack
+      - name: Upload this cohort's bounded evidence only
+        id: upload
+        if: ${{ always() && steps.pack.outputs.evidence_ready == 'true' }}
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: celluloid-vision-remaining-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/vision-remaining-evidence/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
+      - name: Preserve failed verdict and verify original upload clock
+        if: ${{ always() && steps.pack.outputs.evidence_ready == 'true' }}
+        timeout-minutes: 1
+        env:
+          VISION_UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: python3 Scripts/run_vision_remaining.py --finish-upload

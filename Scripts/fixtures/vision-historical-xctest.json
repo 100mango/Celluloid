@@ -1,0 +1,30 @@
+[
+  {
+    "source_run": "37154335257",
+    "source_log_sha256": "e856dcb2b4638cbba1c6875bbcd0a265eb7e49bd1b46d22fd50bb7d725c3117c",
+    "lines": [
+      "Test Case '-[CelluloidVisionTests.NativeVisionTests testNativeVisionDocumentImportRenderSaveReopenAndExport]' started.",
+      "Test Case '-[CelluloidVisionTests.NativeVisionTests testNativeVisionDocumentImportRenderSaveReopenAndExport]' passed (1.138 seconds).",
+      "Test Case '-[CelluloidVisionTests.NativeVisionTests testNativeVisionExecutableAndSceneAreLive]' started.",
+      "Test Case '-[CelluloidVisionTests.NativeVisionTests testNativeVisionExecutableAndSceneAreLive]' passed (0.004 seconds).",
+      "Test Case '-[CelluloidVisionUITests.NativeVisionUITests testNativeDocumentBrowserLaunchAndNewDocument]' started.",
+      "Test Case '-[CelluloidVisionUITests.NativeVisionUITests testNativeDocumentBrowserLaunchAndNewDocument]' passed (58.606 seconds).",
+      "Test Case '-[CelluloidVisionUITests.NativeVisionUITests testRealFilesImportBubbleAndPNGExport]' started.",
+      "Test Case '-[CelluloidVisionUITests.NativeVisionUITests testRealFilesImportBubbleAndPNGExport]' passed (182.814 seconds)."
+    ]
+  },
+  {
+    "source_run": "37157769884",
+    "source_log_sha256": "8105a14b8bf53d33bfabe3eb8366d13a5f6ad0805267db0212df5c7513d55e3f",
+    "lines": [
+      "Test Case '-[CelluloidVisionTests.NativeVisionTests testNativeVisionDocumentImportRenderSaveReopenAndExport]' started.",
+      "Test Case '-[CelluloidVisionTests.NativeVisionTests testNativeVisionDocumentImportRenderSaveReopenAndExport]' passed (1.154 seconds).",
+      "Test Case '-[CelluloidVisionTests.NativeVisionTests testNativeVisionExecutableAndSceneAreLive]' started.",
+      "Test Case '-[CelluloidVisionTests.NativeVisionTests testNativeVisionExecutableAndSceneAreLive]' passed (0.004 seconds).",
+      "Test Case '-[CelluloidVisionUITests.NativeVisionUITests testNativeDocumentBrowserLaunchAndNewDocument]' started.",
+      "Test Case '-[CelluloidVisionUITests.NativeVisionUITests testNativeDocumentBrowserLaunchAndNewDocument]' passed (156.027 seconds).",
+      "Test Case '-[CelluloidVisionUITests.NativeVisionUITests testRealFilesImportBubbleAndPNGExport]' started.",
+      "Test Case '-[CelluloidVisionUITests.NativeVisionUITests testRealFilesImportBubbleAndPNGExport]' failed (377.755 seconds)."
+    ]
+  }
+]

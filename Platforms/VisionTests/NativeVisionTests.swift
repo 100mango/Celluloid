@@ -56,6 +56,17 @@ final class NativeVisionTests: XCTestCase {
             XCTAssertThrowsError(try document.editing { $0.editOverlay(bubble.id) { $0.text = String(repeating: "界", count: 6000) } })
             XCTAssertEqual(document, final)
         }
+        // A test-owned, actual FileDocument package for the separate UI lane.
+        // It avoids repeating already-qualified Files import / PNG export. This
+        // is seeded intake, not UI evidence, and never sets the final edit text.
+        var seed = NativeDocument(); try seed.replaceSources([("Synthetic.png", bytes)])
+        let documents = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask,
+                                                     appropriateFor: nil, create: true)
+        let fixture = documents.appendingPathComponent("VisionRemaining.celluloid", isDirectory: true)
+        guard !FileManager.default.fileExists(atPath: fixture.path) else { throw CocoaError(.fileWriteFileExists) }
+        try seed.archive().write(to: fixture, options: .atomic, originalContentsURL: nil)
+        XCTAssertEqual(try NativeDocument(wrapper: FileWrapper(url: fixture, options: .immediate)), seed)
+        print("VISION_REMAINING_SEED native writer/readback; 120x80 source; no seeded overlay")
     }
     @MainActor func testNativeVisionExecutableAndSceneAreLive() throws {
         XCTAssertEqual(Bundle.main.bundleIdentifier, "Mango.Celluloid")
