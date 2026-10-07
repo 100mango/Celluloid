@@ -10,15 +10,18 @@ release qualification, archive work, or Store submission in this route.
 
 The product source remains da9d4abd6484ddaff469677d96caf24362645d7c,
 tree 304ee9c0e4197e4a282ae3933c9f510219b2106d. The successor's exact direct parent
-must be public 35a9c186fbcff19f528fbaf72fc4e177506c909a,
-tree be6971d80c0cb6331109ad502eeb30fb9ca0eadd. A different parent with the same
+must be public 51d5763a0e2cdd0622d354bfd92083fec000a427,
+tree 7afb89356b492389c1dfb99c61ad22a0df8ba818. A different parent with the same
 tree or an arbitrary ancestor does not satisfy this identity check.
 The capture source has its own actual commit/tree and workflow identity. The
-workflow and every Swift/product byte remain unchanged from the public parent.
-The runner removes three screenshot-only container identity queries. This does
-not change the release or UIKit qualification routes.
+workflow and every product byte remain unchanged from the public parent.
+Only the reversible capture block in the UI-test file changes: one new empty-library
+authorization method and two revised display methods. The original 106 qualification
+methods remain unchanged. This successor removes the separate simctl privacy and
+appearance commands; the three container queries remain absent on this route.
+The release and UIKit qualification routes keep their original behavior.
 Its source proof is 545 unchanged protected inputs plus one precisely hashed
-UI-test instrumentation file. The new contiguous block adds two display methods
+UI-test instrumentation file. The new contiguous block contains one authorization method, two display methods
 and one private layout observation helper. Removing this exact block restores the
 previous capture UI-test SHA 7462b8288c2768fe3ebe76f44c2d5f425b71627d56b6596b66c5f1b3dc7f8f41.
 Removing the inherited screenshot opt-in then restores the qualified original
@@ -91,7 +94,34 @@ The iPad installation returned code 0 only after the caller's 300s deadline;
 The child was reaped but the owned process group remained unconfirmed. That run
 remains failed and cannot resume or be retroactively accepted.
 
-Per device the new capture-only preparation copies only the two fixed PNGs without
+Per device, after the exact built app has installed successfully, one new
+capture-only testStoreAuthorizeEmptyPhotosLibrary runs before any imports. It
+sets Dark Mode through the public XCUIDevice.shared.appearance property, launches
+the real app without authorization overrides or resets, opens its picker, and
+interacts with the known app to invoke the existing Full Access interruption
+monitor. That unchanged monitor accepts only the exact Celluloid Photos alert
+and one enabled/hittable Full Access action; every other interruption fails closed.
+One public app snapshot per poll must show the exact empty-library message,
+disabled Done, and no photo-0, limited-management or denied-settings control.
+The method uses the unique enabled/hittable Cancel control and returns home.
+
+The 360-second command and 45-second finalized summary stay under the existing
+fixed clock and cleanup reserves. The finalized native result must contain only
+that one case on the exact owned device, one actual full-access action log, and
+one empty-state completion marker. Failure stops before fixture preparation,
+imports, display tests or a second device. Its full bounded raw log and summary
+are retained. The authoritative hosted readiness below still must independently
+observe real PhotoKit authorization=3 and asset_count=0.
+
+Apple documents the appearance API and when interruption handlers run:
+https://developer.apple.com/documentation/xcuiautomation/xcuidevice/appearance-swift.property
+https://developer.apple.com/documentation/xctest/handling-ui-interruptions
+
+The original 51d run 37584200120 remains failed: privacy grant produced no stdout,
+communicate() timed out, PID/PGID24801 received SIGTERM and was reaped with -15,
+and group exit remained unconfirmed. No UI or PNG followed. That VM cannot resume.
+
+Per device the capture-only preparation then copies only the two fixed PNGs without
 conversion into that row's owned temporary directory. It fails if any old six-fixture
 path exists, if a staged directory is reused, or if membership/bytes/hashes change.
 It reuses these two original setup methods with their bodies unchanged:
@@ -120,13 +150,15 @@ Then these two NEW display methods run in dark appearance:
   Each geometry poll uses one public app snapshot and its two collage-image frames,
   with stable bounds/ratios matching the unchanged polygon source.
 
-Both methods Cancel back to home after capture. They perform no pressure gestures,
+Both display methods inherit the real prior grant without resetting or reauthorizing
+it. Their actual full-access picker postconditions remain mandatory. Both methods
+Cancel back to home after capture. They perform no pressure gestures,
 rotation, Save, bubble or sticker insertion. They are distinct display checks,
 not replacements for the old pressure UI methods or proof that those UI methods ran.
 The original two setup methods do run; the packet distinguishes them explicitly
 with setup_cases_per_device and original_ui_qualification_methods_rerun=false.
-There are two setup and two UI invocations per device, eight normally completed
-invocations total. No 412-case cohort or Mac producer runs. The ui process phase
+There is one authorization UI, two original hosted setup and two display UI
+invocations per device, ten normally completed invocations total. No 412-case cohort or Mac producer runs. The ui process phase
 is intentional because the original large-phone row does not admit dark.
 Bootstrap runs in process; its existing owned inner commands remain sole owners.
 All actual screenshots still require root visual review before Store use.
@@ -134,7 +166,7 @@ All actual screenshots still require root visual review before Store use.
 The workflow has one 60-minute Mac job. Both row clocks preserve the same first
 step's source/run/attempt and monotonic/wall start. Native work ends by 2700s;
 the existing 660s tail and final 240s outer margin stay bounded. Build is at most
-900s; boot 60s; bootstatus 600s; install 600s; permission 60s;
+900s; boot 60s; bootstatus 600s; install 600s; authorization UI 360s;
 each setup test 360s; first import 480s and later imports 180s; selected UI command
 900s. Each full fixed command allowance plus 15s for cleanup and 5s for finalization
 must fit its immutable phase/work deadline before dispatch. Test body allowances
@@ -166,7 +198,8 @@ Fixed command allowances (seconds), shared by both devices under that clock:
 | Build once |900 |
 | Boot / bootstatus |60 /600 |
 | Install |600 |
-| Photos grant / dark appearance |60 /60 |
+| Empty-library authorization UI / finalized summary |360 /45 |
+| Appearance |Public XCUIDevice API in that UI method |
 | Bootstrap prepared-registration lookup on this screenshot route |Not collected |
 | Each original readiness/reconcile test |360 |
 | First sample import / second sample import |480 /180 |
@@ -177,7 +210,9 @@ Fixed command allowances (seconds), shared by both devices under that clock:
 | Shutdown / observed shutdown check |45 /15 |
 | Delete / observed absence check |45 /15 |
 
-Every listed command requires the same 15+5-second reserve before admission. The absolute work endpoint
+Every listed command requires the same 15+5-second reserve before admission.
+The authorization command adds no time to the total allocation; full remaining
+allowance must fit, and no worst-case sum of all command maxima is promised. The absolute work endpoint
 is 2700s from the first step. Existing tail endpoints are 2940s for product readbacks,
 3000s for shutdown, 3060s for deletion, 3120s for source checks, 3300s for collection,
 and 3360s for upload. They are shared endpoints, not per-device durations.
@@ -189,7 +224,7 @@ the 35a9 native build log. The Info.plist must identify Mango.Celluloid.UITests,
 CelluloidUITests and iphonesimulator. Both built records must remain equal before
 and after each UI invocation. No product or Swift code changes in this successor.
 
-The screenshot identity contract is explicitly versioned StoreCapturePacket.2:
+The screenshot identity contract is explicitly versioned StoreCapturePacket.3:
 fresh owned simulator, successful installation of this build's app, the same
 reviewed project/scheme/Debug/build root, actual two selected methods and device
 summary, and the raw attachment's exact testcase/device ownership. The normal

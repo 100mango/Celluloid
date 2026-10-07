@@ -27,7 +27,7 @@ class StoreDisplaySourceTests(unittest.TestCase):
         original = prior.replace(capture.INSERTION, b'')
         self.assertEqual(capture.sha(original), capture.UI_BASE_SHA)
         cases = re.findall(rb'\bfunc (test\w+)\s*\(', block)
-        self.assertEqual(cases, [method.encode() for method in capture.CASES.values()])
+        self.assertEqual(cases, [capture.AUTHORIZATION_CASE.encode()] + [method.encode() for method in capture.CASES.values()])
         original_count = 0
         for folder in ('CelluloidTests', 'CelluloidUITests'):
             for path in (ROOT / folder).glob('*.swift'):
@@ -39,14 +39,16 @@ class StoreDisplaySourceTests(unittest.TestCase):
 
     def test_two_new_display_cases_use_photos_and_cancel_without_pressure_save_or_decoration_actions(self):
         block = display_block()[1].decode()
-        calls = block[:block.index('    private func waitForStoreDiagonalCollage')]
+        calls = block[block.index('    func testStoreNormalEditorScreenshot'):block.index('    private func waitForStoreDiagonalCollage')]
         for forbidden in ('.pinch(', '.rotate(', '.press(', '.swipe', '.typeText(', '.doubleTap(',
                           'XCUIDevice.shared.orientation', 'saveAnd', 'share-done', 'launchArguments.append',
                           'value(forKey', 'setValue(', 'perform('):
             self.assertNotIn(forbidden, calls)
         button_taps = re.findall(r'app.buttons\["([^"]+)"\]\.tap\(\)', calls)
         self.assertEqual(button_taps, ['edit-photo', 'picker-done', 'Cancel', 'make-collage', 'picker-done', 'Cancel'])
-        self.assertEqual(calls.count('launch(diagnostics: false, photosAccess: true)'), 2)
+        self.assertEqual(calls.count('launch(diagnostics: false)'), 2)
+        self.assertNotIn('photosAccess: true', calls)
+        self.assertNotIn('resetAuthorizationStatus', calls)
         self.assertEqual(calls.count('XCTAssertFalse(app.descendants(matching: .any)["photo-2"].exists)'), 2)
         self.assertEqual(calls.count('CELLULOID_STORE_CAPTURE'), 2)
         self.assertEqual(calls.count('emitScreenshot('), 2)
@@ -54,6 +56,21 @@ class StoreDisplaySourceTests(unittest.TestCase):
         self.assertIn('photo-0', editor)
         self.assertIn('attachment-image', editor)
         self.assertNotIn('coordinate(withNormalizedOffset:', editor)
+
+    def test_authorization_uses_existing_narrow_monitor_and_one_empty_snapshot(self):
+        block = display_block()[1].decode().split('    func testStoreNormalEditorScreenshot', 1)[0]
+        self.assertIn('XCUIDevice.shared.appearance = .dark', block)
+        self.assertIn('photosAccessMonitor = installExpectedFullPhotosAccessMonitor()', block)
+        self.assertIn('launch(diagnostics: false)', block)
+        self.assertEqual(block.count('app.tap()'), 1)
+        self.assertEqual(block.count('app.snapshot()'), 1)
+        self.assertIn('states.count == 1', block)
+        self.assertIn('done.count == 1 && !done[0].isEnabled', block)
+        self.assertIn('["photo-0", "manage-photos", "photos-settings"]', block)
+        self.assertIn('cancel.element.isEnabled && cancel.element.isHittable', block)
+        self.assertIn('STORE_CAPTURE_EMPTY_LIBRARY_AUTHORIZATION_UI', block)
+        for forbidden in ('resetAuthorizationStatus', '--photos-denied', '--photos-limited-empty', 'emitScreenshot('):
+            self.assertNotIn(forbidden, block)
 
     def test_plain_editor_source_resets_original_and_uses_aspect_fit(self):
         editor = (ROOT / 'CelluloidKit/Controller/BaseEditPhotoController.swift').read_text()
@@ -109,8 +126,8 @@ class StoreDisplaySourceTests(unittest.TestCase):
         for value in ('0.6167', '0.5667', '0.4333', '>= 0.4', 'timeout: 15'):
             self.assertIn(value, helper)
 
-    def test_container_proof_successor_keeps_workflow_and_all_swift_bytes(self):
-        for path in ('.github/workflows/store-screenshots.yml', 'CelluloidUITests/CelluloidUITests.swift'):
+    def test_authorization_successor_keeps_workflow_bytes(self):
+        for path in ('.github/workflows/store-screenshots.yml',):
             previous = subprocess.check_output(['git', 'show', capture.PUBLIC_BASE + ':' + path], cwd=ROOT, timeout=15)
             self.assertEqual((ROOT / path).read_bytes(), previous)
             self.assertNotIn(path, capture.CAPTURE_PATHS)

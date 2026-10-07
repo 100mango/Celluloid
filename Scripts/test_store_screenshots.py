@@ -60,19 +60,23 @@ def isolated_runner():
         case.doCleanups()
 
 
-def summary(device, bundle):
+def summary(device, bundle, authorization=False):
+    methods = (capture.AUTHORIZATION_CASE,) if authorization else tuple(capture.CASES.values())
+    count = len(methods)
     now = time.time()
-    counts = {'passedTests': 2, 'failedTests': 0, 'skippedTests': 0, 'expectedFailures': 0}
-    data = {'result': 'Passed', 'totalTestCount': 2, **counts, 'testFailures': [],
+    counts = {'passedTests': count, 'failedTests': 0, 'skippedTests': 0, 'expectedFailures': 0}
+    data = {'result': 'Passed', 'totalTestCount': count, **counts, 'testFailures': [],
             'startTime': now - 1, 'finishTime': now,
             'devicesAndConfigurations': [{**counts, 'device': {
                 'deviceId': device['id'], 'modelName': device['model'], 'platform': 'iOS Simulator',
                 'osVersion': '27.0', 'osBuildNumber': RUNTIME_BUILD, 'architecture': 'arm64'}}]}
     lines = []
-    for method in capture.CASES.values():
+    for method in methods:
         name = '-[CelluloidUITests.CelluloidUITests ' + method + ']'
         lines += ["Test Case '" + name + "' started.", "Test Case '" + name + "' passed (1.0 seconds)."]
-    lines += ['Executed 2 tests, with 0 failures (0 unexpected) in 2.0 (2.0) seconds',
+    if authorization:
+        lines += ['EXPECTED_PHOTOS_AUTHORIZATION_ACTION Allow Full Access', 'STORE_CAPTURE_EMPTY_LIBRARY_AUTHORIZATION_UI']
+    lines += [f'Executed {count} tests, with 0 failures (0 unexpected) in 2.0 (2.0) seconds',
               'Test session results, code coverage, and logs:', str(bundle), '** TEST EXECUTE SUCCEEDED **']
     return data, '\n'.join(lines)
 
@@ -118,8 +122,8 @@ class FileProofTests(unittest.TestCase):
             return answers[args]
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, environment(directory), clear=True), patch.object(capture, 'git', side_effect=git), patch('subprocess.Popen', side_effect=AssertionError('source test must not dispatch')):
             proof = capture.verify_source(runtime=True)
-            self.assertEqual(proof['supervision_public_base_sha'], '35a9c186fbcff19f528fbaf72fc4e177506c909a')
-            self.assertEqual(proof['supervision_base_tree'], 'be6971d80c0cb6331109ad502eeb30fb9ca0eadd')
+            self.assertEqual(proof['supervision_public_base_sha'], '51d5763a0e2cdd0622d354bfd92083fec000a427')
+            self.assertEqual(proof['supervision_base_tree'], '7afb89356b492389c1dfb99c61ad22a0df8ba818')
             parent[0] = '1d28' + '0' * 36
             with self.assertRaisesRegex(ValueError, 'public capture parent'):
                 capture.verify_source(runtime=True)
@@ -333,6 +337,23 @@ class FileProofTests(unittest.TestCase):
                 capture.verify_summary(value, device, text, time.time() - 10, time.time() + 1, bundle)
 
 
+    def test_authorization_summary_requires_one_exact_case_and_one_real_action(self):
+        device = selected_device(); bundle = Path('/tmp/StoreAuthorization.xcresult')
+        good, log = summary(device, bundle, True)
+        capture.verify_summary(good, device, log, time.time() - 10, time.time() + 1, bundle, authorization=True)
+        for mutation in ('extra-action', 'missing-action', 'foreign-action', 'missing-state', 'extra-state', 'wrong-case', 'two-count'):
+            value, text = copy.deepcopy(good), log
+            if mutation == 'extra-action': text += '\nEXPECTED_PHOTOS_AUTHORIZATION_ACTION Allow Full Access'
+            if mutation == 'missing-action': text = text.replace('EXPECTED_PHOTOS_AUTHORIZATION_ACTION', 'missing')
+            if mutation == 'foreign-action': text = text.replace('Allow Full Access', 'Allow Limited Access')
+            if mutation == 'missing-state': text = text.replace('STORE_CAPTURE_EMPTY_LIBRARY_AUTHORIZATION_UI', 'missing')
+            if mutation == 'extra-state': text += '\nSTORE_CAPTURE_EMPTY_LIBRARY_AUTHORIZATION_UI'
+            if mutation == 'wrong-case': text = text.replace(capture.AUTHORIZATION_CASE, 'testUnrelated')
+            if mutation == 'two-count': value['totalTestCount'] = 2
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                capture.verify_summary(value, device, text, time.time() - 10, time.time() + 1, bundle, authorization=True)
+
+
 class RunnerInterfacesTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
@@ -371,6 +392,7 @@ class RunnerInterfacesTests(unittest.TestCase):
         self.keep_deleted = False
         self.product_mutation = None
         self.mutation_stage = None
+        self.authorization_mutation = None
         self.guarded_ui_failure = None
         self.app = self.root / '.build/Build/Products/Debug-iphonesimulator/Celluloid.app'
 
@@ -483,8 +505,8 @@ class RunnerInterfacesTests(unittest.TestCase):
             shutil.copytree(self.app, self.installed)
         elif args[:3] == ['xcrun', 'simctl', 'get_app_container']:
             self.fail('The capture route must not query installed containers')
-        elif args[:3] == ['xcrun', 'simctl', 'privacy'] and self.mutation_stage == 'before':
-            self.mutate_product()
+        elif args[:3] in (['xcrun', 'simctl', 'privacy'], ['xcrun', 'simctl', 'ui']):
+            self.fail('Capture authorization/appearance must use its reviewed XCTest UI flow')
         elif args[0] == 'xcodebuild' and 'test-without-building' in args:
             if self.guarded_ui_failure:
                 process = MagicMock(pid=48123, returncode=None)
@@ -495,11 +517,16 @@ class RunnerInterfacesTests(unittest.TestCase):
                     return REAL_NATIVE_RUN(args, timeout=timeout, check=check, log_name=log_name, echo=echo,
                                            capture_deadline=capture_deadline)
             self.assertEqual(os.environ.get('TEST_RUNNER_CELLULOID_STORE_CAPTURE'), '1')
+            authorization = '-only-testing:CelluloidUITests/CelluloidUITests/' + capture.AUTHORIZATION_CASE in args
+            methods = (capture.AUTHORIZATION_CASE,) if authorization else tuple(capture.CASES.values())
             self.assertEqual([a for a in args if a.startswith('-only-testing:')],
-                             ['-only-testing:CelluloidUITests/CelluloidUITests/' + m for m in capture.CASES.values()])
+                             ['-only-testing:CelluloidUITests/CelluloidUITests/' + m for m in methods])
+            self.assertEqual(timeout, 360 if authorization else 900)
             self.bundle = Path(args[args.index('-resultBundlePath') + 1])
             self.bundle.mkdir()
-            self.result_summary, output = summary(self.current, self.bundle)
+            self.result_summary, output = summary(self.current, self.bundle, authorization)
+            if authorization and self.authorization_mutation:
+                output = output.replace(self.authorization_mutation, "MISSING_OR_FOREIGN")
             if self.mutation_stage == 'during':
                 self.mutate_product()
         elif args[:4] == ['xcrun', 'xcresulttool', 'get', 'test-results']:
@@ -523,7 +550,11 @@ class RunnerInterfacesTests(unittest.TestCase):
         runner = capture.Capture(self.outer)
         self.runner = runner
         def bootstrap(instance, device):
+            self.assertTrue(any(row['device_id'] == device['id'] and row['method'] == capture.AUTHORIZATION_CASE
+                                and row['system_full_access_ui_verified'] is True for row in instance.authorizations))
             self.bootstrap_calls.append(device['id'])
+            if self.mutation_stage == 'before':
+                self.mutate_product()
         with patch.object(capture, 'ROOT', self.root), patch.object(capture, 'verify_source', return_value=self.source), \
              patch('store_display_assets.prepare', return_value={}), patch('store_display_assets.no_legacy_files'), \
              patch.object(capture.runpy, 'run_path', return_value={}), patch.object(capture.Capture, 'bootstrap', bootstrap), \
@@ -539,7 +570,7 @@ class RunnerInterfacesTests(unittest.TestCase):
         self.assertNotIn('original_qualification_methods_rerun', receipt)
         self.assertEqual(receipt['setup_cases_per_device'], list(capture.SETUP_CASES))
         self.assertEqual(sum('build-for-testing' in c for c in self.calls), 1)
-        self.assertEqual(sum('test-without-building' in c for c in self.calls), 2)
+        self.assertEqual(sum('test-without-building' in c for c in self.calls), 4)
         boot_positions = [i for i, c in enumerate(self.calls) if c[:3] == ['xcrun', 'simctl', 'boot']]
         delete_positions = [i for i, c in enumerate(self.calls) if c[:3] == ['xcrun', 'simctl', 'delete']]
         create_positions = [i for i, c in enumerate(self.calls) if c[:3] == ['xcrun', 'simctl', 'create']]
@@ -560,7 +591,10 @@ class RunnerInterfacesTests(unittest.TestCase):
         result = json.loads((runner.packet / 'capture.json').read_text())
         self.assertTrue(result['complete'])
         self.assertEqual(len(result['screenshots']), 4)
-        self.assertEqual(result['schema'], 'Celluloid.StoreCapturePacket.2')
+        self.assertEqual(result['schema'], 'Celluloid.StoreCapturePacket.3')
+        self.assertEqual(len(result['authorizations']), 2)
+        self.assertEqual(result['authorization_case_per_device'], capture.AUTHORIZATION_CASE)
+        self.assertTrue(all(row['hosted_photokit_readiness_still_required'] is True for row in result['authorizations']))
         self.assertIs(result['installed_container_equality_checked'], False)
         self.assertNotIn('installations', result)
         self.assertEqual(len(result['test_products']), 2)
@@ -576,6 +610,19 @@ class RunnerInterfacesTests(unittest.TestCase):
         self.assertEqual(result['visual_approval'], 'pending')
         for image in result['screenshots']:
             self.assertEqual(capture.sha((runner.packet / image['name']).read_bytes()), image['sha256'])
+
+    def test_missing_or_foreign_authorization_action_blocks_imports_and_display(self):
+        for missing in ('EXPECTED_PHOTOS_AUTHORIZATION_ACTION', 'Allow Full Access',
+                        'STORE_CAPTURE_EMPTY_LIBRARY_AUTHORIZATION_UI'):
+            with self.subTest(missing=missing), isolated_runner() as case:
+                case.authorization_mutation = missing
+                with self.assertRaisesRegex(ValueError, 'authorization UI proof'):
+                    case.run_capture()
+                self.assertFalse(case.bootstrap_calls)
+                self.assertFalse(case.runner.authorizations)
+                self.assertFalse(any(c[:3] in (['xcrun', 'simctl', 'privacy'], ['xcrun', 'simctl', 'addmedia']) for c in case.calls))
+                self.assertEqual(sum(c[:3] == ['xcrun', 'simctl', 'create'] for c in case.calls), 1)
+                self.assertFalse(any('-only-testing:CelluloidUITests/CelluloidUITests/' + method in c for c in case.calls for method in capture.CASES.values()))
 
     def test_denial_stops_every_later_native_command_and_second_device(self):
         self.fail_label = 'capture-ui'
@@ -701,7 +748,7 @@ class RunnerInterfacesTests(unittest.TestCase):
                     self.assertFalse(any(c[:3] in (['xcrun', 'simctl', 'get_app_container'],
                                                    ['xcrun', 'simctl', 'shutdown']) for c in case.calls))
                     if stage == 'before':
-                        self.assertFalse(any('test-without-building' in c for c in case.calls))
+                        self.assertFalse(any('-only-testing:CelluloidUITests/CelluloidUITests/' + method in c for c in case.calls for method in capture.CASES.values()))
                     self.assertFalse(case.runner.test_products)
 
     def test_fixed_ui_product_rejects_wrong_identity_symlink_and_oversize(self):

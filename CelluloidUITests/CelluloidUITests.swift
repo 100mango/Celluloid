@@ -399,9 +399,41 @@ final class CelluloidUITests: XCTestCase {
 
     // BEGIN FIXED STORE DISPLAY METHODS
     // Separate display checks; the original qualification methods above remain unchanged.
+    func testStoreAuthorizeEmptyPhotosLibrary() {
+        XCTAssertEqual(ProcessInfo.processInfo.environment["CELLULOID_STORE_CAPTURE"], "1")
+        XCUIDevice.shared.appearance = .dark
+        photosAccessMonitor = installExpectedFullPhotosAccessMonitor()
+        launch(diagnostics: false)
+        let app = self.app!
+        app.buttons["edit-photo"].tap()
+        // Interact with the known app so XCTest invokes the existing narrow
+        // Full Access monitor if the expected system prompt blocks this tap.
+        app.tap()
+        let empty = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard let snapshot = try? app.snapshot() else { return false }
+            func descendants(_ node: XCUIElementSnapshot) -> [XCUIElementSnapshot] {
+                [node] + node.children.flatMap { descendants($0) }
+            }
+            let nodes = descendants(snapshot)
+            let states = nodes.filter { $0.identifier == "photos-state" }
+            let done = nodes.filter { $0.identifier == "picker-done" }
+            return states.count == 1
+                && states[0].label == "No photos are available. Add photos or update your selection."
+                && done.count == 1 && !done[0].isEnabled
+                && !nodes.contains { ["photo-0", "manage-photos", "photos-settings"].contains($0.identifier) }
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [empty], timeout: 15), .completed)
+        let cancel = app.buttons.matching(identifier: "Cancel")
+        XCTAssertEqual(cancel.count, 1)
+        XCTAssertTrue(cancel.element.isEnabled && cancel.element.isHittable)
+        cancel.element.tap()
+        XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 5))
+        print("STORE_CAPTURE_EMPTY_LIBRARY_AUTHORIZATION_UI")
+    }
+
     func testStoreNormalEditorScreenshot() {
         XCTAssertEqual(ProcessInfo.processInfo.environment["CELLULOID_STORE_CAPTURE"], "1")
-        launch(diagnostics: false, photosAccess: true)
+        launch(diagnostics: false)
         XCTAssertGreaterThan(app.frame.height, app.frame.width)
         app.buttons["edit-photo"].tap()
         XCTAssertTrue(waitForFullPhotoAccessPicker(app))
@@ -425,7 +457,7 @@ final class CelluloidUITests: XCTestCase {
 
     func testStoreNormalCollageScreenshot() {
         XCTAssertEqual(ProcessInfo.processInfo.environment["CELLULOID_STORE_CAPTURE"], "1")
-        launch(diagnostics: false, photosAccess: true)
+        launch(diagnostics: false)
         XCTAssertGreaterThan(app.frame.height, app.frame.width)
         app.buttons["make-collage"].tap()
         XCTAssertTrue(waitForFullPhotoAccessPicker(app))

@@ -22,16 +22,16 @@ import zlib
 from mac_host_transport import load_json
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE_TREE = 'be6971d80c0cb6331109ad502eeb30fb9ca0eadd'
-PUBLIC_BASE = '35a9c186fbcff19f528fbaf72fc4e177506c909a'
+BASE_TREE = '7afb89356b492389c1dfb99c61ad22a0df8ba818'
+PUBLIC_BASE = '51d5763a0e2cdd0622d354bfd92083fec000a427'
 PRODUCT_SOURCE = 'da9d4abd6484ddaff469677d96caf24362645d7c'
 PRODUCT_TREE = '304ee9c0e4197e4a282ae3933c9f510219b2106d'
 CONTRACT_SHA = 'cc2c2db6140e4062ac4259092573d2085318d63baf0ce95b92d04e5582f2c481'
 UI_PATH = 'CelluloidUITests/CelluloidUITests.swift'
 UI_BASE_SHA = '94f9fffbbf2693038fe85867bd31426959bf099af7f05b681182ef6e97361256'
 UI_PRIOR_CAPTURE_SHA = '7462b8288c2768fe3ebe76f44c2d5f425b71627d56b6596b66c5f1b3dc7f8f41'
-UI_CAPTURE_SHA = '409fe9b478a56a57682d0af4c7f17d64e1eb7c8eb35e40057fea5254fb1e9ff5'
-DISPLAY_BLOCK_SHA = '1c32507d42c9e75f97135fe11ef713d8548c6aa6ae30e82b65e38b796ad15796'
+UI_CAPTURE_SHA = '5d11805ab5977927fcb2c3ce2f79e6c48fbae20e9ac653e1bfbc0aef3d13d7e7'
+DISPLAY_BLOCK_SHA = 'f392b219bacd1e48f600256fc197d0f8882c9beaf368cca25fa1e76d53028fd6'
 INSERTION = '''        if ProcessInfo.processInfo.environment["CELLULOID_STORE_CAPTURE"] == "1" {
             guard ["edited-fixture", "collage-preview"].contains(name),
                   UIScreen.main.traitCollection.userInterfaceStyle == .dark else { return }
@@ -51,6 +51,7 @@ TARGETS = (
 )
 CASES = {'edited-fixture': 'testStoreNormalEditorScreenshot',
          'collage-preview': 'testStoreNormalCollageScreenshot'}
+AUTHORIZATION_CASE = 'testStoreAuthorizeEmptyPhotosLibrary'
 SETUP_CASES = ('testPhotosLibraryBootstrapReadiness', 'testReconcileSyntheticPhotosAfterImport')
 MAX_FILE = 5_000_000
 MAX_SCREENSHOT = 8_000_000
@@ -61,9 +62,8 @@ MAX_ATTACHMENT_MANIFEST = 1_000_000
 CAPTURE_CLEANUP_SECONDS = 15
 CAPTURE_FINALIZATION_SECONDS = 5
 CAPTURE_PATHS = {
-    'Documentation/store-screenshots.md',
+    'Documentation/store-screenshots.md', UI_PATH,
     'Scripts/store_screenshots.py', 'Scripts/test_store_screenshots.py',
-    'Scripts/probe_photos_bootstrap.py', 'Scripts/test_store_screenshots_route.py',
     'Scripts/test_store_display_ui_source.py',
 }
 
@@ -138,8 +138,10 @@ def verify_source(root=ROOT, runtime=False):
                                          'prior_capture_sha256': UI_PRIOR_CAPTURE_SHA,
                                          'capture_sha256': UI_CAPTURE_SHA, 'insert_sha256': sha(INSERTION),
                                          'display_block_sha256': DISPLAY_BLOCK_SHA},
-              'existing_test_bodies_and_assertions_unchanged': True,
-              'new_display_methods': list(CASES.values()), 'original_qualification_methods': 106,
+              'original_106_test_bodies_and_assertions_unchanged': True,
+              'capture_methods_changed': [AUTHORIZATION_CASE, *CASES.values()],
+              'new_display_methods': list(CASES.values()), 'capture_authorization_method': AUTHORIZATION_CASE,
+              'original_qualification_methods': 106,
               'release_qualification': False, 'source_equivalence': False}
     from store_display_assets import verify_sources
     result['approved_demo_asset_manifest'] = verify_sources(root)
@@ -319,13 +321,15 @@ def select_pngs(folder, device, source, product):
     return selected
 
 
-def verify_summary(summary, device, raw_log, started_unix, now_unix, bundle_path):
+def verify_summary(summary, device, raw_log, started_unix, now_unix, bundle_path, *, authorization=False):
     from consumer_runtime_binding import validate_raw_execution
     from platform_rendering_contract import RUNTIME_BUILD
+    need(type(authorization) is bool, 'Invalid fixed capture phase')
+    methods = (AUTHORIZATION_CASE,) if authorization else tuple(CASES.values())
     for key in ('passedTests', 'totalTestCount', 'failedTests', 'skippedTests', 'expectedFailures'):
         need(type(summary.get(key)) is int, 'Invalid finalized counter: ' + key)
-    need(summary.get('result') == 'Passed' and summary.get('passedTests') == summary.get('totalTestCount') == 2,
-         'Capture did not pass exactly two UI cases')
+    need(summary.get('result') == 'Passed' and summary.get('passedTests') == summary.get('totalTestCount') == len(methods),
+         'Capture did not pass exactly the fixed UI cases')
     need(all(summary.get(k) == 0 for k in ('failedTests', 'skippedTests', 'expectedFailures')), 'Incomplete UI capture cases')
     need(summary.get('testFailures') == [], 'Contradictory XCTest failures')
     for key in ('startTime', 'finishTime'):
@@ -345,10 +349,15 @@ def verify_summary(summary, device, raw_log, started_unix, now_unix, bundle_path
              'Contradictory device test counter')
     execution = validate_raw_execution(raw_log, summary)
     passed = re.findall(r"^\s*Test Case '([^']+)' passed \([0-9]+(?:\.[0-9]+)? seconds\)\.\s*$", raw_log, re.M)
-    expected = {'-[CelluloidUITests.CelluloidUITests ' + method + ']' for method in CASES.values()}
-    need(len(passed) == 2 and set(passed) == expected, 'Unexpected or missing actual UI invocation')
+    expected = {'-[CelluloidUITests.CelluloidUITests ' + method + ']' for method in methods}
+    need(len(passed) == len(methods) and set(passed) == expected, 'Unexpected or missing actual UI invocation')
     result_paths = re.findall(r'^\s*(/[^\r\n]+\.xcresult)\s*$', raw_log, re.M)
     need(result_paths and set(result_paths) == {str(bundle_path)}, 'Raw result path differs from capture bundle')
+    if authorization:
+        actions = re.findall(r'EXPECTED_PHOTOS_AUTHORIZATION_ACTION ([^\r\n]+)', raw_log)
+        need(len(actions) == 1 and actions[0] in ('Allow Full Access', 'Allow Access to All Photos')
+             and raw_log.count('STORE_CAPTURE_EMPTY_LIBRARY_AUTHORIZATION_UI') == 1,
+             'Missing or contradictory actual full-access authorization UI proof')
     return execution
 
 
@@ -375,12 +384,14 @@ class Capture:
         self.row = None
         self.fixtures = []
         self.test_products = []
+        self.authorizations = []
 
     def persist(self):
         write_json(self.outer / 'store-capture-progress.json', {
             'source': getattr(self, 'source', None), 'product': getattr(self, 'product', None),
             'built_ui_test_product': getattr(self, 'ui_product', None),
             'fixtures': self.fixtures, 'test_products': self.test_products,
+            'authorizations': self.authorizations,
             'devices': self.devices, 'selected_models': self.selected_models,
             'creations': self.creations, 'screenshots': self.images,
             'commands': self.commands, 'cleanup': self.cleanup})
@@ -459,6 +470,34 @@ class Capture:
         from store_display_assets import MARKER
         need(log.count(MARKER) == 1 and 'BOOTSTRAP_EXACT_SIX_ASSETS_VERIFIED' not in log
              and 'BOOTSTRAP_RECOVERED_' not in log, 'Two-image display bootstrap did not complete cleanly')
+
+    def authorize_empty_library(self, device, app):
+        bundle = self.row_root / 'StoreAuthorization.xcresult'
+        command = ['xcodebuild', '-project', 'Celluloid.xcodeproj', '-scheme', 'Celluloid', '-configuration', 'Debug',
+                   '-destination', 'platform=iOS Simulator,id=' + device['id'], '-derivedDataPath', '.build',
+                   '-resultBundlePath', str(bundle), '-parallel-testing-enabled', 'NO', '-collect-test-diagnostics', 'never',
+                   '-only-testing:CelluloidUITests/CelluloidUITests/' + AUTHORIZATION_CASE,
+                   'test-without-building', 'CODE_SIGNING_ALLOWED=NO']
+        need(product_manifest(app) == self.product and ui_test_product(app) == self.ui_product,
+             'Built app or fixed UI-test product changed before authorization')
+        need('TEST_RUNNER_CELLULOID_STORE_CAPTURE' not in os.environ, 'Unexpected ambient capture opt-in')
+        os.environ['TEST_RUNNER_CELLULOID_STORE_CAPTURE'] = '1'
+        try:
+            actual = self.command('ui', 'authorize-empty-library', command, 360)
+        finally:
+            os.environ.pop('TEST_RUNNER_CELLULOID_STORE_CAPTURE', None)
+        summary = load_json(self.command('product-readbacks', 'authorization-summary',
+                     ['xcrun', 'xcresulttool', 'get', 'test-results', 'summary', '--path', str(bundle)], 45).stdout)
+        execution = verify_summary(summary, device, actual.stdout + '\n' + actual.stderr,
+                                   self.first['started_unix'], time.time(), bundle, authorization=True)
+        need(product_manifest(app) == self.product and ui_test_product(app) == self.ui_product,
+             'Built app or fixed UI-test product changed during authorization')
+        write_json(self.row_root / 'authorization-summary.json', summary)
+        write_json(self.row_root / 'authorization-execution.json', execution)
+        self.authorizations.append({'row': self.row, 'device_id': device['id'],
+            'method': AUTHORIZATION_CASE, 'system_full_access_ui_verified': True,
+            'hosted_photokit_readiness_still_required': True})
+        self.persist()
 
     def create_device(self, specification):
         """Create once from exact observed type/runtime, then confirm ownership."""
@@ -547,10 +586,9 @@ class Capture:
             self.command('boot', 'boot', ['xcrun', 'simctl', 'boot', udid])
             self.command('bootstatus', 'bootstatus', ['xcrun', 'simctl', 'bootstatus', udid, '-b'])
             self.command('fixture-stage', 'install', ['xcrun', 'simctl', 'install', udid, str(app)], 600)
-            self.command('privacy', 'photos-grant', ['xcrun', 'simctl', 'privacy', udid, 'grant', 'photos', 'Mango.Celluloid'])
+            self.authorize_empty_library(device, app)
             prepare(ROOT)
             self.bootstrap(device)
-            self.command('appearance', 'dark-appearance', ['xcrun', 'simctl', 'ui', udid, 'appearance', 'dark'])
             bundle = self.row_root / 'StoreCapture.xcresult'
             command = ['xcodebuild', '-project', 'Celluloid.xcodeproj', '-scheme', 'Celluloid', '-configuration', 'Debug',
                        '-destination', 'platform=iOS Simulator,id=' + udid, '-derivedDataPath', '.build',
@@ -599,16 +637,18 @@ class Capture:
             self.cleanup.append({'row': self.row, 'device_id': udid, 'shutdown_exit': 0, 'delete_exit': 0, 'confirmed': True})
             self.persist()
         need(verify_source(runtime=True) == self.source, 'Capture source changed')
-        need(len(self.images) == 4 and len(self.cleanup) == len(self.test_products) == 2, 'Capture packet incomplete')
+        need(len(self.images) == 4 and len(self.cleanup) == len(self.test_products) == len(self.authorizations) == 2,
+             'Capture packet incomplete')
         self.finish(True)
 
     def finish(self, completed, error=None):
         """Pure file retention only; safe even after an unknown process termination."""
-        report = {'schema': 'Celluloid.StoreCapturePacket.2', 'complete': completed,
+        report = {'schema': 'Celluloid.StoreCapturePacket.3', 'complete': completed,
                   'source': getattr(self, 'source', None), 'product': getattr(self, 'product', None),
                   'built_ui_test_product': getattr(self, 'ui_product', None),
                   'fixtures': self.fixtures,
                   'test_products': self.test_products, 'installed_container_equality_checked': False,
+                  'authorizations': self.authorizations, 'authorization_case_per_device': AUTHORIZATION_CASE,
                   'product_identity_scope': 'fresh-build-target-and-actual-test-attachment',
                   'first_step_clock': self.first, 'devices': self.devices, 'screenshots': self.images,
                   'selected_models': self.selected_models, 'creations': self.creations,
@@ -623,6 +663,7 @@ class Capture:
                 continue
             for name in ('original-ios-process-failure.json', 'original-ios-process-inflight.json',
                          'full-shipping-clock.json', 'capture-summary.json', 'capture-execution.json',
+                         'authorization-summary.json', 'authorization-execution.json',
                          'store-display-preparation.json', 'store-display-photos.json'):
                 path = folder / name
                 if path.is_file() and not path.is_symlink() and path.stat().st_size <= MAX_FILE:
@@ -637,7 +678,7 @@ class Capture:
                     shutil.copyfile(timing, self.packet / (row + '-' + timing.name))
             for path in sorted(folder.glob('*.log')):
                 if path.is_file() and not path.is_symlink():
-                    if path.name.endswith('-capture-ui.log') or path.name in {
+                    if path.name.endswith(('-capture-ui.log', '-authorize-empty-library.log')) or path.name in {
                             'bootstrap.log', 'bootstrap-readiness-before-import.log', 'bootstrap-reconcile-all.log'}:
                         need(path.stat().st_size <= MAX_FILE, 'Required actual case log exceeds5MB')
                         shutil.copyfile(path, self.packet / (row + '-' + path.name))
@@ -713,7 +754,7 @@ def main():
         capture.source = progress.get('source') if type(progress.get('source')) is dict else None
         capture.product = progress.get('product') if type(progress.get('product')) is dict else None
         capture.ui_product = progress.get('built_ui_test_product') if type(progress.get('built_ui_test_product')) is dict else None
-        for attribute, key in (('fixtures', 'fixtures'), ('test_products', 'test_products'),
+        for attribute, key in (('fixtures', 'fixtures'), ('test_products', 'test_products'), ('authorizations', 'authorizations'),
                                ('selected_models', 'selected_models'), ('creations', 'creations'),
                                ('devices', 'devices'), ('images', 'screenshots'),
                                ('commands', 'commands'), ('cleanup', 'cleanup')):
