@@ -193,19 +193,83 @@ extension NativeVisionUITests {
         XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertEqual(text.value as? String, "Vision 世界")
         print("VISION_REMAINING_REOPEN actual relaunch retained source dimensions and exact text")
     }
-    private func openRemainingDocument(in app: XCUIApplication) throws {
-        if app.buttons["editor.import-files"].exists {
-            // Force real named-document selection rather than accepting any last-open document.
-            let documents = app.navigationBars.buttons["Documents"].firstMatch
-            XCTAssertTrue(documents.exists); documents.tap()
-        } else {
-            let documents = app.navigationBars.buttons["Documents"].firstMatch
-            if documents.exists && documents.isHittable { documents.tap() }
+    private func namedBrowserItems(in app: XCUIApplication, names: [String]) -> [XCUIElement] {
+        // Exact title/identifier, either directly or on a title descendant.
+        // Do not guess whether this native file item is a cell or a button.
+        let exact = NSPredicate(format: "label IN %@ OR identifier IN %@", names as NSArray, names as NSArray)
+        var unique: [String: XCUIElement] = [:]
+        for query in [app.cells, app.buttons] {
+            let elements = query.matching(exact).allElementsBoundByIndex + query.containing(exact).allElementsBoundByIndex
+            if elements.count > 24 { return [] }
+            for element in elements where element.exists && element.isEnabled && element.isHittable {
+                let key = "\(element.elementType.rawValue)|\(element.identifier)|\(element.frame)"
+                unique[key] = element
+            }
         }
-        let document = app.cells.matching(NSPredicate(format: "identifier BEGINSWITH %@", "VisionRemaining,")).firstMatch
-        let found = document.waitForExistence(timeout: 30)
-        if !found { print("VISION_REMAINING_DOCUMENT_AX " + String(app.debugDescription.prefix(16000))) }
-        XCTAssertTrue(found); XCTAssertTrue(document.isHittable); document.tap()
+        return Array(unique.values)
+    }
+    private func requireBrowserItem(in app: XCUIApplication, names: [String], stage: String) throws -> XCUIElement {
+        let predicate = NSPredicate { _, _ in self.namedBrowserItems(in: app, names: names).count == 1 }
+        let ready = XCTWaiter.wait(for: [expectation(for: predicate, evaluatedWith: app)], timeout: 20) == .completed
+        let items = namedBrowserItems(in: app, names: names)
+        if !ready || items.count != 1 { recordRemainingBrowser(app, stage: stage) }
+        XCTAssertTrue(ready, "Exactly one operable item with the exact filename/title is required")
+        XCTAssertEqual(items.count, 1)
+        let item = try XCTUnwrap(items.first)
+        print("VISION_REMAINING_BROWSER_ITEM stage=\(stage) type=\(item.elementType.rawValue) identifier=\(item.identifier) label=\(item.label) frame=\(item.frame)")
+        return item
+    }
+    private func recordRemainingBrowser(_ app: XCUIApplication, stage: String) {
+        // Scan the whole snapshot first. The former prefix cut off the file region.
+        let lines = app.debugDescription.components(separatedBy: "\n")
+        var sidebar: [String] = [], content: [String] = []
+        var sidebarDepth: Int?
+        for line in lines {
+            let depth = line.prefix(while: { $0 == " " }).count
+            if let rootDepth = sidebarDepth, depth <= rootDepth { sidebarDepth = nil }
+            if line.contains("DOC.sidebar.") || line.contains("DOCSidebarView") { sidebarDepth = depth }
+            if sidebarDepth != nil { sidebar.append(line) } else { content.append(line) }
+        }
+        // Keep every node type outside the observed sidebar subtrees, including
+        // Other containers. No semantic-type filter may discard a file node.
+        for (name, values, cap) in [("sidebar", sidebar, 49152), ("content-and-shell", content, 98304)] {
+            let text = values.joined(separator: "\n")
+            if text.utf8.count <= cap {
+                print("VISION_REMAINING_BROWSER_AX stage=\(stage) region=\(name) complete=true bytes=\(text.utf8.count)\n" + text)
+            } else {
+                let bytes = Array(text.utf8)
+                let start = String(decoding: bytes.prefix(cap / 2), as: UTF8.self)
+                let end = String(decoding: bytes.suffix(cap / 2), as: UTF8.self)
+                print("VISION_REMAINING_BROWSER_AX stage=\(stage) region=\(name) complete=false fullBytes=\(bytes.count)\n" + start + "\n[bounded middle omission]\n" + end)
+                XCTFail("Document-browser AX region exceeded its fixed evidence cap")
+            }
+        }
+    }
+    private func openRemainingDocument(in app: XCUIApplication) throws {
+        let names = ["VisionRemaining", "VisionRemaining.celluloid"]
+        let documents = app.navigationBars.buttons["Documents"].firstMatch
+        if documents.exists && documents.isHittable { documents.tap() }
+        recordRemainingBrowser(app, stage: "initial")
+        if namedBrowserItems(in: app, names: names).count != 1 {
+            // This exact location cell was observed while Recents was selected.
+            let local = app.cells["DOC.sidebar.item.On My Apple Vision Pro"]
+            let exists = local.waitForExistence(timeout: 10)
+            if !exists || !local.isHittable { recordRemainingBrowser(app, stage: "local-location-unavailable") }
+            XCTAssertTrue(exists); XCTAssertTrue(local.isHittable); local.tap()
+            let destination = NSPredicate { _, _ in
+                let documents = self.namedBrowserItems(in: app, names: names).count
+                return documents == 1 || (documents == 0 && self.namedBrowserItems(in: app, names: ["Celluloid"]).count == 1)
+            }
+            let arrived = XCTWaiter.wait(for: [expectation(for: destination, evaluatedWith: app)], timeout: 20) == .completed
+            if !arrived { recordRemainingBrowser(app, stage: "local-location-content-unavailable") }
+            XCTAssertTrue(arrived, "The local location must show the exact seed or the owned app folder")
+            if namedBrowserItems(in: app, names: names).count != 1 {
+                let folder = try requireBrowserItem(in: app, names: ["Celluloid"], stage: "owned-app-folder")
+                folder.tap()
+            }
+        }
+        let document = try requireBrowserItem(in: app, names: names, stage: "exact-seed-document")
+        document.tap()
         XCTAssertTrue(app.buttons["editor.import-files"].waitForExistence(timeout: 30))
     }
     func testSimplifiedChineseDocumentPrivacyAndLargeText() throws {

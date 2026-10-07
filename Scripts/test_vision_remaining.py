@@ -9,7 +9,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from run_vision_remaining import Job, HOSTED, EDIT, PRIVACY, SELECTORS, verify_cases, pack, load_origin, environment, CLOCK, WORK_END, CLEANUP_END, BRANCH, WORKFLOW
+from run_vision_remaining import Job, HOSTED, EDIT, PRIVACY, SELECTORS, verify_cases, pack, load_origin, environment, CLOCK, WORK_END, CLEANUP_END, BRANCH, WORKFLOW, fixture_metadata, snapshot_fixture
 from mac_archive_capture import capture, CaptureStopped
 from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
 
@@ -27,8 +27,10 @@ def passed(cases):
 
 
 class Fake:
+    seed_base = None
     def __init__(self, bad=None, timeout=False, missing_seed=False):
         self.calls=[]; self.bad=bad; self.timeout=timeout; self.missing_seed=missing_seed
+        self.container_queries=0;self.fixture_home=None;self.metadata=None
     def __call__(self,args,**kwargs):
         args=list(map(str,args))
         if args==['xcodebuild','-version']:phase='toolchain'
@@ -36,6 +38,8 @@ class Fake:
         elif 'Scripts/verify_native_icon_inputs.py' in args:phase='icons-after' if any(p=='ui' for p,_,_ in self.calls) else 'icon-inputs'
         elif 'build-for-testing' in args:phase='build'
         elif 'test-without-building' in args:phase='hosted' if '-only-testing:'+HOSTED in args else 'ui'
+        elif 'simctl' in args and 'get_app_container' in args:
+            self.container_queries+=1;phase='seed-before-ui' if self.container_queries==1 else 'seed-after-ui'
         elif 'simctl' in args:phase=('types' if args[3]=='devicetypes' else args[3]) if args[2]=='list' else args[2]
         else:raise AssertionError('Unexpected command '+str(args))
         self.calls.append((phase,args,kwargs))
@@ -47,25 +51,40 @@ class Fake:
         if phase=='runtimes':out=json.dumps({'runtimes':[{'isAvailable':True,'identifier':RUNTIME,'supportedDeviceTypes':[{'identifier':TYPE}]}]})
         if phase=='types':out=json.dumps({'devicetypes':[{'identifier':TYPE}]})
         if phase=='create':out=DEVICE
-        if phase=='hosted':out=passed([HOSTED])+('' if self.missing_seed else '\nVISION_REMAINING_SEED native writer/readback; fixture')
-        if phase=='ui':out=passed([EDIT,PRIVACY])
+        if phase=='hosted':
+            out=passed([HOSTED])
+            if not self.missing_seed:
+                self.fixture_home=self.seed_base/DEVICE/'data/Containers/Data/Application'/'11223344-5566-4788-9911-223344556677'
+                package=self.fixture_home/'Documents/VisionRemaining.celluloid';package.mkdir(parents=True)
+                (package/'12345678-1234-4234-9234-123456789012.image').write_bytes(b'owned synthetic source')
+                (package/'recipe.json').write_text(json.dumps({'format':'Celluloid.Document','version':1,'canvasWidth':120,'canvasHeight':80,'overlays':[]}))
+                records=[{'name':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(package.iterdir())]
+                self.metadata={'schema':'Celluloid.VisionFixture.1','bundle_identifier':'Mango.Celluloid','data_home':str(self.fixture_home),'documents_path':str(self.fixture_home/'Documents'),'package_path':str(package),'package_name':'VisionRemaining.celluloid','pixel_width':120,'pixel_height':80,'initial_overlays':0,'files':records}
+                out+='\nVISION_REMAINING_FIXTURE_JSON '+json.dumps(self.metadata)
+        if phase in ('seed-before-ui','seed-after-ui'):out=str(self.fixture_home)
+        if phase=='ui':
+            recipe=self.fixture_home/'Documents/VisionRemaining.celluloid/recipe.json'
+            value=json.loads(recipe.read_text());value['overlays']=[{'text':'Vision 世界'}];recipe.write_text(json.dumps(value))
+            out=passed([EDIT])
         return subprocess.CompletedProcess(args,0,out.encode(),b'')
 
 
 class RemainingTests(unittest.TestCase):
     def exercise(self, fake):
         with tempfile.TemporaryDirectory() as d:
+            Fake.seed_base=Path(d)/'devices'
             job=Job(Path(__file__).resolve().parents[1],d,'f'*40,execute=fake,clock=lambda:10.0)
+            job.simulator_devices_root=Fake.seed_base
             try:job.work()
-            except (ValueError,TimeoutError,CaptureStopped):pass
+            except (ValueError,TimeoutError,CaptureStopped) as error:job.report['error']=str(error)
             job.finish();return job.report
-    def test_exact_three_cases_direct_xctest_launch(self):
+    def test_fixture_only_setup_and_single_edit_case_direct_xctest_launch(self):
         fake=Fake(); report=self.exercise(fake)
         self.assertTrue(report['complete'])
         tests=[args for _,args,_ in fake.calls if 'test-without-building' in args]
         self.assertEqual(len(tests),2)
         self.assertEqual([x[len('-only-testing:'):] for args in tests for x in args if x.startswith('-only-testing:')],list(SELECTORS))
-        self.assertFalse(any(any(x in args for x in ['launch','install','get_app_container','terminate','screenshot']) for _,args,_ in fake.calls))
+        self.assertFalse(any(any(x in args for x in ['launch','install','terminate','screenshot']) for _,args,_ in fake.calls))
         self.assertEqual([p for p,_,_ in fake.calls][:4],['toolchain','icons','icon-inputs','build'])
     def test_icon_materialization_and_validation_are_build_hard_dependencies(self):
         for failed in ['icons','icon-inputs']:
@@ -83,7 +102,7 @@ class RemainingTests(unittest.TestCase):
             report=self.exercise(fake); self.assertFalse(report['complete'])
             self.assertNotIn('ui',[p for p,_,_ in fake.calls])
     def test_every_native_timeout_stops_all_subsequent_commands(self):
-        for phase in ['toolchain','icons','icon-inputs','build','runtimes','types','create','boot','bootstatus','hosted','ui','icons-after','shutdown','delete']:
+        for phase in ['toolchain','icons','icon-inputs','build','runtimes','types','create','boot','bootstatus','hosted','seed-before-ui','ui','seed-after-ui','icons-after','shutdown','delete']:
             with self.subTest(phase=phase):
                 fake=Fake(bad=phase,timeout=True);report=self.exercise(fake)
                 self.assertTrue(report['device_uncertain']);self.assertFalse(report['complete'])
@@ -232,5 +251,73 @@ class RemainingTests(unittest.TestCase):
             return result
         report=self.exercise(malformed)
         self.assertFalse(report['complete']);self.assertNotIn('boot',[p for p,_,_ in fake.calls])
+
+    def test_fixture_hashes_container_and_physical_edit_readback(self):
+        fake=Fake();report=self.exercise(fake);self.assertTrue(report['complete'])
+        self.assertTrue(report['seed-before-ui']['same_container']);self.assertTrue(report['seed-after-ui']['same_container'])
+        self.assertEqual(report['seed-before-ui']['overlay_texts'],[])
+        self.assertEqual(report['seed-after-ui']['overlay_texts'],['Vision 世界'])
+        self.assertEqual([p for p,_,_ in fake.calls if p.startswith('seed-')],['seed-before-ui','seed-after-ui'])
+        self.assertNotIn(PRIVACY,report['selectors'])
+        self.assertNotIn('testSharedFieldMutationsRetainUnicodeAcrossBothOrdersUndoAndReopen',' '.join(report['selectors']))
+    def test_changed_original_or_container_rejects(self):
+        for failure in ('container','original'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as d:
+                Fake.seed_base=Path(d)/'devices';fake=Fake()
+                log=fake(['xcodebuild','-only-testing:'+HOSTED,'test-without-building'],seconds=1,cap=100000,cleanup_grace=10).stdout.decode()
+                metadata=fixture_metadata(log)
+                if failure=='original':
+                    image=next((fake.fixture_home/'Documents/VisionRemaining.celluloid').glob('*.image'));image.write_bytes(b'changed')
+                    with self.assertRaises(ValueError):snapshot_fixture(fake.fixture_home,metadata,after_ui=True)
+                else:
+                    other=Path(d)/'other';other.mkdir()
+                    with self.assertRaises(ValueError):snapshot_fixture(other,metadata)
+    def test_completed_ui_failure_keeps_container_evidence_and_original_error(self):
+        for after in ('same', 'different', 'timeout'):
+            with self.subTest(after=after):
+                fake=Fake(bad='ui')
+                def failed_ui(args,**kwargs):
+                    result=fake(args,**kwargs)
+                    if fake.calls[-1][0]=='seed-after-ui':
+                        if after=='timeout':raise TimeoutError('post-UI observation timed out')
+                        if after=='different':result.stdout=str(fake.fixture_home.with_name('22334455-6677-4889-9922-334455667788')).encode()
+                    return result
+                report=self.exercise(failed_ui)
+                self.assertFalse(report['complete']);self.assertEqual(report['error'],'Known completed command failed: ui')
+                self.assertIn('seed-before-ui',report)
+                if after=='same':self.assertTrue(report['seed-after-ui']['same_container'])
+                if after=='different':self.assertFalse(report['seed-after-ui']['same_container']);self.assertIn('seed_after_ui_error',report)
+                if after=='timeout':self.assertTrue(report['device_uncertain']);self.assertEqual(fake.calls[-1][0],'seed-after-ui')
+    def test_physical_pre_ui_recipe_must_be_pristine(self):
+        for change in ({'overlays':[{'text':'Vision 世界'}]}, {'canvasWidth':121}):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as d:
+                Fake.seed_base=Path(d)/'devices';fake=Fake()
+                log=fake(['xcodebuild','-only-testing:'+HOSTED,'test-without-building'],seconds=1,cap=100000,cleanup_grace=10).stdout.decode()
+                metadata=fixture_metadata(log);recipe=fake.fixture_home/'Documents/VisionRemaining.celluloid/recipe.json'
+                value=json.loads(recipe.read_text());value.update(change);recipe.write_text(json.dumps(value))
+                for entry in metadata['files']:
+                    if entry['name']=='recipe.json':entry.update(bytes=recipe.stat().st_size,sha256=hashlib.sha256(recipe.read_bytes()).hexdigest())
+                with self.assertRaisesRegex(ValueError,'not pristine'):snapshot_fixture(fake.fixture_home,metadata)
+    def test_metadata_rejects_path_escape_duplicate_and_symlink(self):
+        with tempfile.TemporaryDirectory() as d:
+            Fake.seed_base=Path(d)/'devices';fake=Fake()
+            log=fake(['xcodebuild','-only-testing:'+HOSTED,'test-without-building'],seconds=1,cap=100000,cleanup_grace=10).stdout.decode()
+            row=fixture_metadata(log)
+            with self.assertRaises(ValueError):fixture_metadata(log+'\n'+log)
+            changed=dict(row,package_path=str(Path(d)/'not-own-package'))
+            with self.assertRaises(ValueError):fixture_metadata('VISION_REMAINING_FIXTURE_JSON '+json.dumps(changed))
+            image=next((fake.fixture_home/'Documents/VisionRemaining.celluloid').glob('*.image'))
+            image.unlink();image.symlink_to(Path(d)/'outside')
+            with self.assertRaises(ValueError):snapshot_fixture(fake.fixture_home,row)
+    def test_browser_uses_observed_location_exact_unique_items_and_full_scan(self):
+        root=Path(__file__).resolve().parents[1]
+        source=(root/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()
+        helper=source.split('    private func namedBrowserItems',1)[1].split('    func testSimplifiedChineseDocumentPrivacyAndLargeText',1)[0]
+        self.assertIn('DOC.sidebar.item.On My Apple Vision Pro',helper)
+        self.assertIn('label IN %@ OR identifier IN %@',helper)
+        self.assertIn('app.cells, app.buttons',helper);self.assertIn('XCTAssertEqual(items.count, 1)',helper)
+        self.assertNotIn('BEGINSWITH',helper);self.assertNotIn('prefix(16000)',helper)
+        self.assertIn('for line in lines',helper);self.assertIn('content.append(line)',helper)
+        self.assertNotIn('let kinds',helper);self.assertIn('complete=false',helper)
 
 if __name__=='__main__':unittest.main()

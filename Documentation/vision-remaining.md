@@ -1,77 +1,103 @@
-# Vision runtime-only successor
+# Vision editing-only successor
 
-Exact parent: db4d719abdf11504e99e211ffc27d7555883acb3, tree
-324d560eb7e1b6ab7e28bfda39f7364c8916971d, codex/vision-remaining.
-This is a local candidate until its own exact-tree/native admission. It is not
-an automatic rerun of the parent.
+Exact parent: 2cf9160fa043f7ef0f89e42d022240a8b9f77322, tree
+48661b87523efcc1fc0fda603c5477b814dfbe76, codex/vision-remaining.
+This local candidate needs its own exact-tree/native admission. No automatic
+rerun is authorized by this document or by a historical component pass.
 
-## Observed parent outcome and exact repair
+## Observed outcome and remaining gap
 
-Run37608605492 / job112750091860 remains FAILED. It actually passed Debug
-build-for-testing64.08s, device unsigned archive31.47s, all13 package checks3.77s,
-11 generated icon inputs, simulator create/boot and bootstatus147.05s. The hosted
-invocation then returned70 after307.56s without executing a test. No UI ran.
-Normal owned shutdown/delete both succeeded; no device-uncertainty timeout was
-recorded. Artifact11477245993 ZIP SHA256:
+Parent run37612385100 / job112762501670 remains FAILED. Debug build76.428s,
+icon prerequisites and bootstatus113.095s passed. The exact uppercase simulator
+identifier reached XCTest unchanged. The shared field-mutation/Undo/reopen
+hosted case actually passed0.237s. Chinese ordinary/largest-text privacy UI
+actually passed122.643s, including policy contents, Done and return. Neither
+functional case is selected again. No uploaded screenshot or complete
+accessibility-audit result is inferred from that pass.
+
+The editing case failed65.679s while looking for its seeded file. It did not
+reach bubble insertion, typing, Undo or relaunch. The retained AX shows Recents
+selected and the real local location Cell identified as
+DOC.sidebar.item.On My Apple Vision Pro. The old helper never visited that
+location. Its 16000-character AX prefix ended in sidebar tags, before the file
+region. The file item's UI type and its presence were not observed. The hosted
+writer/readback succeeded, but no absolute path, hash or second-invocation
+container identity was logged. File loss is therefore not established.
+
+Original artifact11479451487 ZIP SHA256:
+bdd05d117f26f5beedf27f61050fdffd3f91db2d872829d6e900803dabe258c3.
+The earlier db4d719abdf11504e99e211ffc27d7555883acb3 / run37608605492
+also remains FAILED because of its lowercased destination, with zero XCTest
+executed. Its actual Debug,11 icon inputs,unsigned archive and all13 package
+checks passed. Artifact11477245993 ZIP SHA256:
 126ecef09c9fac1f8d0972071cceb82513c0f2fcba7a113a4da1fbd6fc8aa46d.
+Its package1.1/build2 is an unsigned arm64 visionOS component, not an exported
+or uploaded binary. These original identities remain in the successor report.
 
-Its create output was 0F3CDD8D-630F-43ED-A904-4EBB30EF844F. The driver converted
-that string to lowercase. Xcode rejected the lowercase destination while listing
-the exact uppercase ID, correct owned name and OS27.0 as a compatible device.
-The successor validates UUID syntax but preserves the returned string verbatim.
-Regression inputs use those actual create/destination records. It does not add
-selector aliases, widen device matching, increase a timeout or force app focus.
+## Exactly one functional UI case, plus fixture-only native setup
 
-## Exactly three unchanged runtime cases
+1. A separate hosted setup selector creates the real native package
+   Documents/VisionRemaining.celluloid with a synthetic120x80 PNG and zero
+   overlays. It uses the existing NativeDocument archive writer and reads the
+   physical FileWrapper back. It emits its app bundle identity, absolute data
+   home/Documents/package paths and both actual member names, sizes and SHA256.
+   The seed-writing tail is moved out of the previously passed functional
+   hosted test; that test's original mutation/Undo assertions are unchanged.
+2. The real editing UI navigates from the observed Recents sidebar to On My
+   Apple Vision Pro if needed, then the exact Celluloid folder if shown. It
+   opens only a unique operable item whose own title/identifier or descendant
+   title exactly equals VisionRemaining or VisionRemaining.celluloid. Cells and
+   buttons are checked without assuming the previously unobserved file role.
+   Ambiguous matches fail. Browser snapshots scan the entire AX hierarchy and
+   split only the observed sidebar subtrees from all remaining node types.
+   The two regions have fixed byte caps; overflow is marked incomplete with
+   head/tail evidence and fails rather than silently dropping the file region.
+3. The existing editing assertions remain: real bubble insertion and palette
+   dismissal, exactly one text-field tap, consecutive A/B without refocus,
+   Select All and Unicode typing, real Undo/Redo, actual termination/relaunch,
+   exact named-file reopen and120x80/"Vision 世界" readback. Final text is never
+   injected into a fixture or by a driver.
 
-1. Existing hosted field-mutation test: both text/geometry orders, intermediate
-   Undo, Redo, native package reopen and invalid-text rejection. It then writes
-   and reads a test-owned native document with a120x80 source and no overlay.
-2. Existing new UI case opens that named package, adds a bubble through the real
-   palette, observes its dismissal, single-taps Hello, types A then B without
-   refocus, uses real Select All/Unicode/Undo/Redo, and relaunches/reopens exact
-   text and dimensions.
-3. Existing Chinese normal/largest-text policy case, actual contents, Done,
-   return and changed heading size. One ordinary screenshot remains in local
-   xcresult; Store-image suitability or uploaded screenshots are not claimed.
+After setup and after a known completed UI invocation, bounded simctl
+get_app_container calls query only the created device and Mango.Celluloid. The
+returned UUID container must be inside that owned device's data directory and
+match the native setup's home. The report persists observed/declared identity
+before checking the native package. Before UI all file hashes/sizes must match;
+after UI the original image must be unchanged and the actual recipe is read
+from disk. Success requires its exact final text and dimensions. A completed
+UI failure keeps its original failed verdict even if the later container
+observation fails. An uncertain/timed-out child stops all later device commands.
 
-No Swift test or production file changes. All product resources/project and
-mature capture/cleanup/retention helpers remain byte-identical to the parent.
-The scope guard requires the exact parent tree and only four changed paths:
-this document, driver, its local tests and the workflow's descriptive job title.
-This proves source equivalence for the parent's completed build/package/icon
-components. Their original source/run identities remain historical; the new
-report's complete flag covers runtime only. No fake current archive is emitted.
-The retained parent package is1.1/build2, arm64 visionOS, with all13 checks true.
-It is not a signed/exported/uploaded binary. The parent lacked a post-test source
-check because destination discovery failed; its actual pre-build source binding
-and command/package receipts remain explicit rather than inventing a later one.
+## Scope, execution and retained failure evidence
 
-## Fixed execution and retained failure evidence
+Exactly six modified paths: the two Vision test files, driver, local driver
+tests, this document and the workflow's descriptive job/step titles. Product
+Swift, resources, projects and capture/retention helpers are byte-identical to
+the parent. Release archive/package, the passed functional hosted case, Chinese
+privacy and historical Files/PNG-save chains do not rerun.
 
-Same push-only branch codex/vision-remaining, one xcode-27 job, no matrix, dispatch
-or retry. Original source/workflow/run/attempt1 clock is recorded before checkout.
-The actual standard toolchain must report Xcode27.0. Existing icons must be
-materialized/verified before a fresh Debug build, because the prior VM's products
-are not reused. Release archive/package commands are absent. A fresh owned
-visionOS27 Apple Vision Pro runs one hosted invocation followed by two UI selectors.
-XCTest owns app launch. No redundant simctl launch, ps, launch screenshot,
-container query or pretest termination is introduced.
+Same push-only branch, one standard xcode-27 job, no matrix, dispatch or retry.
+Original source/workflow/run/attempt1 clock is recorded before checkout. Xcode
+must report27.0. Icon generation and verification remain hard prerequisites to
+a fresh Debug build-for-testing. XCTest installs and launches the actual app;
+there is no redundant simctl launch or pretest focus workaround. Removing the
+old prelaunch bypasses the observed485 launch blockage, without claiming its
+operating-system root cause was repaired.
 
-Unchanged mature capture:16MiB full raw output then at most512KiB labeled
-prefix/tail retention and complete/prefix hashes. Raw complete test output is
-parsed before truncation. Parser fixtures remain the actual b49/9ff module.class
-records. Actual573KiB successful output is a local host-process regression.
-Every phase records bounded output immediately. Unknown exit, timeout, output
-limit or signal sets a durable barrier before any later native/device dispatch.
-Known completed failures remain failed, while observed test terminals are still
-retained. The always-run pack is host-file-only; no xcresult summary/native
-collector can obscure the original failure.
+Unchanged mature capture:16MiB full raw output, then at most512KiB labeled
+prefix/tail retention with complete/prefix hashes. Actual complete test output
+is parsed before retention; historical Vision module.class stdout fixtures
+remain the exact accepted spelling. Each phase persists its output immediately.
+Unknown exit, timeout, output limit or signal sets a durable barrier before any
+later native command, including container observations and device cleanup.
+The always-run pack reads host files only, with no xcresult summary or new
+device collection that could obscure the original failure.
 
 Unchanged original clock:60minute outer job, work3000s, cleanup3150s, pack3200s,
-finalization3360s. Each command reserves20s owned cleanup. No clock is reset and
-no command timeout is expanded. Artifacts stay capped at8MB total/2MB per file,
-retention1day. Raw xcresults, archives and images are not uploaded.
+finalization3360s. Every command checks actual remaining wall time and reserves
+20s. No timer is reset or expanded. Artifacts are capped at8MB total/2MB per
+file with1day retention; raw xcresults, archives and screenshots are excluded.
 
-Local Python/source checks do not establish current XCTest success. The parent
-failure is preserved; no native publication/execution occurs without a new GO.
+Local Python/source checks establish driver guards and exact source scope,
+not native compilation or XCTest success. The only remaining functional
+runtime claim is the real editing case, and it is still unproven here.

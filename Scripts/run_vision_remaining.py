@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fixed three-case Vision runtime successor; preserve actual device ID spelling.
+"""Fixed single editing case with fixture-only setup and owned-container evidence.
 
 The prior db4 cohort's archive/package proof remains historical evidence. This
 cohort does not repeat Release archive work and cannot relabel that old run green.
@@ -18,22 +18,76 @@ import uuid
 from mac_archive_capture import capture, CaptureStopped
 from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
 
-HOSTED = 'CelluloidVisionTests/NativeVisionTests/testSharedFieldMutationsRetainUnicodeAcrossBothOrdersUndoAndReopen'
+HOSTED = 'CelluloidVisionTests/NativeVisionTests/testPrepareVisionRemainingDocumentFixture'
 EDIT = 'CelluloidVisionUITests/NativeVisionUITests/testSeededDocumentSequentialTextUndoRedoAndRelaunch'
 PRIVACY = 'CelluloidVisionUITests/NativeVisionUITests/testSimplifiedChineseDocumentPrivacyAndLargeText'
-SELECTORS = (HOSTED, EDIT, PRIVACY)
-BASE = 'db4d719abdf11504e99e211ffc27d7555883acb3'
-BASE_TREE = '324d560eb7e1b6ab7e28bfda39f7364c8916971d'
+SELECTORS = (HOSTED, EDIT)
+BASE = '2cf9160fa043f7ef0f89e42d022240a8b9f77322'
+BASE_TREE = '48661b87523efcc1fc0fda603c5477b814dfbe76'
 BRANCH = 'refs/heads/codex/vision-remaining'
 WORKFLOW = '.github/workflows/vision-remaining.yml'
 CLOCK = 'vision-remaining-clock.json'
 WORK_END, CLEANUP_END, PACK_END, FINISH_END = 3000, 3150, 3200, 3360
 EVIDENCE_CAP = 8_000_000
-MODIFIED = (WORKFLOW,'Documentation/vision-remaining.md','Scripts/run_vision_remaining.py','Scripts/test_vision_remaining.py')
+MODIFIED = (WORKFLOW,'Documentation/vision-remaining.md','Scripts/run_vision_remaining.py','Scripts/test_vision_remaining.py',
+            'Platforms/VisionTests/NativeVisionTests.swift','Platforms/VisionUITests/NativeVisionUITests.swift')
 ADDED = ()
-HISTORICAL_PACKAGE = {'source_sha':BASE,'run_id':37608605492,'artifact_id':11477245993,
+HISTORICAL_PACKAGE = {'source_sha':'db4d719abdf11504e99e211ffc27d7555883acb3','run_id':37608605492,'artifact_id':11477245993,
     'artifact_sha256':'126ecef09c9fac1f8d0972071cceb82513c0f2fcba7a113a4da1fbd6fc8aa46d',
     'scope':'Historical component reference only; no archive/package execution in this runtime-only cohort'}
+
+HISTORICAL_RUNTIME = {'source_sha':BASE,'run_id':37612385100,'artifact_id':11479451487,
+    'artifact_sha256':'bdd05d117f26f5beedf27f61050fdffd3f91db2d872829d6e900803dabe258c3',
+    'scope':'Previously passed field/Undo hosted component and Chinese normal/largest policy UI; neither reruns'}
+FIXTURE_NAME = 'VisionRemaining.celluloid'
+
+
+def fixture_metadata(log):
+    prefix='VISION_REMAINING_FIXTURE_JSON '
+    lines=[line[len(prefix):] for line in log.splitlines() if line.startswith(prefix)]
+    if len(lines)!=1 or len(lines[0].encode())>16_384: raise ValueError('Missing/duplicate/oversized native fixture metadata')
+    row=json.loads(lines[0])
+    if row.get('schema')!='Celluloid.VisionFixture.1' or row.get('bundle_identifier')!='Mango.Celluloid': raise ValueError('Wrong native fixture owner/schema')
+    if row.get('package_name')!=FIXTURE_NAME or (row.get('pixel_width'),row.get('pixel_height'),row.get('initial_overlays'))!=(120,80,0): raise ValueError('Wrong synthetic fixture')
+    for key in ('data_home','documents_path','package_path'):
+        if not isinstance(row.get(key),str) or len(row[key])>2048 or not Path(row[key]).is_absolute(): raise ValueError('Invalid native fixture path')
+    home=Path(row['data_home']);documents=Path(row['documents_path']);package=Path(row['package_path'])
+    if documents!=home/'Documents' or package!=documents/FIXTURE_NAME: raise ValueError('Native fixture escaped its own app Documents')
+    files=row.get('files')
+    if type(files) is not list or len(files)!=2: raise ValueError('Unexpected native fixture child count')
+    names=set()
+    for item in files:
+        name=item.get('name')
+        if type(name) is not str or (name!='recipe.json' and not re.fullmatch(r'[0-9A-Fa-f-]{36}\.image',name)): raise ValueError('Unexpected fixture child')
+        if type(item.get('bytes')) is not int or not 0<item['bytes']<=2_000_000 or re.fullmatch('[0-9a-f]{64}',item.get('sha256','')) is None: raise ValueError('Invalid native fixture hash/size')
+        names.add(name)
+    if len(names)!=2 or 'recipe.json' not in names: raise ValueError('Duplicate/missing fixture child')
+    return row
+
+
+def snapshot_fixture(container, metadata, *, after_ui=False):
+    container=Path(container)
+    if container.is_symlink() or container.resolve()!=Path(metadata['data_home']).resolve(): raise ValueError('App data container changed across XCTest invocations')
+    documents=container/'Documents'
+    if documents.is_symlink() or not documents.is_dir(): raise ValueError('Unsafe native Documents directory')
+    package=documents/FIXTURE_NAME
+    if package.is_symlink() or not package.is_dir(): raise ValueError('Native package missing or symlinked')
+    expected={x['name']:x for x in metadata['files']}; children=list(package.iterdir())
+    if {x.name for x in children}!=set(expected): raise ValueError('Native package child set changed')
+    records=[];recipe=None
+    for child in sorted(children):
+        if child.is_symlink() or not child.is_file(): raise ValueError('Unsafe native package child')
+        with child.open('rb') as stream:data=stream.read(2_000_001)
+        if not 0<len(data)<=2_000_000: raise ValueError('Native fixture read cap')
+        record={'name':child.name,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}; records.append(record)
+        if (not after_ui or child.name!='recipe.json') and record!=expected[child.name]: raise ValueError('Fixture changed before editing or original source changed')
+        if child.name=='recipe.json':recipe=json.loads(data)
+    if recipe.get('format')!='Celluloid.Document' or recipe.get('version')!=1: raise ValueError('Wrong native package format')
+    overlays=recipe.get('overlays')
+    if type(overlays) is not list or len(overlays)>1: raise ValueError('Unexpected fixture overlays')
+    if not after_ui and (overlays or (recipe.get('canvasWidth'),recipe.get('canvasHeight'))!=(120,80)): raise ValueError('Native fixture was not pristine before UI')
+    return {'container':str(container),'package_path':str(package),'files':records,'overlay_texts':[x.get('text') for x in overlays],
+            'source_width':recipe.get('canvasWidth'),'source_height':recipe.get('canvasHeight')}
 
 
 
@@ -83,10 +137,12 @@ class Job:
         self.started = clock() if started is None else started
         self.deadline = self.started + WORK_END
         self.device = None; self.blocked = False
+        self.simulator_devices_root = Path.home()/'Library/Developer/CoreSimulator/Devices'
         self.binding = binding
         self.report = {'source_sha':source,'selectors':list(SELECTORS),'operations':[],
                        'binding':binding,'started_monotonic':self.started,
-                       'scope':'Runtime-only: seeded intake; real text/Undo/relaunch and Chinese policy. No Files/PNG or Release archive rerun.',
+                       'scope':'Only real editing UI; fixture-only setup. No prior field/Undo, privacy or archive rerun.',
+                       'historical_runtime':dict(HISTORICAL_RUNTIME),
                        'historical_unsigned_archive':dict(HISTORICAL_PACKAGE),'archive_executed_in_this_cohort':False,
                        'signed':False,'uploaded':False,'complete':False}
         self.folder=self.temp/'vision-remaining-evidence'; self.folder.mkdir(exist_ok=False)
@@ -154,6 +210,18 @@ class Job:
         if sorted(actual)!=sorted(expected): raise ValueError('Unexpected source scope')
         self.report[phase]={'tree':git('tree','rev-parse','HEAD^{tree}'),'parent':BASE,'scope_verified':True}
 
+    def observe_fixture(self, phase, metadata, *, after_ui=False):
+        value=self.call(phase,['xcrun','simctl','get_app_container',self.device,'Mango.Celluloid','data'],180).strip()
+        container=Path(value); expected_parent=self.simulator_devices_root/self.device/'data/Containers/Data/Application'
+        if not container.is_absolute() or container.parent.resolve()!=expected_parent.resolve(): raise ValueError('Container outside owned simulator data scope')
+        uuid.UUID(container.name)
+        self.report[phase]={'observed_container':value,'declared_native_data_home':metadata['data_home'],
+                            'same_container':container.resolve()==Path(metadata['data_home']).resolve()}
+        self.persist()
+        snapshot=snapshot_fixture(container,metadata,after_ui=after_ui)
+        self.report[phase].update(snapshot);self.persist()
+        return snapshot
+
     def work(self):
         if self.binding is not None: self.source_identity('source-before')
         toolchain=self.call('toolchain',['xcodebuild','-version'],30)
@@ -183,11 +251,22 @@ class Job:
         # XCTest installs/launches the actual host and writes the native fixture.
         # There is no simctl install/container lookup/launch/ps/screenshot/terminate preflight.
         hosted = self.call('hosted',test_command(self.temp,self.device,[HOSTED],'VisionRemainingHosted'),360)
-        self.report['hosted'] = verify_cases(hosted,[HOSTED])
-        if 'VISION_REMAINING_SEED native writer/readback;' not in hosted:
-            raise ValueError('Native UI fixture writer/readback did not complete')
-        ui = self.call('ui',test_command(self.temp,self.device,[EDIT,PRIVACY],'VisionRemainingUI'),900)
-        self.report['ui'] = verify_cases(ui,[EDIT,PRIVACY])
+        self.report['fixture_setup'] = verify_cases(hosted,[HOSTED])
+        metadata=fixture_metadata(hosted);self.report['fixture_metadata']=metadata;self.persist()
+        self.observe_fixture('seed-before-ui',metadata)
+        ui_failure=None;ui=None
+        try:ui=self.call('ui',test_command(self.temp,self.device,[EDIT],'VisionRemainingUI'),900)
+        except ValueError as error:ui_failure=error
+        ui_operation=next((x for x in self.report['operations'] if x['phase']=='ui'),None)
+        if ui_operation and type(ui_operation.get('return_code')) is int and ui_operation['return_code']>=0 and not self.blocked:
+            try:snapshot=self.observe_fixture('seed-after-ui',metadata,after_ui=True)
+            except BaseException as error:
+                self.report['seed_after_ui_error']=str(error);self.persist()
+                if ui_failure is not None:raise ui_failure from error
+                raise
+        if ui_failure is not None:raise ui_failure
+        self.report['ui'] = verify_cases(ui,[EDIT])
+        if snapshot['overlay_texts']!=['Vision 世界'] or (snapshot['source_width'],snapshot['source_height'])!=(120,80):raise ValueError('Actual native package did not retain exact edited text/source dimensions')
         self.call('icons-after',[sys.executable,'Scripts/verify_native_icon_inputs.py'],30)
         if self.binding is not None: self.source_identity('source-after')
         self.report['functional_cases_passed'] = True

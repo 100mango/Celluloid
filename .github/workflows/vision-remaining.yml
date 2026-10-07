@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   vision:
-    name: Three remaining Vision runtime cases
+    name: Prepare native document and finish Vision editing
     runs-on: xcode-27
     timeout-minutes: 60
     env:
@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 2
           ref: ${{ github.sha }}
-      - name: Run three exact cases with hard icon preparation
+      - name: Run fixture-only setup and the one remaining editing case
         id: proof
         timeout-minutes: 54
         run: python3 Scripts/run_vision_remaining.py --execute
