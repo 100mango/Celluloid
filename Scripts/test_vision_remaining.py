@@ -14,7 +14,10 @@ from mac_archive_capture import capture, CaptureStopped
 from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
 
 RETENTION_FUNCTION_SHA='cbacc19d74cd92f01413bf69a5b5db668c79c58d996b3b590b068890aee426bd'
-DEVICE='1141c503-1548-40a9-ac39-c1ff7f805b3b'
+# Exact returned ID and compatible destination from failed run37608605492,
+# artifact11477245993, create.log and hosted.log. This is not a guessed alias.
+DEVICE='0F3CDD8D-630F-43ED-A904-4EBB30EF844F'
+COMPATIBLE_DESTINATION='{ platform:visionOS Simulator, arch:arm64, id:0F3CDD8D-630F-43ED-A904-4EBB30EF844F, OS:27.0, name:Celluloid Vision Remaining db4d719abdf1 }'
 TYPE='com.apple.CoreSimulator.SimDeviceType.Apple-Vision-Pro-4K'
 RUNTIME='com.apple.CoreSimulator.SimRuntime.xrOS-27-0'
 
@@ -32,8 +35,6 @@ class Fake:
         elif args[0]=='swift':phase='icons'
         elif 'Scripts/verify_native_icon_inputs.py' in args:phase='icons-after' if any(p=='ui' for p,_,_ in self.calls) else 'icon-inputs'
         elif 'build-for-testing' in args:phase='build'
-        elif 'archive' in args:phase='archive'
-        elif 'Scripts/verify_native_release.py' in args:phase='package'
         elif 'test-without-building' in args:phase='hosted' if '-only-testing:'+HOSTED in args else 'ui'
         elif 'simctl' in args:phase=('types' if args[3]=='devicetypes' else args[3]) if args[2]=='list' else args[2]
         else:raise AssertionError('Unexpected command '+str(args))
@@ -65,21 +66,24 @@ class RemainingTests(unittest.TestCase):
         self.assertEqual(len(tests),2)
         self.assertEqual([x[len('-only-testing:'):] for args in tests for x in args if x.startswith('-only-testing:')],list(SELECTORS))
         self.assertFalse(any(any(x in args for x in ['launch','install','get_app_container','terminate','screenshot']) for _,args,_ in fake.calls))
-        self.assertEqual([p for p,_,_ in fake.calls][:5],['toolchain','icons','icon-inputs','build','archive'])
+        self.assertEqual([p for p,_,_ in fake.calls][:4],['toolchain','icons','icon-inputs','build'])
     def test_icon_materialization_and_validation_are_build_hard_dependencies(self):
         for failed in ['icons','icon-inputs']:
             with self.subTest(failed=failed):
                 fake=Fake(bad=failed);report=self.exercise(fake)
                 self.assertFalse(report['complete']);self.assertNotIn('build',[p for p,_,_ in fake.calls])
-    def test_bad_package_does_not_create_device(self):
-        fake=Fake(bad='package');self.exercise(fake)
-        self.assertNotIn('create',[p for p,_,_ in fake.calls])
+    def test_only_runtime_cases_run_and_historical_archive_is_not_relabelled(self):
+        fake=Fake();report=self.exercise(fake)
+        self.assertFalse(any('archive' in args or 'Scripts/verify_native_release.py' in args for _,args,_ in fake.calls))
+        self.assertFalse(report['archive_executed_in_this_cohort'])
+        self.assertEqual(report['historical_unsigned_archive']['run_id'],37608605492)
+        self.assertIn('Historical component reference only',report['historical_unsigned_archive']['scope'])
     def test_hosted_failure_or_missing_real_fixture_prevents_ui(self):
         for fake in [Fake(bad='hosted'),Fake(missing_seed=True)]:
             report=self.exercise(fake); self.assertFalse(report['complete'])
             self.assertNotIn('ui',[p for p,_,_ in fake.calls])
     def test_every_native_timeout_stops_all_subsequent_commands(self):
-        for phase in ['toolchain','icons','icon-inputs','build','archive','package','runtimes','types','create','boot','bootstatus','hosted','ui','icons-after','shutdown','delete']:
+        for phase in ['toolchain','icons','icon-inputs','build','runtimes','types','create','boot','bootstatus','hosted','ui','icons-after','shutdown','delete']:
             with self.subTest(phase=phase):
                 fake=Fake(bad=phase,timeout=True);report=self.exercise(fake)
                 self.assertTrue(report['device_uncertain']);self.assertFalse(report['complete'])
@@ -208,5 +212,25 @@ class RemainingTests(unittest.TestCase):
             with self.assertRaises(TimeoutError):job.call('ui',['xcodebuild'],900)
             job.device=DEVICE;job.finish()
             self.assertTrue(job.report['device_uncertain']);self.assertEqual(len(job.report['operations']),1)
+
+    def test_real_simctl_uppercase_identifier_reaches_xctest_unchanged(self):
+        import re
+        compatible=re.search(r'id:([^,}]+)',COMPATIBLE_DESTINATION).group(1)
+        self.assertEqual(compatible,DEVICE)
+        fake=Fake();report=self.exercise(fake);self.assertTrue(report['complete'])
+        self.assertEqual(report['device'],DEVICE)
+        for phase,args,_ in fake.calls:
+            if phase in ('hosted','ui'):
+                self.assertEqual(args[args.index('-destination')+1],'platform=visionOS Simulator,id='+compatible)
+                self.assertNotIn('platform=visionOS Simulator,id='+DEVICE.lower(),args)
+            if phase in ('boot','bootstatus','shutdown','delete'):self.assertIn(DEVICE,args)
+    def test_invalid_simctl_identifier_rejected_before_boot(self):
+        fake=Fake()
+        def malformed(args,**kwargs):
+            result=fake(args,**kwargs)
+            if 'simctl' in args and 'create' in args:result.stdout=b'not-a-device-id'
+            return result
+        report=self.exercise(malformed)
+        self.assertFalse(report['complete']);self.assertNotIn('boot',[p for p,_,_ in fake.calls])
 
 if __name__=='__main__':unittest.main()

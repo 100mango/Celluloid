@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   vision:
-    name: Three Vision cases and unsigned device archive
+    name: Three remaining Vision runtime cases
     runs-on: xcode-27
     timeout-minutes: 60
     env:

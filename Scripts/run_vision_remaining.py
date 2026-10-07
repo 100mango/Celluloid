@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Local candidate: three remaining Vision cases, plus a fresh unsigned archive.
+"""Fixed three-case Vision runtime successor; preserve actual device ID spelling.
 
-No workflow is added. Requires separate admission before --execute. XCTest owns
-app launch; this bypasses the old redundant simctl launch, not its unknown cause.
+The prior db4 cohort's archive/package proof remains historical evidence. This
+cohort does not repeat Release archive work and cannot relabel that old run green.
 """
 import argparse
 import hashlib
@@ -22,17 +22,19 @@ HOSTED = 'CelluloidVisionTests/NativeVisionTests/testSharedFieldMutationsRetainU
 EDIT = 'CelluloidVisionUITests/NativeVisionUITests/testSeededDocumentSequentialTextUndoRedoAndRelaunch'
 PRIVACY = 'CelluloidVisionUITests/NativeVisionUITests/testSimplifiedChineseDocumentPrivacyAndLargeText'
 SELECTORS = (HOSTED, EDIT, PRIVACY)
-BASE = '7868de58e41e4d0632befaec1a163d868b508a95'
-BASE_TREE = '92560b493057b863970c97edba3d781d7261d3a9'
+BASE = 'db4d719abdf11504e99e211ffc27d7555883acb3'
+BASE_TREE = '324d560eb7e1b6ab7e28bfda39f7364c8916971d'
 BRANCH = 'refs/heads/codex/vision-remaining'
 WORKFLOW = '.github/workflows/vision-remaining.yml'
 CLOCK = 'vision-remaining-clock.json'
 WORK_END, CLEANUP_END, PACK_END, FINISH_END = 3000, 3150, 3200, 3360
 EVIDENCE_CAP = 8_000_000
-MODIFIED = ('Platforms/VisionTests/NativeVisionTests.swift','Platforms/VisionUITests/NativeVisionUITests.swift')
-ADDED = (WORKFLOW,'Documentation/vision-remaining.md','Scripts/run_vision_remaining.py',
-         'Scripts/test_vision_remaining.py','Scripts/mac_archive_capture.py','Scripts/owned_process_group.py',
-         'Scripts/vision_remaining_retention.py','Scripts/fixtures/vision-historical-xctest.json')
+MODIFIED = (WORKFLOW,'Documentation/vision-remaining.md','Scripts/run_vision_remaining.py','Scripts/test_vision_remaining.py')
+ADDED = ()
+HISTORICAL_PACKAGE = {'source_sha':BASE,'run_id':37608605492,'artifact_id':11477245993,
+    'artifact_sha256':'126ecef09c9fac1f8d0972071cceb82513c0f2fcba7a113a4da1fbd6fc8aa46d',
+    'scope':'Historical component reference only; no archive/package execution in this runtime-only cohort'}
+
 
 
 def environment(env):
@@ -84,7 +86,8 @@ class Job:
         self.binding = binding
         self.report = {'source_sha':source,'selectors':list(SELECTORS),'operations':[],
                        'binding':binding,'started_monotonic':self.started,
-                       'scope':'Seeded intake; real text/Undo/relaunch and Chinese policy. No Files/PNG rerun.',
+                       'scope':'Runtime-only: seeded intake; real text/Undo/relaunch and Chinese policy. No Files/PNG or Release archive rerun.',
+                       'historical_unsigned_archive':dict(HISTORICAL_PACKAGE),'archive_executed_in_this_cohort':False,
                        'signed':False,'uploaded':False,'complete':False}
         self.folder=self.temp/'vision-remaining-evidence'; self.folder.mkdir(exist_ok=False)
         self.output=self.folder/'report.json'
@@ -163,13 +166,6 @@ class Job:
         self.call('build', ['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidVision',
             '-destination','generic/platform=visionOS Simulator','-derivedDataPath',str(self.temp/'celluloid-vision'),
             'CODE_SIGNING_ALLOWED=NO','build-for-testing'], 600)
-        archive = self.temp/'CelluloidVision.xcarchive'
-        self.call('archive', ['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidVision',
-            '-configuration','Release','-destination','generic/platform=visionOS','-archivePath',str(archive),
-            'CODE_SIGNING_ALLOWED=NO','archive'], 600)
-        self.call('package', [sys.executable,'Scripts/verify_native_release.py','vision',
-                            str(archive/'Products/Applications/CelluloidVision.app')], 120)
-        self.report['archive_path'] = str(archive)
         runtimes = json.loads(self.call('runtimes',['xcrun','simctl','list','runtimes','--json'],60))['runtimes']
         available = [r for r in runtimes if r.get('isAvailable') and r.get('identifier') == 'com.apple.CoreSimulator.SimRuntime.xrOS-27-0']
         if len(available) != 1: raise ValueError('Expected exact available visionOS 27 runtime')
@@ -179,7 +175,8 @@ class Job:
         if sum(t.get('identifier') == wanted for t in types) != 1 or wanted not in {t['identifier'] for t in runtime['supportedDeviceTypes']}:
             raise ValueError('Expected compatible Apple Vision Pro type')
         raw = self.call('create',['xcrun','simctl','create','Celluloid Vision Remaining '+self.source[:12],wanted,runtime['identifier']],60).strip()
-        self.device = str(uuid.UUID(raw))
+        uuid.UUID(raw) # Validate syntax only; xcodebuild requires the returned identifier's exact spelling.
+        self.device = raw
         self.report['device'] = self.device; self.report['runtime'] = runtime
         self.call('boot',['xcrun','simctl','boot',self.device],60)
         self.call('bootstatus',['xcrun','simctl','bootstatus',self.device,'-b'],240)

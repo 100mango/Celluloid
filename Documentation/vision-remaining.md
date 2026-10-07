@@ -1,70 +1,77 @@
-# Vision remaining-work fixed cohort
+# Vision runtime-only successor
 
-Base: 7868de58e41e4d0632befaec1a163d868b508a95, codex/apple-platforms.
-This remains a local candidate until exact-tree/native admission. No native run,
-publication, signing or upload has occurred.
+Exact parent: db4d719abdf11504e99e211ffc27d7555883acb3, tree
+324d560eb7e1b6ab7e28bfda39f7364c8916971d, codex/vision-remaining.
+This is a local candidate until its own exact-tree/native admission. It is not
+an automatic rerun of the parent.
 
-## Exactly three cases
+## Observed parent outcome and exact repair
+
+Run37608605492 / job112750091860 remains FAILED. It actually passed Debug
+build-for-testing64.08s, device unsigned archive31.47s, all13 package checks3.77s,
+11 generated icon inputs, simulator create/boot and bootstatus147.05s. The hosted
+invocation then returned70 after307.56s without executing a test. No UI ran.
+Normal owned shutdown/delete both succeeded; no device-uncertainty timeout was
+recorded. Artifact11477245993 ZIP SHA256:
+126ecef09c9fac1f8d0972071cceb82513c0f2fcba7a113a4da1fbd6fc8aa46d.
+
+Its create output was 0F3CDD8D-630F-43ED-A904-4EBB30EF844F. The driver converted
+that string to lowercase. Xcode rejected the lowercase destination while listing
+the exact uppercase ID, correct owned name and OS27.0 as a compatible device.
+The successor validates UUID syntax but preserves the returned string verbatim.
+Regression inputs use those actual create/destination records. It does not add
+selector aliases, widen device matching, increase a timeout or force app focus.
+
+## Exactly three unchanged runtime cases
 
 1. Existing hosted field-mutation test: both text/geometry orders, intermediate
-   Undo, Redo, native package reopen and invalid-text rejection. After its checks
-   it writes and reads a test-owned native document with a 120x80 source and no overlay.
-2. A new actual UI case opens that named package, adds a bubble via the real
-   palette, observes its dismissal, single-taps its normal Hello field, types A then B without refocus, uses real Select All and Unicode,
-   actual Undo/Redo, then leaves, relaunches and reopens with exact text/dimensions.
-3. Existing Chinese normal/largest-text policy case, actual policy contents,
-   Done, return and changed heading size. One normal screenshot stays; the second
-   largest-text screenshot is omitted. The screenshot remains in local xcresult;
-   no unverified Store-image suitability or screenshot upload is claimed.
+   Undo, Redo, native package reopen and invalid-text rejection. It then writes
+   and reads a test-owned native document with a120x80 source and no overlay.
+2. Existing new UI case opens that named package, adds a bubble through the real
+   palette, observes its dismissal, single-taps Hello, types A then B without
+   refocus, uses real Select All/Unicode/Undo/Redo, and relaunches/reopens exact
+   text and dimensions.
+3. Existing Chinese normal/largest-text policy case, actual contents, Done,
+   return and changed heading size. One ordinary screenshot remains in local
+   xcresult; Store-image suitability or uploaded screenshots are not claimed.
 
-This is seeded document intake, not new Files-picker/PNG-save evidence. Those
-stay historical b49 evidence. All product Swift/resources/project, old Files/PNG
-case and canonical workflows are unchanged. The seeded package's named browser
-lookup and persistence across XCTest host/UI invocations require native proof.
+No Swift test or production file changes. All product resources/project and
+mature capture/cleanup/retention helpers remain byte-identical to the parent.
+The scope guard requires the exact parent tree and only four changed paths:
+this document, driver, its local tests and the workflow's descriptive job title.
+This proves source equivalence for the parent's completed build/package/icon
+components. Their original source/run identities remain historical; the new
+report's complete flag covers runtime only. No fake current archive is emitted.
+The retained parent package is1.1/build2, arm64 visionOS, with all13 checks true.
+It is not a signed/exported/uploaded binary. The parent lacked a post-test source
+check because destination discovery failed; its actual pre-build source binding
+and command/package receipts remain explicit rather than inventing a later one.
 
-## Executable entry
+## Fixed execution and retained failure evidence
 
-The added push-only workflow listens only on codex/vision-remaining. It has one
-xcode-27 job, fixed concurrency, no matrix, no dispatch, no retry, no continuation
-to other platforms. It records a bound immutable monotonic origin before checkout.
-Source/workflow SHA, owner, branch, job, run and attempt1 are checked. The runtime
-checks exact sole parent/base tree, precise ten-file scope and a clean worktree
-before and after execution. The standard toolchain must report Xcode27.0.
+Same push-only branch codex/vision-remaining, one xcode-27 job, no matrix, dispatch
+or retry. Original source/workflow/run/attempt1 clock is recorded before checkout.
+The actual standard toolchain must report Xcode27.0. Existing icons must be
+materialized/verified before a fresh Debug build, because the prior VM's products
+are not reused. Release archive/package commands are absent. A fresh owned
+visionOS27 Apple Vision Pro runs one hosted invocation followed by two UI selectors.
+XCTest owns app launch. No redundant simctl launch, ps, launch screenshot,
+container query or pretest termination is introduced.
 
-Existing icon materialization and verification are hard prerequisites before
-build-for-testing and the fresh generic-device unsigned archive/package check.
-Archive work happens before simulator creation. One exact visionOS27 Apple
-Vision Pro is created. One hosted invocation is followed by two UI selectors.
-XCTest owns installation/launch. There is no simctl prelaunch, PID ps inspection,
-launch screenshot, fixed sleep, container query or pretest terminate. This avoids
-a redundant observed blocker; it does not prove the old timeout's root cause.
+Unchanged mature capture:16MiB full raw output then at most512KiB labeled
+prefix/tail retention and complete/prefix hashes. Raw complete test output is
+parsed before truncation. Parser fixtures remain the actual b49/9ff module.class
+records. Actual573KiB successful output is a local host-process regression.
+Every phase records bounded output immediately. Unknown exit, timeout, output
+limit or signal sets a durable barrier before any later native/device dispatch.
+Known completed failures remain failed, while observed test terminals are still
+retained. The always-run pack is host-file-only; no xcresult summary/native
+collector can obscure the original failure.
 
-## Bounded process and evidence behavior
+Unchanged original clock:60minute outer job, work3000s, cleanup3150s, pack3200s,
+finalization3360s. Each command reserves20s owned cleanup. No clock is reset and
+no command timeout is expanded. Artifacts stay capped at8MB total/2MB per file,
+retention1day. Raw xcresults, archives and images are not uploaded.
 
-The capture adapter and owned process-group helper are copied unchanged from the
-qualified Celluloid Mac ee04 archive route. Its retention function is reproduced
-byte-for-byte: 16MiB complete raw capture, then at most512KiB labeled prefix/tail
-retention with full captured/full-log hashes. Actual573KiB normal output is tested;
-retention limits do not kill that successful command. The raw complete test log
-is parsed before retention. Real b49/9ff Vision stdout is retained as parser
-fixtures; only its observed module.class naming is accepted.
-
-Every captured phase persists a receipt and bounded log. Timeout, output-limit,
-signal or unknown process completion sets a durable barrier and prevents every
-later native/device command, including shutdown/delete. Known completed nonzero
-results remain failed. Evidence packing is pure host file work and runs always;
-it preserves earlier results, failure prefixes, package/icon reports and hashes.
-No xcresult summary or native diagnostic collector can block the whole package.
-
-The outer job is60minutes. The original pre-checkout clock admits work only up to
-3000seconds, cleanup3150, host pack3200, upload/finalization3360. Each command
-reserves the mature helper's full20seconds of cleanup; no phase resets the clock.
-The work step's54minute outer bound cannot undercut admitted cleanup/host pack.
-Upload is bounded to one minute, retention1day, aggregate8MB and individual2MB;
-raw xcresults, archives and image source bytes are not uploaded. Qualification
-requires actual selected cases, package proof, source checks and normal owned
-cleanup; a successful artifact upload cannot turn a failed native verdict green.
-
-`python3 Scripts/run_vision_remaining.py` prints inventory only. Execution occurs
-only through the admitted fixed cohort's --execute, --pack and --finish-upload
-entrypoints. The native source validator/local Python tests are not Apple passes.
+Local Python/source checks do not establish current XCTest success. The parent
+failure is preserved; no native publication/execution occurs without a new GO.
