@@ -47,6 +47,34 @@ if PLATFORM=='tv' and os.environ.get('CELLULOID_TV_TWO_SOURCE')=='1':
             if not retain_file('tv-two-source-'+path.name,path,'actual Photos input/recipe/output retained before owned simulator cleanup'):
                 raise RuntimeError('Mandatory two-source proof exceeded inherited TV allocation')
 
+if PLATFORM=='tv' and os.environ.get('CELLULOID_TV_REMAINING_PROFILE') in ['rich','chinese']:
+    import zlib
+    profile=os.environ['CELLULOID_TV_REMAINING_PROFILE']
+    manifest['scope']='Only fixed remaining '+profile+' TV UI cases; prior two-source/hosted/single-photo evidence is separate'
+    manifest['fixed_remaining_cohort_allocation']={'rich':2_750_000,'chinese':2_750_000,'total_maximum_bytes':5_500_000,'serial_jobs':2}
+    required=['tv-remaining-before.json','tv-remaining-after.json','tv-remaining-clock.json','tv-remaining-budget.json','tv-remaining-acceptance.json','CelluloidTV.xcresult.summary.json','tv-runtime-evidence.json','tv-runtime-tests.log.timing.json','tv-text-input-probe.json','native-icon-provenance-runtime.json']
+    # Preserve complete bounded raw logs, including testcase starts and terminal,
+    # before optional tails/screenshots. Compression is evidence only, not a pass.
+    full_logs=[]
+    for name in ['tv-runtime-tests.log']+(['tv-composition-oracle.log'] if profile=='rich' else []):
+        path=TEMP/name
+        if not path.is_file():continue
+        if path.stat().st_size>4_000_000:raise RuntimeError('Remaining raw log exceeds original bounded evidence intake')
+        raw=path.read_bytes();compressed=zlib.compress(raw,9)
+        if len(compressed)>400_000 or not retain_bytes('tv-remaining-'+name+'.zlib',compressed,'complete bounded original log; lossless zlib'):
+            raise RuntimeError('Mandatory complete remaining raw log exceeds retention cap')
+        full_logs.append({'name':name,'raw_bytes':len(raw),'raw_sha256':hashlib.sha256(raw).hexdigest(),'compressed_sha256':hashlib.sha256(compressed).hexdigest()})
+    if not retain_bytes('tv-remaining-log-index.json',(json.dumps(full_logs,indent=2)+'\n').encode(),'complete raw-log bindings'):
+        raise RuntimeError('Required raw-log index exceeds cap')
+    proof=TEMP/'tv-remaining-proof'
+    if proof.is_dir():
+        if profile!='rich' or not {p.name for p in proof.iterdir()}.issubset({'3','4'}):raise RuntimeError('Unexpected remaining proof groups')
+        for group in sorted(proof.iterdir()):
+            if not group.is_dir() or group.is_symlink():raise RuntimeError('Unsafe remaining proof group')
+            for path in sorted(group.iterdir()):
+                if not path.is_file() or path.is_symlink():raise RuntimeError('Unsafe remaining proof member')
+                if not retain_file('tv-remaining-'+group.name+'-'+path.name,path,'actual Photos source/recipe/output before owned cleanup'):
+                    raise RuntimeError('Mandatory remaining proof exceeds inherited TV cap')
 if PLATFORM=='preflight':required+=['combined-preflight.json','preflight-phone-embedded-watch.json','preflight-phone-embedded-watch-release.json']
 if PLATFORM=='mac':required+=['interop-continuation.json','CelluloidEarlyUIKit2x.xcresult.summary.json','CelluloidEarlyUIKit3x.xcresult.summary.json','early-uikit-2x-file-open-observation.json','early-uikit-3x-file-open-observation.json','early-uikit-interop.json','early-uikit-2x-staging.json','early-uikit-3x-staging.json','mac-required-tests.json','sandbox-extension-entitlements-before.plist','sandbox-extension-entitlements.plist']
 if PLATFORM=='phone':required+=['phone-embedded-watch.json','phone-embedded-watch-release.json','phone-required-tests.json','phone-required-tests.runtime-summary.json']

@@ -17,7 +17,9 @@ class NativeProcessTests(unittest.TestCase):
             self.assertGreaterEqual(timing['observed_suite_span_seconds'],.009)
             self.assertGreaterEqual(timing['command_to_first_suite_seconds'],0)
             self.assertGreaterEqual(timing['last_suite_to_command_end_seconds'],0)
-            with self.assertRaises(TimeoutError):run([sys.executable,'-c','import time; print("partial",flush=True);time.sleep(10)'],timeout=.05,echo=False,log_name='timeout.log')
+            # Allow ordinary interpreter startup before asserting retained partial output.
+            # The child still sleeps10s, so this remains a real bounded process timeout.
+            with self.assertRaises(TimeoutError):run([sys.executable,'-c','import time; print("partial",flush=True);time.sleep(10)'],timeout=.5,echo=False,log_name='timeout.log')
             self.assertTrue(json.loads((Path(directory)/'timeout.log.timing.json').read_text())['timed_out'])
             self.assertIn('partial',(Path(directory)/'timeout.log').read_text())
     def test_optional_capture_timeout_does_not_claim_success_or_suppress_required_test(self):

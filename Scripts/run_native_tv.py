@@ -5,10 +5,22 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1];temp=Path(os.environ['RUNNER_TEMP'])
 from native_process import run,optional_diagnostic
 parser=argparse.ArgumentParser()
-parser.add_argument('--two-source-only',action='store_true')
-focused=parser.parse_args().two_source_only
+group=parser.add_mutually_exclusive_group()
+group.add_argument('--two-source-only',action='store_true')
+group.add_argument('--remaining-rich',action='store_true')
+group.add_argument('--remaining-chinese',action='store_true')
+options=parser.parse_args()
+remaining_profile='rich' if options.remaining_rich else 'chinese' if options.remaining_chinese else None
+focused=options.two_source_only or remaining_profile is not None
 if focused:
-    from tv_two_source_cohort import require_probe, ONLY_TEST, capture_product, capture_proof, clock_deadlines
+    if remaining_profile is not None:
+        from tv_remaining_cohort import require_probe, capture_product, clock_deadlines, capture_remaining_proofs, profile_spec
+        actual_profile,spec=profile_spec()
+        if remaining_profile!=actual_profile:raise RuntimeError('Wrong fixed remaining runtime profile')
+        selected_tests=spec['tests']
+    else:
+        from tv_two_source_cohort import require_probe, ONLY_TEST, capture_product, capture_proof, clock_deadlines
+        selected_tests=[ONLY_TEST]
     require_probe(json.loads((temp/'tv-text-input-probe.json').read_text()))
     # Original per-command bounds remain ceilings; preserve six minutes for
     # owned-device cleanup, finalized summary, evidence and upload in the 30m VM.
@@ -42,8 +54,12 @@ udid=run(['xcrun','simctl','create','Celluloid Native TV Validation',device_type
 app=temp/'celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app'
 evidence={'runtime':runtime,'device_type':device_type,'udid':udid,'head':os.environ['GITHUB_SHA']}
 if focused:
-    evidence['scope']='two-source-only; no hosted, single-photo, 3/4-source, large-text or release acceptance'
-    evidence['only_testing']=ONLY_TEST
+    if remaining_profile is not None:
+        evidence['scope']='Fixed remaining '+remaining_profile+' UI component only; no two-source, hosted, single-photo output or release acceptance'
+        evidence['profile']=remaining_profile;evidence['selected_tests']=selected_tests
+    else:
+        evidence['scope']='two-source-only; no hosted, single-photo, 3/4-source, large-text or release acceptance'
+        evidence['only_testing']=ONLY_TEST
     if runtime['version']!='27.0' or runtime.get('buildversion')!='24J360':
         # A different runtime is a new observation, not the admitted 485 comparison.
         run(['xcrun','simctl','delete',udid],timeout=45,check=False)
@@ -75,18 +91,47 @@ try:
     if focused:evidence['product_before']=capture_product(app,udid,run)
     # Four real Photos UI flows now include three independent collage/relaunch
     # cases; keep one finite 15-minute runtime budget inside the same 30-minute VM.
-    result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidTV','-destination',f'platform=tvOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-tv','-resultBundlePath',temp/'CelluloidTV.xcresult','CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO','-collect-test-diagnostics','never','-maximum-concurrent-test-simulator-destinations','1',*(['-only-testing:'+ONLY_TEST] if focused else []),'test-without-building'],timeout=900,check=False,log_name='tv-runtime-tests.log')
+    result=run(['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidTV','-destination',f'platform=tvOS Simulator,id={udid}','-derivedDataPath',temp/'celluloid-tv','-resultBundlePath',temp/'CelluloidTV.xcresult','CODE_SIGNING_ALLOWED=NO','-parallel-testing-enabled','NO','-collect-test-diagnostics','never','-maximum-concurrent-test-simulator-destinations','1',*(['-only-testing:'+test for test in selected_tests] if focused else []),'test-without-building'],timeout=900,check=False,log_name='tv-runtime-tests.log')
     evidence['test_exit_code']=result.returncode
     if focused:evidence['product_after']=capture_product(app,udid,run)
-    if result.returncode:raise RuntimeError('Native TV test invocation failed; inspect actual error/attachments, do not equate build or boot with E2E coverage')
-    container=Path(run(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data']).stdout.strip())
-    if not focused:run(['swift','-swift-version','5',root/'Scripts/verify_tv_filter_output.swift',fixture,container/'Library/Caches/TVOutputProof'],timeout=120,log_name='tv-filter-oracle.log')
-    run(['swift','-swift-version','5',root/'Scripts/verify_tv_composition.swift',temp,container/'Library/Caches/TVCompositionProof',temp/'tv-runtime-tests.log',root/'Celluloid/collage.json',*(['two-source-only'] if focused else [])],timeout=120,log_name='tv-composition-oracle.log')
-    if focused:evidence['proof_files']=capture_proof(container/'Library/Caches/TVCompositionProof/2',temp/'tv-two-source-proof')
+    if remaining_profile=='rich':
+        # Preserve every actual output that reached Photos, even when the other
+        # case fails. Independent oracle failures never erase the original test.
+        observation_errors=[]
+        evidence['proof_capture_attempted']=True
+        try:
+            container=Path(run(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data']).stdout.strip())
+            retained=capture_remaining_proofs(container/'Library/Caches/TVCompositionProof',temp/'tv-remaining-proof')
+            evidence['proof_groups']=retained['groups'];evidence['proof_capture_errors']=retained['errors']
+            if [g['count'] for g in retained['groups']]==[3,4]:
+                run(['swift','-swift-version','5',root/'Scripts/verify_tv_composition.swift',temp,container/'Library/Caches/TVCompositionProof',temp/'tv-runtime-tests.log',root/'Celluloid/collage.json','remaining-rich'],timeout=120,log_name='tv-composition-oracle.log')
+            else:observation_errors.append('Not every rich case produced a complete owned Photos packet; partial component evidence retained')
+        except Exception as error:observation_errors.append(str(error))
+        evidence['posttest_observation_errors']=observation_errors
+        if result.returncode:raise RuntimeError('Native remaining TV test invocation failed; actual partial components retained without acceptance')
+        if observation_errors:raise RuntimeError('Remaining TV Photos output verification incomplete: '+'; '.join(observation_errors))
+    else:
+        if result.returncode:raise RuntimeError('Native TV test invocation failed; inspect actual error/attachments, do not equate build or boot with E2E coverage')
+        if remaining_profile!='chinese':
+            container=Path(run(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data']).stdout.strip())
+            if not focused:run(['swift','-swift-version','5',root/'Scripts/verify_tv_filter_output.swift',fixture,container/'Library/Caches/TVOutputProof'],timeout=120,log_name='tv-filter-oracle.log')
+            oracle_scope=['two-source-only'] if focused else []
+            run(['swift','-swift-version','5',root/'Scripts/verify_tv_composition.swift',temp,container/'Library/Caches/TVCompositionProof',temp/'tv-runtime-tests.log',root/'Celluloid/collage.json',*oracle_scope],timeout=120,log_name='tv-composition-oracle.log')
+            if focused:evidence['proof_files']=capture_proof(container/'Library/Caches/TVCompositionProof/2',temp/'tv-two-source-proof')
 except Exception as error:
     evidence['error']=str(error)
     raise
 finally:
+    if remaining_profile=='rich' and not evidence.get('proof_capture_attempted'):
+        # A bounded XCTest timeout can follow a completed sibling case. Keep
+        # whatever actual Photos packet exists before deleting this owned device.
+        # This is read-only evidence collection, never another test invocation.
+        evidence['proof_capture_attempted']=True
+        try:
+            container=Path(run(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data'],timeout=45).stdout.strip())
+            retained=capture_remaining_proofs(container/'Library/Caches/TVCompositionProof',temp/'tv-remaining-proof')
+            evidence['proof_groups']=retained['groups'];evidence['proof_capture_errors']=retained['errors']
+        except Exception as error:evidence['proof_capture_error']=str(error)
     (temp/'tv-runtime-evidence.json').write_text(json.dumps(evidence,indent=2)+'\n')
     evidence['cleanup']=[]
     for action in ['shutdown','delete']:

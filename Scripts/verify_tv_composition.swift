@@ -53,8 +53,9 @@ let temp=URL(fileURLWithPath:CommandLine.arguments[1]),root=URL(fileURLWithPath:
 let lines=try String(contentsOfFile:CommandLine.arguments[3],encoding:.utf8).split(separator:"\n")
 let expectedRows=try lines.filter {$0.hasPrefix("TV_NATIVE_COMPOSITION_EXPECTED ")}.map {try JSONSerialization.jsonObject(with:Data($0.dropFirst("TV_NATIVE_COMPOSITION_EXPECTED ".count).utf8)) as! [String:Any]}
 let focused=CommandLine.arguments.count==6 && CommandLine.arguments[5]=="two-source-only"
-try require(CommandLine.arguments.count==5 || focused,"Unknown composition verification scope")
-try require(expectedRows.count==(focused ? 1:3),focused ? "Exactly one completed two-source UI case required":"Three completed actual UI cases required")
+let remainingRich=CommandLine.arguments.count==6 && CommandLine.arguments[5]=="remaining-rich"
+try require(CommandLine.arguments.count==5 || focused || remainingRich,"Unknown composition verification scope")
+try require(expectedRows.count==(focused ? 1:remainingRich ? 2:3),"Exact completed UI case count required for this fixed scope")
 let templates=try json(URL(fileURLWithPath:CommandLine.arguments[4]))
 let calibration=try Raster(temp.appendingPathComponent("CelluloidSource-1.png"))
 let top=calibration.pixel(0,0,flipped:false),flipped=top != [9,19,29,255]
@@ -63,6 +64,7 @@ var seen=Set<Int>(),outputs=Set<String>()
 for expected in expectedRows {
     let count=expected["count"] as! Int
     if focused { try require(count==2 && expected["keyboardExercised"] as? Bool==true && expected["bubbleText"] as? String=="TV","The focused case requires actual system keyboard ASCII input, not Hello or a compile probe") }
+    if remainingRich { try require([3,4].contains(count) && expected["keyboardExercised"] as? Bool==true && expected["bubbleText"] as? String=="TV 世界","Both remaining rich cases require actual full Unicode keyboard input") }
     try require((2...4).contains(count) && seen.insert(count).inserted,"Distinct 2/3/4 UI coverage")
     let folder=root.appendingPathComponent(String(count)),saved=try json(folder.appendingPathComponent("kept-recipe.json"))
     let recipe=saved["recipe"] as! [String:Any],sources=recipe["sources"] as! [[String:Any]],overlays=recipe["overlays"] as! [[String:Any]]

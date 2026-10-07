@@ -143,6 +143,42 @@ final class NativeTVUITests: XCTestCase {
             try focus(app.buttons["tv.filters"], in: app)
             let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = large ? "native-tv-zh-Hans-large-reopened" : "native-tv-zh-Hans-reopened"; shot.lifetime = .keepAlways; add(shot)
             print("TV_ZH_HANS_REOPEN requestedLarge=\(large) instructionHeight=\(height) ordinaryHeight=\(ordinaryHeight) localized filter persisted")
+            // Exercise the actual localized Privacy sheet at both public app traits.
+            // This does not change or claim propagation from system Settings.
+            let privacy = app.buttons["隐私政策"].firstMatch
+            for step in 0..<16 {
+                if privacy.exists { break }
+                print("TV_PRIVACY_REVEAL requestedLarge=\(large) step=\(step)")
+                XCUIRemote.shared.press(.down)
+            }
+            XCTAssertTrue(privacy.waitForExistence(timeout: 5)); try select(privacy, in: app)
+            XCTAssertTrue(panel.waitForExistence(timeout: 10)); XCTAssertEqual(panel.label, "隐私政策")
+            let policy = panel.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "本地数据可通过相应应用或系统删除，权限可在系统设置中撤回。")).firstMatch
+            XCTAssertTrue(policy.waitForExistence(timeout: 5))
+            XCTAssertTrue(panel.frame.intersects(policy.frame), "The actual policy body must intersect the presented viewport")
+            XCTAssertTrue(panel.staticTexts["https://100mango.github.io/app-privacy/"].exists)
+            let done = app.buttons["tv.panel.done"]
+            XCTAssertEqual(done.label, "完成"); try focus(done, in: app)
+            let privacyJPEG = try XCTUnwrap(app.screenshot().image.jpegData(compressionQuality: 0.28))
+            XCTAssertLessThanOrEqual(privacyJPEG.count, 500_000)
+            let privacyShot = XCTAttachment(data: privacyJPEG, uniformTypeIdentifier: "public.jpeg")
+            privacyShot.name = large ? "native-tv-zh-Hans-largest-app-trait-privacy" : "native-tv-zh-Hans-privacy"
+            privacyShot.lifetime = .keepAlways; add(privacyShot)
+            if #available(tvOS 27.0, *) {
+                let previous = continueAfterFailure; continueAfterFailure = true
+                defer { continueAfterFailure = previous }
+                try app.performAccessibilityAudit(for: .all) { issue in
+                    print("NATIVE_ACCESSIBILITY_ISSUE state=tv-privacy requestedLarge=\(large) description=\(issue.compactDescription) element=\(issue.element?.debugDescription ?? "none")"); return false
+                }
+            }
+            XCUIRemote.shared.press(.select)
+            let dismissed = XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: panel)], timeout: 10) == .completed
+            XCTAssertTrue(dismissed); try focus(app.buttons["tv.filters"], in: app)
+            XCTAssertEqual(app.buttons["tv.filters"].label, "褪色")
+            let privacyProof: [String: Any] = ["requestedLarge": large, "bodyObserved": true, "dismissed": dismissed,
+                "restoredFilter": app.buttons["tv.filters"].label, "systemSettingsChanged": false, "systemPropagationVerified": false]
+            let privacyRecord = try JSONSerialization.data(withJSONObject: privacyProof, options: [.sortedKeys])
+            print("TV_ZH_HANS_PRIVACY_COMPLETE " + String(decoding: privacyRecord, as: UTF8.self))
             if #available(tvOS 27.0, *) {
                 let previous = continueAfterFailure; continueAfterFailure = true
                 defer { continueAfterFailure = previous }
