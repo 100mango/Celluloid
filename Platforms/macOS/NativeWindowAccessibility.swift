@@ -11,6 +11,9 @@ struct NativeWindowAccessibility: NSViewRepresentable {
         var paneLabel: String?
         #if DEBUG
         private var snapshotScheduled = false
+        // BEGIN CELLULOID_MAC_STORE_CAPTURE_STATE
+        private var storeWindowSized = false
+        // END CELLULOID_MAC_STORE_CAPTURE_STATE
         #endif
         override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); labelContent() }
         func labelContent() {
@@ -32,12 +35,43 @@ struct NativeWindowAccessibility: NSViewRepresentable {
             }
             setAccessibilityElement(false)
             #if DEBUG
+            // BEGIN CELLULOID_MAC_STORE_CAPTURE_CALL
+            configureStoreWindowIfRequested()
+            // END CELLULOID_MAC_STORE_CAPTURE_CALL
             guard !snapshotScheduled, window != nil, ProcessInfo.processInfo.environment["CELLULOID_AX_REPORT"] != nil else { return }
             snapshotScheduled = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.writeSnapshot() }
             #endif
         }
         #if DEBUG
+        // BEGIN CELLULOID_MAC_STORE_CAPTURE_HELPER
+        /// The fixed screenshot case resizes only its existing document window.
+        /// No-token Debug and the complete Release projection are unchanged.
+        private func configureStoreWindowIfRequested() {
+            let info = ProcessInfo.processInfo
+            guard paneLabel == nil, !storeWindowSized, let window,
+                  let token = info.environment["CELLULOID_MAC_STORE_CAPTURE"],
+                  UUID(uuidString: token)?.uuidString == token,
+                  info.arguments.contains("--celluloid-store-capture"),
+                  info.environment["CELLULOID_NATIVE_AUDIT_CONTROL"] == nil,
+                  info.environment["CELLULOID_SANDBOX_DIAGNOSTICS"] == nil,
+                  info.environment["CELLULOID_AX_REPORT"] == nil,
+                  !info.arguments.contains("--celluloid-sandbox-diagnostics"),
+                  let screen = window.screen ?? NSScreen.main,
+                  screen.backingScaleFactor == 1,
+                  screen.frame.width == 1280, screen.frame.height == 960,
+                  screen.visibleFrame.width >= 1280, screen.visibleFrame.height >= 800 else { return }
+            storeWindowSized = true
+            let visible = screen.visibleFrame
+            var frame = window.frame
+            frame.size = NSSize(width: 1280, height: 800)
+            let x = (visible.midX - frame.width / 2).rounded()
+            let y = (visible.midY - frame.height / 2).rounded()
+            frame.origin = NSPoint(x: min(max(x, visible.minX), visible.maxX - frame.width),
+                                   y: min(max(y, visible.minY), visible.maxY - frame.height))
+            window.setFrame(frame, display: true)
+        }
+        // END CELLULOID_MAC_STORE_CAPTURE_HELPER
         private func writeSnapshot() {
             guard let window, let path = ProcessInfo.processInfo.environment["CELLULOID_AX_REPORT"] else { return }
             let target = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()

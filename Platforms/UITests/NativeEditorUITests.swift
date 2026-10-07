@@ -6,6 +6,11 @@ import ApplicationServices
 import CryptoKit
 import CelluloidDomain
 import CelluloidRendering
+// BEGIN CELLULOID_MAC_STORE_CAPTURE_IMPORTS
+import ImageIO
+import UniformTypeIdentifiers
+import Security
+// END CELLULOID_MAC_STORE_CAPTURE_IMPORTS
 
 final class NativeEditorUITests: XCTestCase {
     private var failClosedInterruption: NSObjectProtocol?
@@ -686,4 +691,296 @@ final class NativeEditorUITests: XCTestCase {
         try RasterCodec.encode(XCTUnwrap(context.makeImage()), as: .png).write(to: url, options: .atomic)
         return url
     }
+    // BEGIN CELLULOID_MAC_STORE_CAPTURE_HELPERS
+    private var storeStarted = 0.0
+    private var storeCapturePID: pid_t?
+    private var storeCaptureWindowFrame: CGRect?
+    private var storeCapturePNGHash: String?
+    private var storeCaptureStates: [String] = []
+    private var storeDisplayOriginalMode: CGDisplayMode?
+    private var storeDisplayIdentifier: CGDirectDisplayID?
+    private var storeDisplayChanged = false
+    private var storeDisplayEvidence: Data?
+    private var storeDisplayScale: CGFloat = 1
+
+    @MainActor private func storeModeRow(_ mode: CGDisplayMode) -> [String: Any] {
+        ["id": Int(mode.ioDisplayModeID), "width": mode.width, "height": mode.height,
+         "pixelWidth": mode.pixelWidth, "pixelHeight": mode.pixelHeight, "usable": mode.isUsableForDesktopGUI()]
+    }
+    @MainActor private func storeScreen(_ display: CGDirectDisplayID) -> NSScreen? {
+        NSScreen.screens.first {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display
+        }
+    }
+    @MainActor private func storeDisplaySnapshot(_ display: CGDirectDisplayID) -> [String: Any]? {
+        guard let screen = storeScreen(display), let mode = CGDisplayCopyDisplayMode(display) else { return nil }
+        func rect(_ value: CGRect) -> [CGFloat] { [value.minX, value.minY, value.width, value.height] }
+        return ["display": display, "mode": storeModeRow(mode), "frame": rect(screen.frame),
+                "visibleFrame": rect(screen.visibleFrame), "cgBounds": rect(CGDisplayBounds(display)),
+                "scale": screen.backingScaleFactor]
+    }
+    @MainActor private func storeDisplayFits(_ display: CGDirectDisplayID) -> Bool {
+        guard let screen = storeScreen(display), let mode = CGDisplayCopyDisplayMode(display) else { return false }
+        let scale = screen.backingScaleFactor
+        return mode.isUsableForDesktopGUI() && scale == 1 && mode.width == 1280 && mode.height == 960 && screen.visibleFrame.width >= 1280 && screen.visibleFrame.height >= 800 &&
+            abs(screen.frame.width - CGFloat(mode.width)) < 0.5 && abs(screen.frame.height - CGFloat(mode.height)) < 0.5 &&
+            mode.pixelWidth == mode.width * Int(scale) && mode.pixelHeight == mode.height * Int(scale)
+    }
+    @MainActor private func applyStoreDisplay(_ display: CGDirectDisplayID, mode: CGDisplayMode) -> CGError {
+        var transaction: CGDisplayConfigRef?
+        let began = CGBeginDisplayConfiguration(&transaction)
+        guard began == .success else { return began }
+        let configured = CGConfigureDisplayWithDisplayMode(transaction, display, mode, nil)
+        guard configured == .success else { _ = CGCancelDisplayConfiguration(transaction); return configured }
+        return CGCompleteDisplayConfiguration(transaction, .forAppOnly)
+    }
+    @MainActor private func retainStoreDisplay(_ row: [String: Any], suffix: String) throws -> Data {
+        let data = try JSONSerialization.data(withJSONObject: row, options: [.sortedKeys])
+        guard data.count <= 16 * 1024 else { throw CocoaError(.fileWriteOutOfSpace) }
+        let record = XCTAttachment(string: String(decoding: data, as: UTF8.self))
+        record.name = "Native Mac Store display " + suffix; record.lifetime = .keepAlways; add(record)
+        return data
+    }
+    @MainActor private func prepareStoreDisplay(_ token: String) throws {
+        let display = CGMainDisplayID()
+        var row: [String: Any] = ["v": 1, "test": name, "token": token,
+            "runnerPID": ProcessInfo.processInfo.processIdentifier, "display": display,
+            "started": Date().timeIntervalSince1970, "scope": "forAppOnly",
+            "requestedWindowPoints": [1280, 800], "changed": false, "status": "observing"]
+        @MainActor func requireDisplay(_ condition: Bool, _ reason: String) throws {
+            if !condition {
+                row["status"] = "blocked"; row["reason"] = reason; row["finished"] = Date().timeIntervalSince1970
+                let data = try retainStoreDisplay(row, suffix: "setup")
+                storeDisplayEvidence = data
+                _ = try XCTUnwrap(Optional<Bool>.none, "STORE_DISPLAY_BLOCKED " + reason + " " + String(decoding: data, as: UTF8.self))
+            }
+        }
+        var displays = [CGDirectDisplayID](repeating: 0, count: 8)
+        var count: UInt32 = 0
+        let listed = displays.withUnsafeMutableBufferPointer { CGGetActiveDisplayList(UInt32($0.count), $0.baseAddress, &count) }
+        row["activeDisplays"] = Array(displays.prefix(Int(min(count, 8))))
+        try requireDisplay(listed == .success && count == 1 && displays[0] == display && NSScreen.screens.count == 1, "single-display-required")
+        let before = storeDisplaySnapshot(display)
+        row["before"] = before ?? [:]
+        let allModes = CGDisplayCopyAllDisplayModes(display, nil) as? [CGDisplayMode] ?? []
+        row["availableModeCount"] = allModes.count
+        row["availableModes"] = allModes.prefix(128).map(storeModeRow)
+        try requireDisplay(before != nil && !allModes.isEmpty && allModes.count <= 128, "mode-catalogue-unavailable-or-over-bound")
+        let original = try XCTUnwrap(CGDisplayCopyDisplayMode(display))
+        storeDisplayOriginalMode = original; storeDisplayIdentifier = display
+        var selected = original
+        if !storeDisplayFits(display) {
+            let screen = try XCTUnwrap(storeScreen(display))
+            let excludedWidth = screen.frame.width - screen.visibleFrame.width
+            let excludedHeight = screen.frame.height - screen.visibleFrame.height
+            let choices = allModes.filter { mode in
+                guard mode.width > 0 && mode.height > 0 && mode.width <= 8192 && mode.height <= 8192 else { return false }
+                let one = mode.pixelWidth == mode.width && mode.pixelHeight == mode.height
+                return mode.isUsableForDesktopGUI() && one && mode.width == 1280 && mode.height == 960 &&
+                    CGFloat(mode.width) >= 1280 + excludedWidth && CGFloat(mode.height) >= 800 + excludedHeight
+            }.sorted { a, b in
+                let aScale = a.pixelWidth / a.width; let bScale = b.pixelWidth / b.width
+                if aScale != bScale { return aScale < bScale }
+                if a.width * a.height != b.width * b.height { return a.width * a.height < b.width * b.height }
+                return a.ioDisplayModeID < b.ioDisplayModeID
+            }
+            try requireDisplay(!choices.isEmpty, "no-supported-mode-fits-window")
+            selected = choices[0]; row["selected"] = storeModeRow(selected)
+            let result = applyStoreDisplay(display, mode: selected)
+            row["configurationResult"] = result.rawValue
+            storeDisplayChanged = result == .success
+            row["changed"] = storeDisplayChanged
+            try requireDisplay(result == .success, "supported-mode-change-rejected")
+        } else {
+            row["selected"] = storeModeRow(selected); row["configurationResult"] = 0
+        }
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            CGDisplayCopyDisplayMode(display)?.ioDisplayModeID == selected.ioDisplayModeID && self.storeDisplayFits(display)
+        }, object: nil)
+        let ready = XCTWaiter.wait(for: [settled], timeout: 10)
+        row["after"] = storeDisplaySnapshot(display) ?? [:]
+        try requireDisplay(ready == .completed, "mode-did-not-provide-visible-window-space")
+        storeDisplayScale = try XCTUnwrap(storeScreen(display)).backingScaleFactor
+        row["status"] = "ready"; row["finished"] = Date().timeIntervalSince1970
+        storeDisplayEvidence = try retainStoreDisplay(row, suffix: "setup")
+    }
+    @MainActor private func restoreStoreDisplay() {
+        guard let display = storeDisplayIdentifier, let original = storeDisplayOriginalMode,
+              let evidence = storeDisplayEvidence else { return }
+        let started = Date().timeIntervalSince1970
+        let result = storeDisplayChanged ? applyStoreDisplay(display, mode: original) : CGError.success
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard CGDisplayCopyDisplayMode(display)?.ioDisplayModeID == original.ioDisplayModeID,
+                  let screen = self.storeScreen(display) else { return false }
+            return abs(screen.frame.width - CGFloat(original.width)) < 0.5 &&
+                abs(screen.frame.height - CGFloat(original.height)) < 0.5 &&
+                abs(screen.backingScaleFactor - CGFloat(original.pixelWidth) / CGFloat(original.width)) < 0.01
+        }, object: nil)
+        let returned = XCTWaiter.wait(for: [settled], timeout: 10) == .completed
+        let row: [String: Any] = ["v": 1, "test": name, "runnerPID": ProcessInfo.processInfo.processIdentifier,
+            "display": display, "scope": "forAppOnly", "started": started, "finished": Date().timeIntervalSince1970,
+            "setupSHA256": SHA256.hash(data: evidence).map { String(format: "%02x", $0) }.joined(),
+            "changed": storeDisplayChanged, "configurationResult": result.rawValue,
+            "original": storeModeRow(original), "after": storeDisplaySnapshot(display) ?? [:],
+            "restored": result == .success && returned]
+        do { _ = try retainStoreDisplay(row, suffix: "restore") }
+        catch { print("STORE_DISPLAY_RESTORE_UNCONFIRMED record-error: \(error)") }
+        if result != .success || !returned { print("STORE_DISPLAY_RESTORE_UNCONFIRMED") }
+    }
+
+
+    @MainActor func testStoreOriginalDocumentScreenshots() throws {
+        continueAfterFailure = false
+        XCTAssertNotEqual(ProcessInfo.processInfo.environment["CELLULOID_EXPECT_SANDBOX"], "YES")
+        let expected = URL(fileURLWithPath: try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_EXPECTED_APP_PATH"]))
+            .standardizedFileURL.resolvingSymlinksInPath()
+        let app = XCUIApplication(url: expected)
+        let token = UUID().uuidString
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES", "--celluloid-store-capture"]
+        app.launchEnvironment["CELLULOID_MAC_STORE_CAPTURE"] = token
+        // Same runner owns the temporary display change; termination precedes restore.
+        defer { app.terminate(); restoreStoreDisplay() }
+        try prepareStoreDisplay(token)
+        storeStarted = Date().timeIntervalSince1970
+        try launch(app)
+        let cancel = app.windows["open-panel"].buttons["CancelButton"]
+        if cancel.waitForExistence(timeout: 3) { cancel.click() }
+        app.typeKey("n", modifierFlags: .command)
+        let importButton = app.descendants(matching: .any)["editor.import-files"].firstMatch
+        XCTAssertTrue(importButton.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["No photos imported"].exists)
+        for state in ["citrus", "coast"] {
+            let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .deletingLastPathComponent().appendingPathComponent("StoreCaptureAssets/demo-" + state + "-sunny.png")
+            try verifyStoreSource(source, state: state)
+            // The app receives image bytes only through its real file importer.
+            importButton.click(); try goTo(source, in: app)
+            let open = app.windows.buttons["OKButton"].firstMatch
+            XCTAssertTrue(open.waitForExistence(timeout: 5)); XCTAssertTrue(open.isEnabled); open.click()
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                let window = app.windows.firstMatch
+                return window.buttons.matching(NSPredicate(format: "label CONTAINS %@", source.lastPathComponent)).count == 1 &&
+                    window.staticTexts["1254 × 1254 px"].exists &&
+                    window.descendants(matching: .any)["editor.export"].firstMatch.isEnabled &&
+                    window.progressIndicators.count == 0
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed)
+            try retainStoreWindow(app, expected: expected, state: state, source: source)
+        }
+        XCTAssertEqual(storeCaptureStates, ["citrus", "coast"])
+    }
+    @MainActor private func verifyStoreSource(_ source: URL, state: String) throws {
+        let raw = try Data(contentsOf: source)
+        let expectedHash = state == "citrus" ? "cd4c5178d550003b452b75904caba58a72c6eadc4658a083469c7684b4c00b03" : "505e1348a049a9f88cf86b4fb936702b45323f5d411ebce8f0a3415150fedcda"
+        XCTAssertEqual(raw.count, state == "citrus" ? 2880485 : 2997725)
+        XCTAssertEqual(SHA256.hash(data: raw).map { String(format: "%02x", $0) }.joined(), expectedHash)
+        let metadata = try RasterCodec.metadata(raw)
+        XCTAssertEqual(metadata.pixelWidth, 1254); XCTAssertEqual(metadata.pixelHeight, 1254)
+    }
+    @MainActor private func observeStoreDocument(_ app: XCUIApplication, source: URL, state: String) throws {
+        let window = app.windows.firstMatch
+        XCTAssertTrue(window.staticTexts["1254 × 1254 px"].exists)
+        // SwiftUI plain source-row buttons may combine their Text and chevron.
+        // Resolve the actual action by its full fixed filename, never a flat mock.
+        let sourceRows = window.buttons.matching(NSPredicate(format: "label CONTAINS %@", source.lastPathComponent))
+        XCTAssertEqual(sourceRows.count, 1); XCTAssertTrue(sourceRows.firstMatch.isHittable)
+        let other = state == "citrus" ? "coast" : "citrus"
+        XCTAssertEqual(window.buttons.matching(NSPredicate(format: "label CONTAINS %@", "demo-" + other + "-sunny.png")).count, 0)
+        XCTAssertEqual(window.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'layer.'")).count, 0)
+        XCTAssertEqual(window.progressIndicators.count, 0)
+        XCTAssertTrue(window.images["Edited photo preview"].exists)
+        XCTAssertEqual((window.staticTexts["editor.status"].value as? String) ?? window.staticTexts["editor.status"].label, "Imported 1 photo(s)")
+        for (identifier, title) in [("editor.import-files", "Import Files"), ("editor.filter", "Filter"),
+                                    ("editor.add-sticker", "Sticker"), ("editor.add-bubble", "Bubble"),
+                                    ("editor.export", "Export")] {
+            let control = window.descendants(matching: .any)[identifier].firstMatch
+            XCTAssertTrue(control.isEnabled); XCTAssertTrue(control.isHittable)
+            XCTAssertEqual(control.label, title)
+            XCTAssertTrue(window.frame.contains(control.frame))
+        }
+        XCTAssertEqual(window.popUpButtons["editor.filter"].value as? String, "Original")
+        XCTAssertFalse(app.staticTexts["sandbox.probe"].exists)
+    }
+    @MainActor private func retainStoreWindow(_ app: XCUIApplication, expected: URL, state: String, source: URL) throws {
+        let token = try XCTUnwrap(app.launchEnvironment["CELLULOID_MAC_STORE_CAPTURE"])
+        XCTAssertEqual(UUID(uuidString: token)?.uuidString, token)
+        XCTAssertEqual(app.launchArguments, ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-ApplePersistenceIgnoreState", "YES", "--celluloid-store-capture"])
+        XCTAssertEqual(storeCaptureStates, state == "citrus" ? [] : ["citrus"])
+        XCTAssertTrue(["citrus", "coast"].contains(state))
+        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertEqual(app.windows.count, 1)
+        XCTAssertEqual(app.sheets.count, 0); XCTAssertEqual(app.dialogs.count, 0); XCTAssertEqual(app.popovers.count, 0)
+        let window = app.windows.firstMatch
+        let sized = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            abs(window.frame.width - 1280) < 0.5 && abs(window.frame.height - 800) < 0.5
+        }, object: nil)
+        let displayEvidence = try XCTUnwrap(storeDisplayEvidence)
+        let displayContext = String(decoding: displayEvidence, as: UTF8.self)
+        XCTAssertEqual(XCTWaiter.wait(for: [sized], timeout: 10), .completed, displayContext + "\n" + window.debugDescription)
+        let screen = try XCTUnwrap(storeScreen(try XCTUnwrap(storeDisplayIdentifier)))
+        XCTAssertEqual(screen.backingScaleFactor, 1, displayContext)
+        let visible = screen.visibleFrame
+        let visibleAX = CGRect(x: visible.minX, y: screen.frame.maxY - visible.maxY, width: visible.width, height: visible.height)
+        XCTAssertTrue(visibleAX.insetBy(dx: -0.5, dy: -0.5).contains(window.frame), displayContext)
+        try observeStoreDocument(app, source: source, state: state)
+        let frame = window.frame
+        if let previous = storeCaptureWindowFrame { XCTAssertEqual(frame, previous) }
+        let captured = Date().timeIntervalSince1970
+        let png = window.screenshot().pngRepresentation
+        let imageSource = try XCTUnwrap(CGImageSourceCreateWithData(png as CFData, nil))
+        let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any])
+        XCTAssertEqual(CGImageSourceGetCount(imageSource), 1)
+        let width = try XCTUnwrap(properties[kCGImagePropertyPixelWidth] as? NSNumber).intValue
+        let height = try XCTUnwrap(properties[kCGImagePropertyPixelHeight] as? NSNumber).intValue
+        XCTAssertEqual(width, 1280, displayContext); XCTAssertEqual(height, 800, displayContext)
+        XCTAssertLessThanOrEqual(png.count, 3 * 1024 * 1024)
+        try observeStoreDocument(app, source: source, state: state)
+        try verifyStoreSource(source, state: state)
+        XCTAssertEqual(window.frame, frame)
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: "Mango.Celluloid").filter { !$0.isTerminated }
+        XCTAssertEqual(running.count, 1)
+        let actual = try XCTUnwrap(running.first)
+        XCTAssertEqual(actual.bundleURL?.resolvingSymlinksInPath(), expected)
+        XCTAssertTrue(actual.isActive)
+        XCTAssertTrue(app.debugDescription.contains("pid: \(actual.processIdentifier)"))
+        if let previous = storeCapturePID { XCTAssertEqual(actual.processIdentifier, previous) }
+        let executable = try XCTUnwrap(actual.executableURL)
+        XCTAssertEqual(executable.lastPathComponent, "CelluloidMac")
+        let logic = expected.appendingPathComponent("Contents/MacOS/CelluloidMac.debug.dylib")
+        var staticCode: SecStaticCode?
+        let signatureStatus = SecStaticCodeCreateWithPath(expected as CFURL, [], &staticCode)
+        XCTAssertEqual(signatureStatus, errSecSuccess)
+        var rawInformation: CFDictionary?
+        let status = SecCodeCopySigningInformation(try XCTUnwrap(staticCode), SecCSFlags(rawValue: kSecCSSigningInformation), &rawInformation)
+        XCTAssertTrue(status == errSecSuccess || status == errSecCSUnsigned)
+        let entitlements = (rawInformation as? [String: Any])?[kSecCodeInfoEntitlementsDict as String] as? [String: Any]
+        XCTAssertNotEqual(entitlements?["com.apple.security.app-sandbox"] as? Bool, true)
+        func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+        let pngHash = digest(png)
+        if let previous = storeCapturePNGHash { XCTAssertNotEqual(pngHash, previous) }
+        let imageName = "Native Mac Store window " + state
+        let sourceBytes = try Data(contentsOf: source)
+        let proof: [String: Any] = ["v": 1, "state": state, "token": token, "pid": actual.processIdentifier,
+            "test": name, "started": storeStarted, "captured": captured, "sequential": true,
+            "args": app.launchArguments, "sandbox": false, "bundle": actual.bundleIdentifier ?? "",
+            "applicationPath": actual.bundleURL?.path ?? "", "expectedPath": expected.path,
+            "executable": executable.path, "executableSHA256": digest(try Data(contentsOf: executable)),
+            "logicSHA256": digest(try Data(contentsOf: logic)), "imageName": imageName,
+            "pngSHA256": pngHash, "pngBytes": png.count, "width": width, "height": height,
+            "windowFrame": [frame.minX, frame.minY, frame.width, frame.height],
+            "backingScale": storeDisplayScale, "visibleFrameAX": [visibleAX.minX, visibleAX.minY, visibleAX.width, visibleAX.height],
+            "displaySetupSHA256": digest(displayEvidence), "sourceFilename": source.lastPathComponent,
+            "sourceSHA256": digest(sourceBytes), "sourceBytes": sourceBytes.count, "sourceDimensions": [1254, 1254],
+            "documentDimensions": "1254 × 1254 px", "filter": "Original", "layerCount": 0]
+        let data = try JSONSerialization.data(withJSONObject: proof, options: [.sortedKeys])
+        XCTAssertLessThanOrEqual(data.count, 4096)
+        let image = XCTAttachment(data: png, uniformTypeIdentifier: UTType.png.identifier)
+        image.name = imageName; image.lifetime = .keepAlways; add(image)
+        let record = XCTAttachment(string: String(decoding: data, as: UTF8.self))
+        record.name = "Native Mac Store proof " + state; record.lifetime = .keepAlways; add(record)
+        storeCapturePID = actual.processIdentifier; storeCaptureWindowFrame = frame
+        storeCapturePNGHash = pngHash; storeCaptureStates.append(state)
+    }
+    // END CELLULOID_MAC_STORE_CAPTURE_HELPERS
+
 }
