@@ -148,6 +148,66 @@ extension NativeVisionUITests {
             return false // Report every real issue; this callback suppresses nothing.
         } }
     }
+
+    func testStoreSingleHeldEditorCapture() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch(); defer { app.terminate() }
+        try openRemainingDocument(in: app)
+        let dimensions = app.staticTexts["120 × 80 px"]
+        XCTAssertTrue(dimensions.waitForExistence(timeout: 20))
+        let previews = app.images.matching(NSPredicate(format: "label == %@", "Edited photo preview"))
+        let preview = previews.firstMatch
+        XCTAssertTrue(preview.waitForExistence(timeout: 20)); XCTAssertEqual(previews.count, 1)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "count == 0"), evaluatedWith: app.progressIndicators)], timeout: 10), .completed)
+        let controls = ["editor.import-files", "editor.add-bubble", "editor.export"]
+        for identifier in controls {
+            let button = app.buttons[identifier]
+            XCTAssertTrue(button.exists); XCTAssertTrue(button.isEnabled); XCTAssertTrue(button.isHittable)
+        }
+        XCTAssertEqual(app.alerts.count, 0); XCTAssertEqual(app.sheets.count, 0)
+        XCTAssertEqual(app.keyboards.count, 0); XCTAssertFalse(app.buttons["asset.say1"].exists)
+        XCTAssertFalse(app.staticTexts["No Recents"].exists)
+        XCTAssertTrue(preview.isHittable); XCTAssertGreaterThan(preview.frame.width, 0)
+        XCTAssertGreaterThan(preview.frame.height, 0)
+        let settledFrame = preview.frame
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertEqual(preview.frame, settledFrame); XCTAssertEqual(app.progressIndicators.count, 0)
+        let id = UUID().uuidString
+        let root = FileManager.default.temporaryDirectory
+        let request = root.appendingPathComponent("Celluloid-store-\(id).json")
+        let acknowledgement = root.appendingPathComponent("Celluloid-store-\(id).ack")
+        defer {
+            try? FileManager.default.removeItem(at: request)
+            try? FileManager.default.removeItem(at: acknowledgement)
+        }
+        let description: [String: Any] = [
+            "schema": "Celluloid.StoreRequest.1", "id": id,
+            "bundle_identifier": "Mango.Celluloid", "document": "VisionRemaining.celluloid",
+            "locale": "en_US", "language": "en", "sample_width": 120, "sample_height": 80,
+            "preview_count": previews.count, "controls": controls, "ready": true,
+            "alerts": app.alerts.count, "sheets": app.sheets.count,
+            "keyboards": app.keyboards.count, "progress": app.progressIndicators.count
+        ]
+        try JSONSerialization.data(withJSONObject: description, options: [.sortedKeys]).write(to: request, options: [.withoutOverwriting])
+        print("CELLULOID_STORE_CAPTURE_REQUEST \(id)"); fflush(stdout)
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            FileManager.default.fileExists(atPath: acknowledgement.path)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 120), .completed)
+        let result = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: acknowledgement)) as? [String: Any])
+        XCTAssertEqual(result["id"] as? String, id)
+        XCTAssertEqual(result["success"] as? Bool, true)
+        XCTAssertEqual(result["width"] as? Int, 3840); XCTAssertEqual(result["height"] as? Int, 2160)
+        XCTAssertEqual(result["mode"] as? String, "RGB")
+        let digest = try XCTUnwrap(result["original_sha256"] as? String)
+        XCTAssertNotNil(digest.range(of: "^[0-9a-f]{64}$", options: .regularExpression))
+        print("CELLULOID_STORE_CAPTURE_ACK \(id) sha256=\(digest)")
+        // This proves capture of the held real state only. Visual review remains
+        // separate; no editing, export, Undo/Redo, or store acceptance is claimed.
+    }
+
     func testSeededDocumentSequentialTextUndoRedoAndBrowserReopen() throws {
         continueAfterFailure = false
         let app = XCUIApplication(); defer { app.terminate() }

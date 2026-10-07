@@ -1,0 +1,76 @@
+name: Capture one Celluloid Vision editor image
+on:
+  push:
+    branches: [codex/vision-store-single]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-vision-store-single
+  cancel-in-progress: false
+jobs:
+  vision:
+    # Root authorizes exactly this first publication to the new fixed branch.
+    # Later branch updates, manual dispatches and rerun attempts cannot qualify.
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/vision-store-single' && github.event.created == true }}
+    name: Hold one real editor view and capture full-display JPEG
+    runs-on: xcode-27
+    timeout-minutes: 42
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      CELLULOID_STORE_ROOT_GO_SHA: ${{ github.sha }}
+    steps:
+      - name: Record original clock before checkout
+        timeout-minutes: 1
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,time
+          from pathlib import Path
+          keys=('GITHUB_REPOSITORY','GITHUB_REF','GITHUB_WORKFLOW_REF','GITHUB_RUN_ATTEMPT','GITHUB_JOB','GITHUB_EVENT_NAME','DEVELOPER_DIR','GITHUB_SHA','GITHUB_WORKFLOW_SHA','GITHUB_RUN_ID')
+          with (Path(os.environ['RUNNER_TEMP'])/'vision-store-clock.json').open('x') as stream:
+              json.dump({'started_monotonic':time.monotonic(),'binding':{k:os.environ[k] for k in keys}},stream)
+          PY
+      - name: Check out exact admitted source and sole reviewed parent
+        timeout-minutes: 2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+          ref: ${{ github.sha }}
+      - name: Capture the single held editor state
+        id: capture
+        timeout-minutes: 38
+        run: python3 Scripts/run_vision_store_capture.py --execute
+      - name: Finalize bounded raw image and receipts
+        id: pack
+        if: always()
+        timeout-minutes: 1
+        run: python3 Scripts/run_vision_store_capture.py --pack
+      - name: Retain exact evidence paths
+        id: upload
+        if: always() && steps.pack.outcome == 'success'
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: celluloid-vision-store-single-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/vision-store-evidence/report.json
+            ${{ runner.temp }}/vision-store-evidence/manifest.json
+            ${{ runner.temp }}/vision-store-evidence/capture-original.jpeg
+            ${{ runner.temp }}/vision-store-evidence/store-image.jpeg
+            ${{ runner.temp }}/vision-store-evidence/build.log
+            ${{ runner.temp }}/vision-store-evidence/ui.log
+            ${{ runner.temp }}/vision-store-evidence/screenshot.log
+            ${{ runner.temp }}/vision-store-evidence/shutdown.log
+            ${{ runner.temp }}/vision-store-evidence/delete.log
+            ${{ runner.temp }}/vision-store-evidence/vision-store-device-uncertain.json
+            ${{ runner.temp }}/vision-store-evidence/native-icon-provenance-runtime.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - name: Preserve verdict and final original-clock bound
+        if: always()
+        timeout-minutes: 1
+        env:
+          VISION_UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: python3 Scripts/run_vision_store_capture.py --finish-upload

@@ -1,0 +1,17 @@
+{
+  "schema": "Celluloid.StoreAdmission.1",
+  "enabled": true,
+  "editor_open_evidence": {
+    "editor_open_verified": true,
+    "run_id": 37658179493,
+    "artifact_id": 11501200900,
+    "source_sha": "abe9fc5560b230edc93b0312ef78b26b3d3dab55",
+    "source_tree": "01b378b2c0c27191774ddb7619fb4d4091bca407",
+    "artifact_sha256": "4b3bcba40b249c09b17dd077ad763d46c29f4c63532f2082e9b65b4eca61f615",
+    "ui_log_sha256": "0d42192f47f62c5d97690cc0acadeed7e83da0e198bc63658646cb6a58720f87",
+    "scope": "Actual Files sample document opened to real editor; no saved-edit or screenshot/store-readiness claim",
+    "run_conclusion": "failure",
+    "later_failure": "Forced-relaunch exact text check; distinct from this read-only capture cohort"
+  },
+  "note": "Editor-open prerequisite verified on byte-equivalent abe helper. Local safety review only; exact-source root GO, reviewed activation delta and separate native admission remain required."
+}
