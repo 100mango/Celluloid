@@ -17,9 +17,9 @@ from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
 from run_vision_remaining import (built_vision_app, write_synthetic_fixture,
     snapshot_fixture, test_command, verify_cases, synthetic_fixture_bytes, FIXTURE_NAME)
 
-BASE = 'fe676df4b93bc0df61ca266c53f2715e7d401f1b'
+BASE = '3ba1e0304fe522aeb94c2bad611a0515bf514197'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = 'de1b02d1b2ac0379d7cfbad6f5880eeded3c527e'
+BASE_TREE = '17c1c2d850d32e77a7f2722831faf508ee46c607'
 BRANCH = 'refs/heads/codex/vision-store-single'
 WORKFLOW = '.github/workflows/vision-store-single.yml'
 SELECTOR = 'CelluloidVisionUITests/NativeVisionUITests/testStoreSingleHeldEditorCapture'
@@ -43,8 +43,7 @@ EVIDENCE_FILES = {name: cap for name, cap in (
     (BARRIER, 32_768), ('native-icon-provenance-runtime.json', 1_000_000))}
 ADDED = ()
 MODIFIED = (WORKFLOW,
-    'Scripts/run_vision_store_capture.py', 'Scripts/test_vision_store_capture.py',
-    'Platforms/VisionUITests/NativeVisionUITests.swift')
+    'Scripts/run_vision_store_capture.py', 'Scripts/test_vision_store_capture.py')
 REQUEST_PREFIX = 'CELLULOID_STORE_CAPTURE_REQUEST '
 
 
@@ -433,7 +432,7 @@ class Job:
         self.device = fixed_uuid(self.call('create', ['xcrun', 'simctl', 'create', 'Celluloid Store '+self.binding['GITHUB_SHA'][:12], wanted_type, wanted_runtime], 30).strip())
         self.report.update(device=self.device, runtime=runtime[0], device_type=wanted_type)
         self.call('boot', ['xcrun', 'simctl', 'boot', self.device], 45)
-        self.call('bootstatus', ['xcrun', 'simctl', 'bootstatus', self.device, '-b'], 180)
+        self.call('bootstatus', ['xcrun', 'simctl', 'bootstatus', self.device, '-b'], 240)
         self.call('install', ['xcrun', 'simctl', 'install', self.device, str(app)], 360)
         container = self.container('seed-data', APP_ID)
         self.check_active()

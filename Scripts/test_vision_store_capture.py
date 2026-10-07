@@ -133,7 +133,7 @@ class ContractTests(unittest.TestCase):
         calls = [n for n in ast.walk(work) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)]
         phases = {n.args[0].value: n.args[2].value for n in calls if n.func.attr == 'call' and len(n.args) >= 3}
         self.assertEqual(phases['install'], 360)
-        self.assertEqual({k: phases[k] for k in ('build','boot','bootstatus','ui')}, {'build':600,'boot':45,'bootstatus':180,'ui':1200})
+        self.assertEqual({k: phases[k] for k in ('build','boot','bootstatus','ui')}, {'build':600,'boot':45,'bootstatus':240,'ui':1200})
         # Preserve the prior host-side fixture-write guard; add no aggregate max-cap gate.
         guards = [n for n in calls if n.func.attr == 'check_active']
         self.assertEqual(len(guards), 1); self.assertEqual(guards[0].args, [])
