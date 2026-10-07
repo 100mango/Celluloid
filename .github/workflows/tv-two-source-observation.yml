@@ -1,0 +1,107 @@
+name: Celluloid TV two-source observation
+on:
+  push:
+    branches: [codex/tv-two-source-observation]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-tv-two-source-observation
+  cancel-in-progress: false
+jobs:
+  tv-two-source:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      PYTHONDONTWRITEBYTECODE: '1'
+      CELLULOID_EVIDENCE_PLATFORM: tv
+      CELLULOID_TV_TWO_SOURCE: '1'
+    steps:
+      - name: Start fixed execution clock before checkout
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          # Same first-step-clock pattern as the verified Mac route. Four
+          # minutes outside this 26-minute window cover job startup/teardown.
+          # The last six execution minutes are reserved for cleanup/evidence.
+          Path(os.environ['RUNNER_TEMP'],'tv-two-source-clock.json').write_text(json.dumps({
+            'schema':'Celluloid.TVTwoSourceClock.2','source_sha':os.environ['GITHUB_SHA'],
+            'started_monotonic':time.monotonic(),'started_unix':time.time(),
+            'execution_budget_seconds':1560,'work_budget_seconds':1200,
+            'reserved_tail_seconds':360,'job_seconds':1800,
+            'startup_teardown_margin_seconds':240}))
+          PY
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        timeout-minutes: 2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+          ref: ${{ github.sha }}
+      - name: Bind entire frozen source closure and review route
+        timeout-minutes: 4
+        run: |
+          set -euo pipefail
+          python3 Scripts/tv_two_source_cohort.py before
+          xcodebuild -version | grep -Fx 'Xcode 27.0'
+          python3 -m unittest discover -s Scripts -p 'test_tv_two_source_cohort.py' -v
+          python3 Scripts/test_native_process.py
+          python3 Scripts/test_native_evidence.py
+          python3 Scripts/test_native_workflow_syntax.py
+          python3 Scripts/probe_tv_text_input.py
+          python3 Scripts/tv_two_source_cohort.py require-probe
+          test -f "$RUNNER_TEMP/tv-typetext-supported"
+          python3 Scripts/run_bounded.py --seconds 90 --label tv-existing-icon-derivation swift -swift-version 5 Scripts/materialize_native_icons.swift
+          python3 Scripts/verify_native_icon_inputs.py
+      - name: Compile unchanged TV product and existing UI case
+        id: build
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          python3 Scripts/tv_two_source_cohort.py before-build
+          python3 Scripts/run_bounded.py --seconds 420 --label tv-two-source-build xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidTV -destination 'generic/platform=tvOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-tv" CODE_SIGNING_ALLOWED=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG CELLULOID_TV_TYPETEXT_SUPPORTED' build-for-testing 2>&1 | tee "$RUNNER_TEMP/tv-build.log"
+          cmp Platforms/tvOS/PrivacyInfo.xcprivacy "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/PrivacyInfo.xcprivacy"
+          test -f "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/zh-Hans.lproj/InfoPlist.strings"
+      - name: One existing remote two-source case and independent Photos oracle
+        id: runtime
+        run: |
+          set -euo pipefail
+          python3 Scripts/run_native_tv.py --two-source-only 2>&1 | tee "$RUNNER_TEMP/tv-runtime.log"
+      - name: Verify source is unchanged after execution
+        timeout-minutes: 1
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 Scripts/tv_two_source_cohort.py after
+          python3 Scripts/verify_native_icon_inputs.py
+      - name: Require exact-case finalized summary, keyboard and actual output
+        timeout-minutes: 2
+        if: always() && steps.build.outcome == 'success'
+        run: |
+          set -euo pipefail
+          python3 Scripts/tv_two_source_cohort.py accept
+      - name: Collect original bounded native evidence
+        id: collect
+        timeout-minutes: 2
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 Scripts/tv_two_source_cohort.py before-collect
+          python3 Scripts/run_bounded.py --seconds 75 --label tv-two-source-collect python3 Scripts/collect_native_evidence.py
+      - name: Verify packet and admit final upload inside fixed clock
+        id: upload_admission
+        if: always() && steps.collect.outcome == 'success'
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          python3 Scripts/tv_two_source_cohort.py before-upload
+      - name: Retain bounded diagnostic packet for one day
+        if: always() && steps.upload_admission.outcome == 'success'
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: celluloid-tv-two-source-${{ github.sha }}
+          path: ${{ runner.temp }}/celluloid-bounded-evidence/
+          retention-days: 1
+          if-no-files-found: error

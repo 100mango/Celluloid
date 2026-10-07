@@ -37,6 +37,16 @@ def retain_file(name,path,source):
 # Required source/package/consumer receipts precede optional logs and screenshots.
 # A missing receipt stays an explicit omission; its producing verification step is red.
 required=['combined-source-before.json','combined-source-after.json']
+if PLATFORM=='tv' and os.environ.get('CELLULOID_TV_TWO_SOURCE')=='1':
+    manifest['scope']='One actual two-source TV UI case only; historical hosted/single-photo coverage is not inherited'
+    required=['tv-two-source-before.json','tv-two-source-after.json','tv-two-source-clock.json','tv-two-source-budget.json','tv-two-source-acceptance.json','CelluloidTV.xcresult.summary.json','tv-runtime-evidence.json','tv-runtime-tests.log.timing.json','tv-text-input-probe.json','native-icon-provenance-runtime.json']
+    proof=TEMP/'tv-two-source-proof'
+    if proof.is_dir():
+        for path in sorted(proof.iterdir()):
+            if not path.is_file() or path.is_symlink():raise RuntimeError('Unsafe two-source proof member')
+            if not retain_file('tv-two-source-'+path.name,path,'actual Photos input/recipe/output retained before owned simulator cleanup'):
+                raise RuntimeError('Mandatory two-source proof exceeded inherited TV allocation')
+
 if PLATFORM=='preflight':required+=['combined-preflight.json','preflight-phone-embedded-watch.json','preflight-phone-embedded-watch-release.json']
 if PLATFORM=='mac':required+=['interop-continuation.json','CelluloidEarlyUIKit2x.xcresult.summary.json','CelluloidEarlyUIKit3x.xcresult.summary.json','early-uikit-2x-file-open-observation.json','early-uikit-3x-file-open-observation.json','early-uikit-interop.json','early-uikit-2x-staging.json','early-uikit-3x-staging.json','mac-required-tests.json','sandbox-extension-entitlements-before.plist','sandbox-extension-entitlements.plist']
 if PLATFORM=='phone':required+=['phone-embedded-watch.json','phone-embedded-watch-release.json','phone-required-tests.json','phone-required-tests.runtime-summary.json']
@@ -220,7 +230,7 @@ if PLATFORM in {'compact-phone','large-phone','small-ipad','large-ipad','archive
         retain_bytes('uikit-'+name+'.summary.txt',('\n'.join(selected)+'\n').encode(),name+' (test/error markers)')
 for name in [name+'.timing.json' for name in logs]:
     path=TEMP/name
-    if path.is_file():retain_file(name,path,'bounded process/startup/suite/teardown timing')
+    if path.is_file() and not (OUT/name).exists():retain_file(name,path,'bounded process/startup/suite/teardown timing')
 for name in ['early-uikit-interop.json','early-uikit-staging.json','native-icon-provenance-runtime.json','mac-release-packaging.json','tv-release-packaging.json','watch-release-packaging.json','vision-release-packaging.json','vision-runtime-evidence.json','tv-runtime-evidence.json','tv-text-input-probe.json','watch-runtime-evidence.json','watch-small-runtime-evidence.json','watch-large-runtime-evidence.json','phone-runtime-evidence.json','phone-harness-release.json','sandbox-entitlements.plist','sandbox-debug-entitlements.plist','sandbox-debug-actual.plist','sandbox-entitlements-after.plist','sandbox-extension-entitlements.plist']:
     path=TEMP/name
     if path.is_file() and not (OUT/name).exists():retain_file(name,path,name)
