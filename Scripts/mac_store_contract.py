@@ -23,6 +23,14 @@ SOURCE_BLOBS = {'citrus':'49c4dfaa7f09c2db9f4853cadbb5baaa47490157', 'coast':'90
 MAX_PACKET = 14 * 1024 * 1024
 
 
+class ProofRejected(ValueError):
+    """Same proof gates, with bounded observations to diagnose a rejected receipt."""
+    def __init__(self, reason, observations):
+        super().__init__(reason)
+        self.observations = {key: (value if not isinstance(value,float) or math.isfinite(value) else None)
+                             for key,value in observations.items()}
+
+
 def need(ok, reason):
     if not ok: raise ValueError(reason)
 
@@ -93,9 +101,22 @@ def validate_capture(root, summary_raw, product, test, *, tick=lambda: None, rea
         display_items[suffix]=item;display_raw[suffix]=read(root/filename,display_contract.LIMIT)
     display=display_contract.validate(display_raw['setup'],display_raw['restore'],summary)
     display.update(setupAttachment=display_items['setup'],restoreAttachment=display_items['restore'])
-    need(display['setup']['test']=='-[CelluloidMacUITests.NativeEditorUITests '+CASE+']' and
-        all(display[suffix]['finished']<=display_items[suffix]['timestamp']+.001 for suffix in ('setup','restore') if display_items[suffix] is not None),
-        'display-case-or-attachment-clock')
+    expected_case = '-[CelluloidMacUITests.NativeEditorUITests '+CASE+']'
+    observed_case = display['setup']['test']
+    if observed_case != expected_case:
+        raise ProofRejected('display-case-name', {
+            'expected_case': expected_case,
+            'observed_case': observed_case if isinstance(observed_case,str) and len(observed_case)<=256 else None,
+            'observed_case_type': type(observed_case).__name__[:32],
+            'observed_case_length': len(observed_case) if isinstance(observed_case,str) else None})
+    for suffix in ('setup','restore'):
+        if display_items[suffix] is not None:
+            finished=display[suffix]['finished']; attached=display_items[suffix]['timestamp']
+            if not finished<=attached+.001:
+                raise ProofRejected('display-attachment-clock', {
+                    'receipt': suffix, 'receipt_finished': finished,
+                    'attachment_timestamp': attached, 'tolerance_seconds': .001,
+                    'difference_seconds': finished-attached})
     proofs = {}; images = {}; format_failures = {}; previous = None
     fields = {'v','state','token','pid','test','started','captured','sequential','args','sandbox','bundle','applicationPath',
               'expectedPath','executable','executableSHA256','logicSHA256','imageName','pngSHA256','pngBytes','width','height',

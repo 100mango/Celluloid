@@ -111,10 +111,10 @@ class SourceTests(PortableTests):
         variables={x.get('key'):x.get('value') for x in scheme.find('TestAction/EnvironmentVariables')}
         self.assertEqual(variables['CELLULOID_EXPECTED_APP_PATH'],'$(BUILT_PRODUCTS_DIR)/CelluloidMac.app')
     def test_exact_reviewed_parent_and_two_modified_sources(self):
-        self.assertEqual(m.PARENT,'b8b6aa890df8b4f16f5627c965d01585a21fe97b')
-        self.assertEqual(m.PARENT_TREE,'8bd5f17720c0b7b8aa6ddf591cf0ec0fc7099735')
+        self.assertEqual(m.PARENT,'9058bc3b276e67a5bf457aa5b470fbf51a211849')
+        self.assertEqual(m.PARENT_TREE,'1080a185944a5af59ef8b6fb8172ce2c98a719c9')
         self.assertEqual(m.MODIFIED_PATHS,('Platforms/macOS/NativeWindowAccessibility.swift','Platforms/UITests/NativeEditorUITests.swift'))
-        self.assertEqual(m.EXPECTED_DIFF,sorted(['A\t'+x for x in m.NEW_PATHS]+['M\t'+x for x in m.MODIFIED_PATHS]))
+        self.assertEqual(m.EXPECTED_DIFF,sorted(['A\t'+x for x in m.SUCCESSOR_NEW_PATHS]+['M\t'+x for x in m.SUCCESSOR_MODIFIED_PATHS]))
     def test_frozen_current_application_and_support_inputs(self):
         f=json.loads((CHECKOUT/'Scripts/fixtures/mac-store-source-baseline.json').read_bytes())
         self.assertEqual((f['parent'],f['parent_tree']),(m.BASE,m.BASE_TREE))
@@ -289,7 +289,7 @@ class ReceiptTests(PortableTests):
 class Pipeline(PortableTests):
     def setUp(self):
         super().setUp()
-        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);self.old=Path.cwd();os.chdir(self.root)
+        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name).resolve();self.old=Path.cwd();os.chdir(self.root)
         self.clock=Clock();self.calls=[];self.failed=False;self.zero=False;self.late=False;self.mutate=None;self.late_summary=False;self.cleanup_unknown=False;self.scale=1;self.build_error=None
         app=self.root/'build/mac-tests/Build/Products/Debug/CelluloidMac.app'
         self.product={'applicationPath':str(app),'executable':str(app/'Contents/MacOS/CelluloidMac'),'executableSHA256':'c'*64,'logicSHA256':'d'*64}
@@ -494,7 +494,127 @@ class Pipeline(PortableTests):
         with self.assertRaises(m.Rejected):m.retain_report(value,self.root/m.OUTPUT,marker,root=self.root,clock=self.clock)
         self.assertEqual(marker.read_text(),'previous\n')
     def test_oversized_report_does_not_publish_images_as_qualified(self):
-        value=self.execute();value['commands']=['x'*(m.MAX_REPORT+1)];decoded=json.loads(m.report_bytes(value));self.assertFalse(decoded['qualified']);self.assertEqual(decoded['image_files'],{})
+        value=self.execute();value['commands']=['x'*(m.MAX_REPORT+1)];decoded=json.loads(m.report_bytes(value));self.assertFalse(decoded['qualified']);self.assertEqual(set(decoded['image_files']),{'native-citrus.png','native-coast.png'});self.assertTrue(decoded['diagnostic_files'])
+
+    def mutate_display_case(self,files):
+        for suffix in ('5','6'):
+            name='00000000-0000-4000-8000-00000000000'+suffix+'.txt'
+            row=json.loads(files[name]);row['test']='-[NativeEditorUITests '+m.CASE+']';files[name]=encoded(row)
+        self.rehash_setup(files)
+    def rehash_setup(self,files):
+        setup='00000000-0000-4000-8000-000000000005.txt';restore='00000000-0000-4000-8000-000000000006.txt'
+        row=json.loads(files[restore]);row['setupSHA256']=contract.digest(files[setup]);files[restore]=encoded(row)
+        for suffix in ('2','4'):
+            name='00000000-0000-4000-8000-00000000000'+suffix+'.txt';row=json.loads(files[name]);row['displaySetupSHA256']=contract.digest(files[setup]);files[name]=encoded(row)
+    def failed_with_raw(self):
+        value=self.execute();self.assertFalse(value['qualified']);self.assertTrue(value['raw_evidence'])
+        self.assertEqual(set(value['image_files']),{'native-citrus.png','native-coast.png'})
+        self.assertEqual(value['raw_evidence']['status'],'unqualified');self.assertTrue(value['raw_evidence']['visual_pending'])
+        marker=self.root/'output';marker.write_text('');retained=m.retain_report(value,self.root/m.OUTPUT,marker,root=self.root,clock=self.clock)
+        observed=m.inspect_raw_packet(self.root/m.OUTPUT,sha=SHA,tree=TREE,run_id=123,source_root=CHECKOUT)
+        self.assertTrue(observed['raw_integrity']);self.assertFalse(observed['proof_replay_passed']);self.assertEqual(observed['status'],'unqualified')
+        self.assertEqual(len(self.calls),15);self.assertEqual(marker.read_text(),'evidence_ready=true\n')
+        for name,exported in retained['raw_evidence']['exportedNames'].items():
+            self.assertEqual((self.root/m.OUTPUT/name).read_bytes(),self.files[exported])
+        with self.assertRaisesRegex(m.Rejected,'capture-not-qualified'):
+            m.validate_packet(self.root/m.OUTPUT,sha=SHA,tree=TREE,run_id=123,source_root=CHECKOUT)
+        return retained,observed
+    def test_proof_case_rejection_retains_both_originals_and_bounded_raw_receipts(self):
+        self.mutate=self.mutate_display_case;value,observed=self.failed_with_raw()
+        self.assertEqual(value['failure']['reason'],'display-case-name')
+        self.assertEqual(observed['proof_failure']['observations'],value['failure']['observations'])
+        self.assertEqual(value['failure']['observations']['observed_case'],'-[NativeEditorUITests '+m.CASE+']')
+        self.assertEqual(value['failure']['observations']['expected_case'],'-[CelluloidMacUITests.NativeEditorUITests '+m.CASE+']')
+        self.assertEqual(len(value['diagnostic_files']),5)
+    def test_attachment_clock_rejection_retains_raw_times_without_relaxing_gate(self):
+        def mutate(files):
+            name='00000000-0000-4000-8000-000000000005.txt';row=json.loads(files[name])
+            manifest=json.loads(files['manifest.json']);stamp=manifest[0]['attachments'][4]['timestamp']
+            row['finished']=stamp+.005;files[name]=encoded(row);self.rehash_setup(files)
+        self.mutate=mutate;value,observed=self.failed_with_raw()
+        self.assertEqual(value['failure']['reason'],'display-attachment-clock')
+        seen=value['failure']['observations'];self.assertEqual(seen['receipt'],'setup');self.assertEqual(seen['tolerance_seconds'],.001)
+        self.assertGreater(seen['difference_seconds'],.001)
+        self.assertEqual(observed['proof_failure']['observations'],seen)
+    def test_raw_receipt_tamper_and_unlisted_file_are_rejected(self):
+        self.mutate=self.mutate_display_case;value,_=self.failed_with_raw();output=self.root/m.OUTPUT
+        target=output/'raw-proof-citrus.json';raw=target.read_bytes();target.write_bytes(raw+b' ')
+        with self.assertRaisesRegex(m.Rejected,'changed-retained-image'):m.verify_retained_images(value,output)
+        target.write_bytes(raw);(output/'arbitrary.txt').write_bytes(b'not part of cohort')
+        with self.assertRaisesRegex(m.Rejected,'unlisted-retained-file'):m.verify_retained_images(value,output)
+    def test_unsafe_raw_export_does_not_gain_forensic_or_qualified_images(self):
+        def mutate(files):
+            value=json.loads(files['manifest.json']);value[0]['attachments'][0]['exportedFileName']='../private.png';files['manifest.json']=encoded(value)
+        self.mutate=mutate;value=self.execute();self.assertFalse(value['qualified']);self.assertEqual(value['image_files'],{})
+        self.assertEqual(value['diagnostic_files'],{});self.assertNotIn('raw_evidence',value)
+    def test_report_overflow_preserves_raw_context_and_native_bytes_unqualified(self):
+        value=self.execute();self.assertTrue(value['qualified'])
+        value['oversized_diagnostic']='x'*(m.MAX_REPORT+1);decoded=json.loads(m.report_bytes(value))
+        self.assertFalse(decoded['qualified']);self.assertEqual(decoded['failure']['reason'],'report-byte-limit')
+        marker=self.root/'output';marker.write_text('');result=m.retain_report(value,self.root/m.OUTPUT,marker,root=self.root,clock=self.clock)
+        self.assertEqual(set(result['image_files']),{'native-citrus.png','native-coast.png'})
+        self.assertEqual(len(result['diagnostic_files']),5);self.assertEqual(result['raw_evidence']['status'],'unqualified')
+        observation=m.inspect_raw_packet(self.root/m.OUTPUT,sha=SHA,tree=TREE,run_id=123,source_root=CHECKOUT)
+        self.assertTrue(observation['raw_integrity']);self.assertTrue(observation['proof_replay_passed'])
+        self.assertEqual(observation['status'],'unqualified')
+    def test_near_limit_unicode_summary_and_proof_rejection_still_retains_originals(self):
+        self.mutate=self.mutate_display_case;runner=self.runner
+        def unicode_summary(argv,**kwargs):
+            result=runner(argv,**kwargs)
+            if argv[:5]==['xcrun','xcresulttool','get','test-results','summary']:
+                self.summary['testPlanName']='界'*174000
+                result.stdout=json.dumps(self.summary,ensure_ascii=False,separators=(',', ':')).encode('utf-8')
+                self.assertLessEqual(len(result.stdout),512*1024)
+            return result
+        with patch.object(self,'runner',side_effect=unicode_summary):value=self.execute()
+        self.assertFalse(value['qualified']);self.assertEqual(value['failure']['reason'],'display-case-name')
+        self.assertEqual(len(value['raw_evidence']['files']),7)
+        marker=self.root/'output';marker.write_text('')
+        retained=m.retain_report(value,self.root/m.OUTPUT,marker,root=self.root,clock=self.clock)
+        self.assertEqual(set(retained['image_files']),{'native-citrus.png','native-coast.png'})
+        self.assertEqual(marker.read_text(),'evidence_ready=true\n')
+        self.assertLessEqual((self.root/m.OUTPUT/'report.json').stat().st_size,m.MAX_REPORT)
+        observation=m.inspect_raw_packet(self.root/m.OUTPUT,sha=SHA,tree=TREE,run_id=123,source_root=CHECKOUT)
+        self.assertEqual(observation['proof_failure']['reason'],'display-case-name')
+        self.assertFalse(observation['proof_replay_passed'])
+    def test_lone_surrogate_in_admitted_summary_is_losslessly_escaped_for_retention(self):
+        self.mutate=self.mutate_display_case;runner=self.runner
+        def surrogate_summary(argv,**kwargs):
+            result=runner(argv,**kwargs)
+            if argv[:5]==['xcrun','xcresulttool','get','test-results','summary']:
+                self.summary['testPlanName']='\ud800'
+                result.stdout=json.dumps(self.summary,separators=(',', ':')).encode('utf-8')
+            return result
+        with patch.object(self,'runner',side_effect=surrogate_summary):value=self.execute()
+        self.assertEqual(value['failure']['reason'],'display-case-name')
+        marker=self.root/'output';marker.write_text('')
+        retained=m.retain_report(value,self.root/m.OUTPUT,marker,root=self.root,clock=self.clock)
+        self.assertEqual(retained['test_summary']['testPlanName'],'\ud800')
+        self.assertEqual(set(retained['image_files']),{'native-citrus.png','native-coast.png'})
+        self.assertEqual(marker.read_text(),'evidence_ready=true\n')
+        observed=m.inspect_raw_packet(self.root/m.OUTPUT,sha=SHA,tree=TREE,run_id=123,source_root=CHECKOUT)
+        self.assertTrue(observed['raw_integrity']);self.assertEqual(observed['proof_failure']['reason'],'display-case-name')
+    def test_final_source_failure_keeps_originals_unqualified(self):
+        source=m.source_identity;count=0
+        def changed(*a,**kw):
+            nonlocal count
+            value=source(*a,**kw);count+=1
+            if count==2:value=dict(value,tree='f'*40)
+            return value
+        with patch.object(m,'source_identity',side_effect=changed):value=self.execute()
+        self.assertFalse(value['qualified']);self.assertEqual(value['failure']['reason'],'source-changed')
+        self.assertEqual(set(value['image_files']),{'native-citrus.png','native-coast.png'})
+        self.assertEqual(value['raw_evidence']['status'],'unqualified')
+    def test_original_clock_abort_in_raw_retention_never_enters_proof_or_final_commands(self):
+        with patch.object(m,'collect_raw',side_effect=m.Rejected('deadline-exceeded')),patch.object(m,'validate_capture') as proof:
+            value=self.execute()
+        self.assertFalse(value['qualified']);self.assertEqual(value['failure']['reason'],'deadline-exceeded')
+        proof.assert_not_called();self.assertEqual(len(self.calls),15);self.assertEqual(value['image_files'],{})
+    def test_raw_diagnostic_bytes_share_existing_packet_ceiling(self):
+        value=self.execute();marker=self.root/'output';marker.write_text('previous\n')
+        with patch.object(m,'MAX_PACKET',1024),self.assertRaisesRegex(m.Rejected,'packet-byte-limit'):
+            m.retain_report(value,self.root/m.OUTPUT,marker,root=self.root,clock=self.clock)
+        self.assertEqual(marker.read_text(),'previous\n')
 
 
 if __name__=='__main__':unittest.main()

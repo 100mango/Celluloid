@@ -14,13 +14,14 @@ import time
 from mac_store_process import capture, CaptureStopped
 from mac_store_io import read_file, strict_json
 from mac_store_product import base_command, product_identity
-from mac_store_contract import CASE, MAX_PACKET, STATES, SOURCE_BLOBS, summary_admission, validate_capture
+from mac_store_contract import CASE, MAX_PACKET, STATES, SOURCE_BLOBS, ProofRejected, summary_admission, validate_capture
+from mac_store_raw import RAW_LIMITS, collect_raw
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = 'b8b6aa890df8b4f16f5627c965d01585a21fe97b'
 BASE_TREE = '8bd5f17720c0b7b8aa6ddf591cf0ec0fc7099735'
-PARENT = BASE
-PARENT_TREE = BASE_TREE
+PARENT = '9058bc3b276e67a5bf457aa5b470fbf51a211849'
+PARENT_TREE = '1080a185944a5af59ef8b6fb8172ce2c98a719c9'
 BRANCH = 'refs/heads/codex/mac-store-display'
 WORKFLOW = '.github/workflows/mac-store-display.yml'
 RESULT = Path('build/mac-store-capture/capture.xcresult')
@@ -35,9 +36,13 @@ NEW_PATHS = (WORKFLOW,'MAC-STORE-CAPTURE.md','Scripts/mac_store_capture.py','Scr
     'Scripts/mac_store_process.py','Scripts/mac_store_process_group.py',
     'Scripts/test_mac_store_capture.py','Scripts/test_mac_store_display.py','Scripts/test_mac_store_png.py',
     'Scripts/test_mac_store_source_helpers.py','Scripts/fixtures/mac-store-source-baseline.json',
-    'StoreCaptureAssets/demo-citrus-sunny.png','StoreCaptureAssets/demo-coast-sunny.png','StoreCaptureAssets/provenance.json')
+    'StoreCaptureAssets/demo-citrus-sunny.png','StoreCaptureAssets/demo-coast-sunny.png','StoreCaptureAssets/provenance.json',
+    'Scripts/mac_store_raw.py','Scripts/test_mac_store_raw.py')
 MODIFIED_PATHS = ('Platforms/macOS/NativeWindowAccessibility.swift','Platforms/UITests/NativeEditorUITests.swift')
-EXPECTED_DIFF = sorted(['A\t'+x for x in NEW_PATHS]+['M\t'+x for x in MODIFIED_PATHS])
+SUCCESSOR_MODIFIED_PATHS = ('Scripts/mac_store_capture.py','Scripts/mac_store_contract.py',
+    'Scripts/test_mac_store_capture.py','Scripts/fixtures/mac-store-source-baseline.json','MAC-STORE-CAPTURE.md')
+SUCCESSOR_NEW_PATHS = ('Scripts/mac_store_raw.py','Scripts/test_mac_store_raw.py')
+EXPECTED_DIFF = sorted(['M\t'+x for x in SUCCESSOR_MODIFIED_PATHS]+['A\t'+x for x in SUCCESSOR_NEW_PATHS])
 IMAGE_NAMES = ('native-citrus.png','native-coast.png','store-citrus.png','store-coast.png')
 
 class Rejected(ValueError):
@@ -234,7 +239,7 @@ def execute(*, env=None, root=ROOT, clock=time.monotonic, wall=time.time, runner
     env=os.environ if env is None else env; began=clock(); receipts=[]; phase='prepare'; deadline=began+180
     report={'schema':1,'scope':'two-native-Mac-Store-window-captures','qualified':False,'store_qualified':False,
         'signing_qualified':False,'visual_acceptance':'pending-human-review','binary_handoff':False,
-        'commands':receipts,'image_files':{},'upload_qualified':False,
+        'commands':receipts,'image_files':{},'diagnostic_files':{},'upload_qualified':False,
         'runner_cleanup':'not-observed',
         'clock':{'started_monotonic':began,'phase_end_seconds':PHASE_END,'report_ready_deadline':began+PHASE_END['final_source_pack']},
         'host_scope':'owned-client-and-process-group-observation; no independent-daemon lifetime claim'}
@@ -263,10 +268,27 @@ def execute(*, env=None, root=ROOT, clock=time.monotonic, wall=time.time, runner
         admitted=summary_admission(summary,test)
         need(admitted['passedTests']==1,'capture-case-failed')
         run(['xcrun','xcresulttool','export','attachments','--path',str(RESULT),'--output-path',str(EXPORT)],seconds=20,cleanup=10,cap=512*1024)
+        # Preserve only this fixed demo case's safely admitted raw bytes before
+        # any proof qualification. An integrity-rejected export is never retained.
+        try:
+            raw_evidence,raw_files=collect_raw(root/EXPORT,summary,report['product'],test,
+                tick=lambda:timely(deadline,clock))
+            (root/PREPARED).mkdir()
+            for name,data in raw_files.items():
+                timely(deadline,clock);(root/PREPARED/name).write_bytes(data)
+            report['raw_evidence']=raw_evidence
+            report['raw_context']={'test':{k:test[k] for k in ('command','returncode','started_epoch','finished_epoch')},
+                'summaryText':summary.decode('utf-8')}
+            report['image_files']={name:raw_evidence['files'][name] for name in raw_files if name in IMAGE_NAMES}
+            report['diagnostic_files']={name:raw_evidence['files'][name] for name in raw_files if name not in IMAGE_NAMES}
+        except (ValueError,OSError) as error:
+            if isinstance(error,Rejected): raise
+            report['raw_retention_failure']={'type':type(error).__name__,'reason':str(error)[:256]}
         proof,images=validate_capture(root/EXPORT,summary,report['product'],test,tick=lambda:timely(deadline,clock))
         need({'native-citrus.png','native-coast.png'}<=set(images)<=set(IMAGE_NAMES),'capture-image-list')
         need(product_identity()==report['product'],'product-changed-during-capture')
-        (root/PREPARED).mkdir()
+        (root/PREPARED).mkdir(exist_ok=True)
+        need(not (root/PREPARED).is_symlink(),'unsafe-prepared-directory')
         for name,data in images.items():
             timely(deadline,clock);(root/PREPARED/name).write_bytes(data)
             report['image_files'][name]={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
@@ -279,33 +301,93 @@ def execute(*, env=None, root=ROOT, clock=time.monotonic, wall=time.time, runner
     except (Exception,KeyboardInterrupt) as error:
         report['clock']['report_ready_deadline']=min(report['clock']['report_ready_deadline'],clock()+30)
         report['failure']={'phase':phase,'type':type(error).__name__,'reason':str(error)[:4096]}
-        if 'proof' not in report or report.get('source_after')!=report.get('source_before'):report['image_files']={}
+        if isinstance(error,ProofRejected): report['failure']['observations']=error.observations
+        if 'proof' not in report or report.get('source_after')!=report.get('source_before'):
+            # Raw retention is not proof qualification. Preserve the two admitted
+            # native originals even when a later gate rejects case/clock/source.
+            report['image_files']={name:row for name,row in report.get('raw_evidence',{}).get('files',{}).items()
+                if name in ('native-citrus.png','native-coast.png')}
     report['clock']['elapsed_seconds']=clock()-began
     return report
 
 
 def report_bytes(report):
-    raw=(json.dumps(report,sort_keys=True,default=json_value,allow_nan=False,separators=(',',':'))+'\n').encode()
+    raw=(json.dumps(report,sort_keys=True,default=json_value,allow_nan=False,ensure_ascii=False,separators=(',',':'))+'\n').encode('utf-8','backslashreplace')
     if len(raw)>MAX_REPORT:
         keep=('schema','scope','source_before','source_after','clock','owned_output','toolchain','product','test_outcome','test_summary',
-              'store_qualified','signing_qualified','visual_acceptance','binary_handoff','runner_cleanup')
+              'store_qualified','signing_qualified','visual_acceptance','binary_handoff','runner_cleanup','raw_evidence','raw_context','diagnostic_files','raw_retention_failure')
         compact={k:report[k] for k in keep if k in report}
-        compact.update(qualified=False,image_files={},upload_qualified=False,
+        native={name:row for name,row in report.get('raw_evidence',{}).get('files',{}).items()
+            if name in ('native-citrus.png','native-coast.png')}
+        compact.update(qualified=False,image_files=native,upload_qualified=False,
             failure={'type':'Rejected','reason':'report-byte-limit','original_failure':report.get('failure')})
-        raw=(json.dumps(compact,sort_keys=True,default=json_value,allow_nan=False,separators=(',',':'))+'\n').encode()
+        raw=(json.dumps(compact,sort_keys=True,default=json_value,allow_nan=False,ensure_ascii=False,separators=(',',':'))+'\n').encode('utf-8','backslashreplace')
         need(len(raw)<=MAX_REPORT,'capture-report-fallback-byte-limit')
     return raw
 
 
 def verify_retained_images(report, output):
     files=report.get('image_files');need(isinstance(files,dict) and set(files)<=set(IMAGE_NAMES),'retained-image-list')
-    need(set(p.name for p in output.iterdir())==set(files)|{'report.json'},'unlisted-retained-file')
+    diagnostic=report.get('diagnostic_files',{})
+    need(isinstance(diagnostic,dict) and set(diagnostic)<=set(RAW_LIMITS)-set(IMAGE_NAMES),'retained-diagnostic-list')
+    need(set(p.name for p in output.iterdir())==set(files)|set(diagnostic)|{'report.json'},'unlisted-retained-file')
     if report['qualified']:need(set(files)==set(IMAGE_NAMES),'missing-native-or-store-image')
     total=len(read_file(output/'report.json',MAX_REPORT))
-    for name,expected in files.items():
-        raw=read_file(output/name,3*1024*1024);total+=len(raw)
+    for name,expected in {**files,**diagnostic}.items():
+        raw=read_file(output/name,RAW_LIMITS[name] if name in RAW_LIMITS else 3*1024*1024);total+=len(raw)
         need(expected=={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()},'changed-retained-image')
+    if 'raw_evidence' in report:
+        evidence=report['raw_evidence'];expected={**diagnostic,**{k:v for k,v in files.items() if k.startswith('native-')}}
+        need(evidence.get('status')=='unqualified' and evidence.get('visual_pending') is True and
+            evidence.get('files')==expected,'raw-evidence-status-or-files')
+        _replay_raw_files(report,output)
+    else: need(not diagnostic,'unbound-raw-diagnostics')
     need(total<=MAX_PACKET,'capture-packet-byte-limit')
+
+
+def _replay_raw_files(report, output):
+    evidence=report['raw_evidence'];mapping=evidence.get('exportedNames')
+    need(isinstance(mapping,dict) and set(mapping)==set(evidence['files']),'raw-export-map')
+    virtual=Path('/retained-raw-capture');files={}
+    for name,exported in mapping.items():
+        need(name in RAW_LIMITS and isinstance(exported,str) and
+            (exported=='manifest.json' if name=='raw-manifest.json' else re.fullmatch(r'[0-9A-Fa-f-]{36}\.(png|txt)',exported)),
+            'raw-export-path')
+        need(virtual/exported not in files,'raw-export-alias')
+        files[virtual/exported]=read_file(output/name,RAW_LIMITS[name])
+    def read(path,limit):
+        need(path in files and len(files[path])<=limit,'raw-export-missing-or-large');return files[path]
+    context=report.get('raw_context',{});test=context.get('test')
+    need(isinstance(test,dict) and test.get('command')==test_command(),'raw-test-command-missing')
+    text=context.get('summaryText')
+    need(isinstance(text,str) and len(text.encode())<=512*1024,'raw-summary-text-bound')
+    summary=text.encode('utf-8')
+    need(strict_json(summary)==report['test_summary'],'raw-summary-mismatch')
+    reproduced,_=collect_raw(virtual,summary,report['product'],test,read=read)
+    need(reproduced==evidence,'raw-retention-integrity-mismatch')
+    return virtual,summary,test,read
+
+
+def inspect_raw_packet(output, *, sha, tree, run_id, source_root=ROOT):
+    """Offline diagnosis of preserved originals; never changes their qualification."""
+    report=strict_json(read_file(output/'report.json',MAX_REPORT));verify_retained_images(report,output)
+    source=report.get('source_before',{});environment(source)
+    need(source.get('GITHUB_SHA')==sha and source.get('tree')==tree and source.get('GITHUB_RUN_ID')==str(run_id) and
+        source.get('parents')==[PARENT] and source.get('parent_tree')==PARENT_TREE and source.get('base_tree')==BASE_TREE,
+        'raw-source-run-mismatch')
+    fixture=strict_json(read_file(source_root/'Scripts/fixtures/mac-store-source-baseline.json',128*1024))
+    names=set(NEW_PATHS)|set(MODIFIED_PATHS)|set(fixture['current_app_inputs'])|set(fixture['current_support_inputs'])
+    need(source.get('files')=={p:hashlib.sha256(read_file(source_root/p,5_000_000)).hexdigest() for p in names},'raw-source-files-mismatch')
+    virtual,summary,test,read=_replay_raw_files(report,output)
+    result={'status':'unqualified','visual_pending':True,'raw_integrity':True,'proof_replay_passed':False}
+    try:
+        proof,_=validate_capture(virtual,summary,report['product'],test,read=read)
+        result.update(proof_replay_passed=not proof['formatFailures'],format_failures=proof['formatFailures'],
+            observed_runner_cleanup=proof['display']['cleanupStatus'])
+    except ValueError as error:
+        result['proof_failure']={'reason':str(error)[:4096],'type':type(error).__name__}
+        if isinstance(error,ProofRejected):result['proof_failure']['observations']=error.observations
+    return result
 
 
 def validate_packet(output, *, sha, tree, run_id, source_root=ROOT):
@@ -377,8 +459,9 @@ def retain_report(result, output, marker, *, root=ROOT, clock=time.monotonic):
     deadline=result['clock']['report_ready_deadline'];offset=None
     try:
         timely(deadline,clock);payload=report_bytes(result);decoded=strict_json(payload)
-        images={name:read_file(root/PREPARED/name,3*1024*1024) for name in decoded['image_files']}
-        for name,raw in images.items():need(decoded['image_files'][name]=={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()},'prepared-image-changed')
+        identities={**decoded['image_files'],**decoded.get('diagnostic_files',{})}
+        images={name:read_file(root/PREPARED/name,RAW_LIMITS[name] if name in RAW_LIMITS else 3*1024*1024) for name in identities}
+        for name,raw in images.items():need(identities[name]=={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()},'prepared-image-changed')
         need(len(payload)+sum(map(len,images.values()))<=MAX_PACKET,'capture-packet-byte-limit')
         timely(deadline,clock);output.mkdir(exist_ok=False)
         for name,raw in images.items():timely(deadline,clock);(output/name).write_bytes(raw)
