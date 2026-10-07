@@ -276,6 +276,31 @@ class SourceAndClock(PortableTestCase):
   with self.assertRaises(m.Rejected):m.dwarf_headers(bytes(raw))
   with self.assertRaises(m.Rejected):m.dwarf_headers(thin(CPUS[0],2))
 
+class ArchiveRetentionTests(PortableTestCase):
+ def test_utf8_replacement_and_two_streams_keep_combined_retention_cap(self):
+  row={};stdout=b'X'+b'\xff'*400000+b'Y';stderr=b'Z'+b'\xe4\xb8\xad'*400000+b'W'
+  m.retain_archive_output(row,stdout,stderr,capture_complete=True);meta=row['archive_log']
+  self.assertLessEqual(len(row['stdout'].encode())+len(row['stderr'].encode()),512*1024);self.assertEqual(meta['full_total_bytes'],len(stdout)+len(stderr));self.assertEqual(meta['full_sha256'],hashlib.sha256(stdout+stderr).hexdigest())
+  self.assertTrue(row['stdout'].startswith('X'));self.assertTrue(row['stdout'].endswith('Y'));self.assertTrue(row['stderr'].startswith('Z'));self.assertTrue(row['stderr'].endswith('W'))
+ def test_nonarchive_capture_and_caps_are_unchanged(self):
+  rows=[];seen=[]
+  def runner(argv,**kwargs):seen.append(kwargs);return subprocess.CompletedProcess(argv,0,b'normal',b'error: retained generic stderr')
+  m.command(['generic'],deadline=1000,seconds=5,cap=4096,receipts=rows,clock=Clock(),runner=runner)
+  self.assertEqual(seen[0]['cap'],4096);self.assertNotIn('archive_log',rows[0]);self.assertEqual(rows[0]['stdout'],'normal');self.assertEqual(rows[0]['stderr'],'error: retained generic stderr')
+ def test_archive_override_cannot_apply_to_other_command(self):
+  with self.assertRaisesRegex(m.Rejected,'archive-capture-scope-mismatch'):m.command(['generic'],deadline=1000,seconds=5,cap=m.ARCHIVE_RAW_CAP,receipts=[],clock=Clock(),archive_output=True)
+ def test_report_hard_limit_still_rejects_unrelated_overflow(self):
+  value={'qualified':True,'commands':['x'*(m.MAX_REPORT+1)]};result=json.loads(m.report_bytes(value));self.assertFalse(result['qualified']);self.assertEqual(result['failure']['reason'],'report-byte-limit');self.assertEqual(m.MAX_REPORT,2*1024*1024)
+ def test_source_rebind_preserves_original_906_product_fixture(self):
+  value=json.loads((ROOT/'Scripts/fixtures/mac-archive-inputs.json').read_bytes());self.assertEqual(m.BASE,'7326d8f26424662ac7e866b96984c100f4203984');self.assertEqual(m.BASE_TREE,'28ddf71fb8655e28b60552ed1e132c24ce1d5331');self.assertEqual(value['parent'],m.PRODUCT_BASE);self.assertEqual(value['parent_tree'],m.PRODUCT_BASE_TREE);self.assertEqual(m.MODIFIED_PATHS,('Scripts/mac_unsigned_archive.py','Scripts/test_mac_unsigned_archive.py'))
+
+class RealCaptureLimitTest(unittest.TestCase):
+ def test_real_16mib_overflow_confirms_owned_process_cleanup(self):
+  # Portable synthetic stdout producer only: no Apple tool or product launch.
+  producer=[sys.executable,'-c',"import os; [os.write(1,b'x'*65536) for _ in range(257)]"]
+  with self.assertRaises(m.CaptureStopped) as stopped:m.capture(producer,seconds=10,cap=m.ARCHIVE_RAW_CAP,cleanup_grace=2)
+  self.assertEqual(str(stopped.exception),'byte-limit');self.assertTrue(stopped.exception.cleanup_confirmed);self.assertEqual(len(stopped.exception.stdout_prefix),16*1024*1024);self.assertEqual(stopped.exception.stderr_capture,b'')
+
 class ExecuteAndRetention(PortableTestCase):
  def setUp(self):
   super().setUp()
@@ -301,6 +326,39 @@ class ExecuteAndRetention(PortableTestCase):
   r=self.execute();self.assertTrue(r['qualified'],r.get('failure'));self.assertFalse(r['binary_handoff']);self.assertFalse(r['signing_qualified']);self.assertFalse(r['store_qualified']);self.assertEqual(self.calls.count(m.ARCHIVE_COMMAND),1)
   output=self.root/'build/archive-proof';marker=self.root/'step-output';marker.write_text('');decoded=m.retain_report(r,output,marker,clock=self.clock)
   self.assertTrue(decoded['qualified']);self.assertTrue(decoded['archive_inventory']['complete']);self.assertEqual(set(x.name for x in output.iterdir()),{'report.json'});self.assertEqual(marker.read_text(),'evidence_ready=true\n')
+ def large_archive(self,*,error_stream=None):
+  original=self.runner;payload=b'head\n'+b'A'*(1024*1024)+b'\n** ARCHIVE SUCCEEDED **\ntail\n'
+  if error_stream:payload=b'head\n'+b'A'*(512*1024)+b'\nerror: hidden-middle-diagnostic\n'+b'B'*(512*1024)+b'\ntail\n'
+  def runner(argv,**kwargs):
+   if argv!=m.ARCHIVE_COMMAND:return original(argv,**kwargs)
+   self.assertEqual(kwargs['cap'],16*1024*1024);self.assertEqual(kwargs['cleanup_grace'],10)
+   self.calls.append(argv);fixture(self.root);self.clock.advance(.1)
+   return subprocess.CompletedProcess(argv,0,b'** ARCHIVE SUCCEEDED **\n' if error_stream=='stderr' else payload,payload if error_stream=='stderr' else b'')
+  with patch.object(self,'runner',side_effect=runner):result=self.execute()
+  return result,payload
+ def test_large_normal_archive_finishes_with_bounded_report(self):
+  result,full=self.large_archive();self.assertTrue(result['qualified'],result.get('failure'));self.assertEqual(self.calls.count(m.ARCHIVE_COMMAND),1)
+  command=next(c for c in result['commands'] if c['command']==m.ARCHIVE_COMMAND);log=command['archive_log']
+  self.assertTrue(command['complete']);self.assertTrue(log['capture_complete']);self.assertTrue(log['truncated']);self.assertFalse(log['error_marker_found'])
+  self.assertEqual(log['full_total_bytes'],len(full));self.assertEqual(log['full_sha256'],hashlib.sha256(full).hexdigest());self.assertLessEqual(log['retained_utf8_bytes'],512*1024)
+  self.assertIn('ARCHIVE LOG TRUNCATED: PREFIX + TAIL',command['stdout']);self.assertTrue(command['stdout'].startswith('head'));self.assertTrue(command['stdout'].endswith('tail\n'))
+  packed=m.report_bytes(result);self.assertLessEqual(len(packed),2*1024*1024);self.assertTrue(json.loads(packed)['qualified'])
+ def assert_hidden_error_rejected(self,stream):
+  result,full=self.large_archive(error_stream=stream);self.assertFalse(result['qualified']);self.assertEqual(result['failure']['reason'],'archive-reported-error');self.assertEqual(self.calls[-1],m.ARCHIVE_COMMAND);self.assertNotIn('proof',result);self.assertNotIn('source_after',result)
+  command=result['commands'][-1];self.assertTrue(command['complete']);self.assertTrue(command['archive_log']['error_scan_complete']);self.assertTrue(command['archive_log']['error_marker_found'])
+  self.assertNotIn('hidden-middle-diagnostic',command['stdout']+command['stderr']);self.assertTrue(result['archive_inventory']['complete'])
+ def test_hidden_stdout_middle_error_rejects_even_when_not_retained(self):self.assert_hidden_error_rejected('stdout')
+ def test_hidden_stderr_middle_error_rejects_even_when_not_retained(self):self.assert_hidden_error_rejected('stderr')
+ def test_archive_raw_cap_failure_retains_only_bounded_prefix_tail(self):
+  original=self.runner
+  def runner(argv,**kwargs):
+   if argv!=m.ARCHIVE_COMMAND:return original(argv,**kwargs)
+   self.assertEqual(kwargs['cap'],m.ARCHIVE_RAW_CAP);self.calls.append(argv)
+   error=m.CaptureStopped('byte-limit',True);error.stdout_prefix=b'A'*m.ARCHIVE_RAW_CAP;error.stderr_capture=b'';raise error
+  with patch.object(self,'runner',side_effect=runner):result=self.execute()
+  self.assertFalse(result['qualified']);command=result['commands'][-1];self.assertTrue(command['owned_cleanup_confirmed']);self.assertFalse(command['complete']);self.assertEqual(command['reason'],'byte-limit');self.assertEqual(self.calls[-1],m.ARCHIVE_COMMAND)
+  log=command['archive_log'];self.assertEqual(log['captured_total_bytes'],m.ARCHIVE_RAW_CAP);self.assertIsNone(log['full_total_bytes']);self.assertIsNone(log['full_sha256']);self.assertFalse(log['error_scan_complete']);self.assertLessEqual(log['retained_utf8_bytes'],m.ARCHIVE_RETAIN_CAP)
+  self.assertLessEqual(len(m.report_bytes(result)),m.MAX_REPORT);self.assertNotIn('archive_inventory',result)
  def test_archive_failure_keeps_native_diagnostic_and_never_proves_or_retries(self):
   self.fail_archive=True;r=self.execute();self.assertFalse(r['qualified']);self.assertEqual(r['failure']['phase'],'archive');self.assertEqual(self.calls.count(m.ARCHIVE_COMMAND),1);self.assertEqual(self.calls[-1],m.ARCHIVE_COMMAND)
   self.assertIn('bounded compiler details',r['commands'][-1]['stdout']);self.assertNotIn('proof',r);self.assertNotIn('archive_inventory',r)
