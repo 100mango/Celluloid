@@ -148,7 +148,7 @@ extension NativeVisionUITests {
             return false // Report every real issue; this callback suppresses nothing.
         } }
     }
-    func testSeededDocumentSequentialTextUndoRedoAndRelaunch() throws {
+    func testSeededDocumentSequentialTextUndoRedoAndBrowserReopen() throws {
         continueAfterFailure = false
         let app = XCUIApplication(); defer { app.terminate() }
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
@@ -166,12 +166,19 @@ extension NativeVisionUITests {
         let text = fields.firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertEqual(fields.count, 1)
         XCTAssertEqual(text.value as? String, "Hello"); XCTAssertTrue(text.isHittable)
+        // The text view owns a local draft. Verify the independent recipe-backed
+        // layer button at each boundary; a correct draft alone is not a model edit.
+        let layers = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'layer.'"))
+        XCTAssertEqual(layers.count, 1)
+        let layerIdentifier = layers.firstMatch.identifier
+        requireRemainingModelText(in: app, identifier: layerIdentifier, expected: "Hello", stage: "initial")
         print("VISION_REMAINING_PRE_TAP " + String(text.debugDescription.prefix(4000)))
         text.tap() // Exactly one ordinary tap; no scripted focus or text injection.
         text.typeText("A"); let first = String(describing: text.value ?? "")
         text.typeText("B"); let second = String(describing: text.value ?? "")
         print("VISION_REMAINING_SEQUENTIAL first=\(first) second=\(second)")
         XCTAssertTrue(first.contains("A") && second.contains("AB"), "Consecutive keys must retain focus without retapping")
+        requireRemainingModelText(in: app, identifier: layerIdentifier, expected: second, stage: "sequential")
         text.press(forDuration: 1.1)
         let selectMenu = app.menuItems["Select All"].firstMatch
         let selectButton = app.buttons["Select All"].firstMatch
@@ -179,19 +186,44 @@ extension NativeVisionUITests {
         else { XCTAssertTrue(selectButton.waitForExistence(timeout: 3)); selectButton.tap() }
         text.typeText("Vision 世界")
         XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "value == %@", "Vision 世界"), evaluatedWith: text)], timeout: 10), .completed)
+        requireRemainingModelText(in: app, identifier: layerIdentifier, expected: "Vision 世界", stage: "replacement")
         let undo = app.buttons["editor.undo"], redo = app.buttons["editor.redo"]
         XCTAssertTrue(undo.isEnabled); undo.tap()
         XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertNotEqual(text.value as? String, "Vision 世界")
+        let undoneText = try XCTUnwrap(text.value as? String)
+        requireRemainingModelText(in: app, identifier: layerIdentifier, expected: undoneText, stage: "undo")
         XCTAssertTrue(redo.isEnabled); redo.tap(); XCTAssertEqual(text.value as? String, "Vision 世界")
+        requireRemainingModelText(in: app, identifier: layerIdentifier, expected: "Vision 世界", stage: "redo")
         print("VISION_REMAINING_UNDO_REDO exact multilingual replacement restored")
         let documents = app.navigationBars.buttons["Documents"].firstMatch
         XCTAssertTrue(documents.exists); documents.tap()
-        app.terminate(); app.launch(); try openRemainingDocument(in: app)
+        // The system Documents action exposes the browser. Its window layout
+        // is evidence, not a save/close contract. Do not require a placeholder
+        // from another window or terminate the process as a save barrier.
+        print("VISION_REMAINING_BROWSER_TRANSITION editorExposed=\(app.buttons["editor.import-files"].exists) emptyShellObserved=\(app.staticTexts["No Document"].exists); neither observation proves close or completed save")
+        recordRemainingBrowser(app, stage: "after-documents-before-browser-reopen")
+        // Reselect through the already observed real Files route. This may use
+        // cached document state; independent final disk readback remains required.
+        try openRemainingDocument(in: app)
         XCTAssertTrue(app.staticTexts["120 × 80 px"].waitForExistence(timeout: 20))
-        let reopened = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'layer.' AND label == %@", "Select layer: Vision 世界")).firstMatch
+        requireRemainingModelText(in: app, identifier: layerIdentifier, expected: "Vision 世界", stage: "reopen")
+        let reopened = app.buttons.matching(identifier: layerIdentifier).firstMatch
         XCTAssertTrue(reopened.waitForExistence(timeout: 10)); reopened.tap()
         XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertEqual(text.value as? String, "Vision 世界")
-        print("VISION_REMAINING_REOPEN actual relaunch retained source dimensions and exact text")
+        print("VISION_REMAINING_BROWSER_REOPEN actual file reselection retained source dimensions and exact text; not a close/save-completion receipt")
+    }
+    private func requireRemainingModelText(in app: XCUIApplication, identifier: String, expected: String, stage: String) {
+        XCTAssertTrue(identifier.hasPrefix("layer."))
+        guard !expected.isEmpty else {
+            XCTFail("DIAGNOSTIC BOUNDARY: An empty draft uses the bubble-title fallback label, so this label cannot prove the raw model text at \(stage)")
+            return
+        }
+        let layer = app.buttons.matching(identifier: identifier).firstMatch
+        let label = "Select layer: " + String(expected.prefix(80))
+        let matched = XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "exists == true AND label == %@", label), evaluatedWith: layer)], timeout: 10) == .completed
+        print("VISION_REMAINING_MODEL stage=\(stage) identifier=\(identifier) expected=\(label) matched=\(matched)")
+        if !matched { print("VISION_REMAINING_MODEL_FAILURE stage=\(stage) actual=" + (layer.exists ? layer.label : "missing layer")) }
+        XCTAssertTrue(matched, "The recipe-backed layer must match the text draft at \(stage)")
     }
     private func recordRemainingBrowser(_ app: XCUIApplication, stage: String) {
         // Scan the whole snapshot first. The former prefix cut off the file region.

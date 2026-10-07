@@ -22,11 +22,11 @@ from mac_archive_capture import capture, CaptureStopped
 from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
 
 HOSTED = 'CelluloidVisionTests/NativeVisionTests/testPrepareVisionRemainingDocumentFixture'
-EDIT = 'CelluloidVisionUITests/NativeVisionUITests/testSeededDocumentSequentialTextUndoRedoAndRelaunch'
+EDIT = 'CelluloidVisionUITests/NativeVisionUITests/testSeededDocumentSequentialTextUndoRedoAndBrowserReopen'
 PRIVACY = 'CelluloidVisionUITests/NativeVisionUITests/testSimplifiedChineseDocumentPrivacyAndLargeText'
 SELECTORS = (EDIT,)
-BASE = '59d1d38f1519c6a8a1395ae11156cdade0c9f01f'
-BASE_TREE = '95d15a28cb487611a6a13b9b2005259a29011af8'
+BASE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
+BASE_TREE = '01b378b2c0c27191774ddb7619fb4d4091bca407'
 BRANCH = 'refs/heads/codex/vision-edit-final'
 WORKFLOW = '.github/workflows/vision-remaining.yml'
 CLOCK = 'vision-remaining-clock.json'

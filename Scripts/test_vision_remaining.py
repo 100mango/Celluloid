@@ -85,6 +85,44 @@ class Fake:
 
 
 class RemainingTests(unittest.TestCase):
+    def browser_reopen_source(self):
+        source=(Path(__file__).resolve().parents[1]/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()
+        start=source.index('    func testSeededDocumentSequentialTextUndoRedoAndBrowserReopen() throws {')
+        end=source.index('    private func requireRemainingModelText',start)
+        return source[start:end],source[end:source.index('    private func recordRemainingBrowser',end)]
+    def test_browser_reopen_exact_selector_excludes_forced_restart_case(self):
+        self.assertEqual(EDIT,'CelluloidVisionUITests/NativeVisionUITests/testSeededDocumentSequentialTextUndoRedoAndBrowserReopen')
+        self.assertEqual(SELECTORS,(EDIT,))
+    def test_browser_reopen_observes_recipe_model_at_every_text_boundary(self):
+        case,helper=self.browser_reopen_source()
+        stages=['initial','sequential','replacement','undo','redo','reopen']
+        positions=[case.index('stage: "'+stage+'"') for stage in stages]
+        self.assertEqual(positions,sorted(positions))
+        self.assertEqual(case.count('requireRemainingModelText(in: app, identifier: layerIdentifier'),len(stages))
+        self.assertIn('let layerIdentifier = layers.firstMatch.identifier',case)
+        self.assertIn('expected: undoneText, stage: "undo"',case)
+        self.assertIn('app.buttons.matching(identifier: identifier).firstMatch',helper)
+        self.assertIn('exists == true AND label == %@',helper)
+        self.assertIn('guard !expected.isEmpty else',helper)
+        self.assertIn('cannot prove the raw model text',helper)
+        self.assertNotIn('.tap()',helper)
+        self.assertNotIn('.typeText(',helper)
+    def test_browser_reopen_never_uses_forced_termination_as_save_barrier(self):
+        case,_=self.browser_reopen_source()
+        self.assertEqual(case.count('app.launch()'),1)
+        self.assertEqual(case.count('app.terminate()'),1)
+        self.assertIn('defer { app.terminate() }',case)
+        transition=case.index('VISION_REMAINING_BROWSER_TRANSITION')
+        reopen=case.index('try openRemainingDocument(in: app)',transition)
+        self.assertGreater(reopen,transition)
+        self.assertNotIn('editorGone',case)
+        self.assertNotIn('emptyShell',case.replace('emptyShellObserved','observed'))
+        self.assertNotIn('sleep(',case)
+        self.assertNotIn('configuration.fileURL',case)
+        self.assertIn('VISION_REMAINING_BROWSER_REOPEN',case)
+        self.assertIn('not a close/save-completion receipt',case)
+
+
     def exercise(self, fake):
         with tempfile.TemporaryDirectory() as d:
             Fake.seed_base=Path(d)/'devices'

@@ -1,5 +1,59 @@
 # Vision editing with a synthetic document input
 
+## Local-only model and browser-reopen candidate after abe9fc5
+
+Exact candidate parent: abe9fc5560b230edc93b0312ef78b26b3d3dab55, tree
+01b378b2c0c27191774ddb7619fb4d4091bca407, ref codex/vision-edit-final.
+Run37658179493 remains FAILED. Artifact11501200900 ZIP SHA256:
+4b3bcba40b249c09b17dd077ad763d46c29f4c63532f2082e9b65b4eca61f615.
+All11 manifest members verify. Actual Files opening, AHello→ABHello,
+multilingual replacement and UI Undo/Redo assertions passed. After force
+termination/relaunch, the expected layer was absent; independently read recipe
+text was ABHello, not Vision 世界. Original image bytes and120x80 remained intact.
+
+Those text assertions observed TextEditor's local draft, not its independent
+recipe-backed layer label. Vision uses draft.onChange to commit live, not a
+blur-only design. Evidence does not distinguish missing model commit, Undo
+routing, autosave latency, or termination before write completion. Documents
+synthesis was t=438.43s, idle returned440.79s, and terminate started443.44s.
+No normal-close or save-completion barrier was observed before that termination.
+This is not established ordinary-close data loss.
+
+This candidate changes no product Swift or shared Mac/Vision Undo implementation.
+Its only selected case is testSeededDocumentSequentialTextUndoRedoAndBrowserReopen.
+It captures one layer UUID and checks the recipe-backed label after initial,
+sequential, replacement, Undo, Redo and browser-reopen stages. Undo uses the
+observed field value rather than assuming one framework undo grouping. Empty
+Undo is explicitly unobservable through the fallback label and stops with that
+accurate diagnostic, not a false model-divergence assertion.
+
+After the existing Documents action, one bounded full AX snapshot retains the
+actual window hierarchy. Editor exposure and No Document existence are only
+observations. The latter appeared in a non-main window in old evidence and is
+NOT a required UI state or a close/save proof. No new normal-close behavior is
+invented. The test reselects the same file via the already observed exact Files
+Cell route and verifies dimensions, layer identity and full text. That UI
+reselection may use framework caching; it is not labeled a close/save-completion
+receipt. The unchanged independent runner disk gate still requires exact final
+Vision 世界 plus original source contents. That disk read occurs after normal UI
+reselection checks and test teardown; the teardown still terminates the app.
+There is no forced-restart UI leg, fixed sleep, manual save, direct app access to
+SwiftUI-managed file URLs, synthetic final-text fixture, or relaxed disk gate.
+
+The previous forced-restart failure remains preserved. Browser reselection,
+actual persisted disk contents and genuine normal-close semantics are distinct
+claims; this candidate must not be marketed as proof of all three by a green UI
+marker alone. If model checkpoints fail, no reopen is attempted and that earlier
+boundary becomes the concrete next fix. Shared framework/custom Undo ownership
+is a candidate cause only, not proved by the previous hosted variable-only tests.
+Sources: https://developer.apple.com/documentation/swiftui/filedocumentconfiguration/document
+and https://developer.apple.com/documentation/SwiftUI/DocumentGroup .
+
+No native execution/publication follows automatically. Apple compilation and
+runtime remain unverified until one separately admitted exact-tree cohort.
+
+## Previous frozen cohort
+
 Exact parent: 59d1d38f1519c6a8a1395ae11156cdade0c9f01f, tree
 95d15a28cb487611a6a13b9b2005259a29011af8, codex/vision-edit-final.
 This is a local candidate until separate exact-tree admission. No automatic
