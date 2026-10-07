@@ -11,7 +11,7 @@ jobs:
   vision:
     # Only the reviewed update from the failed metadata cohort can qualify, once.
     # Exact-tree root GO is required before publishing this fixed-ref update.
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/vision-store-single' && github.event.created == false && github.event.deleted == false && github.event.before == '442015b8b56834c0513ff82965237f7e47e06192' && github.run_attempt == 1 }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/vision-store-single' && github.event.created == false && github.event.deleted == false && github.event.before == 'fee44c06b88f3641c351a7c8bace5f140b38d9f1' && github.run_attempt == 1 }}
     name: Hold one real editor view and capture full-display JPEG
     runs-on: xcode-27
     timeout-minutes: 42

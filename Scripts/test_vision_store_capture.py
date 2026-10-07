@@ -27,9 +27,9 @@ REQUEST = '44444444-4444-4444-8444-444444444444'
 IMAGE = {'format': 'JPEG', 'mode': 'RGB', 'width': 3840, 'height': 2160, 'alpha': False, 'decoded': True}
 BINDING = {'GITHUB_SHA': 'a'*40}
 
-def write_container_metadata(path, bundle=store.APP_ID):
+def write_container_metadata(path, bundle=store.APP_ID, metadata_uuid=None):
     (path/store.METADATA_NAME).write_bytes(plistlib.dumps({
-        'MCMMetadataIdentifier': bundle, 'MCMMetadataUUID': path.name}, fmt=plistlib.FMT_BINARY))
+        'MCMMetadataIdentifier': bundle, 'MCMMetadataUUID': path.name if metadata_uuid is None else metadata_uuid}, fmt=plistlib.FMT_BINARY))
     return path
 
 def request():
@@ -478,8 +478,56 @@ class MetadataTests(unittest.TestCase):
         path.write_bytes(b'x'*(store.METADATA_CAP+1)); self.reject()
     def test_invalid_uuid_directory_and_identity_rejected(self):
         path = self.target/store.METADATA_NAME
-        path.write_bytes(plistlib.dumps({'MCMMetadataIdentifier':store.APP_ID,'MCMMetadataUUID':OTHER})); self.reject()
+        path.write_bytes(plistlib.dumps({'MCMMetadataIdentifier':store.APP_ID,'MCMMetadataUUID':'not-a-uuid'})); self.reject()
         write_container_metadata(self.target); self.target.rename(self.base/'not-a-uuid'); self.reject()
+    def test_separate_valid_uuid_fields_are_bound_to_exact_metadata(self):
+        write_container_metadata(self.target,metadata_uuid=OTHER)
+        row=self.resolve()
+        self.assertEqual(row['container_uuid'],CONTAINER)
+        self.assertEqual(row['metadata']['uuid'],OTHER)
+        self.assertEqual(row['metadata']['sha256'],store.hashlib.sha256((self.target/store.METADATA_NAME).read_bytes()).hexdigest())
+        self.assertEqual(store.validate_container_receipt(row,self.devices,DEVICE,store.APP_ID,'Data'),self.target)
+        for metadata_uuid in (CONTAINER,OTHER.lower()):
+            write_container_metadata(self.target,metadata_uuid=metadata_uuid)
+            row=self.resolve()
+            self.assertEqual(row['metadata']['uuid'],metadata_uuid)
+            self.assertEqual(store.validate_container_receipt(row,self.devices,DEVICE,store.APP_ID,'Data'),self.target)
+    def test_separate_uuid_still_rejects_wrong_device_bundle_and_multiple_matches(self):
+        write_container_metadata(self.target,metadata_uuid=OTHER)
+        row=self.resolve()
+        for device,bundle in ((OTHER,store.APP_ID),(DEVICE,store.RUNNER_ID)):
+            with self.subTest(device=device,bundle=bundle),self.assertRaises(ValueError):
+                store.validate_container_receipt(row,self.devices,device,bundle,'Data')
+        write_container_metadata(self.target,'other.private.application',metadata_uuid=OTHER)
+        outside=self.devices/OTHER/'data/Containers/Data/Application'/CONTAINER
+        outside.mkdir(parents=True);write_container_metadata(outside,metadata_uuid=DEVICE)
+        self.reject()  # The same bundle on another device cannot satisfy this lookup.
+        write_container_metadata(self.target,metadata_uuid=OTHER)
+        duplicate=self.base/OTHER;duplicate.mkdir();write_container_metadata(duplicate,metadata_uuid=DEVICE)
+        self.reject()  # Distinct valid metadata UUIDs do not disambiguate a bundle.
+    def test_separate_uuid_receipt_tampering_and_metadata_mutation_rejected(self):
+        write_container_metadata(self.target,metadata_uuid=OTHER);row=self.resolve()
+        for field,value in [('uuid',CONTAINER),('sha256','0'*64),('inode',row['metadata']['inode']+1)]:
+            changed=copy.deepcopy(row);changed['metadata'][field]=value
+            with self.subTest(field=field),self.assertRaises(ValueError):
+                store.validate_container_receipt(changed,self.devices,DEVICE,store.APP_ID,'Data')
+        write_container_metadata(self.target,metadata_uuid=DEVICE)
+        with self.assertRaises(ValueError):store.validate_container_receipt(row,self.devices,DEVICE,store.APP_ID,'Data')
+        row=self.resolve();path=self.target/store.METADATA_NAME;data=path.read_bytes()
+        path.rename(self.root/'old-metadata');path.write_bytes(data)
+        with self.assertRaises(ValueError):store.validate_container_receipt(row,self.devices,DEVICE,store.APP_ID,'Data')
+    def test_separate_uuid_does_not_change_other_app_data_access(self):
+        write_container_metadata(self.target,metadata_uuid=OTHER)
+        unrelated=self.base/OTHER;unrelated.mkdir()
+        write_container_metadata(unrelated,'other.private.application',metadata_uuid=DEVICE)
+        (unrelated/'Documents').symlink_to(self.root/'private-data')
+        ordinary=os.open;opened=[]
+        def inspect(path,*args,**kwargs):
+            opened.append(str(path));self.assertNotIn('Documents',str(path));return ordinary(path,*args,**kwargs)
+        with mock.patch.object(store.os,'open',side_effect=inspect):row=self.resolve()
+        self.assertEqual(row['path'],str(self.target));self.assertEqual(row['metadata']['uuid'],OTHER)
+        self.assertNotIn('other.private.application',json.dumps(row))
+        self.assertNotIn(str(unrelated),json.dumps(row))
     def test_malformed_identity_and_duplicate_keys_rejected(self):
         path = self.target/store.METADATA_NAME
         for row in [{}, {'MCMMetadataIdentifier':True,'MCMMetadataUUID':CONTAINER},
@@ -668,8 +716,6 @@ class MetadataTests(unittest.TestCase):
             (plistlib.dumps({'MCMMetadataIdentifier':store.APP_ID}), 'metadata-uuid','invalid-uuid'),
             (plistlib.dumps({'MCMMetadataIdentifier':store.APP_ID,'MCMMetadataUUID':'private-value'}),
                 'metadata-uuid','invalid-uuid'),
-            (plistlib.dumps({'MCMMetadataIdentifier':store.APP_ID,'MCMMetadataUUID':OTHER}),
-                'metadata-uuid','uuid-mismatch'),
             (b'<plist><dict><key>MCMMetadataIdentifier</key><string>private-value</string>'
                 b'<key>MCMMetadataIdentifier</key><string>private-value</string></dict></plist>',
                 'metadata-parse','duplicate-key')]
@@ -680,6 +726,17 @@ class MetadataTests(unittest.TestCase):
                 # Even a fully read plist rejected later is absent from the
                 # successful-identity byte total; zero is not proof of no read.
                 self.assertEqual(failure['metadata_bytes'],0)
+    def test_real_cli_retains_distinct_metadata_uuid_only_in_owned_receipt(self):
+        write_container_metadata(self.target,metadata_uuid=OTHER)
+        source,driver,env=self.cli_fixture()
+        result=subprocess.run([sys.executable,str(driver),'--resolve-container',DEVICE,store.APP_ID,'Data'],
+            cwd=source,env=env,capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr.decode())
+        row=json.loads(result.stdout)
+        self.assertEqual(row['container_uuid'],CONTAINER);self.assertEqual(row['metadata']['uuid'],OTHER)
+        self.assertEqual(store.validate_container_receipt(row,self.devices,DEVICE,store.APP_ID,'Data'),self.target)
+        for forbidden in (OTHER,CONTAINER,DEVICE,store.APP_ID,str(self.root)):
+            self.assertNotIn(forbidden,result.stderr.decode())
     def test_real_failure_reasons_for_metadata_file_safety(self):
         source,driver,env = self.cli_fixture(); path=self.target/store.METADATA_NAME
         path.unlink(); self.assert_reason_cli(source,driver,env,'metadata-open','os-error',errno.ENOENT)

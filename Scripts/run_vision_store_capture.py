@@ -34,9 +34,9 @@ def load_native_helpers():
 # need only standard libraries and never initialize native helper modules.
 if __name__ != '__main__': load_native_helpers()
 
-BASE = '442015b8b56834c0513ff82965237f7e47e06192'
+BASE = 'fee44c06b88f3641c351a7c8bace5f140b38d9f1'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = '358764bc1484af98fd6f9af18d568d8db0dff2af'
+BASE_TREE = 'b3b6933eee08bf6c2c80bbace6160439934f527d'
 BRANCH = 'refs/heads/codex/vision-store-single'
 WORKFLOW = '.github/workflows/vision-store-single.yml'
 SELECTOR = 'CelluloidVisionUITests/NativeVisionUITests/testStoreSingleHeldEditorCapture'
@@ -77,7 +77,7 @@ RESOLVER_REASONS = {'Noncanonical metadata root':'root-noncanonical',
     'Invalid UUID':'invalid-uuid','Container changed during scan':'entry-changed',
     'Unsafe metadata file':'unsafe-metadata','Metadata changed during read':'metadata-changed',
     'Duplicate metadata key':'duplicate-key','Malformed metadata identity':'identity-malformed',
-    'Metadata UUID mismatch':'uuid-mismatch','Metadata total bytes exceeded':'total-limit',
+    'Metadata total bytes exceeded':'total-limit',
     'Container identity missing or ambiguous':'target-count'}
 RESOLVER_REASON_CODES = frozenset(RESOLVER_REASONS.values()) | frozenset((
     'os-error','plist-invalid','value-rejected','unexpected-exception'))
@@ -219,6 +219,7 @@ def open_directory(path):
 
 def metadata_identity(container_fd, container_uuid, byte_budget=METADATA_CAP, failure=lambda *args: None):
     """Read only the standard identity plist, with finite bytes and no links."""
+    fixed_uuid(container_uuid)
     fd = None; step = 'metadata-open'
     try:
         fd = os.open(METADATA_NAME, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
@@ -249,9 +250,10 @@ def metadata_identity(container_fd, container_uuid, byte_budget=METADATA_CAP, fa
         need(isinstance(row, dict) and type(row.get('MCMMetadataIdentifier')) is str
             and 0 < len(row['MCMMetadataIdentifier']) <= 255, 'Malformed metadata identity')
         step = 'metadata-uuid'
-        need(fixed_uuid(row.get('MCMMetadataUUID')).upper() == container_uuid.upper(), 'Metadata UUID mismatch')
+        # Validate both UUIDs separately; do not assume their meanings coincide.
+        metadata_uuid = fixed_uuid(row.get('MCMMetadataUUID'))
         step = 'metadata-receipt'
-        return row['MCMMetadataIdentifier'], {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
+        return row['MCMMetadataIdentifier'], {'uuid':metadata_uuid, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
             'device': before.st_dev, 'inode': before.st_ino,
             'mtime_ns': before.st_mtime_ns, 'ctime_ns': before.st_ctime_ns}
     except Exception as error:
