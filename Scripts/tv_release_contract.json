@@ -1,0 +1,435 @@
+{
+  "asset_catalog_files": {
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/Contents.json": {
+      "bytes": 610,
+      "sha256": "88a6a39da9844fc472df86e69e03d6bcef09d7251340a4e177c7de102b341bdd"
+    },
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/Large.imagestack/Back.imagestacklayer/Content.imageset/Contents.json": {
+      "bytes": 170,
+      "sha256": "67115feb711d40f438bdc6156af9a1d77b079308ac84923411d92d2abec3439c"
+    },
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/Large.imagestack/Back.imagestacklayer/Contents.json": {
+      "bytes": 60,
+      "sha256": "f5fb0e1f3a8142892ed092efb5955c1c2cc537003a89ad7bbdb9dade7fe8985f"
+    },
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/Large.imagestack/Contents.json": {
+      "bytes": 187,
+      "sha256": "a7bbc554a2b26028459867dba0d85453f1e2d3038203ca365229a30fd4054189"
+    },
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/Large.imagestack/Front.imagestacklayer/Content.imageset/Contents.json": {
+      "bytes": 170,
+      "sha256": "67115feb711d40f438bdc6156af9a1d77b079308ac84923411d92d2abec3439c"
+    },
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/Large.imagestack/Front.imagestacklayer/Contents.json": {
+      "bytes": 60,
+      "sha256": "f5fb0e1f3a8142892ed092efb5955c1c2cc537003a89ad7bbdb9dade7fe8985f"
+    },
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/Small.imagestack/Back.imagestacklayer/Content.imageset/Contents.json": {
+      "bytes": 262,
+      "sha256": "2f1ff64388b2c4ee509b894c897ee0bcc143579552176c689532c002f9cfe4ed"
+    },
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/Small.imagestack/Back.imagestacklayer/Contents.json": {
+      "bytes": 60,
+      "sha256": "f5fb0e1f3a8142892ed092efb5955c1c2cc537003a89ad7bbdb9dade7fe8985f"
+    },
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/Small.imagestack/Contents.json": {
+      "bytes": 187,
+      "sha256": "a7bbc554a2b26028459867dba0d85453f1e2d3038203ca365229a30fd4054189"
+    },
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/Small.imagestack/Front.imagestacklayer/Content.imageset/Contents.json": {
+      "bytes": 262,
+      "sha256": "2f1ff64388b2c4ee509b894c897ee0bcc143579552176c689532c002f9cfe4ed"
+    },
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/Small.imagestack/Front.imagestacklayer/Contents.json": {
+      "bytes": 60,
+      "sha256": "f5fb0e1f3a8142892ed092efb5955c1c2cc537003a89ad7bbdb9dade7fe8985f"
+    },
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/TopShelf.imageset/Contents.json": {
+      "bytes": 167,
+      "sha256": "7355a3b760001a6d0658d5d0b9146b6933b49b55b92c5159a6c86cad0a6d3c9c"
+    },
+    "Platforms/tvOS/Assets.xcassets/AppIcon.brandassets/TopShelfWide.imageset/Contents.json": {
+      "bytes": 167,
+      "sha256": "7355a3b760001a6d0658d5d0b9146b6933b49b55b92c5159a6c86cad0a6d3c9c"
+    },
+    "Platforms/tvOS/Assets.xcassets/Contents.json": {
+      "bytes": 60,
+      "sha256": "f5fb0e1f3a8142892ed092efb5955c1c2cc537003a89ad7bbdb9dade7fe8985f"
+    }
+  },
+  "base": "da446a1bb869baf95499c2a057bb627d3d73d3b0",
+  "base_tree": "6325ef9470ffbb03dce3ebd82b104a0b2e1eb82c",
+  "package_resources": {
+    "CelluloidCore_CelluloidDomain.bundle": {
+      "en.lproj/Localizable.strings": "Packages/CelluloidCore/Sources/CelluloidDomain/Resources/en.lproj/Localizable.strings",
+      "zh-Hans.lproj/Localizable.strings": "Packages/CelluloidCore/Sources/CelluloidDomain/Resources/zh-Hans.lproj/Localizable.strings"
+    },
+    "CelluloidRendering_CelluloidRendering.bundle": {
+      "32.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/32.png",
+      "33.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/33.png",
+      "34.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/34.png",
+      "35.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/35.png",
+      "36.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/36.png",
+      "37.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/37.png",
+      "38.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/38.png",
+      "39.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/39.png",
+      "40.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/40.png",
+      "41.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/41.png",
+      "42.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/42.png",
+      "43.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/43.png",
+      "44.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/44.png",
+      "45.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/45.png",
+      "46.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/46.png",
+      "47.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/47.png",
+      "48.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/48.png",
+      "49.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/49.png",
+      "50.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/50.png",
+      "51.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/51.png",
+      "52.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/52.png",
+      "53.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/53.png",
+      "54.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/54.png",
+      "LICENSE.txt": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/LICENSE.txt",
+      "aside1.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/aside1.png",
+      "aside1@2x.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/aside1@2x.png",
+      "bubble.json": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/bubble.json",
+      "call1.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call1.png",
+      "call1@2x.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call1@2x.png",
+      "call2.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call2.png",
+      "call2@2x.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call2@2x.png",
+      "call3.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call3.png",
+      "call3@2x.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call3@2x.png",
+      "collage.json": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/collage.json",
+      "en.lproj/Localizable.strings": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/en.lproj/Localizable.strings",
+      "legacy-bubble-resource-provenance.json": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/legacy-bubble-resource-provenance.json",
+      "resource-provenance.json": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/resource-provenance.json",
+      "say1.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say1.png",
+      "say1@2x.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say1@2x.png",
+      "say2.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say2.png",
+      "say2@2x.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say2@2x.png",
+      "say3.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say3.png",
+      "say3@2x.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say3@2x.png",
+      "think1.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think1.png",
+      "think1@2x.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think1@2x.png",
+      "think2.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think2.png",
+      "think2@2x.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think2@2x.png",
+      "think3.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think3.png",
+      "think3@2x.png": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think3@2x.png",
+      "zh-Hans.lproj/Localizable.strings": "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/zh-Hans.lproj/Localizable.strings"
+    }
+  },
+  "shipping_sources": [
+    "Platforms/tvOS/CelluloidTVApp.swift",
+    "Platforms/tvOS/TVEditorModel.swift",
+    "Platforms/tvOS/TVPhotoLibrary.swift"
+  ],
+  "unchanged_inputs": {
+    "Celluloid/Assets.xcassets/AppIcon.appiconset/Icon-Marketing.png": {
+      "bytes": 60513,
+      "sha256": "f4f7ca4326be0a7f017339545367ecfbe1fdae58da36cd3368305b056ce7c614"
+    },
+    "CelluloidNative.xcodeproj/project.pbxproj": {
+      "bytes": 119652,
+      "sha256": "e6bd52a6e3d00e2ac33c62fa682d5ea222d97fb4fdb17c589e46081028d7af8b"
+    },
+    "CelluloidNative.xcodeproj/xcshareddata/xcschemes/CelluloidTV.xcscheme": {
+      "bytes": 2640,
+      "sha256": "9697575d4cf5832d0a8564a24dc3caf7425496edbbf6a7e13acef49dc9664f64"
+    },
+    "LICENSE.txt": {
+      "bytes": 1075,
+      "sha256": "00b86f0010c97c2f2357e1fbe6c8cd482a08e71cb719758a75ed15a723935340"
+    },
+    "Packages/CelluloidCore/Package.swift": {
+      "bytes": 525,
+      "sha256": "3d317b8c1943a62fa8fb707a93c73524db00e1774ab15200d4772ca565c1d66c"
+    },
+    "Packages/CelluloidCore/Sources/CelluloidDomain/CollageTemplate.swift": {
+      "bytes": 2964,
+      "sha256": "d1712cd10f24ff6b63e0674700ae52da6cf7f6713f55a6b9c69e033e9ca2ebae"
+    },
+    "Packages/CelluloidCore/Sources/CelluloidDomain/CompanionJob.swift": {
+      "bytes": 4881,
+      "sha256": "ad5fc0ef40a30336c3397a08242bb2f17fa89e21b6148a710a295a2bccdf1aa1"
+    },
+    "Packages/CelluloidCore/Sources/CelluloidDomain/CompanionSessionEpoch.swift": {
+      "bytes": 625,
+      "sha256": "b3be8dc7096a8d501711280f2b37bd4e120b3c5f9f95e8d3c93b21ba745507e2"
+    },
+    "Packages/CelluloidCore/Sources/CelluloidDomain/EditRecipe.swift": {
+      "bytes": 6001,
+      "sha256": "3145f02eb8969bc81bd493d7828670e5301a789031ba37a0bc89b0690a11f835"
+    },
+    "Packages/CelluloidCore/Sources/CelluloidDomain/FilterPreset.swift": {
+      "bytes": 2263,
+      "sha256": "707b6cce38d3049cb4397383158ce58d6b9c0ee09822c59aa958175e721c6b33"
+    },
+    "Packages/CelluloidCore/Sources/CelluloidDomain/LocalizedNames.swift": {
+      "bytes": 544,
+      "sha256": "df2457d071ef1beacbd526e644df0ef43490bcac646ceae5bb3182b5fa6b8897"
+    },
+    "Packages/CelluloidCore/Sources/CelluloidDomain/Resources/en.lproj/Localizable.strings": {
+      "bytes": 1303,
+      "sha256": "375e3416e7b5831d11695a9a671b16fa73e55e7715421af1c14f825bd990adbc"
+    },
+    "Packages/CelluloidCore/Sources/CelluloidDomain/Resources/zh-Hans.lproj/Localizable.strings": {
+      "bytes": 1252,
+      "sha256": "8bd2c4a0fa9b8e4cd0516d3d70bc1103bc824bf8d52cdb640b7b8342693f8247"
+    },
+    "Packages/CelluloidRendering/Package.swift": {
+      "bytes": 627,
+      "sha256": "b1b5b9ebf07a21f2d7bba934d7db9d3310c636e538c8fda31b4e6169f62f16d3"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/BoundedTextLayout.swift": {
+      "bytes": 3242,
+      "sha256": "d886d17abb37ab7c2b5bfc9b1c9ffb9c7b3f9b2f2da66c8d55e4ee7b57ef9666"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/RenderQueue.swift": {
+      "bytes": 1727,
+      "sha256": "23c4cc74ea5d035802ab2c0a4dfda02ad3ec3ace9e3a3b037af0152110b6b595"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Renderer.swift": {
+      "bytes": 17596,
+      "sha256": "f307e2fbf3f98792d70ebee713f7e44310e6cf82735d2099b72b8cd61c6618ae"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/32.png": {
+      "bytes": 62855,
+      "sha256": "1307d753a3810c81a135e642ce1e819a2cc069149191613a460fa013e66121ba"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/33.png": {
+      "bytes": 52869,
+      "sha256": "23cf7beb7ac814165b89f4b4923ec644f2d3093c9358cb1e5fb6c5a71168e749"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/34.png": {
+      "bytes": 20740,
+      "sha256": "7847dd18dcad4052d6f05d67cbd120b97ff30033ab388c0d19844b1e470a68c9"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/35.png": {
+      "bytes": 25505,
+      "sha256": "eb63ffeb9e473e2ccf453f57c6763e86119efb86c1d03f5c9f5819acc2c6d460"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/36.png": {
+      "bytes": 59703,
+      "sha256": "c9ef4003cf468a682f35c8ae2f91e9a290eeb0804c100c5aab32b85748c9b4df"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/37.png": {
+      "bytes": 56455,
+      "sha256": "0120ba7922b728b5910dc0c629104be184925af83e2b0099651c53eb992269b1"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/38.png": {
+      "bytes": 61345,
+      "sha256": "7e2592325962069fa3e15bef271bf38ac49b966549f144144319079d04abbfbe"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/39.png": {
+      "bytes": 55363,
+      "sha256": "b73119ba654b64fb786ebbfe2fe1202d32651629b3c32b7b3ebc1825b648784c"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/40.png": {
+      "bytes": 45948,
+      "sha256": "ee5e06c2981830239d0af18dda98fde618ee191c40213635de5ec50e6c994d5c"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/41.png": {
+      "bytes": 41266,
+      "sha256": "85a7f610b013aaacd7a15f215df84bbfde352af3840b3097e0380c0fd98ad936"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/42.png": {
+      "bytes": 30724,
+      "sha256": "b8864e08786ebe6d95821d3df99808cbd60afdc9e50164e459ed2eb027d98419"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/43.png": {
+      "bytes": 25473,
+      "sha256": "d125f42e6bec34c1e0f92670601a04a6227d8dec26222668bc78ce53ea5e9fd1"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/44.png": {
+      "bytes": 35620,
+      "sha256": "4166cea964f63b040d8ce7cde3a3ab3109da44d6bdfb831792412eeba715d02c"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/45.png": {
+      "bytes": 29641,
+      "sha256": "fd303ac0b48adf94cb6595673bff261715f7e2413e8ea6986c9969f64a614f82"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/46.png": {
+      "bytes": 29219,
+      "sha256": "96b0cc0cb9f4335acabd3e8ba1d06049acfe8e61b01bc90f1ac9a97f4cdab9f9"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/47.png": {
+      "bytes": 25008,
+      "sha256": "5101d2bd8627ce8a677bc99f791f1330e9bcdca8b3367cf229e359ef5f9f60e6"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/48.png": {
+      "bytes": 27955,
+      "sha256": "95c293243a53913d59534fd6671d7bb323d42e43a7c94e160a1e3c8024b86027"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/49.png": {
+      "bytes": 25132,
+      "sha256": "c2370d2e54a597d973af2f648185d3d654196e6fc4fbf01e86169798c62162bb"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/50.png": {
+      "bytes": 29216,
+      "sha256": "9a7c8e5562798a5e7793ea07997d3a9b273dd2e427be5ec08854f8a657fc22d2"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/51.png": {
+      "bytes": 32356,
+      "sha256": "67609e379150885ee6e0efaefef0690c4654b12ed09b49fd1783ff6b872a6501"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/52.png": {
+      "bytes": 23716,
+      "sha256": "bcf1a0792d493496db7988cb49a1eb33288b8f7446e614b4f62ebe0225b0e165"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/53.png": {
+      "bytes": 58628,
+      "sha256": "d66eb1abd54d4af9bc2b629c4879fa608ba779f24d2a6fa5fa1366ed70de1c09"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/54.png": {
+      "bytes": 50176,
+      "sha256": "3f429737a36f538f63eec4823d220c648bb77031a12217eb05fd123fbc4d4921"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/LICENSE.txt": {
+      "bytes": 1075,
+      "sha256": "00b86f0010c97c2f2357e1fbe6c8cd482a08e71cb719758a75ed15a723935340"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/aside1.png": {
+      "bytes": 3347,
+      "sha256": "8ceeffb4b0090d3657a454c7d1ab35f27f1fcb5d9229bd112bcd5d61b265123f"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/aside1@2x.png": {
+      "bytes": 10690,
+      "sha256": "6561ea4d8fa18259cd5e1437c0ad9c3ed8d409d75eb9d6f8b90bfe5eca533420"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/bubble.json": {
+      "bytes": 332,
+      "sha256": "52df89507111bbef1ea630e38195761145a3904d96d1a24c8f5a2beabd51e390"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call1.png": {
+      "bytes": 15768,
+      "sha256": "a8b0d1d0fcd542df05d5b0595927fccb61cb4fdbea82056fc927ea3992b4a5b4"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call1@2x.png": {
+      "bytes": 49822,
+      "sha256": "db627b01b22324e46a5d39242f2725a7a9116424593ab5d2e2a0c709d7df9b67"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call2.png": {
+      "bytes": 11256,
+      "sha256": "51ef29c6562415d2b81510373c12cd14fc9ba437ce1aa516b659faaaea889530"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call2@2x.png": {
+      "bytes": 36618,
+      "sha256": "84171e93e8b942096d2431031ee9444e004ebf847189986794ec08b13f49b185"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call3.png": {
+      "bytes": 21313,
+      "sha256": "4e4d12637546c339f6c5abd44cd44571926b23ec4194720b17ee1ff7f8817e41"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/call3@2x.png": {
+      "bytes": 60954,
+      "sha256": "ea2cad62e1d82c41543daf10ccb8940b746f914ef83609a001f586ab8f0872d0"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/collage.json": {
+      "bytes": 10586,
+      "sha256": "69aa06d8987d01c74d1687783369a472dd44335ea12b53e3322e48c65948335c"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/en.lproj/Localizable.strings": {
+      "bytes": 829,
+      "sha256": "7b5a6b2609187fc05c6529e7c8b7e9aaa7ab9c8cbaeb55b044e49d715e2da027"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/legacy-bubble-resource-provenance.json": {
+      "bytes": 2026,
+      "sha256": "2b2d43b59baf3057f310a286fa6130082ff4c0a87a67d632a060ca4fbabe1b46"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/resource-provenance.json": {
+      "bytes": 6320,
+      "sha256": "cde6042a08728c3d01076d77dc3d5e8bc853b9f29cd1d1111f719aa418cdc672"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say1.png": {
+      "bytes": 9595,
+      "sha256": "d0f0514d1e2c369e3cd0a29a65f341803158539df768706df4a16240a98bb1f2"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say1@2x.png": {
+      "bytes": 35805,
+      "sha256": "aeff383dd03627a38282995eef052dadcaf34ae9730acd77cb19af824f7d6398"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say2.png": {
+      "bytes": 9246,
+      "sha256": "bb7e291808deec7171d32e768d282d25fab82ed1dc8dd715ab2f8a22945e8ec2"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say2@2x.png": {
+      "bytes": 33266,
+      "sha256": "114aeb3a36575ba3f4dc1ce6742c7f307b4d296df52f3890ce643f06a54de2df"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say3.png": {
+      "bytes": 10281,
+      "sha256": "f531f327a5e8c8890ae6ce206e2d69a9b0df9807518c2921e0b30d361d14bba0"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/say3@2x.png": {
+      "bytes": 37588,
+      "sha256": "6cb31befdd02a6a932df0d5226964c2d4b6cc9fa6fcd7c51dcd79e5953ca0b23"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think1.png": {
+      "bytes": 9947,
+      "sha256": "6d581a36d75d77d7b8aed78ea616eca1688a073cced97d970880fd60da32ef06"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think1@2x.png": {
+      "bytes": 34538,
+      "sha256": "813d0522593e2812b4d3fd3097cdb0511bfef756d6bd2dbf7fd987e3ae8dd7a4"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think2.png": {
+      "bytes": 9461,
+      "sha256": "3bc180e8e1427ac17c7b718653a788edf44bdb2e937f4051af06c7e4783f27e6"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think2@2x.png": {
+      "bytes": 33922,
+      "sha256": "6b3a9faae75c9accf51b3de8d9dd9b7b993ec786363ac2aab29ce54aaa0c21dc"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think3.png": {
+      "bytes": 69260,
+      "sha256": "81cb7d3514416ae3ed1f0e67a8e1d77996781f373d50cbc820a52dcf18a5706f"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/think3@2x.png": {
+      "bytes": 186659,
+      "sha256": "fa0d53b0bb294854af02567d46874be2133558dadead4598203157a36a1a299a"
+    },
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Resources/zh-Hans.lproj/Localizable.strings": {
+      "bytes": 781,
+      "sha256": "2baaaa2c1a0371a38464d401616b80b1385f27e010c62fd4e12349978e6d0c78"
+    },
+    "Platforms/Resources/PrivacyPolicy.txt": {
+      "bytes": 861,
+      "sha256": "1f673f83fbaec01b8cadee0c0794f47d929cd518313053af8345a3ef92ab3356"
+    },
+    "Platforms/Resources/en.lproj/Localizable.strings": {
+      "bytes": 13751,
+      "sha256": "0012e5ce8d3571b6d40ca2666060331b72dffc4214055fbb8822ac17667a19c4"
+    },
+    "Platforms/Resources/zh-Hans.lproj/Localizable.strings": {
+      "bytes": 13872,
+      "sha256": "6737f0e969fe8bbccf767e09c715c033bf4b2ffdf5005fbceb84b9b58bc79ced"
+    },
+    "Platforms/tvOS/CelluloidTVApp.swift": {
+      "bytes": 19033,
+      "sha256": "86d7fd7dcfc6f40d256c7b3022c7b02525f0713ae04fffe14b47b5335cc35f3f"
+    },
+    "Platforms/tvOS/Info.plist": {
+      "bytes": 1232,
+      "sha256": "96b041117c701c731fd3d59a6a1d0c7d7dfc2ef7097b5ca43f35a0149f53d5a6"
+    },
+    "Platforms/tvOS/PrivacyInfo.xcprivacy": {
+      "bytes": 598,
+      "sha256": "3e4a93cbe86acef7dd7e063a28c849992f556e7f52cadc5f37c1e8b0e1b54686"
+    },
+    "Platforms/tvOS/TVEditorModel.swift": {
+      "bytes": 12389,
+      "sha256": "38b4266185eeae59c4da44da82f959d9a845297cea853b85c2a0283a1ee91e83"
+    },
+    "Platforms/tvOS/TVPhotoLibrary.swift": {
+      "bytes": 12638,
+      "sha256": "fb918b7ed1968c4b97beba1c31758d3296631d4685c422b56f8ace01904bce26"
+    },
+    "Platforms/tvOS/en.lproj/InfoPlist.strings": {
+      "bytes": 180,
+      "sha256": "884220a989116ab284dac44dae04ef343677591255916aa56afbc9458e88c067"
+    },
+    "Platforms/tvOS/zh-Hans.lproj/InfoPlist.strings": {
+      "bytes": 206,
+      "sha256": "930a44751316539422359aeaef04a3e9ed9eead1e13ca6464ae03d8ca1e8e341"
+    }
+  }
+}

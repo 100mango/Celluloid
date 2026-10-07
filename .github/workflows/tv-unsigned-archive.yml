@@ -1,0 +1,50 @@
+name: Fixed tvOS unsigned archive proof
+on:
+  push:
+    branches: [codex/tv-unsigned-archive]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-tv-unsigned-archive
+  cancel-in-progress: false
+jobs:
+  archive:
+    name: Observe one unsigned CelluloidTV archive
+    runs-on: xcode-27
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+    steps:
+      - name: Check out exact source and reviewed base
+        timeout-minutes: 1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+          ref: ${{ github.sha }}
+      - name: Archive once and retain bounded proof
+        id: proof
+        timeout-minutes: 16
+        run: python3 Scripts/tv_release_archive.py
+      - name: Admit the full upload and finalization reserve
+        id: admit-upload
+        if: ${{ always() && steps.proof.outputs.evidence_ready == 'true' }}
+        timeout-minutes: 1
+        run: python3 Scripts/tv_release_archive.py admit-upload
+      - name: Retain proof and bounded logs only
+        id: upload
+        if: ${{ always() && steps.admit-upload.outcome == 'success' && steps.admit-upload.outputs.upload_admitted == 'true' }}
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tv-unsigned-archive-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/archive-proof/report.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
+      - name: Verify upload outcome and original evidence clock
+        if: ${{ always() && steps.admit-upload.outputs.upload_admitted == 'true' }}
+        timeout-minutes: 1
+        env:
+          CELLULOID_ARCHIVE_UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: python3 Scripts/tv_release_archive.py finish-upload
