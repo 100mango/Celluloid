@@ -34,9 +34,9 @@ def load_native_helpers():
 # need only standard libraries and never initialize native helper modules.
 if __name__ != '__main__': load_native_helpers()
 
-BASE = '389d0f87c493ee7e87b04c4632084452149446f7'
+BASE = '442015b8b56834c0513ff82965237f7e47e06192'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = '8eed6b4a7bd0d33ccfe7c54c26217b400df8408e'
+BASE_TREE = '358764bc1484af98fd6f9af18d568d8db0dff2af'
 BRANCH = 'refs/heads/codex/vision-store-single'
 WORKFLOW = '.github/workflows/vision-store-single.yml'
 SELECTOR = 'CelluloidVisionUITests/NativeVisionUITests/testStoreSingleHeldEditorCapture'
@@ -67,6 +67,20 @@ METADATA_NAME = '.com.apple.mobile_container_manager.metadata.plist'
 # Reuse the reviewed per-query ceiling; original work/held deadlines still bind.
 METADATA_CAP, METADATA_TOTAL_CAP, METADATA_ENTRIES, METADATA_SECONDS = 262_144, 16_777_216, 4096, 180
 RESOLVER_STAGE_CAP, RESOLVER_STAGE_LIMIT = 8192, 32
+RESOLVER_FAILURE_STEPS = frozenset(('root','scan-open','scan-next','entry-limit','entry-stat',
+    'entry-type','entry-uuid','entry-open','entry-stat-open','entry-stability','entry-close',
+    'metadata-open','metadata-stat','metadata-type','metadata-links','metadata-size','metadata-read',
+    'metadata-restat','metadata-stability','metadata-parse','metadata-identifier','metadata-uuid',
+    'metadata-receipt','metadata-close','total-limit','target-missing','target-ambiguous'))
+RESOLVER_REASONS = {'Noncanonical metadata root':'root-noncanonical',
+    'Metadata entry count exceeded':'entry-limit','Metadata directory link rejected':'entry-symlink',
+    'Invalid UUID':'invalid-uuid','Container changed during scan':'entry-changed',
+    'Unsafe metadata file':'unsafe-metadata','Metadata changed during read':'metadata-changed',
+    'Duplicate metadata key':'duplicate-key','Malformed metadata identity':'identity-malformed',
+    'Metadata UUID mismatch':'uuid-mismatch','Metadata total bytes exceeded':'total-limit',
+    'Container identity missing or ambiguous':'target-count'}
+RESOLVER_REASON_CODES = frozenset(RESOLVER_REASONS.values()) | frozenset((
+    'os-error','plist-invalid','value-rejected','unexpected-exception'))
 CONTAINER_PHASES = {'seed-data': (APP_ID, 'Data'), 'capture-data': (APP_ID, 'Data'),
     'capture-runner': (RUNNER_ID, 'Data'), 'after-data': (APP_ID, 'Data'),
     'capture-installed': (APP_ID, 'Bundle'), 'after-installed': (APP_ID, 'Bundle')}
@@ -76,7 +90,7 @@ def need(value, message):
     if not value: raise ValueError(message)
 
 
-def resolver_stage(stage, entries=0, metadata_bytes=0, matches=0):
+def resolver_stage(stage, entries=0, metadata_bytes=0, matches=0, failure=None):
     """Fixed vocabulary and aggregate counters only; never identity or paths."""
     global _RESOLVER_STAGE_COUNT, _RESOLVER_STAGE_BYTES
     if not _RESOLVER_MODE: return
@@ -87,12 +101,34 @@ def resolver_stage(stage, entries=0, metadata_bytes=0, matches=0):
     need(math.isfinite(elapsed) and elapsed >= 0, 'Invalid resolver stage clock')
     row = {'stage':stage,'elapsed_seconds':round(elapsed,6),'entries_seen':entries,
         'metadata_bytes':metadata_bytes,'matches':matches}
+    if failure is not None:
+        need(stage == 'lookup-failed' and type(failure) is dict
+            and set(failure) == {'failure_step','reason','errno'}, 'Invalid resolver failure fields')
+        need(failure['failure_step'] in RESOLVER_FAILURE_STEPS
+            and failure['reason'] in RESOLVER_REASON_CODES, 'Invalid resolver failure enum')
+        code = failure['errno']
+        need(code is None or (type(code) is int and 0 < code <= 4095), 'Invalid resolver errno')
+        row.update(failure)
     line = 'VISION_RESOLVER_STAGE '+json.dumps(row,separators=(',',':'))+'\n'
     size = len(line.encode())
     need(_RESOLVER_STAGE_COUNT < RESOLVER_STAGE_LIMIT and _RESOLVER_STAGE_BYTES+size <= RESOLVER_STAGE_CAP,
         'Resolver diagnostic cap')
     _RESOLVER_STAGE_COUNT += 1; _RESOLVER_STAGE_BYTES += size
     sys.stderr.write(line); sys.stderr.flush()
+
+
+def resolver_failure(step, error):
+    """Return only fixed diagnostic tokens; never exception text or paths."""
+    need(step in RESOLVER_FAILURE_STEPS, 'Invalid resolver failure step')
+    reason, code = 'unexpected-exception', None
+    if isinstance(error, OSError):
+        reason = 'os-error'
+        if type(error.errno) is int and 0 < error.errno <= 4095: code = error.errno
+    elif isinstance(error, ValueError):
+        reason = RESOLVER_REASONS.get(str(error), 'value-rejected')
+        if step in ('entry-uuid','metadata-uuid') and reason == 'value-rejected': reason = 'invalid-uuid'
+    if step == 'metadata-parse' and reason in ('value-rejected','unexpected-exception'): reason = 'plist-invalid'
+    return {'failure_step':step,'reason':reason,'errno':code}
 
 
 def host_loadavg():
@@ -181,32 +217,50 @@ def open_directory(path):
         os.close(fd); raise
 
 
-def metadata_identity(container_fd, container_uuid, byte_budget=METADATA_CAP):
+def metadata_identity(container_fd, container_uuid, byte_budget=METADATA_CAP, failure=lambda *args: None):
     """Read only the standard identity plist, with finite bytes and no links."""
-    fd = os.open(METADATA_NAME, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
-        dir_fd=container_fd)
+    fd = None; step = 'metadata-open'
     try:
+        fd = os.open(METADATA_NAME, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+            dir_fd=container_fd)
+        step = 'metadata-stat'
         before = os.fstat(fd)
-        need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
-            and 0 < before.st_size <= min(METADATA_CAP, byte_budget), 'Unsafe metadata file')
+        step = 'metadata-type'
+        need(stat.S_ISREG(before.st_mode), 'Unsafe metadata file')
+        step = 'metadata-links'
+        need(before.st_nlink == 1, 'Unsafe metadata file')
+        step = 'metadata-size'
+        need(0 < before.st_size <= min(METADATA_CAP, byte_budget), 'Unsafe metadata file')
         data = bytearray()
+        step = 'metadata-read'
         while len(data) < before.st_size:
             chunk = os.read(fd, min(4096, before.st_size-len(data)))
             if not chunk: break
             data.extend(chunk)
+        step = 'metadata-restat'
         after = os.fstat(fd)
+        step = 'metadata-stability'
         need((before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
             == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
             and len(data) == before.st_size, 'Metadata changed during read')
+        step = 'metadata-parse'
         row = plistlib.loads(data, dict_type=UniqueMetadata)
+        step = 'metadata-identifier'
         need(isinstance(row, dict) and type(row.get('MCMMetadataIdentifier')) is str
             and 0 < len(row['MCMMetadataIdentifier']) <= 255, 'Malformed metadata identity')
+        step = 'metadata-uuid'
         need(fixed_uuid(row.get('MCMMetadataUUID')).upper() == container_uuid.upper(), 'Metadata UUID mismatch')
+        step = 'metadata-receipt'
         return row['MCMMetadataIdentifier'], {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
             'device': before.st_dev, 'inode': before.st_ino,
             'mtime_ns': before.st_mtime_ns, 'ctime_ns': before.st_ctime_ns}
+    except Exception as error:
+        failure(step,error); raise
     finally:
-        os.close(fd)
+        if fd is not None:
+            try: os.close(fd)
+            except Exception as error:
+                failure('metadata-close',error); raise
 
 
 def resolve_container_metadata(devices_root, device, bundle, kind, progress=lambda *args: None):
@@ -215,44 +269,59 @@ def resolve_container_metadata(devices_root, device, bundle, kind, progress=lamb
     need((bundle, kind) in set(CONTAINER_PHASES.values()), 'Unexpected container target')
     root = Path(devices_root)/device/'data/Containers'/kind/'Application'
     root_fd = None; matches = []; entries = total = 0; stage = 'root'
+    detail = {}
+    def remember_failure(step, error):
+        detail.update(resolver_failure(step,error))
     try:
         progress('root-open',entries,total,len(matches))
         root_fd = open_directory(root)
         progress('root-ready',entries,total,len(matches))
+        stage = 'scan-open'
         with os.scandir(root_fd) as scan:
+            stage = 'scan-next'
             for entry in scan:
                 stage = 'entry-limit'
                 entries += 1; need(entries <= METADATA_ENTRIES, 'Metadata entry count exceeded')
                 if entries == 1 or entries % 256 == 0: progress('scan-count',entries,total,len(matches))
-                stage = 'container-entry'
+                stage = 'entry-stat'
                 info = entry.stat(follow_symlinks=False)
+                stage = 'entry-type'
                 need(not stat.S_ISLNK(info.st_mode), 'Metadata directory link rejected')
                 # A regular file at the root is not an application container.
-                if not stat.S_ISDIR(info.st_mode): continue
+                if not stat.S_ISDIR(info.st_mode):
+                    stage = 'scan-next'; continue
+                stage = 'entry-uuid'
                 container_uuid = fixed_uuid(entry.name)
+                stage = 'entry-open'
                 fd = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
                     dir_fd=root_fd)
                 try:
+                    stage = 'entry-stat-open'
                     current = os.fstat(fd)
+                    stage = 'entry-stability'
                     need((info.st_dev, info.st_ino) == (current.st_dev, current.st_ino), 'Container changed during scan')
-                    stage = 'identity-plist'
-                    identifier, metadata = metadata_identity(fd, container_uuid, METADATA_TOTAL_CAP-total)
+                    identifier, metadata = metadata_identity(fd, container_uuid, METADATA_TOTAL_CAP-total, remember_failure)
+                    stage = 'total-limit'
                     total += metadata['bytes']; need(total <= METADATA_TOTAL_CAP, 'Metadata total bytes exceeded')
                     if identifier == bundle:
                         matches.append({'path': str(root/container_uuid), 'container_uuid': container_uuid,
                             'container_device': current.st_dev, 'container_inode': current.st_ino,
                             'metadata': metadata})
                 finally:
-                    os.close(fd)
+                    try: os.close(fd)
+                    except Exception as error:
+                        remember_failure('entry-close',error); raise
+                stage = 'scan-next'
         stage = 'target-missing' if not matches else 'target-ambiguous'
         need(len(matches) == 1, 'Container identity missing or ambiguous')
         progress('match-complete',entries,total,len(matches))
         return {'schema': 'Celluloid.ContainerMetadata.1', 'device': device,
             'bundle_identifier': bundle, 'kind': kind, 'entries_examined': entries,
             'metadata_bytes_examined': total, **matches[0]}
-    except Exception:
+    except Exception as error:
         # Do not expose unrelated app names, UUIDs, plist values or paths.
-        progress('lookup-failed',entries,total,len(matches))
+        # metadata_bytes totals successful identity receipts, not all bytes read.
+        progress('lookup-failed',entries,total,len(matches),detail or resolver_failure(stage,error))
         raise ValueError('Owned-device container metadata lookup rejected: '+stage) from None
     finally:
         if root_fd is not None: os.close(root_fd)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Host-only contract/negative tests. No simulator or Apple tool invocation."""
 import copy
+import errno
 import io
 import json
 import os
@@ -121,8 +122,9 @@ class ContractTests(unittest.TestCase):
         blocks = workflow.split('      - name: ')[1:]
         budgets = [int(re.search(r'timeout-minutes: (\d+)', block)[1]) for block in blocks]
         self.assertIn('    timeout-minutes: 42', workflow)
-        self.assertEqual(sum(budgets), 42)
-        self.assertEqual(budgets, [1,2,32,2,2,2,1])
+        # Per-step maxima need not all be consumed; job42 and original clock bind.
+        self.assertEqual(budgets, [1,2,32,4,2,2,1])
+        self.assertEqual(budgets[3]*60, store.PACK_END-store.CLEANUP_END)
         self.assertIn('if: always()\n', blocks[-1])
         self.assertIn("steps.pack.outcome == 'success'", blocks[4])
         paths = {line.rsplit('/',1)[-1] for line in blocks[-1].splitlines() if '${{ runner.temp }}/' in line}
@@ -637,6 +639,107 @@ class MetadataTests(unittest.TestCase):
         self.assertLessEqual(len(result.stderr),store.RESOLVER_STAGE_CAP)
         for forbidden in ('other.private.application',str(self.root),DEVICE,store.APP_ID):
             self.assertNotIn(forbidden,result.stderr.decode())
+    def assert_reason_cli(self, source, driver, env, step, reason, error_number=None):
+        result = subprocess.run([sys.executable,str(driver),'--resolve-container',DEVICE,store.APP_ID,'Data'],
+            cwd=source,env=env,capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,1); self.assertEqual(result.stdout,b'')
+        lines = result.stderr.decode().splitlines()
+        self.assertLessEqual(len(lines),store.RESOLVER_STAGE_LIMIT)
+        self.assertLessEqual(len(result.stderr),store.RESOLVER_STAGE_CAP)
+        rows = [json.loads(line.removeprefix('VISION_RESOLVER_STAGE ')) for line in lines]
+        failures = [row for row in rows if row['stage']=='lookup-failed']
+        self.assertEqual(len(failures),1,result.stderr.decode()); failure=failures[0]
+        self.assertEqual({key:failure[key] for key in ('failure_step','reason','errno')},
+            {'failure_step':step,'reason':reason,'errno':error_number})
+        for row in rows:
+            self.assertLessEqual(set(row),{'stage','elapsed_seconds','entries_seen','metadata_bytes','matches',
+                'failure_step','reason','errno'})
+        for forbidden in ('other.private.application','private-value',str(self.root),DEVICE,CONTAINER,OTHER,store.APP_ID):
+            self.assertNotIn(forbidden,result.stderr.decode())
+        return failure
+    def test_real_failure_reasons_for_metadata_shape_and_values(self):
+        source,driver,env = self.cli_fixture(); path=self.target/store.METADATA_NAME
+        cases = [
+            (b'', 'metadata-size', 'unsafe-metadata'),
+            (b'x'*(store.METADATA_CAP+1), 'metadata-size', 'unsafe-metadata'),
+            (b'<plist><dict>private-value', 'metadata-parse', 'plist-invalid'),
+            (plistlib.dumps({'MCMMetadataIdentifier':True,'MCMMetadataUUID':CONTAINER}),
+                'metadata-identifier','identity-malformed'),
+            (plistlib.dumps({'MCMMetadataIdentifier':store.APP_ID}), 'metadata-uuid','invalid-uuid'),
+            (plistlib.dumps({'MCMMetadataIdentifier':store.APP_ID,'MCMMetadataUUID':'private-value'}),
+                'metadata-uuid','invalid-uuid'),
+            (plistlib.dumps({'MCMMetadataIdentifier':store.APP_ID,'MCMMetadataUUID':OTHER}),
+                'metadata-uuid','uuid-mismatch'),
+            (b'<plist><dict><key>MCMMetadataIdentifier</key><string>private-value</string>'
+                b'<key>MCMMetadataIdentifier</key><string>private-value</string></dict></plist>',
+                'metadata-parse','duplicate-key')]
+        for data,step,reason in cases:
+            with self.subTest(step=step,reason=reason):
+                path.write_bytes(data)
+                failure=self.assert_reason_cli(source,driver,env,step,reason)
+                # Even a fully read plist rejected later is absent from the
+                # successful-identity byte total; zero is not proof of no read.
+                self.assertEqual(failure['metadata_bytes'],0)
+    def test_real_failure_reasons_for_metadata_file_safety(self):
+        source,driver,env = self.cli_fixture(); path=self.target/store.METADATA_NAME
+        path.unlink(); self.assert_reason_cli(source,driver,env,'metadata-open','os-error',errno.ENOENT)
+        os.mkfifo(path); self.assert_reason_cli(source,driver,env,'metadata-type','unsafe-metadata')
+        path.unlink(); write_container_metadata(self.target)
+        hardlink=self.root/'private-value';os.link(path,hardlink)
+        self.assert_reason_cli(source,driver,env,'metadata-links','unsafe-metadata')
+        hardlink.unlink();path.rename(hardlink);path.symlink_to(hardlink)
+        self.assert_reason_cli(source,driver,env,'metadata-open','os-error',errno.ELOOP)
+    def test_real_failure_reasons_for_entry_and_target(self):
+        source,driver,env = self.cli_fixture()
+        write_container_metadata(self.target,'other.private.application')
+        self.assert_reason_cli(source,driver,env,'target-missing','target-count')
+        write_container_metadata(self.target)
+        another=self.base/OTHER;another.mkdir();write_container_metadata(another)
+        self.assert_reason_cli(source,driver,env,'target-ambiguous','target-count')
+        (another/store.METADATA_NAME).unlink();another.rmdir()
+        invalid=self.base/'private-value';self.target.rename(invalid)
+        self.assert_reason_cli(source,driver,env,'entry-uuid','invalid-uuid')
+        invalid.rename(self.target);moved=self.root/'private-value';self.target.rename(moved);self.target.symlink_to(moved)
+        self.assert_reason_cli(source,driver,env,'entry-type','entry-symlink')
+    def test_failure_detail_classifies_read_and_stability_without_raw_error(self):
+        fd=store.open_directory(self.target); events=[]
+        try:
+            with mock.patch.object(store.os,'read',side_effect=OSError(errno.EIO,'private-value',str(self.target))):
+                with self.assertRaises(OSError):
+                    store.metadata_identity(fd,CONTAINER,failure=lambda step,error: events.append(store.resolver_failure(step,error)))
+            self.assertEqual(events,[{'failure_step':'metadata-read','reason':'os-error','errno':errno.EIO}])
+            events.clear(); ordinary=store.os.read
+            def mutate(handle,count):
+                data=ordinary(handle,count);write_container_metadata(self.target,'other.private.application');return data
+            with mock.patch.object(store.os,'read',side_effect=mutate), self.assertRaises(ValueError):
+                store.metadata_identity(fd,CONTAINER,failure=lambda step,error: events.append(store.resolver_failure(step,error)))
+            self.assertEqual(events,[{'failure_step':'metadata-stability','reason':'metadata-changed','errno':None}])
+        finally: os.close(fd)
+    def test_failure_enum_and_errno_whitelist_reject_raw_details(self):
+        self.assertEqual(store.resolver_failure('entry-stat',OSError(errno.EACCES,'private-value','/private/path')),
+            {'failure_step':'entry-stat','reason':'os-error','errno':errno.EACCES})
+        self.assertEqual(store.resolver_failure('entry-uuid',ValueError('private-value'))['reason'],'invalid-uuid')
+        self.assertEqual(store.resolver_failure('metadata-parse',RuntimeError('private-value'))['reason'],'plist-invalid')
+        for number in (True,0,-1,4096,'private-value'):
+            error=OSError();error.errno=number
+            self.assertIsNone(store.resolver_failure('entry-open',error)['errno'])
+        with self.assertRaises(ValueError):store.resolver_failure('private-value',ValueError())
+        valid={'failure_step':'entry-stat','reason':'os-error','errno':errno.EIO}
+        invalid=[{**valid,'failure_step':'private-value'},{**valid,'reason':'private-value'},
+            {**valid,'errno':True},{**valid,'errno':4096},{**valid,'path':'/private/path'}]
+        with mock.patch.object(store,'_RESOLVER_MODE',True), mock.patch('sys.stderr',new_callable=io.StringIO) as output:
+            for failure in invalid:
+                with self.assertRaises(ValueError):store.resolver_stage('lookup-failed',failure=failure)
+            with self.assertRaises(ValueError):store.resolver_stage('scan-count',failure=valid)
+            self.assertEqual(output.getvalue(),'')
+    def test_failure_detail_fits_the_existing_line_and_byte_caps(self):
+        with mock.patch.object(store,'_RESOLVER_MODE',True), mock.patch.object(store,'_RESOLVER_STAGE_COUNT',0), \
+             mock.patch.object(store,'_RESOLVER_STAGE_BYTES',0), mock.patch('sys.stderr',new_callable=io.StringIO) as output:
+            for count in range(store.RESOLVER_STAGE_LIMIT-1):store.resolver_stage('scan-count',count)
+            store.resolver_stage('lookup-failed',failure=store.resolver_failure('metadata-stability',ValueError('Metadata changed during read')))
+            with self.assertRaisesRegex(ValueError,'diagnostic cap'):store.resolver_stage('failed')
+            self.assertEqual(len(output.getvalue().splitlines()),store.RESOLVER_STAGE_LIMIT)
+            self.assertLessEqual(len(output.getvalue().encode()),store.RESOLVER_STAGE_CAP)
     def test_default_pack_and_verdict_cli_do_not_import_native_helpers(self):
         source,driver,env = self.cli_fixture()
         default = subprocess.run([sys.executable,str(driver)],cwd=source,env=env,capture_output=True,timeout=10)
