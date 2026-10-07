@@ -36,6 +36,8 @@ final class MacPhotosHostUITests: XCTestCase {
     private var observeSavedPixelDifference = false
     private var functionalObservationComplete = false
     private var deferredSavedPixelDelta: Int?
+    private var observeRevertedProfile = false
+    private var revertedProfileReceipt: [String: Any]?
     private var lifecycleRows: [[String: Any]] = []
     private var lifecycleControls: [Int] = []
     private var lifecycleControlCatalog: [[Any]] = []
@@ -96,6 +98,12 @@ final class MacPhotosHostUITests: XCTestCase {
             XCTAssertNil(context["boundary_probe"])
             observeSavedPixelDifference = true
         }
+        if let profile = context["owned_reverted_profile_observation"] {
+            XCTAssertEqual(profile as? String, "gama-chrm-canonical-srgb-v1")
+            XCTAssertTrue(observeSavedPixelDifference)
+            XCTAssertEqual(route["scope"] as? String, "photos-lifecycle-observation")
+            observeRevertedProfile = true
+        }
         contextHash = digest(data)
         XCTAssertEqual(try digest(URL(fileURLWithPath: value("script_path"))), try value("script_sha256"))
         XCTAssertEqual(try digest(URL(fileURLWithPath: value("test_source_path"))), try value("test_source_sha256"))
@@ -109,15 +117,32 @@ final class MacPhotosHostUITests: XCTestCase {
         testStarted = ProcessInfo.processInfo.systemUptime
         try verifyBinaryScalarContract()
         try verifyInternationalTextContract()
-        // Validate the exact read-only input before any host UI action. Only
-        // XCTest stdout/attachments carry data back across the sandbox boundary.
-        try report(["schema": "Celluloid.HostTransport.3", "host_entry_contract": Self.hostEntryContract, "source_sha": try value("source_sha"),
+        // Validate the input before host UI. Ordinarily proof uses stdout and
+        // attachments; this one profile mode also permits the fixed owned staging
+        // below. Permission does not claim a write: receipt/readback proves that.
+        var transport: [String: Any] = ["schema": "Celluloid.HostTransport.3", "host_entry_contract": Self.hostEntryContract, "source_sha": try value("source_sha"),
                     "context_sha256": contextHash, "test_source_sha256": try value("test_source_sha256"),
                     "verifier_sha256": try value("script_sha256"),
                     "app_executable_sha256": try value("app_executable_sha256"),
                     "extension_executable_sha256": try value("extension_executable_sha256"),
                     "extension_debug_dylib_sha256": try value("extension_debug_dylib_sha256"),
-                    "external_writes": false, "context_validated": true], named: "transport.json")
+                    "external_writes": false, "context_validated": true]
+        if observeRevertedProfile {
+            let environment = try XCTUnwrap(context["runner_environment"] as? [String: String])
+            let temporary = URL(fileURLWithPath: try XCTUnwrap(environment["RUNNER_TEMP"])).standardizedFileURL
+            let evidence = temporary.appendingPathComponent("mac-host-observed")
+            XCTAssertEqual(try value("evidence_path"), evidence.path)
+            XCTAssertEqual(environment["GITHUB_RUN_ATTEMPT"], "1")
+            transport["external_writes"] = "bounded-owned-staging-permitted"
+            let staging: [String: Any] = ["source_sha": try value("source_sha"), "context_sha256": contextHash,
+                "run_id": try XCTUnwrap(environment["GITHUB_RUN_ID"]), "run_attempt": 1,
+                "directory": evidence.appendingPathComponent("owned-reverted-profile").path,
+                "files": ["reverted-input.png": 131072, "reverted-canonical.png": 131072,
+                          "profile.json": 8192, "profile.pending.json": 8192],
+                "actual_write_evidence": "owned_profile_receipt-and-fixed-file-readback"]
+            transport["owned_staging"] = staging
+        }
+        try report(transport, named: "transport.json")
         let photos = XCUIApplication(bundleIdentifier: "com.apple.Photos")
         var photosIdentityVerified = false
         defer {
@@ -1366,6 +1391,7 @@ final class MacPhotosHostUITests: XCTestCase {
         // Preserve exact owned bytes and bounded framing before ImageIO/profile/
         // pixel acceptance. Failed decoding never becomes an accepted image.
         exportPNGDiagnostics.append(pngInventory(bytes, phase: name))
+        if observeRevertedProfile && name == "reverted" { retainRevertedProfileInput(bytes) }
         if original {
             guard let source = retainedSource, bytes == source.bytes else {
                 let failure = block("Unmodified original export differs from retained source bytes")
@@ -1375,7 +1401,8 @@ final class MacPhotosHostUITests: XCTestCase {
             }
             guard retainedPNGHashes[retainedImage] == digest(bytes) else { throw block("Original source byte retention is missing") }
         } else { try retainLifecycleBytes(bytes, named: retainedImage) }
-        let raster = try lifecycleRaster(bytes, expectedFormat: UTType.png.identifier)
+        let raster = try lifecycleRaster(bytes, expectedFormat: UTType.png.identifier,
+            allowCalibratedRGB: observeRevertedProfile && name == "reverted")
         lifecycleExports[name] = ["image": retainedImage, "relative_path": name + "/" + Self.fixtureFilename,
             "bytes": bytes.count, "sha256": digest(bytes)]
         return raster
@@ -1439,7 +1466,99 @@ final class MacPhotosHostUITests: XCTestCase {
         _ = try remainingTime(1)
         return bytes
     }
-    private func pngHeader(_ data: Data) throws -> (colorType: Int, profileEncoding: String) {
+    private func profileFailure(_ message: String) -> NSError {
+        NSError(domain: "Celluloid.OwnedRevertedProfile", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+    private func profileDirectory() throws -> Int32 {
+        _ = try remainingTime(1)
+        let path = URL(fileURLWithPath: try value("evidence_path")).appendingPathComponent("owned-reverted-profile")
+        guard path.standardizedFileURL == path.resolvingSymlinksInPath() else { throw profileFailure("Profile directory alias") }
+        let fd = open(path.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard fd >= 0 else { throw profileFailure("Profile directory unavailable") }
+        var status = stat()
+        guard fstat(fd, &status) == 0, status.st_mode & S_IFMT == S_IFDIR, status.st_uid == getuid() else {
+            close(fd); throw profileFailure("Unowned profile directory")
+        }
+        return fd
+    }
+    private func writeProfileFile(_ bytes: Data, name: String, limit: Int) throws {
+        guard ["reverted-input.png", "reverted-canonical.png", "profile.pending.json"].contains(name),
+              !bytes.isEmpty, bytes.count <= limit else { throw profileFailure("Profile file cap/name") }
+        let directory = try profileDirectory(); defer { close(directory) }
+        let fd = openat(directory, name, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { throw profileFailure("Exclusive profile file open") }; defer { close(fd) }
+        var offset = 0
+        while offset < bytes.count {
+            _ = try remainingTime(1)
+            let count = bytes.withUnsafeBytes { Darwin.write(fd, $0.baseAddress!.advanced(by: offset), min(65_536, bytes.count - offset)) }
+            if count < 0 && errno == EINTR { continue }
+            guard count > 0 else { throw profileFailure("Profile file write") }; offset += count
+        }
+        var status = stat()
+        guard fstat(fd, &status) == 0, status.st_mode & S_IFMT == S_IFREG, status.st_nlink == 1,
+              status.st_uid == getuid(), status.st_size == bytes.count else { throw profileFailure("Profile file changed") }
+        _ = try remainingTime(1)
+    }
+    private func publishProfileReceipt() throws {
+        guard let receipt = revertedProfileReceipt else { throw profileFailure("Missing profile receipt") }
+        let data = try JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys])
+        try writeProfileFile(data, name: "profile.pending.json", limit: 8192)
+        let directory = try profileDirectory(); defer { close(directory) }
+        var previous = stat()
+        if fstatat(directory, "profile.json", &previous, AT_SYMLINK_NOFOLLOW) == 0 {
+            guard previous.st_mode & S_IFMT == S_IFREG, previous.st_nlink == 1, previous.st_uid == getuid(),
+                  previous.st_size > 0, previous.st_size <= 8192 else { throw profileFailure("Changed profile receipt") }
+        } else { guard errno == ENOENT else { throw profileFailure("Profile receipt lookup") } }
+        _ = try remainingTime(1)
+        guard renameat(directory, "profile.pending.json", directory, "profile.json") == 0 else { throw profileFailure("Profile receipt publication") }
+        if let index = exportPNGDiagnostics.lastIndex(where: { $0["phase"] as? String == "reverted" }) {
+            exportPNGDiagnostics[index]["owned_profile_receipt"] = receipt
+        }
+    }
+    private func retainRevertedProfileInput(_ bytes: Data) {
+        do {
+            let environment = try XCTUnwrap(context["runner_environment"] as? [String: String])
+            revertedProfileReceipt = ["schema": "Celluloid.OwnedRevertedProfile.1", "source_sha": try value("source_sha"),
+                "context_sha256": contextHash, "run_id": try XCTUnwrap(environment["GITHUB_RUN_ID"]), "run_attempt": 1,
+                "phase": "reverted", "raw_file": "reverted-input.png", "raw_bytes": bytes.count, "raw_sha256": digest(bytes),
+                "canonical_file": NSNull(), "profile": NSNull(), "declaration": NSNull(), "qualification": false]
+            try writeProfileFile(bytes, name: "reverted-input.png", limit: 131_072)
+            try publishProfileReceipt()
+        } catch {
+            exportPNGDiagnostics[exportPNGDiagnostics.count - 1]["retention_error"] = String(String(describing: error).prefix(256))
+        }
+    }
+    private func retainRevertedProfileCanonical(_ bytes: Data, profile: [String: Any]) {
+        do {
+            guard revertedProfileReceipt != nil else { throw profileFailure("Raw profile retention unavailable") }
+            try writeProfileFile(bytes, name: "reverted-canonical.png", limit: 131_072)
+            revertedProfileReceipt?["canonical_file"] = "reverted-canonical.png"
+            revertedProfileReceipt?["profile"] = profile
+            try publishProfileReceipt()
+        } catch {
+            exportPNGDiagnostics[exportPNGDiagnostics.count - 1]["retention_error"] = String(String(describing: error).prefix(256))
+        }
+    }
+    private func boundedProfileName(_ value: String?) -> String {
+        let name = String(decoding: (value ?? "").utf8.prefix(125), as: UTF8.self)
+        return !name.isEmpty && name.unicodeScalars.allSatisfy({ $0.value >= 32 && !(127...159).contains($0.value) }) ? name : "unavailable"
+    }
+    private func validateCalibratedRGB(gamma: Int, chromaticities: [Int]) throws {
+        // W3C PNG 7.1 and 11.3.2: uint31 fields, scaled by100000. This
+        // observation supports physical, nondegenerate calibrated RGB only.
+        guard gamma > 0, gamma <= Int(Int32.max), chromaticities.count == 8,
+              chromaticities.allSatisfy({ $0 >= 0 && $0 <= Int(Int32.max) }) else { throw block("Invalid PNG calibrated RGB fields") }
+        let points = stride(from: 0, to: 8, by: 2).map { (Int64(chromaticities[$0]), Int64(chromaticities[$0 + 1])) }
+        guard points.allSatisfy({ $0.0 >= 0 && $0.1 > 0 && $0.0 + $0.1 <= 100_000 }),
+              points[0].0 > 0, points[0].0 + points[0].1 < 100_000 else { throw block("Unsupported PNG calibrated RGB coordinates") }
+        func cross(_ a: (Int64, Int64), _ b: (Int64, Int64), _ c: (Int64, Int64)) -> Int64 {
+            (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)
+        }
+        let area = cross(points[1], points[2], points[3])
+        let edges = [cross(points[1], points[2], points[0]), cross(points[2], points[3], points[0]), cross(points[3], points[1], points[0])]
+        guard area != 0, edges.allSatisfy({ area > 0 ? $0 > 0 : $0 < 0 }) else { throw block("Degenerate PNG calibrated RGB primaries or white point") }
+    }
+    private func pngHeader(_ data: Data, allowCalibratedRGB: Bool = false) throws -> (colorType: Int, profileEncoding: String, calibrated: [String: Any]?) {
         let bytes = [UInt8](data)
         guard bytes.count >= 45, bytes.count <= 128 * 1024,
               Array(bytes.prefix(8)) == [137, 80, 78, 71, 13, 10, 26, 10] else { throw block("Required PNG signature/128 KiB bound failed") }
@@ -1452,6 +1571,8 @@ final class MacPhotosHostUITests: XCTestCase {
             throw block("Required PNG dimensions/depth/color type/interlace failed", operation: ["sha256": digest(data), "bytes": data.count])
         }
         var offset = 8, chunks = 0, srgb = 0, icc = 0, textChunks = 0
+        var gamma: Int?, chromaticities: [Int]?
+        var seenImageData = false
         while offset < bytes.count {
             guard offset <= bytes.count - 12, chunks < 64 else { throw block("PNG chunk framing limit") }
             let count = u32(offset)
@@ -1464,6 +1585,18 @@ final class MacPhotosHostUITests: XCTestCase {
                 textChunks += 1
                 guard textChunks == 1 else { throw block("Duplicate iTXt before decode") }
                 try admitInternationalText(Array(bytes[(offset + 8)..<(offset + 8 + count)]))
+            }
+            if tag == "IDAT" { seenImageData = true }
+            if tag == "gAMA" {
+                guard !seenImageData, gamma == nil, count == 4 else { throw block("Malformed, duplicate or late PNG gamma") }
+                gamma = u32(offset + 8)
+            }
+            if tag == "cHRM" {
+                guard !seenImageData, chromaticities == nil, count == 32 else { throw block("Malformed, duplicate or late PNG chromaticities") }
+                chromaticities = (0..<8).map { u32(offset + 8 + $0 * 4) }
+            }
+            if allowCalibratedRGB && seenImageData && ["sRGB", "iCCP"].contains(tag) {
+                throw block("Late PNG color profile")
             }
             if tag == "sRGB" {
                 guard count == 1, bytes[offset + 8] == 0 else { throw block("PNG sRGB rendering intent mismatch") }
@@ -1480,10 +1613,29 @@ final class MacPhotosHostUITests: XCTestCase {
             guard !["acTL", "fcTL", "fdAT", "tRNS"].contains(tag) else { throw block("Animated/transparency PNG is outside the fixture contract") }
             offset += count + 12; chunks += 1
         }
-        guard offset == bytes.count, (srgb == 1 && icc == 0) || (srgb == 0 && icc == 1) else {
+        guard offset == bytes.count else { throw block("PNG profile chunk framing incomplete") }
+        if allowCalibratedRGB {
+            revertedProfileReceipt?["declaration"] = ["gamma_scaled": gamma.map { $0 as Any } ?? NSNull(),
+                "chromaticities_scaled": chromaticities.map { $0 as Any } ?? NSNull(), "sRGB_chunks": srgb, "iCCP_chunks": icc]
+            do { try publishProfileReceipt() }
+            catch { exportPNGDiagnostics[exportPNGDiagnostics.count - 1]["retention_error"] = String(String(describing: error).prefix(256)) }
+            if let gamma { guard gamma > 0, gamma <= Int(Int32.max) else { throw block("Invalid PNG calibrated RGB gamma") } }
+            if let chromaticities { try validateCalibratedRGB(gamma: gamma ?? 45455, chromaticities: chromaticities) }
+            if srgb > 0 || icc > 0 {
+                guard gamma == nil || gamma == 45455,
+                      chromaticities == nil || chromaticities == [31270,32900,64000,33000,30000,60000,15000,6000] else {
+                    throw block("Conflicting PNG profile and gamma/chromaticities")
+                }
+            }
+        }
+        if allowCalibratedRGB && srgb == 0 && icc == 0, let gamma, let chromaticities {
+            try validateCalibratedRGB(gamma: gamma, chromaticities: chromaticities)
+            return (Int(bytes[25]), "gama-chrm", ["gamma_scaled": gamma, "chromaticities_scaled": chromaticities])
+        }
+        guard (srgb == 1 && icc == 0) || (srgb == 0 && icc == 1) else {
             throw block("PNG profile missing/ambiguous; pixel conversion is not a fallback", operation: ["sha256": digest(data), "sRGB_chunks": srgb, "iCCP_chunks": icc])
         }
-        return (Int(bytes[25]), srgb == 1 ? "srgb-chunk" : "icc-reference")
+        return (Int(bytes[25]), srgb == 1 ? "srgb-chunk" : "icc-reference", nil)
     }
     private func admitInternationalText(_ payload: [UInt8]) throws {
         do { try Self.validateInternationalText(payload) }
@@ -1570,9 +1722,9 @@ final class MacPhotosHostUITests: XCTestCase {
             space: CGColorSpace(name: CGColorSpace.sRGB)!,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue))
     }
-    private func lifecycleRaster(_ data: Data, expectedFormat: String) throws -> LifecycleRaster {
+    private func lifecycleRaster(_ data: Data, expectedFormat: String, allowCalibratedRGB: Bool = false) throws -> LifecycleRaster {
         _ = try remainingTime(1)
-        let header = try pngHeader(data)
+        let header = try pngHeader(data, allowCalibratedRGB: allowCalibratedRGB)
         let imageSource = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary))
         guard CGImageSourceGetCount(imageSource) == 1,
               CGImageSourceGetType(imageSource) as String? == expectedFormat,
@@ -1590,9 +1742,28 @@ final class MacPhotosHostUITests: XCTestCase {
         context.draw(image, in: CGRect(x: 0, y: 0, width: 1200, height: 800))
         let rgba = Data(bytes: try XCTUnwrap(context.data), count: 1200 * 800 * 4)
         guard stride(from: 3, to: rgba.count, by: 4).allSatisfy({ rgba[$0] == 255 }) else { throw block("Export alpha mismatch; opaque source required") }
+        if let calibrated = header.calibrated {
+            var profile = calibrated
+            profile["raw_sha256"] = digest(data); profile["raw_bytes"] = data.count
+            profile["imageio_color_space_model"] = "rgb"
+            profile["imageio_color_space_name"] = boundedProfileName((image.colorSpace?.name).map { $0 as String })
+            profile["imageio_profile_name"] = boundedProfileName(properties[kCGImagePropertyProfileName] as? String)
+            let icc = image.colorSpace.flatMap { $0.copyICCData() }.map { $0 as Data }
+            profile["imageio_icc_sha256"] = icc.map { digest($0) } ?? "unavailable"
+            let canonical = NSMutableData()
+            let encoder = try XCTUnwrap(CGImageDestinationCreateWithData(canonical, UTType.png.identifier as CFString, 1, nil))
+            CGImageDestinationAddImage(encoder, try XCTUnwrap(context.makeImage()),
+                [kCGImagePropertyPNGDictionary: [kCGImagePropertyPNGInterlaceType: 0]] as CFDictionary)
+            guard CGImageDestinationFinalize(encoder), canonical.length > 0, canonical.length <= 131_072 else {
+                throw block("Canonical reverted PNG exceeded its fixed evidence allowance")
+            }
+            profile["canonical_sha256"] = digest(canonical as Data); profile["canonical_bytes"] = canonical.length
+            profile["canonical_rgba_sha256"] = digest(rgba); profile["canonical_space"] = "sRGB"
+            retainRevertedProfileCanonical(canonical as Data, profile: profile)
+        }
         let metadata: [String: Any] = ["bytes": data.count, "sha256": digest(data), "rgba_sha256": digest(rgba),
             "format": expectedFormat, "width": 1200, "height": 800, "bit_depth": 8,
-            "color_type": header.colorType, "interlace": 0, "orientation": 1, "profile": "sRGB",
+            "color_type": header.colorType, "interlace": 0, "orientation": 1, "profile": header.calibrated == nil ? "sRGB" : "canonical-sRGB",
             "profile_encoding": header.profileEncoding, "alpha": "opaque"]
         return LifecycleRaster(bytes: data, rgba: rgba, metadata: metadata)
     }

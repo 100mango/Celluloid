@@ -158,6 +158,10 @@ class LifecycleRouteFaultTests(unittest.TestCase):
         self.phase_fail = None
         self.timeout = None
         self.denied = False
+        self.profile_evidence=False
+        self.profile_reads=0
+        self.profile_late=False
+        self.profile_pressure=False
         self.bad_native = False
         self.case_elapsed = 0.1
         self.late_replay = False
@@ -201,6 +205,8 @@ class LifecycleRouteFaultTests(unittest.TestCase):
             info['CFBundleIdentifier'] = 'Mango.Celluloid.CelluloidPhotoExtension'
             (extension / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
             context = {'source_sha': 'a' * 40, 'app_id': 'Mango.Celluloid', 'extension_id': 'Mango.Celluloid.CelluloidPhotoExtension', 'app_path': str(app), 'extension_path': str(extension), 'runner_environment': dict(self.env), 'seed': {'mode': 'require-empty-library'}, 'validation_route': LIFECYCLE, 'host_clock_profile': host_clock_profile(LIFECYCLE)}
+            context['evidence_path']=str(self.temp/'mac-host-observed')
+            (self.temp/'mac-host-observed').mkdir()
             (self.temp / 'mac-host-context.json').write_bytes(route.encoded(context))
         if label == 'budget-host':
             (self.temp / 'mac-host-budget.json').write_bytes(b'{"fixture_only":true}')
@@ -225,14 +231,17 @@ class LifecycleRouteFaultTests(unittest.TestCase):
             (folder / 'manifest.json').write_bytes(b'[]')
         return subprocess.CompletedProcess(args, code, out, '')
 
-    def bound(self, context_bytes, log, summary):
+    def bound(self, context_bytes, log, summary, **kwargs):
+        if kwargs.get('profile_diagnostic'):
+            if self.profile_evidence:return (json.loads(context_bytes),self.records,{},{},{})
+            raise ValueError('no profile receipt in default route fixture')
         if self.denied:
             raise ValueError('Unadmitted Photos confirmation or access alert; no action taken')
         self.safe = True
         self.parsed_context = json.loads(context_bytes)
         return (self.parsed_context, self.records, {}, {}, {})
 
-    def replay(self, *args):
+    def replay(self, *args, **kwargs):
         self.replay_finished = True
         if self.late_replay:
             self.clock = self.native_finished + 361.4
@@ -261,9 +270,18 @@ class LifecycleRouteFaultTests(unittest.TestCase):
                 stack.enter_context(patch.object(route.time, 'time', side_effect=lambda: self.wall))
                 stack.enter_context(patch.object(route, 'run', side_effect=self.fake_run))
                 stack.enter_context(patch.object(route, 'admit_outcome', side_effect=self.bound))
+                stack.enter_context(patch.object(route,'admit_profile_receipt',return_value={'fixture_only':True}))
+                def profile_read(temp,context,receipt,check):
+                    self.profile_reads+=1
+                    if self.profile_late:self.clock=self.native_finished+361.4
+                    check()
+                    return ({'reverted-profile-input.png':self.fixture,'reverted-profile.json':b'{"qualification":false}'},None)
+                stack.enter_context(patch.object(route,'read_profile',side_effect=profile_read))
+                if self.profile_pressure:stack.enter_context(patch.object(route,'PROFILE_CAP',route.CAP))
+
                 stack.enter_context(patch.object(route, 'parse', return_value=records))
                 stack.enter_context(patch.object(route, 'attachment_candidates', return_value=self.old))
-                stack.enter_context(patch.object(route, 'decode', return_value={'rgba_sha256': 'd' * 64}))
+                stack.enter_context(patch.object(route, 'decode', return_value={'rgba_sha256': 'd' * 64,'profile':'sRGB'}))
                 stack.enter_context(patch.object(route, 'admit_images', side_effect=self.replay))
                 real_capacity=route.attachment_capacity
                 def capacity(files,lifecycle):
@@ -433,6 +451,31 @@ class LifecycleRouteFaultTests(unittest.TestCase):
         self.assertEqual(report['stage'], 'unchanged-product')
         self.assertIn('1MB capacity', report['error'])
         self.git.assert_not_called()
+
+    def test_incomplete_bound_reverted_failure_retains_raw_without_export_or_success(self):
+        self.profile_evidence=True;self.denied=True;self.result='Failed'
+        code,report=self.execute()
+        self.assertEqual(code,1);self.assertEqual(self.profile_reads,1)
+        self.assertTrue(report['reverted_profile_evidence_retained'])
+        self.assertFalse(report['functional_lifecycle_qualified']);self.assertFalse(report['diagnostic_complete'])
+        self.assertNotIn('attachments',self.called);self.assertNotIn('product-after',self.called)
+        evidence=self.temp/'celluloid-photos-lifecycle-observation-evidence'
+        self.assertEqual((evidence/'reverted-profile-input.png').read_bytes(),self.fixture)
+
+    def test_profile_deadline_failure_never_starts_later_native_or_qualifies(self):
+        self.profile_evidence=True;self.profile_late=True
+        code,report=self.execute()
+        self.assertEqual(code,1);self.assertEqual(self.profile_reads,1)
+        self.assertFalse(report['functional_lifecycle_qualified'])
+        self.assertNotIn('product-after',self.called);self.assertNotIn('attachments',self.called)
+        self.assertIn('original tail/work deadline',report['reverted_profile_evidence_error'])
+
+    def test_profile_reserve_pressure_stops_before_file_open(self):
+        self.profile_evidence=True;self.profile_pressure=True;self.denied=True
+        code,report=self.execute()
+        self.assertEqual(code,1);self.assertEqual(self.profile_reads,0)
+        self.assertIn('original1MB profile evidence reserve',report['reverted_profile_evidence_error'])
+        self.assertNotIn('product-after',self.called);self.assertNotIn('attachments',self.called)
 
     def test_original_clock_has_no_reset_when_time_is_insufficient(self):
         self.clock = 12200

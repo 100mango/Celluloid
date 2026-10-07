@@ -1,6 +1,6 @@
 {
   "schema": "Celluloid.OwnedPhotosLifecycleSource.1",
-  "parent": "87450ac79129f3d5a0ee211b0681236512acfe37",
+  "parent": "cb2f172d9bd2b06e8b9ff0c1e817f7e93860ae45",
   "files": [
     {
       "path": ".github/workflows/apple-platforms.yml",
@@ -2939,8 +2939,8 @@
     {
       "path": "Platforms/UITests/MacPhotosHostUITests.swift",
       "mode": "100644",
-      "bytes": 128608,
-      "sha256": "ebb0f9e7e31faefb92e3131ff2a907d49994698b3eafa1744ed8c67fc9111cfc"
+      "bytes": 141003,
+      "sha256": "249b5c1d2794d89db2b68e4a365dc06a34dd891d6fd1ca739210280622d6c1c1"
     },
     {
       "path": "Platforms/UITests/NativeEditorUITests.swift",
@@ -4865,14 +4865,14 @@
     {
       "path": "Scripts/mac_host_lifecycle.py",
       "mode": "100644",
-      "bytes": 23677,
-      "sha256": "994a6aef330ae4c6ec5823046960aa9abef40ade925697b7afd686a6e0cb65cd"
+      "bytes": 27758,
+      "sha256": "9568a6fa38512f0b5c4e283054c75c0ae9eacfffb8eba1f2649e764a1376e1ea"
     },
     {
       "path": "Scripts/mac_host_lifecycle_pixels.py",
       "mode": "100644",
-      "bytes": 10041,
-      "sha256": "79401c30a7331eeba4ca3d900e939efc1ef650b46d8d82765efe90afe427de6b"
+      "bytes": 12715,
+      "sha256": "0528225c99acb7c554d397d5e16ca903ea147c5192e41c24c5d2fec379393d3e"
     },
     {
       "path": "Scripts/mac_host_self_identity.py",
@@ -4883,8 +4883,8 @@
     {
       "path": "Scripts/mac_host_transport.py",
       "mode": "100644",
-      "bytes": 15337,
-      "sha256": "df6e6d730b70a15fac30cd29c70bb41f0d37db53381ab0b557445ac9fd862080"
+      "bytes": 17537,
+      "sha256": "b5ef184b0b09081a88cadb26b4b344a67326523bff96a98a593227a040e4bc8d"
     },
     {
       "path": "Scripts/mac_owned_crash.py",
@@ -4907,8 +4907,14 @@
     {
       "path": "Scripts/mac_photos_lifecycle_observation.py",
       "mode": "100644",
-      "bytes": 14446,
-      "sha256": "8ed670ecd8073d2d1e8a95e68103fd2f486adc3935f901e26d383d4f7095e34b"
+      "bytes": 14946,
+      "sha256": "b3ea009f571ab37b3b02afb113273ca2b413930195ec7f951c87b164426c9b81"
+    },
+    {
+      "path": "Scripts/mac_photos_reverted_profile.py",
+      "mode": "100644",
+      "bytes": 8912,
+      "sha256": "3225654c0a620ec0a24c4007713726c2b7bc1069206121986c37afd389c599bf"
     },
     {
       "path": "Scripts/materialize_native_icons.swift",
@@ -5015,8 +5021,8 @@
     {
       "path": "Scripts/run_mac_photos_lifecycle.py",
       "mode": "100644",
-      "bytes": 24257,
-      "sha256": "3ced9e2862b88fb11389268b1bfa21f3acb373db44acf2751ac6748ec6596984"
+      "bytes": 26018,
+      "sha256": "ef6bed9dd6ed903e8ddbcea4ae0cb90370770183d3274f52715b3c2bf1d9943e"
     },
     {
       "path": "Scripts/run_native_phone.py",
@@ -5207,8 +5213,20 @@
     {
       "path": "Scripts/test_mac_photos_lifecycle_observation_route.py",
       "mode": "100644",
-      "bytes": 26876,
-      "sha256": "5ac659469a42305c99b6257bafb1d3b70ac6ee1eb30505b97e22f49db47655a8"
+      "bytes": 29737,
+      "sha256": "04cd98dbb7539e5866e1e4d3fb6a14f5dfc0d6cbdac0dbc23cac5d750cac58f3"
+    },
+    {
+      "path": "Scripts/test_mac_photos_lifecycle_profile.py",
+      "mode": "100644",
+      "bytes": 16658,
+      "sha256": "f451b35020ce509938314d4a234a17752ee4379adf8a05a4f51069afe7fbe241"
+    },
+    {
+      "path": "Scripts/test_mac_photos_lifecycle_profile_retention.py",
+      "mode": "100644",
+      "bytes": 11836,
+      "sha256": "6054682dedeb974493badd891eb626a98be3f2b1b28e0aa884f82d74b53f3a7f"
     },
     {
       "path": "Scripts/test_matrix_device_selection.sh",

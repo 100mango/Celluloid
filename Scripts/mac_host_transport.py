@@ -1,7 +1,7 @@
-"""Bounded, fixed-name stdout handoff from sandboxed XCTest to its outer runner."""
+"""Bounded stdout proof, with one explicit owned profile-staging permission."""
 import base64,hashlib,json,math,os,re,stat
 from collections import Counter
-from validation_route import context_clock
+from validation_route import context_clock,current_route,LIFECYCLE
 from pathlib import Path
 
 PREFIX='MAC_HOST_PROOF '
@@ -39,10 +39,37 @@ def load_json(data):
     return json.loads(data,object_pairs_hook=unique,parse_constant=nonfinite,parse_float=finite_real)
 
 def expected_transport(context,context_hash):
-    return {'schema':'Celluloid.HostTransport.3','host_entry_contract':HOST_CONTRACT,'source_sha':context['source_sha'],'context_sha256':context_hash,
+    result={'schema':'Celluloid.HostTransport.3','host_entry_contract':HOST_CONTRACT,'source_sha':context['source_sha'],'context_sha256':context_hash,
         'test_source_sha256':context['test_source_sha256'],'verifier_sha256':context['script_sha256'],
         'app_executable_sha256':context['app_executable_sha256'],'extension_executable_sha256':context['extension_executable_sha256'],'extension_debug_dylib_sha256':context['extension_debug_dylib_sha256'],
         'external_writes':False,'context_validated':True}
+    if 'owned_reverted_profile_observation' in context:
+        require(context['owned_reverted_profile_observation']=='gama-chrm-canonical-srgb-v1'
+            and context.get('owned_saved_pixel_observation')=='defer-known-saved-pixel-assertion-v1'
+            and context.get('validation_route')==LIFECYCLE and 'boundary_probe' not in context,'Wrong owned-staging mode')
+        env=context['runner_environment']
+        require(current_route(env)==LIFECYCLE and env.get('GITHUB_SHA')==env.get('GITHUB_WORKFLOW_SHA')==context['source_sha']
+            and env.get('GITHUB_RUN_ATTEMPT')=='1' and type(env.get('GITHUB_RUN_ID')) is str
+            and re.fullmatch('[1-9][0-9]*',env['GITHUB_RUN_ID']) is not None,'Wrong owned-staging run/source')
+        temporary=env.get('RUNNER_TEMP')
+        require(type(temporary) is str and 0<len(temporary.encode())<=2048 and '\0' not in temporary
+            and Path(temporary).is_absolute() and str(Path(temporary))==temporary and '..' not in Path(temporary).parts
+            and context.get('evidence_path')==str(Path(temporary)/'mac-host-observed'),'Wrong owned-staging directory')
+        # Permission/capability only. Actual output still needs the separately
+        # bound owned_profile_receipt and fixed-file readback; this is not it.
+        result['external_writes']='bounded-owned-staging-permitted'
+        result['owned_staging']={'source_sha':context['source_sha'],'context_sha256':context_hash,
+            'run_id':env['GITHUB_RUN_ID'],'run_attempt':1,
+            'directory':str(Path(temporary)/'mac-host-observed'/'owned-reverted-profile'),
+            'files':{'reverted-input.png':131072,'reverted-canonical.png':131072,'profile.json':8192,'profile.pending.json':8192},
+            'actual_write_evidence':'owned_profile_receipt-and-fixed-file-readback'}
+    return result
+
+def _same_transport_value(observed,expected):
+    if type(observed) is not type(expected):return False
+    if type(expected) is dict:return set(observed)==set(expected) and all(_same_transport_value(observed[k],v) for k,v in expected.items())
+    if type(expected) is list:return len(observed)==len(expected) and all(_same_transport_value(a,b) for a,b in zip(observed,expected))
+    return observed==expected
 
 def parse(log,context,context_hash,complete=False):
     profile=context_clock(context)
@@ -85,7 +112,7 @@ def parse(log,context,context_hash,complete=False):
         if name.endswith('.json'):
             payload=load_json(data);require(type(payload) is dict,'Host proof payload is not an object')
             if name=='transport.json':
-                require(payload==expected_transport(context,context_hash) and payload.get('external_writes') is False and payload.get('context_validated') is True,'First host transport validation mismatch')
+                require(_same_transport_value(payload,expected_transport(context,context_hash)),'First host transport validation mismatch')
         else:data.decode('utf8',errors='strict')
         records[name]=data;rows.append(row)
     require(len(starts)==len(ends)==1 and len(cases)==2 and cases[0][0]=='started' and cases[1][0] in {'passed','failed','skipped'},'Incomplete/duplicate host process or test')

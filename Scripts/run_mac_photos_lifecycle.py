@@ -7,10 +7,11 @@ from mac_host_transport import load_json,parse,attachment_candidates,LABEL,CASE
 from mac_host_lifecycle_pixels import read_owned_png,decode,require
 from mac_photos_lifecycle_observation import bind_context,admit_outcome,admit_images,attachment_capacity,FIXTURE
 from mac_host_lifecycle_pixels import NAMES
+from mac_photos_reverted_profile import admit_profile_receipt,read_profile,MAX_BYTES as PROFILE_CAP
 from validation_route import LIFECYCLE,current_route,host_clock_profile
 
 ROOT=Path(__file__).resolve().parents[1]
-BASE='87450ac79129f3d5a0ee211b0681236512acfe37'
+BASE='cb2f172d9bd2b06e8b9ff0c1e817f7e93860ae45'
 MANIFEST='Scripts/mac-photos-lifecycle-source.json'
 WORKFLOW=LIFECYCLE['workflow_path']
 SELECTION=CASE[0].replace('.','/')+'/'+CASE[1]
@@ -46,7 +47,7 @@ def admit_source():
     require(re.fullmatch('[1-9][0-9]*',run_id) is not None and os.environ.get('GITHUB_RUN_ATTEMPT')=='1','wrong run/attempt')
     head=git('rev-parse','HEAD').decode().strip()
     require(head==os.environ.get('GITHUB_SHA')==os.environ.get('GITHUB_WORKFLOW_SHA') and re.fullmatch('[0-9a-f]{40}',head),'wrong source/workflow SHA')
-    require(git('rev-list','--parents','-n','1','HEAD').decode().strip().split()==[head,BASE],'candidate must have sole 87450 parent')
+    require(git('rev-list','--parents','-n','1','HEAD').decode().strip().split()==[head,BASE],'candidate must have sole cb2f parent')
     require(not git('status','--porcelain','--untracked-files=all').strip(),'dirty source')
     raw=(ROOT/MANIFEST).read_bytes();require(len(raw)<=256*1024,'source manifest cap')
     manifest=load_json(raw)
@@ -105,7 +106,7 @@ def main():
     require(supplied.is_dir() and not supplied.is_symlink(),'invalid runner temp')
     temp=supplied.resolve(strict=True) # macOS ancestor /var alias, never weaken ROOT admission.
     output=temp/'celluloid-photos-lifecycle-observation-evidence';require(not output.exists(),'stale evidence');output.mkdir()
-    files={};before=None;manifest=None;safe_case=False;host_event=None;work_deadline=None;tail_deadline=None
+    files={};before=None;manifest=None;safe_case=False;host_event=None;work_deadline=None;tail_deadline=None;canonical_reverted=None
     report={'schema':'Celluloid.OwnedPhotosLifecycleRun.1','scope':LIFECYCLE['scope'],'source_sha':os.environ.get('GITHUB_SHA'),
         'stage':'source-admission','diagnostic_complete':False,'saved_gate_passed':False,'functional_lifecycle_qualified':False,'complete_host_e2e':False,
         'old_full_host_admission_granted':False,'performance_acceptance':False,'native_case_started':False,'events':[]}
@@ -159,7 +160,7 @@ def main():
         version,_=required(['xcodebuild','-version'],20,'toolchain')
         require('Xcode 27.0' in version.stdout.splitlines(),'stable Xcode 27 required');report['toolchain']=version.stdout[:1024]
         report['stage']='portable'
-        required([sys.executable,'-m','unittest','discover','-s','Scripts','-p','test_mac_photos_lifecycle_observation*.py','-v'],240,'portable')
+        required([sys.executable,'-m','unittest','discover','-s','Scripts','-p','test_mac_photos_lifecycle*.py','-v'],240,'portable')
         require(source_snapshot(ROOT,manifest)==before['source_fingerprint'],'portable checks changed source')
         report['stage']='icon-inputs';icon_deadline=min(work_deadline,time.monotonic()+60)
         required(['swift','-swift-version','5','Scripts/materialize_native_icons.swift'],30,'icons',icon_deadline)
@@ -186,7 +187,10 @@ def main():
         require(context['seed']=={'mode':'require-empty-library'},'only fresh owned fixture mode')
         require(context['validation_route']==LIFECYCLE and context['host_clock_profile']==host_clock_profile(LIFECYCLE),'wrong prepared route/clock')
         context['runner_environment'].update(GITHUB_RUN_ID=before['run_id'],GITHUB_RUN_ATTEMPT='1',RUNNER_TEMP=str(temp))
-        context=bind_context(context);context_path.write_bytes(encoded(context))
+        context=bind_context(context)
+        require(context['evidence_path']==str(temp/'mac-host-observed'),'wrong owned profile evidence root')
+        (temp/'mac-host-observed/owned-reverted-profile').mkdir(mode=0o700)
+        context_path.write_bytes(encoded(context))
         context_bytes=context_path.read_bytes();retain('mac-host-context.json',context_bytes,128_000)
         require(source_snapshot(ROOT,manifest)==before['source_fingerprint'],'pre-host source changed')
         report['stage']='before-host';required([sys.executable,'Scripts/mac_photos_host_gate.py','budget-before-host'],20,'budget-host')
@@ -207,6 +211,21 @@ def main():
         report['stage']='summary';result,_=required(['xcrun','xcresulttool','get','test-results','summary','--path',bundle],30,'summary',tail_deadline)
         summary=load_json(result.stdout);retain('mac-host-summary.json',result.stdout.encode(),32_000)
         check_summary_interval(summary,host_event,before)
+        # Retain only an explicitly bound owned reverted file, even when the
+        # later functional outcome fails. This cannot qualify any component.
+        report['stage']='owned-reverted-profile-evidence'
+        try:
+            observed,profile_records,profile_photos,profile_ownership,profile_baseline=admit_outcome(context_bytes,log,summary,profile_diagnostic=True)
+            profile_receipt=admit_profile_receipt(observed,sha(context_bytes),profile_records,profile_baseline,profile_photos,profile_ownership)
+            require(sum(row['bytes'] for row in files.values())+PROFILE_CAP+4096+FINAL_RESERVE<=CAP,'original1MB profile evidence reserve')
+            check_time('before-owned-reverted-profile',reserve=2)
+            profile_files,canonical_reverted=read_profile(temp,observed,profile_receipt,lambda:check_time('owned-reverted-profile'))
+            for name,data in profile_files.items():retain(name,data,8192 if name.endswith('.json') else 131072)
+            check_time('after-owned-reverted-profile')
+            report['reverted_profile_evidence_retained']=True
+        except (OSError,ValueError,KeyError,TypeError) as error:
+            canonical_reverted=None
+            report['reverted_profile_evidence_error']=type(error).__name__+': '+str(error)[:1000]
         report['stage']='safe-completed-functional-outcome-before-export'
         admitted,records,photos,ownership,baseline=admit_outcome(context_bytes,log,summary);safe_case=True
         check_time('after-safe-outcome-replay')
@@ -228,12 +247,13 @@ def main():
         old_images={k:selected[k] for k in sorted(names)}
         lifecycle=load_json(records['lifecycle.json']);icc=lifecycle.get('srgb_icc_reference')
         for name,data in old_images.items():
-            image=decode(data,icc);meta=lifecycle['images'][name]
-            require(meta['sha256']==sha(data) and meta['rgba_sha256']==image['rgba_sha256'],'host image receipt mismatch')
+            image=decode(data,icc,calibrated_rgb=name=='lifecycle-reverted.png');meta=lifecycle['images'][name]
+            require(meta['sha256']==sha(data),'host raw image receipt mismatch')
+            if image['profile']!='gAMA-cHRM':require(meta['rgba_sha256']==image['rgba_sha256'],'host image receipt mismatch')
             retain(name,data,131_072)
         require(sha(old_images['lifecycle-source.png'])==FIXTURE,'owned fixture changed')
         check_time('after-original-PNG-replay')
-        replay=admit_images(context_bytes,log,summary,old_images)
+        replay=admit_images(context_bytes,log,summary,old_images,canonical_reverted=canonical_reverted)
         check_time('after-complete-lifecycle-replay')
         report['lifecycle']=replay;report['diagnostic_complete']=True
         report['functional_lifecycle_qualified']=replay['functional_lifecycle_qualified']

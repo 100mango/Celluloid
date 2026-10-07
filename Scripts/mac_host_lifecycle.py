@@ -5,7 +5,7 @@ from pathlib import Path,PurePosixPath
 from uuid import UUID
 from mac_host_self_identity import validate as self_identity,RECEIPT,IDENTIFIER
 from mac_host_transport import HOST_CONTRACT
-from mac_host_lifecycle_pixels import decode,compare,checked_icc,NAMES,PNG_LIMIT,ICC_LIMIT
+from mac_host_lifecycle_pixels import decode,compare,checked_icc,NAMES,PNG_LIMIT,ICC_LIMIT,PNG_UINT31_MAX
 
 SCHEMA='Celluloid.PhotosFilterLifecycle.1'
 PHASES=('source-retained','fade-ready','saved-export','reopened-fade','cancelled-export','reverted-export','unmodified-original','reopened-original')
@@ -16,6 +16,10 @@ SINGLE_PHOTO_TOPOLOGIES=('collection-present','collection-absent')
 FILENAME='Celluloid-Owned-Host.png'
 KNOWN_SAVED_RGBA='744dfa09d6ab997552cdb11393a53761c8e098ffd37e6a8c3a9febdfd0972c99'
 KNOWN_REFERENCE_RGBA='eacc2ada4af742470b52d2ed14996d07e71db7c2b68b2da4f7947efcc7f9855a'
+REVERTED_PROFILE_MODE='gama-chrm-canonical-srgb-v1'
+REVERTED_PROFILE_FIELDS={'raw_sha256','raw_bytes','gamma_scaled','chromaticities_scaled','imageio_color_space_model',
+    'imageio_color_space_name','imageio_profile_name','imageio_icc_sha256','canonical_sha256','canonical_bytes',
+    'canonical_rgba_sha256','canonical_space'}
 
 def require(ok,message):
     if not ok:raise ValueError(message)
@@ -24,22 +28,60 @@ def integer(v,low,high):return type(v) is int and low<=v<=high
 def exact(row,keys,message):require(type(row) is dict and set(row)==set(keys),message)
 def digest(v):return type(v) is str and re.fullmatch('[0-9a-f]{64}',v) is not None
 
-def validate_metadata(row,decoded):
+def validate_metadata(row,decoded,canonical=None):
     exact(row,META,'Unknown/missing lifecycle image metadata')
     require(integer(row['bytes'],1,PNG_LIMIT) and row['bytes']==decoded['bytes'] and row['sha256']==decoded['png_sha256'],'Lifecycle PNG byte/hash mismatch')
-    require(row['rgba_sha256']==decoded['rgba_sha256'],'Lifecycle RGBA hash mismatch')
+    require(row['rgba_sha256']==(decoded if canonical is None else canonical)['rgba_sha256'],'Lifecycle RGBA hash mismatch')
     for key,value in [('width',1200),('height',800),('bit_depth',8),('interlace',0),('orientation',1)]:
         require(type(row[key]) is int and row[key]==value,'Lifecycle image geometry/format mismatch')
     require(type(row['color_type']) is int and row['color_type']==decoded['color_type'],'Lifecycle PNG color type mismatch')
-    require(row['format']=='public.png' and row['profile']=='sRGB' and row['alpha']=='opaque','Lifecycle format/profile/alpha mismatch')
-    encoding='srgb-chunk' if decoded['profile']=='sRGB' else 'icc-reference'
+    expected_profile='sRGB' if canonical is None else 'canonical-sRGB'
+    require(row['format']=='public.png' and row['profile']==expected_profile and row['alpha']=='opaque','Lifecycle format/profile/alpha mismatch')
+    if canonical is not None:
+        require(decoded['profile']=='gAMA-cHRM' and canonical['profile'] in ('sRGB','exact-reference-sRGB-ICC'),'Wrong canonical lifecycle profile')
+        encoding='gama-chrm'
+    else:
+        require(decoded['profile'] in ('sRGB','exact-reference-sRGB-ICC'),'Unconverted lifecycle profile')
+        encoding='srgb-chunk' if decoded['profile']=='sRGB' else 'icc-reference'
     require(row['profile_encoding']==encoding,'Lifecycle profile encoding mismatch')
 
-def validate(row,context,photos,ownership,baseline,images,context_hash,*,observe_saved_pixel_difference=False):
+def validate_canonical_reverted(value,raw,icc):
+    """Bind native ImageIO output to its actual raw export and strict PNG replay.
+
+    Portable replay does not perform or attest to an ImageIO conversion. It
+    validates the owned native record and compares its retained canonical PNG.
+    """
+    exact(value,{'png','profile'},'Missing/malformed canonical Revert input')
+    profile=value['profile'];exact(profile,REVERTED_PROFILE_FIELDS,'Unknown/missing calibrated Revert profile field')
+    require(raw['profile']=='gAMA-cHRM','Canonical Revert input for noncalibrated export')
+    require(digest(profile['raw_sha256']) and profile['raw_sha256']==raw['png_sha256'] and
+            integer(profile['raw_bytes'],1,PNG_LIMIT) and profile['raw_bytes']==raw['bytes'],'Calibrated Revert raw PNG binding mismatch')
+    require(integer(profile['gamma_scaled'],1,PNG_UINT31_MAX) and profile['gamma_scaled']==raw['gamma_scaled'] and
+            type(profile['chromaticities_scaled']) is list and len(profile['chromaticities_scaled'])==8 and
+            all(integer(v,0,PNG_UINT31_MAX) for v in profile['chromaticities_scaled']) and
+            profile['chromaticities_scaled']==raw['chromaticities_scaled'],'Calibrated Revert declaration mismatch')
+    require(profile['imageio_color_space_model']=='rgb' and profile['canonical_space']=='sRGB','Wrong ImageIO/canonical Revert color space')
+    for key in ('imageio_color_space_name','imageio_profile_name'):
+        require(type(profile[key]) is str and 1<=len(profile[key].encode('utf8'))<=128 and
+                all(ord(c)>=32 and not 127<=ord(c)<=159 for c in profile[key]),'Invalid bounded ImageIO profile name')
+    require(profile['imageio_icc_sha256']=='unavailable' or digest(profile['imageio_icc_sha256']),'Invalid ImageIO ICC hash')
+    canonical=decode(value['png'],reference_icc=icc)
+    require(digest(profile['canonical_sha256']) and profile['canonical_sha256']==canonical['png_sha256'] and
+            integer(profile['canonical_bytes'],1,PNG_LIMIT) and profile['canonical_bytes']==canonical['bytes'] and
+            digest(profile['canonical_rgba_sha256']) and profile['canonical_rgba_sha256']==canonical['rgba_sha256'],
+            'Canonical Revert PNG/RGBA binding mismatch')
+    return canonical
+
+
+def validate(row,context,photos,ownership,baseline,images,context_hash,*,observe_saved_pixel_difference=False,canonical_reverted=None):
     require(type(observe_saved_pixel_difference) is bool,'Invalid lifecycle observation switch')
     if observe_saved_pixel_difference:
         require(context.get('validation_route')==LIFECYCLE and context.get('owned_saved_pixel_observation')=='defer-known-saved-pixel-assertion-v1'
             and 'boundary_probe' not in context,'Wrong fixed lifecycle observation context')
+    calibrated_revert=observe_saved_pixel_difference and context.get('owned_reverted_profile_observation')==REVERTED_PROFILE_MODE
+    require(canonical_reverted is None or calibrated_revert,'Canonical Revert input requires fixed lifecycle profile context')
+    if observe_saved_pixel_difference and 'owned_reverted_profile_observation' in context:
+        require(calibrated_revert,'Wrong fixed lifecycle Revert profile context')
     exact(row,FIELDS|({'functional_observation_complete'} if observe_saved_pixel_difference else set()),'Unknown/missing lifecycle receipt field')
     require(row['schema']==SCHEMA and row['host_entry_contract']==HOST_CONTRACT,'Wrong lifecycle contract')
     for key,expected in [('source_sha',context['source_sha']),('context_sha256',context_hash),('test_source_sha256',context['test_source_sha256']),('verifier_sha256',context['script_sha256']),('fixture_sha256',ownership['fixture_sha256']),('asset_label',ownership['asset_label'])]:
@@ -83,9 +125,13 @@ def validate(row,context,photos,ownership,baseline,images,context_hash,*,observe
         exact(profile,{'bytes','sha256'},'Malformed independent sRGB ICC reference')
         require(integer(profile['bytes'],128,ICC_LIMIT) and digest(profile['sha256']),'Invalid independent sRGB ICC reference')
         icc=profile
-    decoded={name:decode(data,reference_icc=icc) for name,data in images.items()}
-    require((icc is not None)==any(d['profile']=='exact-reference-sRGB-ICC' for d in decoded.values()),'Unused/missing ICC reference')
-    for name,value in decoded.items():validate_metadata(row['images'][name],value)
+    decoded={name:decode(data,reference_icc=icc,calibrated_rgb=calibrated_revert and name==NAMES[4]) for name,data in images.items()}
+    canonical=None
+    if decoded[NAMES[4]]['profile']=='gAMA-cHRM':
+        canonical=validate_canonical_reverted(canonical_reverted,decoded[NAMES[4]],icc)
+    else:require(canonical_reverted is None,'Unused canonical Revert input')
+    require((icc is not None)==any(d['profile']=='exact-reference-sRGB-ICC' for d in [*decoded.values(),*([canonical] if canonical is not None else [])]),'Unused/missing ICC reference')
+    for name,value in decoded.items():validate_metadata(row['images'][name],value,canonical if name==NAMES[4] else None)
     require(decoded[NAMES[0]]['png_sha256']==ownership['fixture_sha256'],'Retained original PNG differs from imported fixture')
     require(decoded[NAMES[0]]['rgba_sha256']!=decoded[NAMES[1]]['rgba_sha256'],'Filter reference did not change owned pixels')
     exports=row['raw_exports'];exact(exports,{'saved','cancelled','reverted','original'},'Missing/unexpected raw exports')
@@ -107,7 +153,8 @@ def validate(row,context,photos,ownership,baseline,images,context_hash,*,observe
     for name,expected,a,b in [('cancelled-export',{'rgba_equal_saved':True,'new_edit_made':False,'sole_asset_count':1},NAMES[3],NAMES[2]),('reverted-export',{'rgba_equal_source':True,'sole_asset_count':1},NAMES[4],NAMES[0])]:
         d=details[name];exact(d,expected,'Malformed preservation comparison')
         require(d==expected and type(d['sole_asset_count']) is int and all(type(d[k]) is bool for k in expected if k!='sole_asset_count'),'Wrong preservation comparison')
-        require(decoded[a]['rgba']==decoded[b]['rgba'],'Actual Cancel/Revert stored pixels changed')
+        actual=canonical if a==NAMES[4] and canonical is not None else decoded[a]
+        require(actual['rgba']==decoded[b]['rgba'],'Actual Cancel/Revert stored pixels changed')
     d=details['unmodified-original'];expected={'bytes_equal_source':True,'sha256_equal_source':True,'sole_asset_count':1};exact(d,expected,'Malformed original equality')
     require(d==expected and type(d['sole_asset_count']) is int and d['bytes_equal_source'] is True and d['sha256_equal_source'] is True,'Original export preservation unproved')
     result={'schema':SCHEMA,'filter_lifecycle_accepted':saved_passed,'dirty_cancel_tested':False,'complete_host_e2e':False,
@@ -115,6 +162,7 @@ def validate(row,context,photos,ownership,baseline,images,context_hash,*,observe
         'phase_count':len(phases),'editing_generations':sorted(generations),'saved_comparison':saved,
         'images':{name:{key:d[key] for key in ['bytes','png_sha256','rgba_sha256','profile','profile_sha256','rendering_intent']} for name,d in decoded.items()}}
     if observe_saved_pixel_difference:result.update(functional_lifecycle_qualified=True,strict_saved_pixel_passed=saved_passed,strict_saved_pixel_limit=2)
+    if canonical is not None:result['reverted_profile_observation']=dict(canonical_reverted['profile'])
     return result
 
 def validate_binary_states(states,catalog):

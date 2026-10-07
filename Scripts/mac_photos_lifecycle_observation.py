@@ -25,10 +25,11 @@ def bind_context(context):
     require(context.get('validation_route')==LIFECYCLE and current_route(context['runner_environment'])==LIFECYCLE,'wrong fixed lifecycle route')
     require(context_clock(context)['case_seconds']==900 and context.get('seed')=={'mode':'require-empty-library'},'wrong lifecycle clock/fixture mode')
     require('boundary_probe' not in context and 'owned_saved_pixel_observation' not in context,'unexpected diagnostic mode')
-    return dict(context,owned_saved_pixel_observation=MODE)
+    return dict(context,owned_saved_pixel_observation=MODE,owned_reverted_profile_observation='gama-chrm-canonical-srgb-v1')
 
-def admit_outcome(context_bytes,log,summary):
+def admit_outcome(context_bytes,log,summary,*,profile_diagnostic=False):
     """Exact terminal and completed functional evidence, before attachment export."""
+    require(type(profile_diagnostic) is bool,'invalid profile diagnostic mode')
     context=decode(context_bytes);env=context['runner_environment'];context_hash=sha(context_bytes)
     require(context.get('validation_route')==LIFECYCLE and current_route(env)==LIFECYCLE
         and context.get('owned_saved_pixel_observation')==MODE and 'boundary_probe' not in context,'wrong lifecycle observation context')
@@ -60,7 +61,7 @@ def admit_outcome(context_bytes,log,summary):
         and started<=summary['startTime']<summary['finishTime']<=started+ends[0]['elapsed_seconds'],'summary outside original native interval')
     require('BOUNDED_COMMAND_TIMEOUT' not in log and 'BOUNDED_TIMEOUT_' not in log and 'MAC_HOST_FAIL_CLOSED_ABORT' not in log,'interrupted native case')
     require(not any(line.startswith('MAC_PHOTOS_BOUNDARY_ARM ') for line in log.splitlines()),'unexpected capture arm')
-    require(log.splitlines().count(MARKER)==1,'missing/duplicate completed functional observation')
+    if not profile_diagnostic:require(log.splitlines().count(MARKER)==1,'missing/duplicate completed functional observation')
     require(sum(line.startswith('MAC_HOST_PREREQUISITE_PASSED ') for line in log.splitlines())==1,'missing/duplicate host prerequisite')
     photos=decode(records['photos-process.json']);ownership=decode(records['fixture-ownership.json'])
     containing=decode(records['containing-process.json']);fixture=decode(records['fixture.json'])
@@ -76,6 +77,10 @@ def admit_outcome(context_bytes,log,summary):
     validate_host_ui(decode(records['host-selection.json']),decode(records['host-editor-before-process.json']),decode(records['host-editor-after-process.json']),photos,ownership,context['source_sha'])
     baseline=identity_validate(decode(records['extension-self-identity.json']),context,photos,ownership)
     prerequisite=decode(records['prerequisite.json']);outcome=decode(records['outcome.json']);lifecycle=decode(records['lifecycle.json'])
+    if profile_diagnostic:
+        from mac_photos_reverted_profile import admit_profile_receipt
+        admit_profile_receipt(context,context_hash,records,baseline,photos,ownership)
+        return context,records,photos,ownership,baseline
     required={'source_sha','host_entry_contract','last_stage','complete_host_e2e','save_reopen_cancel_revert','functional_observation_complete'}
     require(type(outcome) is dict and required<=set(outcome)<=required|{'first_blocked_operation','export_png_diagnostics','extension_menu_observation'},'unknown/missing final outcome')
     require(prerequisite.get('source_sha')==context['source_sha'] and prerequisite.get('host_entry_contract')==HOST_CONTRACT
@@ -103,9 +108,9 @@ def admit_outcome(context_bytes,log,summary):
     require(sum(line.startswith('MAC_HOST_FILTER_LIFECYCLE_PASSED ') for line in log.splitlines())==int(passed),'contradictory strict lifecycle marker')
     return context,records,photos,ownership,baseline
 
-def admit_images(context_bytes,log,summary,images):
+def admit_images(context_bytes,log,summary,images,canonical_reverted=None):
     context,records,photos,ownership,baseline=admit_outcome(context_bytes,log,summary)
-    proof=lifecycle_validate(decode(records['lifecycle.json']),context,photos,ownership,baseline,images,sha(context_bytes),observe_saved_pixel_difference=True)
+    proof=lifecycle_validate(decode(records['lifecycle.json']),context,photos,ownership,baseline,images,sha(context_bytes),observe_saved_pixel_difference=True,canonical_reverted=canonical_reverted)
     require(proof['strict_saved_pixel_passed']==(summary['result']=='Passed'),'native/pixel result contradiction')
     return proof
 
