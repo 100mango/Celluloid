@@ -1,0 +1,252 @@
+name: One existing 40mm Watch case
+'on':
+  push:
+    branches:
+    - codex/watch-delete-singlecase
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-watch-focused
+  cancel-in-progress: false
+jobs:
+  watch:
+    name: Celluloid one 40mm case
+    if: ${{ github.repository == '100mango/Celluloid' && github.ref == 'refs/heads/codex/watch-delete-singlecase'
+      && github.event_name == 'push' && github.run_attempt == '1' }}
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      PYTHONDONTWRITEBYTECODE: '1'
+      CELLULOID_EVIDENCE_PLATFORM: watch
+    steps:
+    - name: Start fixed evidence and original job clock
+      timeout-minutes: 1
+      shell: bash
+      run: |
+        python3 - <<'PYTHON'
+        import json,os,time
+        from pathlib import Path
+        out=Path(os.environ['RUNNER_TEMP'])/'watch-focused-evidence';out.mkdir(exist_ok=False)
+        clock={'started_monotonic':time.monotonic(),'started_epoch':time.time(),'qualified':False,'state':'bootstrap-only'}
+        (out/'report.json').write_text(json.dumps(clock)+'\n')
+        for name in ('source-before.json','source-after.json','runtime.json','xcresult-summary.json'):
+            (out/name).write_text('{"available":false}\n')
+        for name in ('build.log','runtime.log','case-records.log'):(out/name).write_bytes(b'')
+        with open(os.environ['GITHUB_ENV'],'a') as stream:
+            stream.write('TOUCHCOLOR_JOB_STARTED_EPOCH='+str(clock['started_epoch'])+'\n')
+            stream.write('TOUCHCOLOR_JOB_STARTED_MONOTONIC='+str(clock['started_monotonic'])+'\n')
+        PYTHON
+    - name: Check out exact reviewed-parent child
+      timeout-minutes: 1
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        persist-credentials: false
+        fetch-depth: 2
+        ref: ${{ github.sha }}
+    - name: Require exact source scope and stable toolchain
+      id: source
+      timeout-minutes: 2
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PYTHON'
+        import json,os,re,subprocess
+        from pathlib import Path
+        def need(value,reason):
+            if not value:raise RuntimeError(reason)
+        def git(*args):return subprocess.check_output(['git',*args],text=True,timeout=10).strip()
+        sha=os.environ['GITHUB_SHA'];need(re.fullmatch('[0-9a-f]{40}',sha),'invalid sha')
+        need(os.environ['GITHUB_REPOSITORY']=='100mango/Celluloid' and os.environ['GITHUB_REF']=='refs/heads/codex/watch-delete-singlecase','wrong repository/ref')
+        need(os.environ['GITHUB_EVENT_NAME']=='push' and os.environ['GITHUB_RUN_ATTEMPT']=='1','push/first attempt only')
+        need(os.environ['GITHUB_WORKFLOW_SHA']==sha and os.environ['GITHUB_WORKFLOW_REF']=='100mango/Celluloid/.github/workflows/watch-focused-case.yml@refs/heads/codex/watch-delete-singlecase','wrong workflow source')
+        need(git('rev-parse','HEAD')==sha,'wrong checkout')
+        need(git('rev-list','--parents','-n','1','HEAD').split()==[sha,'2a5cf695c2a6c5ef3c2eaede47ea0353e2da9983'],'not one child of exact combined parent')
+        need(git('status','--porcelain=v1','--untracked-files=all')=='','dirty source')
+        observed=git('diff','--name-status','--no-renames','2a5cf695c2a6c5ef3c2eaede47ea0353e2da9983','HEAD','--').splitlines()
+        need(sorted(observed)==['A\t.github/workflows/watch-focused-case.yml', 'M\tScripts/run_native_watch.py'],'changed-path scope mismatch')
+        record={'sha':sha,'tree':git('rev-parse','HEAD^{tree}'),'parent':'2a5cf695c2a6c5ef3c2eaede47ea0353e2da9983','changes':observed,'clean':True}
+        (Path(os.environ['RUNNER_TEMP'])/'watch-focused-evidence/source-before.json').write_text(json.dumps(record)+'\n')
+        PYTHON
+        set -euo pipefail
+        sw_vers -buildVersion | grep -Fx 26A428
+        xcodebuild -version | tee "$RUNNER_TEMP/watch-focused-xcode.log"
+        grep -Fx 'Xcode 27.0' "$RUNNER_TEMP/watch-focused-xcode.log"
+        grep -Fx 'Build version 27A266a' "$RUNNER_TEMP/watch-focused-xcode.log"
+        uname -m | grep -Fx arm64
+    - name: Materialize existing native icon inputs
+      timeout-minutes: 2
+      shell: bash
+      run: |
+        set -euo pipefail
+        swift -swift-version 5 Scripts/materialize_native_icons.swift
+        python3 Scripts/verify_native_icon_inputs.py
+    - name: Build existing Watch test products once
+      id: build
+      timeout-minutes: 8
+      shell: bash
+      run: |
+        set -euo pipefail
+        (
+        python3 - <<'PYTHON'
+        import sys,os
+        sys.path.insert(0,'Scripts')
+        from ios_watch_archive_capture import capture
+        from pathlib import Path
+        import json,time
+        started=json.loads((Path(os.environ['RUNNER_TEMP'])/'watch-focused-evidence/report.json').read_bytes())['started_monotonic']
+        if type(started) not in (int,float) or not 0 <= time.monotonic()-started < 2200-440:raise RuntimeError('Build does not fit original work clock with owned cleanup reserve')
+        command=['xcodebuild','-project','CelluloidNative.xcodeproj','-scheme','CelluloidWatch','-destination','generic/platform=watchOS Simulator','-derivedDataPath',os.environ['RUNNER_TEMP']+'/celluloid-watch','CODE_SIGNING_ALLOWED=NO','build-for-testing']
+        try:
+            value=capture(command,seconds=420,cap=16*1024*1024,cleanup_grace=10)
+        except BaseException as error:
+            print(getattr(error,'stdout_prefix',b'').decode('utf8','replace'),flush=True);print(getattr(error,'stderr_capture',b'').decode('utf8','replace'),file=sys.stderr,flush=True)
+            raise
+        print(value.stdout.decode('utf8','replace'),flush=True);print(value.stderr.decode('utf8','replace'),file=sys.stderr,flush=True)
+        if value.returncode:raise RuntimeError('Watch build failed')
+        PYTHON
+        ) 2>&1 | tee "$RUNNER_TEMP/watch-focused-build.log"
+    - name: Run only existing deletion workflow on 40mm
+      id: runtime
+      timeout-minutes: 32
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 Scripts/run_native_watch.py 2>&1 | tee "$RUNNER_TEMP/watch-focused-runtime.log"
+    - name: Read one actual result only after runner success
+      id: summary
+      if: ${{ steps.runtime.outcome == 'success' }}
+      timeout-minutes: 1
+      shell: bash
+      run: |
+        python3 - <<'PYTHON'
+        import os,sys
+        from pathlib import Path
+        sys.path.insert(0,'Scripts')
+        from ios_watch_archive_capture import capture
+        bundle=str(Path(os.environ['RUNNER_TEMP'])/'CelluloidWatchSmall.xcresult')
+        import json,time
+        clock=json.loads((Path(os.environ['RUNNER_TEMP'])/'watch-focused-evidence/report.json').read_bytes())['started_monotonic']
+        if type(clock) not in (int,float) or not 0 <= time.monotonic()-clock <= 2350:raise RuntimeError('Result export and owned cleanup do not fit original evidence clock')
+        runtime_path=Path(os.environ['RUNNER_TEMP'])/'watch-small-runtime-evidence.json'
+        if runtime_path.is_symlink() or runtime_path.stat().st_size>262144:raise RuntimeError('invalid runtime proof input')
+        runtime=json.loads(runtime_path.read_bytes())
+        if runtime.get('owned_process_completion_confirmed') is not True or runtime.get('cleanup_unconfirmed') is not False or runtime.get('cleanup')!=[{'action':'shutdown','exit_code':0},{'action':'delete','exit_code':0}]:raise RuntimeError('No result tool after unresolved Cell runtime or cleanup')
+        value=capture(['xcrun','xcresulttool','get','test-results','summary','--path',bundle],seconds=30,cap=131072,cleanup_grace=10)
+        if value.returncode or value.stderr:raise RuntimeError('summary export failed')
+        (Path(os.environ['RUNNER_TEMP'])/'watch-focused-evidence/xcresult-summary.json').write_bytes(value.stdout)
+        PYTHON
+    - name: Read back exact source after all work
+      id: source_after
+      if: ${{ always() }}
+      timeout-minutes: 1
+      shell: bash
+      run: |
+        python3 - <<'PYTHON'
+        import json,os,subprocess
+        from pathlib import Path
+        def git(*args):return subprocess.check_output(['git',*args],text=True,timeout=10).strip()
+        out=Path(os.environ['RUNNER_TEMP'])/'watch-focused-evidence'
+        before=json.loads((out/'source-before.json').read_bytes())
+        if git('status','--porcelain=v1','--untracked-files=all') or git('rev-parse','HEAD')!=before['sha'] or git('rev-parse','HEAD^{tree}')!=before['tree']:raise RuntimeError('source changed')
+        (out/'source-after.json').write_text(json.dumps(before)+'\n')
+        PYTHON
+    - name: Retain bounded logs and strict single-case evidence
+      id: evidence
+      if: ${{ always() }}
+      timeout-minutes: 1
+      shell: bash
+      env:
+        RUNTIME_OUTCOME: ${{ steps.runtime.outcome }}
+        SUMMARY_OUTCOME: ${{ steps.summary.outcome }}
+        SOURCE_AFTER_OUTCOME: ${{ steps.source_after.outcome }}
+      run: |
+        python3 - <<'PYTHON'
+        import json,os,re,time,hashlib,stat
+        from pathlib import Path
+        out=Path(os.environ['RUNNER_TEMP'])/'watch-focused-evidence'
+        report=json.loads((out/'report.json').read_bytes());errors=[];raw=b''
+        def need(value,reason):
+            if not value:raise RuntimeError(reason)
+        def read(path,cap):
+            s=path.lstat();need(stat.S_ISREG(s.st_mode) and not path.is_symlink() and s.st_size<=cap,'missing/nonregular/oversize '+str(path))
+            data=path.read_bytes();need(len(data)<=cap,'changed file size');return data
+        for kind in ('build','runtime'):
+            source=Path(os.environ['RUNNER_TEMP'])/('watch-focused-'+kind+'.log')
+            if not source.exists():
+                report[kind+'_log']='not produced';continue
+            try:
+                data=read(source,16*1024*1024)
+                report[kind+'_log']={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'retained':'complete' if len(data)<=262144 else 'prefix-and-tail'}
+                (out/(kind+'.log')).write_bytes(data if len(data)<=262144 else data[:65536]+b'\n[bounded excerpt; full digest in report]\n'+data[-196608:])
+                if kind=='runtime':raw=data
+            except Exception as error:
+                errors.append(str(error))
+                # A bounded collector failure can emit its full cap plus traceback.
+                # Preserve only labeled excerpts without parsing partial output as proof.
+                try:
+                    info=source.lstat()
+                    if not stat.S_ISREG(info.st_mode) or source.is_symlink():continue
+                    with source.open('rb') as stream:
+                        head=stream.read(65536);stream.seek(max(len(head),info.st_size-196608));tail=stream.read(196608)
+                    excerpt=head+b'\n[incomplete source log; bounded failure excerpts only]\n'+tail
+                    (out/(kind+'.log')).write_bytes(excerpt)
+                    report[kind+'_log']={'bytes_observed':info.st_size,'retained':'incomplete-prefix-and-tail','retained_sha256':hashlib.sha256(excerpt).hexdigest(),'complete_log_sha256':None}
+                except Exception as excerpt_error:errors.append('failure excerpt unavailable: '+str(excerpt_error))
+        try:
+            data=read(Path(os.environ['RUNNER_TEMP'])/'watch-small-runtime-evidence.json',262144);(out/'runtime.json').write_bytes(data);runtime=json.loads(data)
+            source=json.loads(read(out/'source-before.json',32768));after=json.loads(read(out/'source-after.json',32768))
+            need(source==after and source.get('sha')==os.environ['GITHUB_SHA'] and source.get('clean') is True,'source readback unavailable')
+            need(os.environ['RUNTIME_OUTCOME']=='success' and os.environ['SUMMARY_OUTCOME']=='success' and os.environ['SOURCE_AFTER_OUTCOME']=='success','required step failed')
+            text=raw.decode('utf8','replace')
+            records=re.findall(r"^Test Case '-\[([^]]+)\]' (started\.|(?:passed|failed|skipped) \([^\n]+ seconds\)\.)$",text,re.M)
+            expected='CelluloidWatchUITests.NativeWatchUITests testOfflinePhotoCompanionUnavailableCancelRelaunchDeleteAndPrivacy'
+            need(len(records)==2 and records[0]==(expected,'started.') and records[1][0]==expected and records[1][1].startswith('passed ('),'not exactly one started/passed selected case')
+            need(text.count('** TEST EXECUTE SUCCEEDED **')==1 and '** TEST EXECUTE FAILED **' not in text and 'exceeded execution time allowance' not in text,'missing/contradictory raw terminal')
+            (out/'case-records.log').write_text('\n'.join(' '.join(row) for row in records)+'\n')
+            summary=json.loads(read(out/'xcresult-summary.json',131072))
+            for key,value in {'totalTestCount':1,'passedTests':1,'failedTests':0,'skippedTests':0,'expectedFailures':0}.items():
+                need(type(summary.get(key)) is int and summary[key]==value,'wrong result count '+key)
+            need(summary.get('result')=='Passed' and summary.get('testFailures')==[],'summary not clean pass')
+            configs=summary.get('devicesAndConfigurations');need(isinstance(configs,list) and len(configs)==1,'not one destination')
+            for key,value in {'passedTests':1,'failedTests':0,'skippedTests':0,'expectedFailures':0}.items():need(type(configs[0].get(key)) is int and configs[0][key]==value,'destination count mismatch')
+            device=configs[0].get('device',{})
+            need(device.get('platform')=='watchOS Simulator' and device.get('modelName')=='Apple Watch SE 3' and device.get('osVersion')=='27.0','wrong device/runtime')
+            need(runtime.get('owned_process_completion_confirmed') is True and runtime.get('cleanup_unconfirmed') is False,'Cell owned command completion unconfirmed')
+            need(runtime.get('head')==source['sha'] and runtime.get('profile')=='small' and runtime.get('test_exit_code')==0 and not runtime.get('error'),'Cell runtime unresolved')
+            need(runtime.get('udid')==device.get('deviceId') and runtime.get('device_type',{}).get('identifier')=='com.apple.CoreSimulator.SimDeviceType.Apple-Watch-SE-3-40mm','Cell result device mismatch')
+            need(runtime.get('cleanup')==[{'action':'shutdown','exit_code':0},{'action':'delete','exit_code':0}],'Cell cleanup incomplete')
+            report.update(case=expected,device=device,source=source,one_case_proof=True)
+        except Exception as error:errors.append(str(error))
+        report.update(qualified=not errors,errors=errors,state='passed' if not errors else 'failed-or-incomplete',elapsed_seconds=time.monotonic()-report['started_monotonic'])
+        (out/'report.json').write_text(json.dumps(report,indent=2)+'\n')
+        size=sum(p.stat().st_size for p in out.iterdir() if p.is_file())
+        if size>1200000:raise RuntimeError('fixed artifact exceeds existing Watch evidence budget')
+        print(json.dumps({'qualified':report['qualified'],'errors':errors,'artifact_bytes':size}))
+        PYTHON
+    - name: Always upload the fixed bounded evidence files
+      id: upload
+      if: ${{ always() && steps.evidence.outcome == 'success' }}
+      timeout-minutes: 2
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: celluloid-watch-focused-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/watch-focused-evidence/
+        retention-days: 1
+        if-no-files-found: error
+        compression-level: 9
+    - name: Preserve failures and require original-clock final result
+      if: ${{ always() }}
+      timeout-minutes: 1
+      shell: bash
+      env:
+        UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+      run: |
+        python3 - <<'PYTHON'
+        import json,os,time
+        from pathlib import Path
+        report=json.loads((Path(os.environ['RUNNER_TEMP'])/'watch-focused-evidence/report.json').read_bytes())
+        if report.get('qualified') is not True or os.environ['UPLOAD_OUTCOME']!='success':raise RuntimeError('single-case proof and artifact upload both required')
+        if not 0<=time.monotonic()-report['started_monotonic']<2660:raise RuntimeError('original 45-minute clock reserve exhausted')
+        print('WATCH_FOCUSED verified one case, same source/device, cleanup and bounded evidence upload')
+        PYTHON
