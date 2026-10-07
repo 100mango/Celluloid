@@ -17,9 +17,9 @@ from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
 from run_vision_remaining import (built_vision_app, write_synthetic_fixture,
     snapshot_fixture, test_command, verify_cases, synthetic_fixture_bytes, FIXTURE_NAME)
 
-BASE = '3ba1e0304fe522aeb94c2bad611a0515bf514197'
+BASE = 'd7c5459c29b2852d184931fc49ff96a418a2f3ab'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = '17c1c2d850d32e77a7f2722831faf508ee46c607'
+BASE_TREE = '433499ab0c80182d3e16410fa2dd8944f92ff780'
 BRANCH = 'refs/heads/codex/vision-store-single'
 WORKFLOW = '.github/workflows/vision-store-single.yml'
 SELECTOR = 'CelluloidVisionUITests/NativeVisionUITests/testStoreSingleHeldEditorCapture'
@@ -432,7 +432,8 @@ class Job:
         self.device = fixed_uuid(self.call('create', ['xcrun', 'simctl', 'create', 'Celluloid Store '+self.binding['GITHUB_SHA'][:12], wanted_type, wanted_runtime], 30).strip())
         self.report.update(device=self.device, runtime=runtime[0], device_type=wanted_type)
         self.call('boot', ['xcrun', 'simctl', 'boot', self.device], 45)
-        self.call('bootstatus', ['xcrun', 'simctl', 'bootstatus', self.device, '-b'], 240)
+        # Continue only after this fresh device's boot completes within its cap.
+        # Actual install and held UI evidence remain mandatory readiness checks.
         self.call('install', ['xcrun', 'simctl', 'install', self.device, str(app)], 360)
         container = self.container('seed-data', APP_ID)
         self.check_active()

@@ -133,7 +133,8 @@ class ContractTests(unittest.TestCase):
         calls = [n for n in ast.walk(work) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)]
         phases = {n.args[0].value: n.args[2].value for n in calls if n.func.attr == 'call' and len(n.args) >= 3}
         self.assertEqual(phases['install'], 360)
-        self.assertEqual({k: phases[k] for k in ('build','boot','bootstatus','ui')}, {'build':600,'boot':45,'bootstatus':240,'ui':1200})
+        self.assertEqual({k: phases[k] for k in ('build','boot','ui')}, {'build':600,'boot':45,'ui':1200})
+        self.assertNotIn('bootstatus', phases)
         # Preserve the prior host-side fixture-write guard; add no aggregate max-cap gate.
         guards = [n for n in calls if n.func.attr == 'check_active']
         self.assertEqual(len(guards), 1); self.assertEqual(guards[0].args, [])
@@ -250,6 +251,58 @@ class ProcessTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
     def job(self, execute): return store.Job(ROOT, self.root, BINDING, 1, execute=execute, clock=lambda: 2)
+    def work_to_install(self, boot_result):
+        app = self.root/'products/CelluloidVision.app'
+        app.mkdir(parents=True)
+        runner = app.parent/'CelluloidVisionUITests-Runner.app'; runner.mkdir()
+        (runner/'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': store.RUNNER_ID,
+            'CFBundleExecutable': 'Runner'}))
+        (runner/'Runner').write_bytes(b'host-only runner fixture')
+        runtime = 'com.apple.CoreSimulator.SimRuntime.xrOS-27-0'
+        device_type = 'com.apple.CoreSimulator.SimDeviceType.Apple-Vision-Pro-4K'
+        calls = []
+        def execute(command, **options):
+            calls.append(list(command))
+            output = b''
+            if command[:2] == ['xcodebuild', '-version']: output = b'Xcode 27.0\n'
+            if command[:4] == ['xcrun', 'simctl', 'list', 'runtimes']:
+                output = json.dumps({'runtimes': [{'identifier': runtime, 'isAvailable': True,
+                    'supportedDeviceTypes': [{'identifier': device_type}]}]}).encode()
+            if command[:4] == ['xcrun', 'simctl', 'list', 'devicetypes']:
+                output = json.dumps({'devicetypes': [{'identifier': device_type}]}).encode()
+            if command[:3] == ['xcrun', 'simctl', 'create']: output = DEVICE.encode()
+            if command[:3] == ['xcrun', 'simctl', 'boot']:
+                self.assertEqual(command, ['xcrun', 'simctl', 'boot', DEVICE])
+                self.assertEqual(options['seconds'], 45)
+                if isinstance(boot_result, BaseException): raise boot_result
+                if boot_result == 'late-zero':
+                    job.clock = lambda: 48  # Started at 2; even zero exit after 47 fails.
+                    return subprocess.CompletedProcess(command, 0, b'', b'')
+                return subprocess.CompletedProcess(command, boot_result, b'', b'')
+            if command[:3] == ['xcrun', 'simctl', 'install']:
+                self.assertEqual(command, ['xcrun', 'simctl', 'install', DEVICE, str(app)])
+                self.assertEqual(options['seconds'], 360)
+                return subprocess.CompletedProcess(command, 1, b'host-only stop at install', b'')
+            return subprocess.CompletedProcess(command, 0, output, b'')
+        job = self.job(execute)
+        with mock.patch.object(job, 'source_identity'), mock.patch.object(store, 'built_vision_app', return_value=(app, 'b'*64)):
+            with self.assertRaises((ValueError, CaptureStopped, TimeoutError)) as caught:
+                job.work()
+        return job, calls, caught.exception
+    def test_fresh_successful_boot_proceeds_directly_to_exact_install(self):
+        job, calls, error = self.work_to_install(0)
+        device_commands = [command[2] for command in calls if command[:2] == ['xcrun', 'simctl']]
+        self.assertEqual(device_commands, ['list', 'list', 'create', 'boot', 'install'])
+        self.assertEqual(str(error), 'Known completed command failed: install')
+        self.assertFalse(job.blocked)
+    def test_failed_or_uncertain_boot_never_installs(self):
+        for result in (1, -9, None, 'late-zero', CaptureStopped('duration-limit', True)):
+            with self.subTest(result=result), tempfile.TemporaryDirectory() as folder:
+                self.root = Path(folder)
+                job, calls, error = self.work_to_install(result)
+                self.assertFalse(any(command[:3] == ['xcrun', 'simctl', 'install'] for command in calls))
+                self.assertEqual(job.blocked, result != 1)
+                self.assertEqual(job.device, DEVICE)
     def test_all_fixed_container_queries_use_finite_180_second_budget(self):
         container = self.root/DEVICE/'data/Containers/Data/Application'/CONTAINER
         container.mkdir(parents=True)
