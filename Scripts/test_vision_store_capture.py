@@ -125,6 +125,18 @@ class ContractTests(unittest.TestCase):
         self.assertLess(store.CLEANUP_END, store.PACK_END)
         self.assertEqual(store.FINISH_END-store.PACK_END, 240)
         self.assertLessEqual(store.FINISH_END+60, 42*60)
+    def test_install_only_cap_and_existing_per_command_admission(self):
+        import ast
+        source = ast.parse((ROOT/'Scripts/run_vision_store_capture.py').read_text())
+        job = next(n for n in source.body if isinstance(n, ast.ClassDef) and n.name == 'Job')
+        work = next(n for n in job.body if isinstance(n, ast.FunctionDef) and n.name == 'work')
+        calls = [n for n in ast.walk(work) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)]
+        phases = {n.args[0].value: n.args[2].value for n in calls if n.func.attr == 'call' and len(n.args) >= 3}
+        self.assertEqual(phases['install'], 360)
+        self.assertEqual({k: phases[k] for k in ('build','boot','bootstatus','ui')}, {'build':600,'boot':45,'bootstatus':180,'ui':600})
+        # Preserve the prior host-side fixture-write guard; add no aggregate max-cap gate.
+        guards = [n for n in calls if n.func.attr == 'check_active']
+        self.assertEqual(len(guards), 1); self.assertEqual(guards[0].args, [])
     def test_swift_case_has_no_edit_or_window_screenshot(self):
         text = (ROOT/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()
         case = text.split('func testStoreSingleHeldEditorCapture()', 1)[1].split('func testSeededDocument', 1)[0]
@@ -241,6 +253,14 @@ class ProcessTests(unittest.TestCase):
         job = store.Job(ROOT, self.root, BINDING, 1, execute=execute, clock=lambda: store.WORK_END-190)
         job.device = DEVICE
         with self.assertRaisesRegex(ValueError, 'wall-time reserve'): job.container('seed-data', store.APP_ID)
+        execute.assert_not_called()
+    def test_install_360_cap_still_uses_existing_original_deadline_reserve(self):
+        execute = mock.Mock(return_value=subprocess.CompletedProcess(['mock'], 0, b'', b''))
+        job = self.job(execute)
+        job.call('install', ['mock'], 360)
+        self.assertEqual(execute.call_args.kwargs['seconds'], 360)
+        execute.reset_mock(); job.clock = lambda: 1+store.WORK_END-380
+        with self.assertRaisesRegex(ValueError, 'wall-time reserve'): job.call('install', ['mock'], 360)
         execute.assert_not_called()
     def test_known_failure_is_not_uncertainty(self):
         job = self.job(lambda *a, **kw: subprocess.CompletedProcess(a, 1, b'known failure', b''))
