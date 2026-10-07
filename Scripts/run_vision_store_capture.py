@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
 """Default-disabled, one real editor checkpoint. No product edits or Apple upload."""
+import sys
+_RESOLVER_MODE = __name__ == '__main__' and sys.argv[1:2] == ['--resolve-container']
+_RESOLVER_ENTRY = 'VISION_RESOLVER_STAGE {"stage":"script-entry","elapsed_seconds":0}\n'
+if _RESOLVER_MODE:
+    sys.stderr.write(_RESOLVER_ENTRY); sys.stderr.flush()
+import time
+_RESOLVER_STARTED = time.monotonic()
+_RESOLVER_STAGE_COUNT = 1 if _RESOLVER_MODE else 0
+_RESOLVER_STAGE_BYTES = len(_RESOLVER_ENTRY) if _RESOLVER_MODE else 0
 import argparse
 import hashlib
 import json
@@ -8,19 +17,26 @@ import os
 import plistlib
 import re
 import stat
-import sys
-import time
 import uuid
 from pathlib import Path
-from mac_archive_capture import capture, CaptureStopped
-from vision_store_stream import capture as stream_capture
-from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
-from run_vision_remaining import (built_vision_app, write_synthetic_fixture,
-    snapshot_fixture, test_command, verify_cases, synthetic_fixture_bytes, FIXTURE_NAME)
+def load_native_helpers():
+    global capture, CaptureStopped, stream_capture, ARCHIVE_RAW_CAP, retain_archive_output
+    global built_vision_app, write_synthetic_fixture, snapshot_fixture, test_command
+    global verify_cases, synthetic_fixture_bytes, FIXTURE_NAME
+    from mac_archive_capture import capture, CaptureStopped
+    from vision_store_stream import capture as stream_capture
+    from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
+    from run_vision_remaining import (built_vision_app, write_synthetic_fixture,
+        snapshot_fixture, test_command, verify_cases, synthetic_fixture_bytes, FIXTURE_NAME)
 
-BASE = '2fc23ee9f905db1972a72bc4d3f6b529b89f07b5'
+
+# Preserve the imported host-test API. CLI resolver/pack/verdict/default modes
+# need only standard libraries and never initialize native helper modules.
+if __name__ != '__main__': load_native_helpers()
+
+BASE = '389d0f87c493ee7e87b04c4632084452149446f7'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = 'de0eb3a309030b95b176118d11a26300af3b8da2'
+BASE_TREE = '8eed6b4a7bd0d33ccfe7c54c26217b400df8408e'
 BRANCH = 'refs/heads/codex/vision-store-single'
 WORKFLOW = '.github/workflows/vision-store-single.yml'
 SELECTOR = 'CelluloidVisionUITests/NativeVisionUITests/testStoreSingleHeldEditorCapture'
@@ -48,7 +64,9 @@ MODIFIED = (WORKFLOW,
 REQUEST_PREFIX = 'CELLULOID_STORE_CAPTURE_REQUEST '
 METADATA_NAME = '.com.apple.mobile_container_manager.metadata.plist'
 # Conservative resource ceilings, not a claim about unmeasured visionOS counts.
-METADATA_CAP, METADATA_TOTAL_CAP, METADATA_ENTRIES, METADATA_SECONDS = 262_144, 16_777_216, 4096, 30
+# Reuse the reviewed per-query ceiling; original work/held deadlines still bind.
+METADATA_CAP, METADATA_TOTAL_CAP, METADATA_ENTRIES, METADATA_SECONDS = 262_144, 16_777_216, 4096, 180
+RESOLVER_STAGE_CAP, RESOLVER_STAGE_LIMIT = 8192, 32
 CONTAINER_PHASES = {'seed-data': (APP_ID, 'Data'), 'capture-data': (APP_ID, 'Data'),
     'capture-runner': (RUNNER_ID, 'Data'), 'after-data': (APP_ID, 'Data'),
     'capture-installed': (APP_ID, 'Bundle'), 'after-installed': (APP_ID, 'Bundle')}
@@ -56,6 +74,37 @@ CONTAINER_PHASES = {'seed-data': (APP_ID, 'Data'), 'capture-data': (APP_ID, 'Dat
 
 def need(value, message):
     if not value: raise ValueError(message)
+
+
+def resolver_stage(stage, entries=0, metadata_bytes=0, matches=0):
+    """Fixed vocabulary and aggregate counters only; never identity or paths."""
+    global _RESOLVER_STAGE_COUNT, _RESOLVER_STAGE_BYTES
+    if not _RESOLVER_MODE: return
+    need(stage in ('stdlib-ready','binding-start','binding-ready','root-open','root-ready',
+        'scan-count','match-complete','lookup-failed','failed'), 'Invalid resolver stage')
+    need(all(type(v) is int and v >= 0 for v in (entries,metadata_bytes,matches)), 'Invalid resolver counters')
+    elapsed = time.monotonic()-_RESOLVER_STARTED
+    need(math.isfinite(elapsed) and elapsed >= 0, 'Invalid resolver stage clock')
+    row = {'stage':stage,'elapsed_seconds':round(elapsed,6),'entries_seen':entries,
+        'metadata_bytes':metadata_bytes,'matches':matches}
+    line = 'VISION_RESOLVER_STAGE '+json.dumps(row,separators=(',',':'))+'\n'
+    size = len(line.encode())
+    need(_RESOLVER_STAGE_COUNT < RESOLVER_STAGE_LIMIT and _RESOLVER_STAGE_BYTES+size <= RESOLVER_STAGE_CAP,
+        'Resolver diagnostic cap')
+    _RESOLVER_STAGE_COUNT += 1; _RESOLVER_STAGE_BYTES += size
+    sys.stderr.write(line); sys.stderr.flush()
+
+
+def host_loadavg():
+    try:
+        load = os.getloadavg()
+        if len(load) == 3 and all(type(v) in (int,float) and math.isfinite(v) and v >= 0 for v in load):
+            return list(load)
+    except (AttributeError,OSError): pass
+    return None
+
+
+if _RESOLVER_MODE: resolver_stage('stdlib-ready')
 
 
 def json_file(path, cap):
@@ -160,18 +209,21 @@ def metadata_identity(container_fd, container_uuid, byte_budget=METADATA_CAP):
         os.close(fd)
 
 
-def resolve_container_metadata(devices_root, device, bundle, kind):
+def resolve_container_metadata(devices_root, device, bundle, kind, progress=lambda *args: None):
     """One bounded scan of this cohort's device; no app-data or CLI fallback."""
     fixed_uuid(device)
     need((bundle, kind) in set(CONTAINER_PHASES.values()), 'Unexpected container target')
     root = Path(devices_root)/device/'data/Containers'/kind/'Application'
     root_fd = None; matches = []; entries = total = 0; stage = 'root'
     try:
+        progress('root-open',entries,total,len(matches))
         root_fd = open_directory(root)
+        progress('root-ready',entries,total,len(matches))
         with os.scandir(root_fd) as scan:
             for entry in scan:
                 stage = 'entry-limit'
                 entries += 1; need(entries <= METADATA_ENTRIES, 'Metadata entry count exceeded')
+                if entries == 1 or entries % 256 == 0: progress('scan-count',entries,total,len(matches))
                 stage = 'container-entry'
                 info = entry.stat(follow_symlinks=False)
                 need(not stat.S_ISLNK(info.st_mode), 'Metadata directory link rejected')
@@ -194,11 +246,13 @@ def resolve_container_metadata(devices_root, device, bundle, kind):
                     os.close(fd)
         stage = 'target-missing' if not matches else 'target-ambiguous'
         need(len(matches) == 1, 'Container identity missing or ambiguous')
+        progress('match-complete',entries,total,len(matches))
         return {'schema': 'Celluloid.ContainerMetadata.1', 'device': device,
             'bundle_identifier': bundle, 'kind': kind, 'entries_examined': entries,
             'metadata_bytes_examined': total, **matches[0]}
     except Exception:
         # Do not expose unrelated app names, UUIDs, plist values or paths.
+        progress('lookup-failed',entries,total,len(matches))
         raise ValueError('Owned-device container metadata lookup rejected: '+stage) from None
     finally:
         if root_fd is not None: os.close(root_fd)
@@ -335,9 +389,9 @@ class RequestLines:
 
 
 class Job:
-    def __init__(self, root, temp, binding, started, execute=capture, clock=time.monotonic):
+    def __init__(self, root, temp, binding, started, execute=None, clock=time.monotonic):
         self.root, self.temp, self.binding = Path(root), Path(temp), binding
-        self.execute, self.clock, self.started = execute, clock, started
+        self.execute, self.clock, self.started = capture if execute is None else execute, clock, started
         self.device = None; self.blocked = False; self.capture_count = 0
         self.checkpoint_deadline = None
         self.observer_guard = None
@@ -390,9 +444,11 @@ class Job:
         boundary = self.started + (CLEANUP_END if cleanup else WORK_END)
         if self.checkpoint_deadline is not None: boundary = min(boundary, self.checkpoint_deadline)
         need(self.clock()+seconds+20 <= boundary, 'Original wall-time reserve unavailable: '+phase)
-        row = {'phase': phase, 'command': list(map(str, command)), 'seconds': seconds, 'complete': False, 'started_monotonic': self.clock()}
+        row = {'phase': phase, 'command': list(map(str, command)), 'seconds': seconds, 'complete': False,
+            'started_monotonic': self.clock(), 'host_load_before': host_loadavg()}
         self.report['operations'].append(row)
-        print('VISION_PHASE_START '+json.dumps({'phase':phase,'timeout_seconds':seconds,'elapsed_seconds':self.clock()-self.started,'barrier':self.blocked}),flush=True)
+        print('VISION_PHASE_START '+json.dumps({'phase':phase,'timeout_seconds':seconds,'elapsed_seconds':self.clock()-self.started,
+            'barrier':self.blocked,'host_load_before':row['host_load_before']}),flush=True)
         self.persist()
         stdout = stderr = b''; complete = False
         try:
@@ -711,6 +767,7 @@ def main():
             'scope': 'One held real editor capture; no native run by default', 'visual_review_required': True}, indent=2)); return 0
     root = Path(__file__).resolve().parents[1]
     need(Path.cwd().resolve() == root, 'Run from exact candidate root')
+    if args.resolve_container: resolver_stage('binding-start')
     binding = environment(os.environ)
     authorization = admission(root, os.environ, binding)
     temp = Path(os.environ['RUNNER_TEMP'])
@@ -722,7 +779,9 @@ def main():
         device, bundle, kind = args.resolve_container
         need(now+METADATA_SECONDS <= started+WORK_END, 'Metadata resolution original deadline missing')
         validate_metadata_operation(temp, binding, started, device, bundle, kind)
-        row = resolve_container_metadata(Path.home()/'Library/Developer/CoreSimulator/Devices', device, bundle, kind)
+        resolver_stage('binding-ready')
+        row = resolve_container_metadata(Path.home()/'Library/Developer/CoreSimulator/Devices', device, bundle, kind,
+            progress=resolver_stage)
         payload = json.dumps(row)
         need(len(payload.encode()) <= 16_384, 'Metadata receipt cap')
         print(payload, flush=True)
@@ -740,6 +799,7 @@ def main():
     if args.finish_upload:
         need(now <= started+FINISH_END and os.environ.get('VISION_UPLOAD_OUTCOME') == 'success', 'Upload/deadline failed')
         return 0 if verify_packed_images(temp, binding, started).get('complete') is True else 1
+    load_native_helpers()
     job = Job(root, temp, binding, started); job.report['admission'] = authorization
     try: job.work()
     except BaseException as error:
@@ -752,6 +812,10 @@ def main():
 if __name__ == '__main__':
     try: verdict = main()
     except BaseException as error:
+        if _RESOLVER_MODE:
+            try: resolver_stage('failed')
+            except Exception: pass  # Diagnostic failure must not bypass its cap.
+            raise SystemExit(1) from None
         print('VISION_DRIVER_FAILURE '+json.dumps({'type':type(error).__name__,'error':str(error)}),flush=True)
         raise
     raise SystemExit(verdict)

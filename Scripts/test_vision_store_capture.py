@@ -5,6 +5,7 @@ import io
 import json
 import os
 import plistlib
+import select
 import signal
 import time
 import subprocess
@@ -329,10 +330,10 @@ class ProcessTests(unittest.TestCase):
         for phase, (target, kind) in store.CONTAINER_PHASES.items():
             result = job.container(phase, target, kind)
             self.assertEqual(result if kind == 'Data' else Path(result['path']), runner if target == store.RUNNER_ID else app if kind == 'Bundle' else container)
-        self.assertEqual(caps, [30]*6)
+        self.assertEqual(caps, [180]*6)
     def test_seed_data_budget_still_reserves_original_wall_clock(self):
         execute = mock.Mock(side_effect=AssertionError('late native command forbidden'))
-        job = store.Job(ROOT, self.root, BINDING, 1, execute=execute, clock=lambda: store.WORK_END-40)
+        job = store.Job(ROOT, self.root, BINDING, 1, execute=execute, clock=lambda: store.WORK_END-190)
         job.device = DEVICE
         with self.assertRaisesRegex(ValueError, 'wall-time reserve'): job.container('seed-data', store.APP_ID)
         execute.assert_not_called()
@@ -344,6 +345,18 @@ class ProcessTests(unittest.TestCase):
         execute.reset_mock(); job.clock = lambda: 1+store.WORK_END-380
         with self.assertRaisesRegex(ValueError, 'wall-time reserve'): job.call('install', ['mock'], 360)
         execute.assert_not_called()
+    def test_host_load_is_aggregate_finite_and_nonfatal(self):
+        with mock.patch.object(store.os,'getloadavg',return_value=(1.25,2.5,3.75)):
+            job = self.job(lambda *args,**kwargs: subprocess.CompletedProcess(args,0,b'',b''))
+            with mock.patch('sys.stdout',new_callable=io.StringIO) as output: job.call('probe',['mock'],1)
+        self.assertEqual(job.report['operations'][0]['host_load_before'],[1.25,2.5,3.75])
+        start = next(line for line in output.getvalue().splitlines() if line.startswith('VISION_PHASE_START '))
+        self.assertEqual(json.loads(start.split(' ',1)[1])['host_load_before'],[1.25,2.5,3.75])
+        for value in ((True,1,1),(float('nan'),1,1),(float('inf'),1,1),(-1,1,1),(1,)):
+            with self.subTest(value=value), mock.patch.object(store.os,'getloadavg',return_value=value):
+                self.assertIsNone(store.host_loadavg())
+        with mock.patch.object(store.os,'getloadavg',side_effect=OSError('private system detail')):
+            self.assertIsNone(store.host_loadavg())
     def test_known_failure_is_not_uncertainty(self):
         job = self.job(lambda *a, **kw: subprocess.CompletedProcess(a, 1, b'known failure', b''))
         with self.assertRaises(ValueError): job.call('build', ['mock'], 1)
@@ -552,6 +565,109 @@ class MetadataTests(unittest.TestCase):
         self.assertTrue(job.blocked); self.assertEqual(execute.call_count,1)
         self.assertNotIn('simctl',execute.call_args.args[0]); job.finish()
         self.assertEqual(execute.call_count,1); self.assertEqual(job.report['cleanup'],[])
+    def cli_fixture(self):
+        source = self.root/'minimal-source'; scripts = source/'Scripts'; scripts.mkdir(parents=True)
+        driver = scripts/'run_vision_store_capture.py'; driver.write_bytes(Path(store.__file__).read_bytes())
+        (scripts/'vision_store_admission.json').write_bytes((ROOT/'Scripts/vision_store_admission.json').read_bytes())
+        temp = self.root/'runner-temp'; folder = temp/store.FOLDER; folder.mkdir(parents=True)
+        binding = {'GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_REF':store.BRANCH,
+            'GITHUB_WORKFLOW_REF':'100mango/Celluloid/'+store.WORKFLOW+'@'+store.BRANCH,
+            'GITHUB_RUN_ATTEMPT':'1','GITHUB_JOB':'vision','GITHUB_EVENT_NAME':'push',
+            'DEVELOPER_DIR':'/Applications/Xcode_27.app/Contents/Developer',
+            'GITHUB_SHA':'a'*40,'GITHUB_WORKFLOW_SHA':'a'*40,'GITHUB_RUN_ID':'123'}
+        started = time.monotonic()
+        command = [sys.executable,str(driver),'--resolve-container',DEVICE,store.APP_ID,'Data']
+        report = {'binding':binding,'started_monotonic':started,'device':DEVICE,
+            'source-before':{'base':store.BASE,'unchanged_product_scope':True},'complete':False,
+            'operations':[{'phase':phase,'complete':True,'return_code':0} for phase in ('create','boot','install')]
+                +[{'phase':'seed-data','complete':False,'seconds':store.METADATA_SECONDS,'command':command}]}
+        (folder/'report.json').write_text(json.dumps(report))
+        (temp/store.CLOCK).write_text(json.dumps({'binding':binding,'started_monotonic':started}))
+        env = {**binding,'RUNNER_TEMP':str(temp),'HOME':str(self.root/'home'),'CELLULOID_STORE_ROOT_GO_SHA':'a'*40}
+        return source,driver,env
+    def test_real_resolver_cli_has_stages_without_native_helper_modules(self):
+        source,driver,env = self.cli_fixture()
+        for flags in ([],['-O']):
+            with self.subTest(flags=flags):
+                result = subprocess.run([sys.executable,*flags,str(driver),'--resolve-container',DEVICE,store.APP_ID,'Data'],
+                    cwd=source,env=env,capture_output=True,timeout=10)
+                self.assertEqual(result.returncode,0,result.stderr.decode())
+                self.assertEqual(json.loads(result.stdout)['path'],str(self.target))
+                lines = result.stderr.decode().splitlines()
+                self.assertLessEqual(len(lines),store.RESOLVER_STAGE_LIMIT)
+                self.assertLessEqual(len(result.stderr),store.RESOLVER_STAGE_CAP)
+                stages = [json.loads(line.removeprefix('VISION_RESOLVER_STAGE ')) for line in lines]
+                self.assertEqual([r['stage'] for r in stages],['script-entry','stdlib-ready','binding-start',
+                    'binding-ready','root-open','root-ready','scan-count','match-complete'])
+                for row in stages:
+                    self.assertLessEqual(set(row),{'stage','elapsed_seconds','entries_seen','metadata_bytes','matches'})
+                    self.assertGreaterEqual(row['elapsed_seconds'],0)
+                for forbidden in (str(self.root),DEVICE,CONTAINER,store.APP_ID,'argv','environ'):
+                    self.assertNotIn(forbidden,result.stderr.decode())
+        self.assertFalse((source/'Scripts/mac_archive_capture.py').exists())
+    def test_real_resolver_entry_is_flushed_before_blocked_stdlib_import(self):
+        source,driver,env = self.cli_fixture()
+        # A controlled local shim pauses the first nontrivial stdlib import.
+        # No -u flag: this witnesses the explicit entry flush before imports.
+        (source/'Scripts/argparse.py').write_text(
+            "import time\nfrom pathlib import Path\n"
+            "Path('stdlib-import-entered').touch()\ntime.sleep(60)\n")
+        process = subprocess.Popen([sys.executable,str(driver),'--resolve-container',DEVICE,store.APP_ID,'Data'],
+            cwd=source,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        try:
+            deadline = time.monotonic()+5
+            while not (source/'stdlib-import-entered').exists() and time.monotonic()<deadline:
+                time.sleep(0.005)
+            self.assertTrue((source/'stdlib-import-entered').is_file())
+            self.assertIsNone(process.poll())
+            ready,_,_ = select.select([process.stderr],[],[],1)
+            self.assertEqual(ready,[process.stderr])
+            self.assertEqual(process.stderr.readline(),store._RESOLVER_ENTRY.encode())
+            self.assertEqual(select.select([process.stderr],[],[],0.05)[0],[])
+        finally:
+            process.kill(); stdout,stderr = process.communicate(timeout=5)
+        self.assertEqual(stdout,b''); self.assertEqual(stderr,b'')
+    def test_real_resolver_failure_has_bounded_stages_and_no_identities(self):
+        write_container_metadata(self.target,'other.private.application')
+        source,driver,env = self.cli_fixture()
+        result = subprocess.run([sys.executable,str(driver),'--resolve-container',DEVICE,store.APP_ID,'Data'],
+            cwd=source,env=env,capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,1); self.assertEqual(result.stdout,b'')
+        self.assertIn('lookup-failed',result.stderr.decode()); self.assertIn('failed',result.stderr.decode())
+        self.assertLessEqual(len(result.stderr),store.RESOLVER_STAGE_CAP)
+        for forbidden in ('other.private.application',str(self.root),DEVICE,store.APP_ID):
+            self.assertNotIn(forbidden,result.stderr.decode())
+    def test_default_pack_and_verdict_cli_do_not_import_native_helpers(self):
+        source,driver,env = self.cli_fixture()
+        default = subprocess.run([sys.executable,str(driver)],cwd=source,env=env,capture_output=True,timeout=10)
+        self.assertEqual(default.returncode,0,default.stderr.decode())
+        self.assertFalse(json.loads(default.stdout)['native_execution_enabled'])
+        packed = subprocess.run([sys.executable,str(driver),'--pack'],cwd=source,env=env,capture_output=True,timeout=10)
+        self.assertEqual(packed.returncode,0,packed.stderr.decode())
+        verdict = subprocess.run([sys.executable,str(driver),'--finish-upload'],cwd=source,
+            env={**env,'VISION_UPLOAD_OUTCOME':'success'},capture_output=True,timeout=10)
+        self.assertEqual(verdict.returncode,1)  # The synthetic report remains incomplete.
+        self.assertNotIn('ModuleNotFoundError',verdict.stderr.decode())
+    def test_stage_limits_reject_extra_output_and_unknown_fields(self):
+        with mock.patch.object(store,'_RESOLVER_MODE',True), mock.patch.object(store,'_RESOLVER_STAGE_COUNT',0), \
+             mock.patch.object(store,'_RESOLVER_STAGE_BYTES',0), mock.patch('sys.stderr',new_callable=io.StringIO) as output:
+            for count in range(store.RESOLVER_STAGE_LIMIT): store.resolver_stage('scan-count',count,0,0)
+            with self.assertRaisesRegex(ValueError,'diagnostic cap'): store.resolver_stage('scan-count')
+            self.assertLessEqual(len(output.getvalue().encode()),store.RESOLVER_STAGE_CAP)
+            with self.assertRaises(ValueError): store.resolver_stage('other.private.application')
+    def test_scan_progress_is_sampled_even_at_maximum_entry_count(self):
+        for count in range(store.METADATA_ENTRIES-1): (self.base/('private-name-'+str(count))).touch()
+        events = []
+        result = store.resolve_container_metadata(self.devices,DEVICE,store.APP_ID,'Data',
+            progress=lambda *event: events.append(event))
+        self.assertEqual(result['entries_examined'],store.METADATA_ENTRIES)
+        self.assertEqual(sum(event[0]=='scan-count' for event in events),17)
+        self.assertLess(len(events)+5,store.RESOLVER_STAGE_LIMIT)
+        self.assertFalse(any('private-name' in str(event) for event in events))
+    def test_prior_lookup_ceiling_preserves_held_and_work_bounds(self):
+        self.assertEqual(store.METADATA_SECONDS,180)
+        self.assertLess(3*store.METADATA_SECONDS+15+10+20,600)
+        self.assertEqual((store.WORK_END,store.CLEANUP_END,store.PACK_END,store.FINISH_END),(1800,1920,2160,2400))
 
 
 class CheckpointTests(unittest.TestCase):
@@ -620,14 +736,14 @@ class CheckpointTests(unittest.TestCase):
             return result
         self.job.execute = execute
         self.job.checkpoint(REQUEST)
-        self.assertEqual(caps, [30, 30, 30, 15, 10])
+        self.assertEqual(caps, [180, 180, 180, 15, 10])
         self.assertTrue(json.loads(self.ack.read_text())['success'])
         self.assertLess(now[0], 2+600-20)
         self.assertIsNone(self.job.checkpoint_deadline)
         # The later lookup remains allowed after the held checkpoint has ended.
         now[0] = 603
         self.job.container('after-data', store.APP_ID)
-        self.assertEqual(caps, [30, 30, 30, 15, 10, 30])
+        self.assertEqual(caps, [180, 180, 180, 15, 10, 180])
         self.assertGreater(now[0], 2+600)
     def test_remaining_held_budget_blocks_full_data_cap_before_spawn(self):
         now = [2.0]; self.job.clock = lambda: now[0]
@@ -635,7 +751,7 @@ class CheckpointTests(unittest.TestCase):
         real_container = self.job.container
         def container(phase, bundle, kind='Data'):
             result = real_container(phase, bundle, kind)
-            if phase == 'capture-installed': now[0] = 2+551
+            if phase == 'capture-installed': now[0] = 2+401
             return result
         with mock.patch.object(self.job, 'container', side_effect=container), self.assertRaises(ValueError):
             self.job.checkpoint(REQUEST)
