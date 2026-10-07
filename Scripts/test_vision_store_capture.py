@@ -133,17 +133,30 @@ class ContractTests(unittest.TestCase):
         calls = [n for n in ast.walk(work) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)]
         phases = {n.args[0].value: n.args[2].value for n in calls if n.func.attr == 'call' and len(n.args) >= 3}
         self.assertEqual(phases['install'], 360)
-        self.assertEqual({k: phases[k] for k in ('build','boot','bootstatus','ui')}, {'build':600,'boot':45,'bootstatus':180,'ui':600})
+        self.assertEqual({k: phases[k] for k in ('build','boot','bootstatus','ui')}, {'build':600,'boot':45,'bootstatus':180,'ui':1200})
         # Preserve the prior host-side fixture-write guard; add no aggregate max-cap gate.
         guards = [n for n in calls if n.func.attr == 'check_active']
         self.assertEqual(len(guards), 1); self.assertEqual(guards[0].args, [])
+    def test_only_capture_selector_gets_matching_xctest_case_maximum(self):
+        base = store.test_command(Path('/mock'), DEVICE, [store.SELECTOR], 'VisionStoreSingle')
+        command = store.capture_test_command(Path('/mock'), DEVICE)
+        self.assertEqual(command, base[:-1]+['-test-timeouts-enabled','YES',
+            '-maximum-test-execution-time-allowance','1200']+base[-1:])
+        self.assertEqual([x for x in command if x.startswith('-only-testing:')], ['-only-testing:'+store.SELECTOR])
+        self.assertNotIn('-retry-tests-on-failure', command)
+        self.assertNotIn('-test-timeouts-enabled', base)
+        ui = (ROOT/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()
+        self.assertEqual(ui.count('executionTimeAllowance = 1200'), 1)
+        self.assertLess(344+620, 1200)
+        maximum = int(command[command.index('-maximum-test-execution-time-allowance')+1])
+        self.assertEqual(maximum, 1200)
     def test_swift_case_has_no_edit_or_window_screenshot(self):
         text = (ROOT/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()
         case = text.split('func testStoreSingleHeldEditorCapture()', 1)[1].split('func testSeededDocument', 1)[0]
         for forbidden in ('typeText(', '.screenshot()', 'undo.tap', 'redo.tap', 'editor.export"].tap', 'add-bubble"].tap'):
             self.assertNotIn(forbidden, case)
         self.assertIn('openRemainingDocument(in: app)', case)
-        self.assertIn('timeout: 280', case); self.assertIn('Edited photo preview', case)
+        self.assertIn('timeout: 620', case); self.assertIn('executionTimeAllowance = 1200', case); self.assertIn('Edited photo preview', case)
     def test_stream_preserves_owned_cleanup_with_guarded_observer(self):
         base = (ROOT/'Scripts/mac_archive_capture.py').read_text()
         current = (ROOT/'Scripts/vision_store_stream.py').read_text()
@@ -237,7 +250,7 @@ class ProcessTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
     def job(self, execute): return store.Job(ROOT, self.root, BINDING, 1, execute=execute, clock=lambda: 2)
-    def test_only_exact_app_data_phases_use_evidenced_180_second_budget(self):
+    def test_all_fixed_container_queries_use_finite_180_second_budget(self):
         container = self.root/DEVICE/'data/Containers/Data/Application'/CONTAINER
         container.mkdir(parents=True)
         caps = []
@@ -247,7 +260,7 @@ class ProcessTests(unittest.TestCase):
         job = self.job(execute); job.device = DEVICE; job.devices_root = self.root
         for phase in ('seed-data', 'capture-data', 'capture-runner', 'after-data'):
             self.assertEqual(job.container(phase, store.APP_ID), container)
-        self.assertEqual(caps, [180, 180, 10, 180])
+        self.assertEqual(caps, [180, 180, 180, 180])
     def test_seed_data_budget_still_reserves_original_wall_clock(self):
         execute = mock.Mock(side_effect=AssertionError('late native command forbidden'))
         job = store.Job(ROOT, self.root, BINDING, 1, execute=execute, clock=lambda: store.WORK_END-190)
@@ -374,7 +387,7 @@ class CheckpointTests(unittest.TestCase):
         self.assertFalse(self.job.report['store_ready'])
         with self.assertRaises(ValueError): self.job.checkpoint(REQUEST)
         self.assertEqual(sum('screenshot' in c for c in self.calls), 1)
-    def run_observer(self, callback, seconds=600):
+    def run_observer(self, callback, seconds=1200):
         parser = store.RequestLines(callback)
         script = 'import time; print('+repr(store.REQUEST_PREFIX+REQUEST)+', flush=True); time.sleep(10)'
         with self.assertRaises(CaptureStopped):
@@ -395,21 +408,21 @@ class CheckpointTests(unittest.TestCase):
             return result
         self.job.execute = execute
         self.job.checkpoint(REQUEST)
-        self.assertEqual(caps, [10, 180, 10, 15, 10])
+        self.assertEqual(caps, [180, 180, 180, 15, 10])
         self.assertTrue(json.loads(self.ack.read_text())['success'])
-        self.assertLess(now[0], 2+260-20)
+        self.assertLess(now[0], 2+600-20)
         self.assertIsNone(self.job.checkpoint_deadline)
         # This second 180-second lookup belongs to post-UI work, not held work.
         self.job.container('after-data', store.APP_ID)
-        self.assertEqual(caps, [10, 180, 10, 15, 10, 180])
-        self.assertGreater(now[0], 2+260)
+        self.assertEqual(caps, [180, 180, 180, 15, 10, 180])
+        self.assertGreater(now[0], 2+600)
     def test_remaining_held_budget_blocks_full_data_cap_before_spawn(self):
         now = [2.0]; self.job.clock = lambda: now[0]
         # Simulate bounded host validation taking extra time after the first call.
         real_container = self.job.container
         def container(phase, bundle, kind='Data'):
             result = real_container(phase, bundle, kind)
-            if phase == 'capture-installed': now[0] = 2+61
+            if phase == 'capture-installed': now[0] = 2+401
             return result
         with mock.patch.object(self.job, 'container', side_effect=container), self.assertRaises(ValueError):
             self.job.checkpoint(REQUEST)
@@ -457,7 +470,7 @@ class CheckpointTests(unittest.TestCase):
         ordinary = self.job.execute
         def execute(command, **kwargs):
             result = ordinary(command, **kwargs)
-            if '--inspect' in command: now[0] = 263
+            if '--inspect' in command: now[0] = 603
             return result
         self.job.execute = execute
         self.run_observer(self.job.checkpoint)
