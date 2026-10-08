@@ -72,3 +72,8 @@ test-*.log
 archive.log
 
 __pycache__/
+
+# Build-derived native icon packaging from the hash-checked original brand.
+Platforms/watchOS/Assets.xcassets/**/Generated*.png
+Platforms/visionOS/Assets.xcassets/**/Generated*.png
+Platforms/tvOS/Assets.xcassets/**/Generated*.png

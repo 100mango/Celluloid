@@ -19,3 +19,8 @@
 "saved" = "Saved";
 "beautify" = "Beautify";
 "Bubble Text" = "Bubble Text";
+"read-only" = "Read Only";
+"unreadable-edits-title" = "Earlier Edits Preserved";
+"unreadable-edits-message" = "Earlier edits could not be safely loaded. Editing is disabled to preserve the photo and its editing data.";
+
+"edit-too-complex" = "This edit is too large to save. Shorten the bubble text or remove decorations, then try again. Your original photo is unchanged.";

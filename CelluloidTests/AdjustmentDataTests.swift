@@ -36,6 +36,78 @@ final class AdjustmentDataTests: XCTestCase {
         return try NSKeyedArchiver.archivedData(withRootObject: object, requiringSecureCoding: false)
     }
 
+    private func assertBudgetRejected(_ bytes: Data, file: StaticString = #filePath, line: UInt = #line) {
+        let before = SHA256.hash(data: bytes)
+        XCTAssertThrowsError(try AdjustmentData.decode(bytes), file: file, line: line) { error in
+            guard case .some(.resourceLimit(_)) = error as? AdjustmentDataError else {
+                XCTFail("Expected an explicit all-or-nothing resource rejection, got \(error)", file: file, line: line)
+                return
+            }
+        }
+        XCTAssertEqual(SHA256.hash(data: bytes), before, "Opaque bytes must remain unchanged", file: file, line: line)
+    }
+
+    func testEncodedByteBudgetRejectsBeforeUnarchiving() {
+        assertBudgetRejected(Data(repeating: 0, count: AdjustmentData.maximumEncodedBytes + 1))
+    }
+
+    func testSmallSharedReferenceArchiveRejectsExcessiveLayers() throws {
+        let shared = legacySticker as NSDictionary
+        let object: NSDictionary = ["filterType": "Original",
+            "stickers": NSArray(array: Array(repeating: shared, count: AdjustmentData.maximumDecorations + 1))]
+        let bytes = try legacyArchive(object)
+        XCTAssertLessThan(bytes.count, 64 * 1024, "A byte limit alone cannot prevent repeated-object expansion")
+        assertBudgetRejected(bytes)
+    }
+
+    func testAggregateRepeatedTextBudgetRejectsWithoutTruncation() throws {
+        var bubble = legacyBubble; bubble["content"] = String(repeating: "x", count: 4096)
+        let shared = bubble as NSDictionary
+        let object: NSDictionary = ["filterType": "Original",
+            "bubbles": NSArray(array: Array(repeating: shared, count: 65))]
+        let bytes = try legacyArchive(object)
+        XCTAssertLessThan(bytes.count, 64 * 1024)
+        assertBudgetRejected(bytes)
+    }
+
+    func testIndividualUnicodeTextBudgetRejectsWithoutTruncation() throws {
+        var bubble = legacyBubble
+        bubble["content"] = String(repeating: "界", count: AdjustmentData.maximumBubbleTextUTF16Units + 1)
+        assertBudgetRejected(try legacyArchive(["filterType": "Original", "bubbles": [bubble]]))
+    }
+
+    func testResourceBoundariesPreserveEveryLegacyLayerAndTextUnit() throws {
+        var bubble = legacyBubble
+        let text = String(repeating: "界", count: AdjustmentData.maximumBubbleTextUTF16Units)
+        bubble["content"] = text
+        let bubbles = Array(repeating: bubble, count: 4)
+        let stickers = Array(repeating: legacySticker, count: AdjustmentData.maximumDecorations - bubbles.count)
+        let original: [String: Any] = ["filterType": "Chrome", "bubbles": bubbles, "stickers": stickers]
+        let bytes = try legacyArchive(original)
+        XCTAssertLessThanOrEqual(bytes.count, AdjustmentData.maximumEncodedBytes)
+        let decoded = try AdjustmentData.decode(bytes)
+        XCTAssertEqual(decoded.bubbles.count, 4)
+        XCTAssertEqual(decoded.stickers.count, 1020)
+        XCTAssertTrue(decoded.bubbles.allSatisfy { $0.content == text })
+        XCTAssertNil(decoded.referenceCanvasSize)
+        XCTAssertTrue(try XCTUnwrap(decoded.toJSON() as? NSDictionary).isEqual(to: original))
+        let roundtrip = try AdjustmentData.decode(decoded.encode())
+        XCTAssertTrue(try XCTUnwrap(roundtrip.toJSON() as? NSDictionary).isEqual(to: original))
+    }
+
+    func testEncodingRejectsUnreopenableStateInsteadOfDroppingLayers() {
+        var state = AdjustmentData()
+        state.stickers = Array(repeating: StickerModel.stickers[0], count: AdjustmentData.maximumDecorations + 1)
+        XCTAssertThrowsError(try state.encode())
+        XCTAssertEqual(state.stickers.count, AdjustmentData.maximumDecorations + 1)
+        state.stickers = []
+        var bubble = BubbleModel.bubbles[0]
+        bubble.content = String(repeating: "x", count: AdjustmentData.maximumBubbleTextUTF16Units + 1)
+        state.bubbles = [bubble]
+        XCTAssertThrowsError(try state.encode())
+        XCTAssertEqual(state.bubbles[0].content.utf16.count, AdjustmentData.maximumBubbleTextUTF16Units + 1)
+    }
+
     func testLegacyArchiveRoundTripsWithoutChangingItsDictionary() throws {
         let decoded = try AdjustmentData.decode(legacyArchive(legacyObject))
         XCTAssertEqual(decoded.filterType, .Chrome)

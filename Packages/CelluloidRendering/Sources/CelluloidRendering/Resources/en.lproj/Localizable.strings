@@ -1,0 +1,7 @@
+"Required artwork is missing: %@." = "Required artwork is missing: %@.";
+"The %@ filter is unavailable on this device." = "The %@ filter is unavailable on this device.";
+"The exported image could not be verified." = "The exported image could not be verified.";
+"The image could not be rendered. Your original is unchanged." = "The image could not be rendered. Your original is unchanged.";
+"This bubble text does not fit. Shorten the text or make the bubble larger." = "This bubble text does not fit. Shorten the text or make the bubble larger.";
+"This file could not be decoded as an image." = "This file could not be decoded as an image.";
+"RAW, ProRAW and animated images are not supported. Import a still JPEG, PNG or HEIC copy." = "RAW, ProRAW and animated images are not supported. Import a still JPEG, PNG or HEIC copy.";

@@ -19,6 +19,24 @@ enum AppLinks {
 class EntranceViewController: UIViewController {
     private var horizontalLayout: Bool?
     private var footerHeight: CGFloat = 44
+    private lazy var watchPhotosButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle(NSLocalizedString("Watch Photos", comment: "Local paired Watch processing results"), for: .normal)
+        button.titleLabel?.font = .preferredFont(forTextStyle: .footnote)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.titleLabel?.numberOfLines = 0
+        button.titleLabel?.textAlignment = .center
+        button.tintColor = .white
+        button.accessibilityIdentifier = "watch-photos"
+        button.addTarget(self, action: #selector(showWatchPhotos), for: .touchUpInside)
+        return button
+    }()
+    private lazy var footer: UIStackView = {
+        let buttons = UIDevice.current.userInterfaceIdiom == .phone ? [watchPhotosButton, privacyPolicyButton] : [privacyPolicyButton]
+        let stack = UIStackView(arrangedSubviews: buttons)
+        stack.axis = .horizontal; stack.alignment = .fill; stack.distribution = .fillEqually; stack.spacing = 8
+        return stack
+    }()
     lazy var privacyPolicyButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle(NSLocalizedString("Privacy Policy", comment: "Privacy policy link"), for: .normal)
@@ -71,8 +89,8 @@ class EntranceViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         self.view.backgroundColor = .black
-        view.addSubview(privacyPolicyButton)
-        privacyPolicyButton.snp.makeConstraints { make in
+        view.addSubview(footer)
+        footer.snp.makeConstraints { make in
             make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(16)
             make.bottom.equalTo(view.safeAreaLayoutGuide).offset(-4)
             make.height.equalTo(footerHeight)
@@ -80,7 +98,7 @@ class EntranceViewController: UIViewController {
         self.view.addSubview(stackView)
         stackView.snp.makeConstraints { (make) in
             make.top.leading.trailing.equalTo(view.safeAreaLayoutGuide)
-            make.bottom.equalTo(privacyPolicyButton.snp.top).offset(-4)
+            make.bottom.equalTo(footer.snp.top).offset(-4)
         }
         
         self.view.addSubview(line)
@@ -95,12 +113,13 @@ class EntranceViewController: UIViewController {
         // A lower-bound-only footer could absorb all free space because IconButton
         // intentionally has no intrinsic size. Keep a definite, Dynamic-Type-aware
         // footer so the two primary choices always receive the remaining area.
-        let footerWidth = max(1, view.safeAreaLayoutGuide.layoutFrame.width - 32)
-        let textHeight = privacyPolicyButton.titleLabel?.sizeThatFits(CGSize(width: footerWidth, height: .greatestFiniteMagnitude)).height ?? 0
+        let buttons = footer.arrangedSubviews.compactMap { $0 as? UIButton }
+        let footerWidth = max(1, (view.safeAreaLayoutGuide.layoutFrame.width - 32 - footer.spacing * CGFloat(max(0, buttons.count - 1))) / CGFloat(max(1, buttons.count)))
+        let textHeight = buttons.map { $0.titleLabel?.sizeThatFits(CGSize(width: footerWidth, height: .greatestFiniteMagnitude)).height ?? 0 }.max() ?? 0
         let preferredHeight = max(44, textHeight + 16)
         if preferredHeight != footerHeight {
             footerHeight = preferredHeight
-            privacyPolicyButton.snp.updateConstraints { $0.height.equalTo(footerHeight) }
+            footer.snp.updateConstraints { $0.height.equalTo(footerHeight) }
         }
         let horizontal = view.bounds.width > view.bounds.height
         guard horizontal != horizontalLayout else { return }
@@ -111,6 +130,12 @@ class EntranceViewController: UIViewController {
             if horizontal { make.width.equalTo(1); make.height.equalTo(stackView).multipliedBy(0.65) }
             else { make.height.equalTo(1); make.width.equalTo(stackView).multipliedBy(0.65) }
         }
+    }
+
+    @objc private func showWatchPhotos() {
+        let results = PhoneCompanionEntryController()
+        results.modalPresentationStyle = .fullScreen
+        present(results, animated: true)
     }
 
     @objc private func showPrivacyPolicy() {

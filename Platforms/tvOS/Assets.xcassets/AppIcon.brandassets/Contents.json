@@ -1,0 +1,32 @@
+{
+  "assets": [
+    {
+      "filename": "Small.imagestack",
+      "idiom": "tv",
+      "size": "400x240",
+      "role": "primary-app-icon"
+    },
+    {
+      "filename": "Large.imagestack",
+      "idiom": "tv",
+      "size": "1280x768",
+      "role": "primary-app-icon"
+    },
+    {
+      "filename": "TopShelf.imageset",
+      "idiom": "tv",
+      "size": "1920x720",
+      "role": "top-shelf-image"
+    },
+    {
+      "filename": "TopShelfWide.imageset",
+      "idiom": "tv",
+      "size": "2320x720",
+      "role": "top-shelf-image-wide"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}

@@ -27,7 +27,9 @@ final class EditPhotoViewController: BaseEditPhotoController {
         let options = PHContentEditingInputRequestOptions()
         options.isNetworkAccessAllowed = true
         options.canHandleAdjustmentData = { data in
-            AdjustmentData.supportIdentifier(data.formatIdentifier, version: data.formatVersion) && (try? AdjustmentData.decode(data.data)) != nil
+            // Negotiate the known wire format, then validate the actual bound
+            // input. False-on-decode-failure would silently flatten older edits.
+            AdjustmentData.supportIdentifier(data.formatIdentifier, version: data.formatVersion)
         }
         requestID = model.asset.requestContentEditingInput(with: options) { [weak self] input, _ in
             DispatchQueue.main.async {
@@ -39,14 +41,32 @@ final class EditPhotoViewController: BaseEditPhotoController {
                     return
                 }
                 self.input = input
-                if let archived = input.adjustmentData, let data = try? AdjustmentData.decode(archived.data) { self.restoreFromData(data) }
+                if let archived = input.adjustmentData {
+                    do {
+                        guard AdjustmentData.supportIdentifier(archived.formatIdentifier, version: archived.formatVersion) else {
+                            throw AdjustmentDataError.invalidValue("bound adjustment format")
+                        }
+                        self.restoreFromData(try AdjustmentData.decode(archived.data))
+                    } catch {
+                        self.preserveUnreadableAdjustment(archived, currentImage: self.model.loadedImage)
+                        // This model belongs to this selected PHAsset. A later
+                        // input must not receive its asynchronous preview.
+                        self.model.loadImage { [weak self] result in
+                            guard let self = self, self.input === input,
+                                  self.preservedAdjustmentData === archived else { return }
+                            if case .success(let image) = result { self.sourceImage = image }
+                        }
+                        self.showError(tr(.unreadableEditsMessage), title: tr(.unreadableEditsTitle))
+                        return
+                    }
+                }
                 self.doneButton.isEnabled = true
             }
         }
     }
     @objc private func cancel() { guard !saving else { return }; dismiss(animated: true) }
     @objc private func done() {
-        guard !saving, let input = input else { return }
+        guard !saving, !isAdjustmentReadOnly, let input = input else { return }
         saving = true
         doneButton.isEnabled = false
         navigationItem.leftBarButtonItem?.isEnabled = false
@@ -55,9 +75,13 @@ final class EditPhotoViewController: BaseEditPhotoController {
         exportPhoto { [weak self] result in
             guard let self = self else { return }
             switch result {
-            case .failure:
+            case .failure(let error):
                 self.finishSaving()
-                self.showError(NSLocalizedString("The edited image could not be rendered.", comment: "Render failed"))
+                if case .adjustmentTooComplex = error {
+                    self.showError(tr(.editTooComplex))
+                } else {
+                    self.showError(NSLocalizedString("The edited image could not be rendered.", comment: "Render failed"))
+                }
             case .success(let exported):
                 let output = PHContentEditingOutput(contentEditingInput: input)
                 output.adjustmentData = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier,
@@ -87,13 +111,13 @@ final class EditPhotoViewController: BaseEditPhotoController {
     }
     private func finishSaving() {
         saving = false
-        doneButton.isEnabled = true
+        doneButton.isEnabled = !isAdjustmentReadOnly
         navigationItem.leftBarButtonItem?.isEnabled = true
         view.isUserInteractionEnabled = true
         activity.stopAnimating()
     }
-    private func showError(_ message: String) {
-        let alert = UIAlertController(title: NSLocalizedString("Unable to Edit Photo", comment: "Editing error"), message: message, preferredStyle: .alert)
+    private func showError(_ message: String, title: String? = nil) {
+        let alert = UIAlertController(title: title ?? NSLocalizedString("Unable to Edit Photo", comment: "Editing error"), message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: tr(.done), style: .default))
         present(alert, animated: true)
     }

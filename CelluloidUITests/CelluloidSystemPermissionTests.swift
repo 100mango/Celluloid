@@ -5,12 +5,19 @@ import UIKit
 /// not use the DEBUG authorization overrides and are excluded from the main suite.
 final class CelluloidSystemPermissionTests: XCTestCase {
     private let app = XCUIApplication()
+    private var failClosedMonitor: NSObjectProtocol?
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
+        failClosedMonitor = installFailClosedSystemAlertMonitor()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
     }
-    override func tearDown() { app.terminate(); super.tearDown() }
+    override func tearDown() {
+        app.terminate()
+        if let monitor = failClosedMonitor { removeUIInterruptionMonitor(monitor) }
+        failClosedMonitor = nil
+        super.tearDown()
+    }
     private func openPicker() {
         app.launch()
         XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 10))
@@ -22,7 +29,7 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         defer { removeUIInterruptionMonitor(monitor) }
         openPicker()
         let fixture = app.descendants(matching: .any)["photo-0"]
-        XCTAssertTrue(fixture.waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForFullPhotoAccessPicker(app))
         assertFullPhotoAccessPicker(app)
         fixture.tap()
         XCTAssertTrue(app.buttons["picker-done"].isEnabled)
@@ -45,24 +52,38 @@ final class CelluloidSystemPermissionTests: XCTestCase {
         XCTAssertFalse(app.buttons["picker-done"].isEnabled)
     }
     func testRealLimitedSelectionAndManagement() {
+        let monitor = installExpectedLimitedPhotosAccessMonitor()
+        defer { removeUIInterruptionMonitor(monitor) }
         openPicker()
         let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let limitedNames = ["Select Photos…", "Select Photos...", "Select Photos", "Allow Limited Access", "Limited Access"]
+        let permissionTitle = "Allow “Celluloid” to access your photo library?"
+        let manage = app.buttons["manage-photos"]
         var limited: XCUIElement?
+        var observedPermission: XCUIElement?
         for _ in 0..<10 {
-            limited = limitedNames.flatMap { [app.buttons[$0], system.buttons[$0]] }.first { $0.exists && $0.isHittable }
-            if limited != nil { break }
+            if manage.exists { break } // The narrow monitor may have performed the same explicit limited choice.
+            if let alert = [system.alerts[permissionTitle], app.alerts[permissionTitle]].first(where: { $0.exists }) {
+                let choices = alert.buttons.matching(NSPredicate(format: "label IN %@", limitedNames))
+                if choices.count == 1, choices.element.isEnabled, choices.element.isHittable {
+                    observedPermission = alert; limited = choices.element; break
+                }
+            }
             _ = system.alerts.firstMatch.waitForExistence(timeout: 1)
         }
-        guard let limited = limited else {
+        if let limited = limited {
+            XCTAssertEqual(observedPermission?.label, permissionTitle)
+            XCTAssertTrue(observedPermission?.exists == true)
+            print("DIRECT_LIMITED_PHOTOS_AUTHORIZATION_ACTION " + limited.label)
+            limited.tap()
+        }
+        else if !manage.exists {
             recordLimitedDiagnostics(system: system)
-            XCTFail("The real Photos authorization sheet has no recognized limited-access action")
+            XCTFail("Neither the exact limited-access action nor its required management postcondition appeared")
             return
         }
-        limited.tap()
         // Observed iOS27 selection action grants limited access with zero selected
         // assets and returns to this app. Use its real management entry to choose.
-        let manage = app.buttons["manage-photos"]
         XCTAssertTrue(manage.waitForExistence(timeout: 10))
         if manage.isHittable {
             let message = app.staticTexts["photos-state"]

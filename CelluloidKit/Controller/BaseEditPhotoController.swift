@@ -14,13 +14,53 @@ open class BaseEditPhotoController: UIViewController {
     
     private nonisolated static let exportQueue = DispatchQueue(label: "Mango.Celluloid.full-resolution-export", qos: .userInitiated)
     private var activeExport: PhotoExportTask?
+    #if DEBUG
+    var activeExportForTesting: PhotoExportTask? { activeExport }
+    #endif
 
     public func cancelExport() { activeExport?.cancel(); activeExport = nil }
+    public private(set) var preservedAdjustmentData: PHAdjustmentData?
+    public var isAdjustmentReadOnly: Bool { preservedAdjustmentData != nil }
+    private lazy var readOnlyNotice: UILabel = {
+        let label = UILabel()
+        label.text = tr(.readOnly)
+        label.font = .preferredFont(forTextStyle: .headline)
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 0
+        label.textAlignment = .center
+        label.backgroundColor = .systemBackground
+        label.textColor = .label
+        label.accessibilityIdentifier = "read-only-adjustment"
+        label.accessibilityHint = tr(.unreadableEditsMessage)
+        label.isHidden = true
+        return label
+    }()
+
+    /// The caller supplies the current rendered preview for this exact input.
+    /// Preserve opaque state without restoring a subset or producing new edits.
+    public func preserveUnreadableAdjustment(_ data: PHAdjustmentData, currentImage: UIImage?) {
+        cancelExport()
+        preservedAdjustmentData = data
+        toolBar.invalidateEditingSession()
+        overlayView.reset()
+        filterType = .Original
+        sourceImage = currentImage
+        toolBar.isHidden = true
+        toolBar.accessibilityElementsHidden = true
+        preview.isUserInteractionEnabled = false
+        readOnlyNotice.isHidden = false
+    }
 
     //MARK: Property
     open var input: PHContentEditingInput? {
         didSet {
             cancelExport()
+            toolBar.invalidateEditingSession()
+            preservedAdjustmentData = nil
+            toolBar.isHidden = false
+            toolBar.accessibilityElementsHidden = false
+            preview.isUserInteractionEnabled = true
+            readOnlyNotice.isHidden = true
             // A reused editor/Photos extension starts a separate editing session.
             filterType = .Original
             overlayView.reset()
@@ -65,6 +105,7 @@ open class BaseEditPhotoController: UIViewController {
     /// Synchronous compatibility API for callers already on the UI thread.
     /// App and extension saving use exportPhoto to move decode/filter/JPEG off-main.
     open var outputImage: UIImage? {
+        guard !isAdjustmentReadOnly else { return nil }
         let data = adjustmentData
         guard let image = Self.prepareFullSizeImage(url: input?.fullSizeImageURL,
                 orientation: input?.fullSizeImageOrientation, fallback: input == nil ? sourceImage : nil, filter: data.filterType) else { return nil }
@@ -77,6 +118,10 @@ open class BaseEditPhotoController: UIViewController {
         cancelExport()
         let task = PhotoExportTask()
         activeExport = task
+        guard !isAdjustmentReadOnly else {
+            DispatchQueue.main.async { completion(.failure(task.isCancelled ? .cancelled : .invalidState)) }
+            return task
+        }
         let data = adjustmentData
         let url = input?.fullSizeImageURL
         let orientation = input?.fullSizeImageOrientation
@@ -94,7 +139,7 @@ open class BaseEditPhotoController: UIViewController {
                 completion(task.isCancelled ? .failure(.cancelled) : result)
             }
         }
-        func encode(_ image: UIImage) {
+        func encode(_ image: UIImage, archive: Data) {
             Self.exportQueue.async {
                 autoreleasepool {
                     guard !task.isCancelled else { finish(.failure(.cancelled)); return }
@@ -105,13 +150,20 @@ open class BaseEditPhotoController: UIViewController {
                     #if DEBUG
                     PhotoExportDiagnostics.trace("jpeg-finished", source: image.cgImage)
                     #endif
-                    guard let archive = try? data.encode() else { finish(.failure(.invalidState)); return }
                     finish(.success(PhotoExport(image: image, jpegData: jpeg, adjustmentData: archive)))
                 }
             }
         }
         Self.exportQueue.async { [weak self] in
             autoreleasepool {
+                guard !task.isCancelled else { finish(.failure(.cancelled)); return }
+                // Validate/archive the immutable edit before original-image
+                // decoding, compositing or JPEG allocation. Refuse the whole
+                // snapshot without truncating the live editor's models/text.
+                let archive: Data
+                do { archive = try data.encode() }
+                catch AdjustmentDataError.resourceLimit(_) { finish(.failure(.adjustmentTooComplex)); return }
+                catch { finish(.failure(.invalidState)); return }
                 guard !task.isCancelled else { finish(.failure(.cancelled)); return }
                 guard let image = Self.prepareFullSizeImage(url: url, orientation: orientation, fallback: fallback, filter: data.filterType) else {
                     finish(.failure(.missingImage)); return
@@ -122,7 +174,7 @@ open class BaseEditPhotoController: UIViewController {
                 #endif
                 if data.bubbles.isEmpty && data.stickers.isEmpty {
                     // No UIKit render or additional full-size backing surface.
-                    encode(image)
+                    encode(image, archive: archive)
                 } else {
                     guard let models = Self.scaledOverlayModels(for: image.size, data: data),
                           let source = image.cgImage else { finish(.failure(.invalidState)); return }
@@ -139,7 +191,7 @@ open class BaseEditPhotoController: UIViewController {
                         }
                         switch control {
                         case .failure(let error): finish(.failure(error))
-                        case .success(let tile): encode(UIImage(cgImage: tile.image, scale: 1, orientation: .up))
+                        case .success(let tile): encode(UIImage(cgImage: tile.image, scale: 1, orientation: .up), archive: archive)
                         }
                         return
                     }
@@ -152,7 +204,7 @@ open class BaseEditPhotoController: UIViewController {
                     }
                     switch result {
                     case .failure(let error): finish(.failure(error))
-                    case .success(let output): encode(output)
+                    case .success(let output): encode(output, archive: archive)
                     }
                 }
             }
@@ -414,6 +466,12 @@ open class BaseEditPhotoController: UIViewController {
         toolBar.delegate = self
         self.view.addSubview(preview)
         self.view.addSubview(toolBar)
+        self.view.addSubview(readOnlyNotice)
+        readOnlyNotice.snp.makeConstraints { make in
+            make.leading.trailing.equalTo(view.safeAreaLayoutGuide).inset(16)
+            make.bottom.equalTo(view.safeAreaLayoutGuide).inset(8)
+            make.top.greaterThanOrEqualTo(view.safeAreaLayoutGuide).offset(8)
+        }
         toolBar.setContentHuggingPriority(.required, for: .vertical)
         toolBar.setContentCompressionResistancePriority(.required, for: .vertical)
         toolBar.snp.makeConstraints { make in
@@ -435,6 +493,7 @@ open class BaseEditPhotoController: UIViewController {
 // MARK: - Public
 public extension BaseEditPhotoController {
     func restoreFromData(_ data: AdjustmentData) {
+        guard !isAdjustmentReadOnly else { return }
         filterType = data.filterType
         overlayView.restore(data)
     }
@@ -443,14 +502,17 @@ public extension BaseEditPhotoController {
 // MARK: - EditPhotoPanel Delegate
 extension BaseEditPhotoController: EditPhotoToolBarDelegate {
     public func editPhotoToolBar(_ editPhotoToolBar: EditPhotoToolBar, didSelectBubble bubble: BubbleModel) {
+        guard !isAdjustmentReadOnly else { return }
         self.overlayView.addBubble(bubble)
     }
     
     public func editPhotoToolBar(_ editPhotoToolBar: EditPhotoToolBar, didSelectSticker sticker: StickerModel) {
+        guard !isAdjustmentReadOnly else { return }
         self.overlayView.addSticker(sticker)
     }
     
     public func editPhotoToolBar(_ editPhotoToolBar: EditPhotoToolBar, didSelectFilter filter: FilterType) {
+        guard !isAdjustmentReadOnly else { return }
         filterType = filter
     }
 }

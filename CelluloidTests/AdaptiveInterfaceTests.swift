@@ -1,10 +1,76 @@
 import XCTest
 import UIKit
+import Photos
 @testable import Celluloid
 @testable import CelluloidKit
 
 @MainActor
 final class AdaptiveInterfaceTests: XCTestCase {
+    func testPhotosExtensionHostBackdropAdaptsWithoutChangingPhotoCanvas() throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let host = UIViewController()
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let editor = PhotoEditingViewController()
+        host.addChild(editor); host.view.addSubview(editor.view); editor.didMove(toParent: host)
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let source = UIGraphicsImageRenderer(size: CGSize(width: 96, height: 64), format: format).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 48, height: 64))
+            UIColor.blue.setFill(); context.fill(CGRect(x: 48, y: 0, width: 48, height: 64))
+        }
+        editor.sourceImage = source
+        var outputPixels: Data?
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            window.overrideUserInterfaceStyle = style
+            for size in [CGSize(width: 320, height: 568), CGSize(width: 568, height: 320),
+                         CGSize(width: 440, height: 956), CGSize(width: 956, height: 440),
+                         CGSize(width: 540, height: 744), CGSize(width: 1032, height: 1376)] {
+                window.frame = CGRect(origin: .zero, size: size)
+                host.view.frame = window.bounds; editor.view.frame = host.view.bounds
+                editor.additionalSafeAreaInsets.top = size.width > size.height ? 52 : 96
+                for _ in 0..<3 { host.view.layoutIfNeeded(); editor.view.setNeedsLayout(); editor.view.layoutIfNeeded() }
+                // UIKit delivers inherited trait updates lazily. Synchronize the
+                // test window's full subtree before asserting the real style;
+                // do not force the extension itself into the expected theme.
+                window.updateTraitsIfNeeded()
+                XCTAssertEqual(window.traitCollection.userInterfaceStyle, style)
+                XCTAssertEqual(host.traitCollection.userInterfaceStyle, style)
+                XCTAssertEqual(editor.traitCollection.userInterfaceStyle, style)
+                XCTAssertEqual(editor.overrideUserInterfaceStyle, .unspecified, "The extension must inherit the host's theme")
+                let surface = editor.hostNavigationBackground
+                XCTAssertEqual(surface.traitCollection.userInterfaceStyle, style)
+                XCTAssertEqual(surface.frame.minY, 0, accuracy: 0.5)
+                XCTAssertEqual(surface.frame.minX, 0, accuracy: 0.5)
+                XCTAssertEqual(surface.frame.width, editor.view.bounds.width, accuracy: 0.5)
+                XCTAssertEqual(surface.frame.maxY, editor.view.safeAreaLayoutGuide.layoutFrame.minY, accuracy: 0.5)
+                XCTAssertEqual(editor.preview.frame.minY, surface.frame.maxY, accuracy: 0.5)
+                XCTAssertFalse(surface.isUserInteractionEnabled)
+                XCTAssertFalse(surface.isAccessibilityElement)
+                XCTAssertTrue(surface.accessibilityElementsHidden)
+                XCTAssertEqual(editor.view.backgroundColor, UIColor.blackBackgroundColor, "Photo canvas must remain unchanged")
+                XCTAssertGreaterThan(contrast(.label, try XCTUnwrap(surface.backgroundColor), style: style), 7)
+                let rendered = try XCTUnwrap(editor.outputImage?.pngData())
+                if let expected = outputPixels { XCTAssertEqual(rendered, expected, "Host chrome must not change exported source pixels") }
+                else { outputPixels = rendered }
+                let raster = editor.view.render()
+                let point = CGPoint(x: surface.frame.midX, y: surface.frame.midY)
+                let pixel = try XCTUnwrap(raster.cgImage?.cropping(to: CGRect(origin: point, size: CGSize(width: 1, height: 1))))
+                let rgba = try XCTUnwrap(CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue))
+                rgba.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+                let bytes = try XCTUnwrap(rgba.data).assumingMemoryBound(to: UInt8.self)
+                var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+                UIColor.systemBackground.resolvedColor(with: surface.traitCollection).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+                for (channel, expected) in [red, green, blue].enumerated() {
+                    XCTAssertLessThanOrEqual(abs(Int(bytes[channel]) - Int((expected * 255).rounded())), 2,
+                                             "Actual under-bar pixels follow the inherited appearance")
+                }
+            }
+        }
+    }
+
     func testShareDismissalFitsCompactLandscapeAndBothAppearances() {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 10, height: 10)).image { _ in }
         for style in [UIUserInterfaceStyle.light, .dark] {
@@ -88,6 +154,12 @@ final class AdaptiveInterfaceTests: XCTestCase {
     }
 
     func testFullLocalizedTitlesFitAtNormalAndLargestTextAcrossViewports() throws {
+        let authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        print("PICKER_LAYOUT_AUTHORIZATION_PREREQUISITE raw=\(authorization.rawValue) expected=authorized")
+        guard authorization == .authorized else {
+            throw NSError(domain: "Celluloid.LayoutPrerequisite", code: authorization.rawValue,
+                userInfo: [NSLocalizedDescriptionKey: "Run the actual PhotoPicker layout case only after explicit synthetic Photos grant"])
+        }
         let image = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { _ in }
         let sizes = [CGSize(width: 320, height: 568), CGSize(width: 568, height: 320),
                      CGSize(width: 375, height: 667), CGSize(width: 667, height: 375),

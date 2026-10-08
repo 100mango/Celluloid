@@ -1,0 +1,11 @@
+{
+  "commit": "ded3785fcf73af34b695d5c2c9c1897603ca058e",
+  "run": 37116286034,
+  "job": 111183631122,
+  "device": "iPhone 18 Pro Max",
+  "xcode": "27.0 (27A266a)",
+  "runtime": "iOS 27.0 (24A434)",
+  "unit_test_passed": true,
+  "whole_job_passed": false,
+  "origin": "Contemporary synthetic UIKit reproduction of shipping1.0 dictionary, not recovered historical user archive"
+}

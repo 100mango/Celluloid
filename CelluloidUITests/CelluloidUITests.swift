@@ -5,6 +5,7 @@ final class CelluloidUITests: XCTestCase {
     private var app: XCUIApplication!
     private var recordedFailure = false
     private var photosAccessMonitor: NSObjectProtocol?
+    private var failClosedMonitor: NSObjectProtocol?
     override func record(_ issue: XCTIssue) {
         // Capture the failing orientation before tearDown rotates the simulator.
         // Do not query hittability again here: that can itself record a new issue.
@@ -17,10 +18,16 @@ final class CelluloidUITests: XCTestCase {
         }
         super.record(issue)
     }
-    override func setUp() { super.setUp(); continueAfterFailure = false; recordedFailure = false; app = XCUIApplication() }
+    override func setUp() {
+        super.setUp(); continueAfterFailure = false; recordedFailure = false
+        failClosedMonitor = installFailClosedSystemAlertMonitor()
+        app = XCUIApplication()
+    }
     override func tearDown() {
+        XCUIDevice.shared.orientation = .portrait; app.terminate()
         if let monitor = photosAccessMonitor { removeUIInterruptionMonitor(monitor); photosAccessMonitor = nil }
-        XCUIDevice.shared.orientation = .portrait; app.terminate(); super.tearDown()
+        if let monitor = failClosedMonitor { removeUIInterruptionMonitor(monitor); failClosedMonitor = nil }
+        super.tearDown()
     }
     private func launch(_ arguments: [String] = [], language: String = "en", diagnostics: Bool = true, photosAccess: Bool = false) {
         if photosAccess {
@@ -122,7 +129,7 @@ final class CelluloidUITests: XCTestCase {
         launch(diagnostics: false, photosAccess: true)
         app.buttons["edit-photo"].tap()
         let photo = app.descendants(matching: .any)["photo-0"]
-        XCTAssertTrue(photo.waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForFullPhotoAccessPicker(app))
         assertFullPhotoAccessPicker(app)
         waitForStableLayout(["photo-0", "picker-done"])
         audit("granted-picker")
@@ -280,7 +287,7 @@ final class CelluloidUITests: XCTestCase {
     func testSeededPhotoEditingSaveAndReopen() {
         launch(photosAccess: true)
         app.buttons["edit-photo"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["photo-0"].waitForExistence(timeout: 15), "CI must seed Photos and grant simulator Photos permission")
+        XCTAssertTrue(waitForFullPhotoAccessPicker(app), "The granted flow must finish the exact Photos consent prompt and expose fixtures")
         assertFullPhotoAccessPicker(app)
         app.descendants(matching: .any)["photo-0"].tap()
         app.buttons["picker-done"].tap()
@@ -348,7 +355,8 @@ final class CelluloidUITests: XCTestCase {
     func testTwoPhotoCollageZoomRotateAndSave() {
         launch(photosAccess: true)
         app.buttons["make-collage"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["photo-1"].waitForExistence(timeout: 15))
+        XCTAssertTrue(waitForFullPhotoAccessPicker(app))
+        XCTAssertTrue(app.descendants(matching: .any)["photo-1"].waitForExistence(timeout: 5))
         assertFullPhotoAccessPicker(app)
         app.descendants(matching: .any)["photo-0"].tap()
         app.descendants(matching: .any)["photo-1"].tap()
@@ -403,6 +411,31 @@ final class CelluloidUITests: XCTestCase {
 // Only expected full-access flows use this monitor. The library contains CI
 // fixtures; denied/revoked/limited cases intentionally never install this handler.
 extension XCTestCase {
+    func waitForFullPhotoAccessPicker(_ app: XCUIApplication) -> Bool {
+        let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let title = "Allow “Celluloid” to access your photo library?"
+        let deadline = Date().addingTimeInterval(15)
+        repeat {
+            // Queries alone do not invoke an interruption monitor. Resolve only
+            // this expected Photos prompt directly, before waiting for assets.
+            let alerts = [system.alerts[title], app.alerts[title]]
+            if let alert = alerts.first(where: { $0.exists }) {
+                let actions = alert.buttons.matching(NSPredicate(format: "label IN %@",
+                    ["Allow Full Access", "Allow Access to All Photos"]))
+                if actions.count == 1, actions.element.isEnabled, actions.element.isHittable {
+                    print("EXPECTED_PHOTOS_DIRECT_AUTHORIZATION_ACTION " + actions.element.label)
+                    actions.element.tap()
+                    let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: alert)
+                    guard XCTWaiter.wait(for: [dismissed], timeout: 10) == .completed else { return false }
+                }
+            }
+            if app.descendants(matching: .any)["photo-0"].exists { return true }
+            Thread.sleep(forTimeInterval: 0.25)
+        } while Date() < deadline
+        print("EXPECTED_PHOTOS_PREREQUISITE_UNRESOLVED " + String(system.debugDescription.prefix(6000)))
+        return false
+    }
+
     func assertFullPhotoAccessPicker(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(app.descendants(matching: .any)["photo-0"].exists, "Granted flow requires actual assets", file: file, line: line)
         XCTAssertFalse(app.buttons["manage-photos"].exists, "The app exposes this management control for limited access only", file: file, line: line)
@@ -412,14 +445,43 @@ extension XCTestCase {
 
     func installExpectedFullPhotosAccessMonitor() -> NSObjectProtocol {
         addUIInterruptionMonitor(withDescription: "Celluloid synthetic Photos full-access prerequisite") { alert in
-            guard alert.label == "Allow “Celluloid” to access your photo library?" else { return false }
+            guard alert.label == "Allow “Celluloid” to access your photo library?" else { stopForUnexpectedSystemAlert() }
             print("EXPECTED_PHOTOS_AUTHORIZATION_ALERT " + String(alert.debugDescription.prefix(6000)))
             let actions = alert.buttons.matching(NSPredicate(format: "label IN %@",
                 ["Allow Full Access", "Allow Access to All Photos"]))
-            guard actions.count == 1, actions.element.isHittable else { return false }
+            guard actions.count == 1, actions.element.isEnabled, actions.element.isHittable else { stopForUnexpectedSystemAlert() }
             print("EXPECTED_PHOTOS_AUTHORIZATION_ACTION " + actions.element.label)
             actions.element.tap()
+            let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: alert)
+            guard XCTWaiter.wait(for: [gone], timeout: 10) == .completed else { stopForUnexpectedSystemAlert() }
             return true
         }
     }
+
+    func installFailClosedSystemAlertMonitor() -> NSObjectProtocol {
+        addUIInterruptionMonitor(withDescription: "Abort every unexpected system interruption") { _ in
+            stopForUnexpectedSystemAlert()
+        }
+    }
+
+    func installExpectedLimitedPhotosAccessMonitor() -> NSObjectProtocol {
+        addUIInterruptionMonitor(withDescription: "Only the explicitly tested limited Photos grant") { alert in
+            guard alert.label == "Allow “Celluloid” to access your photo library?" else { stopForUnexpectedSystemAlert() }
+            let actions = alert.buttons.matching(NSPredicate(format: "label IN %@",
+                ["Select Photos…", "Select Photos...", "Select Photos", "Allow Limited Access", "Limited Access"]))
+            guard actions.count == 1, actions.element.isEnabled, actions.element.isHittable else { stopForUnexpectedSystemAlert() }
+            print("EXPECTED_LIMITED_PHOTOS_AUTHORIZATION_ACTION " + actions.element.label)
+            actions.element.tap()
+            let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: alert)
+            guard XCTWaiter.wait(for: [gone], timeout: 10) == .completed else { stopForUnexpectedSystemAlert() }
+            return true
+        }
+    }
+}
+
+/// Shared by both suites. This branch performs no UI action or throwable XCTest
+/// recording, so it cannot return false and delegate to the default auto-handler.
+private func stopForUnexpectedSystemAlert() -> Never {
+    print("CELLULOID_UNEXPECTED_SYSTEM_ALERT_FAIL_CLOSED_ABORT")
+    fatalError("Celluloid UI test stopped before an unexpected system alert action")
 }

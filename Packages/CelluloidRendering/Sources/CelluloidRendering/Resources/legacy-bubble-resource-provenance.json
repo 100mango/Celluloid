@@ -1,0 +1,52 @@
+[
+  {
+    "asset": "aside1@2x",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/aside1.imageset/aside1@2x.png",
+    "sha256": "6561ea4d8fa18259cd5e1437c0ad9c3ed8d409d75eb9d6f8b90bfe5eca533420"
+  },
+  {
+    "asset": "call1@2x",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/call1.imageset/call1@2x.png",
+    "sha256": "db627b01b22324e46a5d39242f2725a7a9116424593ab5d2e2a0c709d7df9b67"
+  },
+  {
+    "asset": "call2@2x",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/call2.imageset/call2@2x.png",
+    "sha256": "84171e93e8b942096d2431031ee9444e004ebf847189986794ec08b13f49b185"
+  },
+  {
+    "asset": "call3@2x",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/call3.imageset/call3@2x.png",
+    "sha256": "ea2cad62e1d82c41543daf10ccb8940b746f914ef83609a001f586ab8f0872d0"
+  },
+  {
+    "asset": "say1@2x",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/say1.imageset/say1@2x.png",
+    "sha256": "aeff383dd03627a38282995eef052dadcaf34ae9730acd77cb19af824f7d6398"
+  },
+  {
+    "asset": "say2@2x",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/say2.imageset/say2@2x.png",
+    "sha256": "114aeb3a36575ba3f4dc1ce6742c7f307b4d296df52f3890ce643f06a54de2df"
+  },
+  {
+    "asset": "say3@2x",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/say3.imageset/say3@2x.png",
+    "sha256": "6cb31befdd02a6a932df0d5226964c2d4b6cc9fa6fcd7c51dcd79e5953ca0b23"
+  },
+  {
+    "asset": "think1@2x",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/think1.imageset/think1@2x.png",
+    "sha256": "813d0522593e2812b4d3fd3097cdb0511bfef756d6bd2dbf7fd987e3ae8dd7a4"
+  },
+  {
+    "asset": "think2@2x",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/think2.imageset/think2@2x.png",
+    "sha256": "6b3a9faae75c9accf51b3de8d9dd9b7b993ec786363ac2aab29ce54aaa0c21dc"
+  },
+  {
+    "asset": "think3@2x",
+    "source": "CelluloidKit/CelluloidKit.xcassets/bubble/think3.imageset/think3@2x.png",
+    "sha256": "fa0d53b0bb294854af02567d46874be2133558dadead4598203157a36a1a299a"
+  }
+]

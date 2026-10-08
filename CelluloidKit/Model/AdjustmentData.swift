@@ -24,6 +24,13 @@ public extension AdjustmentData {
     static let formatIdentifier = "Mango.CelluloidPhotoExtension"
     static let formatVersion = "1.0"
 
+    // Application resource budgets, not claimed Photos framework limits. Refuse
+    // the whole state; never truncate text or remove a layer to fit a budget.
+    static let maximumEncodedBytes = 4 * 1024 * 1024
+    static let maximumDecorations = 1024
+    static let maximumBubbleTextUTF16Units = 64 * 1024
+    static let maximumTotalTextUTF16Units = 256 * 1024
+
     static func supportIdentifier(_ identifier: String, version: String) -> Bool {
         return identifier == formatIdentifier && version == formatVersion
     }
@@ -39,6 +46,7 @@ public extension AdjustmentData {
     /// Reads the original dictionary/NSValue archive without instantiating arbitrary classes.
     /// Secure decoding also accepts legacy archives written without requiring secure coding.
     static func decode(_ data: Data) throws -> AdjustmentData {
+        guard data.count <= maximumEncodedBytes else { throw AdjustmentDataError.resourceLimit("encoded bytes") }
         let classes: [AnyClass] = [NSDictionary.self, NSArray.self, NSString.self, NSNumber.self, NSValue.self]
         guard let object = try NSKeyedUnarchiver.unarchivedObject(ofClasses: classes, from: data) as? [String: Any] else {
             throw AdjustmentDataError.invalidArchive
@@ -47,10 +55,13 @@ public extension AdjustmentData {
     }
 
     func encode() throws -> Data {
+        try validateResourceBudget()
         let object = archiveObject
         // Public geometry is mutable. Never save nonfinite or otherwise invalid state.
         _ = try AdjustmentData(object: object)
-        return try NSKeyedArchiver.archivedData(withRootObject: object, requiringSecureCoding: true)
+        let bytes = try NSKeyedArchiver.archivedData(withRootObject: object, requiringSecureCoding: true)
+        guard bytes.count <= Self.maximumEncodedBytes else { throw AdjustmentDataError.resourceLimit("encoded bytes") }
+        return bytes
     }
 
     /// Retained for callers of the original API; the contents are an archive dictionary,
@@ -65,8 +76,19 @@ public extension AdjustmentData {
         guard let filter = FilterType(rawValue: rawFilter) else {
             throw AdjustmentDataError.invalidValue("filterType")
         }
-        bubbles = try decoder.objects("bubbles").map { try BubbleModel(object: $0) }
-        stickers = try decoder.objects("stickers").map { try StickerModel(object: $0) }
+        let rawBubbles = try decoder.objects("bubbles")
+        let rawStickers = try decoder.objects("stickers", maximumCount: Self.maximumDecorations - rawBubbles.count)
+        var remainingText = Self.maximumTotalTextUTF16Units
+        for raw in rawBubbles {
+            let text = try AdjustmentDictionary(object: raw).string("content")
+            let count = (text as NSString).length
+            guard count <= Self.maximumBubbleTextUTF16Units, count <= remainingText else {
+                throw AdjustmentDataError.resourceLimit("bubble text")
+            }
+            remainingText -= count
+        }
+        bubbles = try rawBubbles.map { try BubbleModel(object: $0) }
+        stickers = try rawStickers.map { try StickerModel(object: $0) }
         filterType = filter
         if let rawSize = object["referenceCanvasSize"] {
             guard let value = rawSize as? NSValue,
@@ -78,6 +100,21 @@ public extension AdjustmentData {
                 throw AdjustmentDataError.invalidValue("referenceCanvasSize")
             }
             referenceCanvasSize = size
+        }
+    }
+
+    private func validateResourceBudget() throws {
+        guard bubbles.count <= Self.maximumDecorations,
+              stickers.count <= Self.maximumDecorations - bubbles.count else {
+            throw AdjustmentDataError.resourceLimit("decoration count")
+        }
+        var remaining = Self.maximumTotalTextUTF16Units
+        for bubble in bubbles {
+            let count = (bubble.content as NSString).length
+            guard count <= Self.maximumBubbleTextUTF16Units, count <= remaining else {
+                throw AdjustmentDataError.resourceLimit("bubble text")
+            }
+            remaining -= count
         }
     }
 }

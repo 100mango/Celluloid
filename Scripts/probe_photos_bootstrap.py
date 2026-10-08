@@ -8,11 +8,13 @@ parser.add_argument('--already-prepared', action='store_true')
 options = parser.parse_args()
 device = options.device
 errors = []
+evidence_root = pathlib.Path(os.environ.get('RUNNER_TEMP', '.build/bootstrap-evidence'))
+evidence_root.mkdir(parents=True, exist_ok=True)
 
 def run(label, seconds, *args):
     result = subprocess.run([sys.executable, 'Scripts/run_bounded.py', '--seconds', str(seconds), '--label', label, *args],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    pathlib.Path('bootstrap-' + label + '.log').write_text(result.stdout)
+    (evidence_root / ('bootstrap-' + label + '.log')).write_text(result.stdout)
     print(result.stdout, end='', flush=True)
     return result.returncode, result.stdout
 
@@ -39,7 +41,7 @@ def host(label):
 def test(label, method):
     code, output = run(label, 360, 'xcodebuild', '-project', 'Celluloid.xcodeproj', '-scheme', 'Celluloid',
         '-configuration', 'Debug', '-destination', 'platform=iOS Simulator,id=' + device, '-derivedDataPath', '.build',
-        '-resultBundlePath', 'Bootstrap-' + label + '.xcresult', '-parallel-testing-enabled', 'NO', '-collect-test-diagnostics', 'never',
+        '-resultBundlePath', str(evidence_root / ('Bootstrap-' + label + '.xcresult')), '-parallel-testing-enabled', 'NO', '-collect-test-diagnostics', 'never',
         '-only-testing:CelluloidTests/EditorRegressionTests/' + method, 'test-without-building', 'CODE_SIGNING_ALLOWED=NO')
     if code: raise RuntimeError('PhotoKit probe failed: ' + label)
     rows = [json.loads(line.split('PHOTOS_LIBRARY_READINESS ', 1)[1]) for line in output.splitlines() if line.startswith('PHOTOS_LIBRARY_READINESS ')]
