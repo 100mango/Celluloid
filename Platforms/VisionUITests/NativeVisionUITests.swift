@@ -160,7 +160,13 @@ extension NativeVisionUITests {
         XCTAssertTrue(dimensions.waitForExistence(timeout: 20))
         let previews = app.images.matching(NSPredicate(format: "label == %@", "Edited photo preview"))
         let preview = previews.firstMatch
-        XCTAssertTrue(preview.waitForExistence(timeout: 20)); XCTAssertEqual(previews.count, 1)
+        let previewReady = preview.waitForExistence(timeout: 20)
+        if !previewReady {
+            try captureStorePreviewFailure(in: app)
+            XCTFail("Initial edited-photo preview was not found; retained capture is diagnostic only")
+            return
+        }
+        XCTAssertTrue(previewReady); XCTAssertEqual(previews.count, 1)
         XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "count == 0"), evaluatedWith: app.progressIndicators)], timeout: 10), .completed)
         let controls = ["editor.import-files", "editor.add-bubble", "editor.export"]
         for identifier in controls {
@@ -207,6 +213,73 @@ extension NativeVisionUITests {
         print("CELLULOID_STORE_CAPTURE_ACK \(id) sha256=\(digest)")
         // This proves capture of the held real state only. Visual review remains
         // separate; no editing, export, Undo/Redo, or store acceptance is claimed.
+    }
+
+    private func captureStorePreviewFailure(in app: XCUIApplication) throws {
+        // This failure-only branch neither edits the fixture nor qualifies a Store image.
+        // The one owned app snapshot includes node types, frames, alerts and loading UI.
+        let bytes = Array(app.debugDescription.utf8)
+        let complete = bytes.count <= 32000
+        let excerpt: String
+        if complete {
+            excerpt = String(decoding: bytes, as: UTF8.self)
+        } else {
+            var first = Array(bytes.prefix(16000)), last = Array(bytes.suffix(16000))
+            while String(bytes: first, encoding: .utf8) == nil { first.removeLast() }
+            while String(bytes: last, encoding: .utf8) == nil { last.removeFirst() }
+            excerpt = String(bytes: first, encoding: .utf8)! + "\n[bounded UTF-8 middle omission]\n" + String(bytes: last, encoding: .utf8)!
+        }
+        let ax = "CELLULOID_STORE_PREVIEW_FAILURE_AX complete=\(complete) fullBytes=\(bytes.count)\n" + excerpt
+        XCTAssertLessThanOrEqual(ax.utf8.count, 32768)
+        print(ax); fflush(stdout)
+        let descendants = app.descendants(matching: .any)
+        let export = app.buttons["editor.export"]
+        let exportExists = export.exists
+        let observations: [String: Any] = [
+            "preview_image_count": app.images.matching(NSPredicate(format: "label == %@", "Edited photo preview")).count,
+            "preview_any_count": descendants.matching(NSPredicate(format: "label == %@", "Edited photo preview")).count,
+            "canvas_any_count": descendants.matching(identifier: "editor.canvas").count,
+            "progress_count": app.progressIndicators.count, "alerts_count": app.alerts.count,
+            "sheets_count": app.sheets.count, "keyboards_count": app.keyboards.count,
+            "placeholder_visible": app.staticTexts["Start with your photos"].exists,
+            "export_exists": exportExists, "export_enabled": exportExists && export.isEnabled,
+            "dimensions_still_visible": app.staticTexts["120 × 80 px"].exists,
+            "ax_complete": complete, "ax_full_bytes": bytes.count
+        ]
+        let id = UUID().uuidString
+        let root = FileManager.default.temporaryDirectory
+        let request = root.appendingPathComponent("Celluloid-store-\(id).json")
+        let acknowledgement = root.appendingPathComponent("Celluloid-store-\(id).ack")
+        defer {
+            try? FileManager.default.removeItem(at: request)
+            try? FileManager.default.removeItem(at: acknowledgement)
+        }
+        let description: [String: Any] = [
+            "schema": "Celluloid.StoreDiagnosticRequest.1", "id": id,
+            "bundle_identifier": "Mango.Celluloid", "document": "VisionRemaining.celluloid",
+            "locale": "en_US", "language": "en", "sample_width": 120, "sample_height": 80,
+            "failure_kind": "preview-image-not-found", "dimensions_observed": true,
+            "preview_wait_succeeded": false, "store_qualified": false, "observations": observations
+        ]
+        let payload = try JSONSerialization.data(withJSONObject: description, options: [.sortedKeys])
+        XCTAssertLessThanOrEqual(payload.count, 16384)
+        try payload.write(to: request, options: [.withoutOverwriting])
+        print("CELLULOID_STORE_DIAGNOSTIC_CAPTURE_REQUEST \(id)"); fflush(stdout)
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            FileManager.default.fileExists(atPath: acknowledgement.path)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 620), .completed)
+        let result = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: acknowledgement)) as? [String: Any])
+        XCTAssertEqual(result["schema"] as? String, "Celluloid.StoreDiagnosticAck.1")
+        XCTAssertEqual(result["id"] as? String, id)
+        XCTAssertEqual(result["failure_kind"] as? String, "preview-image-not-found")
+        XCTAssertEqual(result["diagnostic_capture_complete"] as? Bool, true)
+        XCTAssertEqual(result["store_qualified"] as? Bool, false); XCTAssertNil(result["success"])
+        XCTAssertEqual(result["width"] as? Int, 3840); XCTAssertEqual(result["height"] as? Int, 2160)
+        XCTAssertEqual(result["mode"] as? String, "RGB")
+        let digest = try XCTUnwrap(result["original_sha256"] as? String)
+        XCTAssertNotNil(digest.range(of: "^[0-9a-f]{64}$", options: .regularExpression))
+        print("CELLULOID_STORE_DIAGNOSTIC_CAPTURE_ACK \(id) sha256=\(digest)"); fflush(stdout)
     }
 
     func testSeededDocumentSequentialTextUndoRedoAndBrowserReopen() throws {

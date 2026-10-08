@@ -38,6 +38,16 @@ def request():
         'sample_height': 80, 'preview_count': 1, 'controls': ['editor.import-files', 'editor.add-bubble', 'editor.export'],
         'ready': True, 'alerts': 0, 'sheets': 0, 'keyboards': 0, 'progress': 0}
 
+def diagnostic_request():
+    return {'schema':'Celluloid.StoreDiagnosticRequest.1','id':REQUEST,
+        'bundle_identifier':store.APP_ID,'document':store.FIXTURE_NAME,'locale':'en_US','language':'en',
+        'sample_width':120,'sample_height':80,'failure_kind':store.DIAGNOSTIC_KIND,
+        'dimensions_observed':True,'preview_wait_succeeded':False,'store_qualified':False,
+        'observations':{'preview_image_count':0,'preview_any_count':0,'canvas_any_count':1,
+            'progress_count':1,'alerts_count':0,'sheets_count':0,'keyboards_count':0,
+            'placeholder_visible':True,'export_exists':True,'export_enabled':False,
+            'dimensions_still_visible':True,'ax_complete':True,'ax_full_bytes':1024}}
+
 class ContractTests(unittest.TestCase):
     def test_default_is_host_only_and_disabled(self):
         with mock.patch.object(sys, 'argv', ['runner']), mock.patch.object(store, 'capture', side_effect=AssertionError('native forbidden')), mock.patch('sys.stdout', new_callable=io.StringIO) as output:
@@ -76,6 +86,45 @@ class ContractTests(unittest.TestCase):
         store.validate_request(request(), REQUEST)
         for key, value in [('ready', False), ('bundle_identifier', 'com.mango.touchColor'), ('document', 'Personal.celluloid'), ('preview_count', 0), ('preview_count', True), ('alerts', 1), ('sheets', 1), ('keyboards', 1), ('progress', 1), ('locale', 'zh_CN')]:
             with self.subTest(key=key), self.assertRaises(ValueError): store.validate_request({**request(), key: value}, REQUEST)
+    def test_diagnostic_and_normal_request_schemas_cannot_be_substituted(self):
+        row=diagnostic_request();self.assertEqual(store.validate_diagnostic_request(row,REQUEST),row)
+        with self.assertRaises(ValueError):store.validate_request(row,REQUEST)
+        with self.assertRaises(ValueError):store.validate_diagnostic_request(request(),REQUEST)
+        for key,value in [('schema','Celluloid.StoreRequest.1'),('id',OTHER),('bundle_identifier','other.app'),
+            ('document','Other.celluloid'),('store_qualified',True),('preview_wait_succeeded',True),
+            ('dimensions_observed',False),('sample_width',True),('failure_kind','unknown')]:
+            with self.subTest(key=key),self.assertRaises(ValueError):store.validate_diagnostic_request({**row,key:value},REQUEST)
+        for key,value in [('progress_count',-1),('alerts_count',True),('preview_image_count',4097),
+            ('export_enabled',1),('ax_complete',0),('ax_full_bytes',16_777_217),('private_text','not allowed')]:
+            changed=copy.deepcopy(row);changed['observations'][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):store.validate_diagnostic_request(changed,REQUEST)
+    def test_diagnostic_marker_is_distinct_and_shares_single_capture_limit(self):
+        seen=[];parser=store.RequestLines(lambda rid,**flags:seen.append((rid,flags)))
+        parser('stdout',(store.DIAGNOSTIC_REQUEST_PREFIX+REQUEST+'\n').encode());parser.finish()
+        self.assertEqual(seen,[(REQUEST,{'diagnostic':True})])
+        for prefix in (store.REQUEST_PREFIX,store.DIAGNOSTIC_REQUEST_PREFIX):
+            with self.assertRaises(ValueError):parser('stdout',(prefix+OTHER+'\n').encode())
+        self.assertEqual(len(seen),1)
+        parser=store.RequestLines(lambda *args,**kwargs:None)
+        with self.assertRaises(ValueError):parser('stderr',(store.DIAGNOSTIC_REQUEST_PREFIX+REQUEST+'\n').encode())
+        parser=store.RequestLines(lambda *args,**kwargs:None)
+        parser('stdout',(store.DIAGNOSTIC_REQUEST_PREFIX+REQUEST).encode())
+        with self.assertRaises(ValueError):parser.finish()
+    def test_swift_diagnostic_branch_preserves_failure_and_bounded_utf8_ax(self):
+        source=(ROOT/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()
+        case=source.split('func testStoreSingleHeldEditorCapture()',1)[1].split('private func captureStorePreviewFailure',1)[0]
+        helper=source.split('private func captureStorePreviewFailure',1)[1].split('func testSeededDocument',1)[0]
+        self.assertIn('if !previewReady {',case);self.assertIn('try captureStorePreviewFailure(in: app)',case)
+        self.assertIn('XCTFail("Initial edited-photo preview',case);self.assertIn('return\n        }',case)
+        self.assertIn('XCTAssertTrue(previewReady); XCTAssertEqual(previews.count, 1)',case)
+        self.assertIn('let previewReady = preview.waitForExistence(timeout: 20)',case)
+        self.assertIn('XCTAssertLessThanOrEqual(ax.utf8.count, 32768)',helper)
+        self.assertIn('String(bytes: first, encoding: .utf8) == nil',helper)
+        self.assertIn('String(bytes: last, encoding: .utf8) == nil',helper)
+        self.assertIn('complete=\\(complete) fullBytes=',helper)
+        self.assertIn('timeout: 620',helper);self.assertIn('XCTAssertNil(result["success"])',helper)
+        for forbidden in ('.screenshot()', 'typeText(', 'app.launch()', 'app.terminate()', '.tap()', 'ProcessInfo', 'environment'):
+            self.assertNotIn(forbidden,helper)
     def test_split_marker(self):
         seen = []; parser = store.RequestLines(seen.append)
         marker = (store.REQUEST_PREFIX+REQUEST+'\n').encode()
@@ -107,8 +156,8 @@ class ContractTests(unittest.TestCase):
         enabled = json.loads((ROOT/'Scripts/vision_store_admission.json').read_text())['enabled']
         self.assertIs(type(enabled), bool)
         self.assertTrue(enabled)
-        self.assertIn('branches: [codex/vision-store-single]', workflow)
-        self.assertIn("github.event_name == 'push' && github.ref == 'refs/heads/codex/vision-store-single' && github.event.created == false", workflow)
+        self.assertIn('branches: [vision-store-single]', workflow)
+        self.assertIn("github.event_name == 'push' && github.ref == 'refs/heads/vision-store-single' && github.event.created == false", workflow)
         self.assertIn("github.event.before == '"+store.BASE+"' && github.run_attempt == 1", workflow)
         self.assertIn('github.event.deleted == false', workflow)
         self.assertNotIn('workflow_dispatch:', workflow)
@@ -221,7 +270,8 @@ class FilesTests(unittest.TestCase):
         with self.assertRaises(ValueError): store.pack(self.root, BINDING, 1, 2)
     def test_pack_retains_exact_original_bytes(self):
         folder = self.root/store.FOLDER; folder.mkdir(); data = b'original test bytes'; (folder/'capture-original.jpeg').write_bytes(data)
-        (folder/'report.json').write_text(json.dumps({'original': store.file_record(folder/'capture-original.jpeg', store.ORIGINAL_CAP)}))
+        (folder/'report.json').write_text(json.dumps({'original': {**store.file_record(folder/'capture-original.jpeg', store.ORIGINAL_CAP),
+            'source':store.NORMAL_IMAGE_SOURCE}}))
         manifest = store.pack(self.root, BINDING, 1, 2)
         self.assertFalse(manifest['store_ready']); self.assertEqual((folder/'capture-original.jpeg').read_bytes(), data)
         self.assertEqual(len(manifest['members']), 2)
@@ -1000,9 +1050,149 @@ class CheckpointTests(unittest.TestCase):
         self.assertFalse(self.job.report['store_ready'])
         with self.assertRaises(ValueError): self.job.checkpoint(REQUEST)
         self.assertEqual(sum('screenshot' in c for c in self.calls), 1)
-    def run_observer(self, callback, seconds=1200):
+    def test_diagnostic_uses_one_bound_raw_image_but_never_qualifies(self):
+        self.request.write_text(json.dumps(diagnostic_request()))
+        self.job.checkpoint(REQUEST,diagnostic=True)
+        ack=json.loads(self.ack.read_text())
+        self.assertEqual(ack['schema'],'Celluloid.StoreDiagnosticAck.1')
+        self.assertTrue(ack['diagnostic_capture_complete']);self.assertFalse(ack['store_qualified'])
+        self.assertNotIn('success',ack);self.assertNotIn('capture',self.job.report)
+        self.assertEqual(self.job.report['original']['diagnostic_failure_kind'],store.DIAGNOSTIC_KIND)
+        self.assertEqual(sum('screenshot' in c for c in self.calls),1)
+        store.validate_image_bindings(self.job.folder,self.job.report)
+        with self.assertRaisesRegex(ValueError,'Diagnostic'):self.job.select_delivery()
+        with self.assertRaises(ValueError):self.job.checkpoint(OTHER)
+        self.job.report['capture_qualified']=True  # Even a future buggy caller cannot promote this kind.
+        self.job.execute=lambda *args,**kwargs:subprocess.CompletedProcess(args,0,b'',b'')
+        self.job.finish();self.assertFalse(self.job.report['complete'])
+        self.job.report.pop('capture_qualified');self.job.persist()
+        manifest=store.pack(self.root,BINDING,1,2)
+        self.assertFalse(manifest['store_ready'])
+        self.assertIn('capture-original.jpeg',[r['name'] for r in manifest['members']])
+        self.assertFalse(store.verify_packed_images(self.root,BINDING,1)['complete'])
+    def test_diagnostic_kind_cannot_be_stripped_or_promoted_in_pack_validation(self):
+        self.request.write_text(json.dumps(diagnostic_request()));self.job.checkpoint(REQUEST,diagnostic=True)
+        original=self.job.report
+        for change in ('normal-success','store-qualified','schema','id','dimensions','digest','observations',
+                       'complete','qualified','normal-capture','delivery','remove-kind','remove-diagnostic'):
+            row=copy.deepcopy(original)
+            if change=='normal-success':row['diagnostic_capture']['success']=True
+            elif change=='store-qualified':row['diagnostic_capture']['store_qualified']=True
+            elif change=='schema':row['diagnostic_capture']['schema']='Celluloid.StoreRequest.1'
+            elif change=='id':row['diagnostic_capture']['id']=OTHER
+            elif change=='dimensions':row['diagnostic_capture']['width']=1
+            elif change=='digest':row['diagnostic_capture']['original_sha256']='0'*64
+            elif change=='observations':row['diagnostic_ui_observations']['preview_wait_succeeded']=True
+            elif change=='complete':row['complete']=True
+            elif change=='qualified':row['capture_qualified']=True
+            elif change=='normal-capture':row['capture']={'success':True}
+            elif change=='delivery':row['delivery_image']=row['original']
+            elif change=='remove-kind':row['original'].pop('diagnostic_failure_kind')
+            elif change=='remove-diagnostic':row.pop('diagnostic_capture')
+            with self.subTest(change=change),self.assertRaises(ValueError):store.validate_image_bindings(self.job.folder,row)
+        (self.job.folder/'capture-original.jpeg').write_bytes(b'tampered')
+        with self.assertRaises(ValueError):store.validate_image_bindings(self.job.folder,original)
+    def test_request_kind_mismatch_never_takes_a_screenshot(self):
+        for diagnostic,payload in [(True,request()),(False,diagnostic_request())]:
+            with self.subTest(diagnostic=diagnostic):
+                if self.calls:self.setUp()
+                self.request.write_text(json.dumps(payload))
+                with self.assertRaises(ValueError):self.job.checkpoint(REQUEST,diagnostic=diagnostic)
+                self.assertFalse(any('screenshot' in c for c in self.calls))
+                ack=json.loads(self.ack.read_text())
+                self.assertFalse(ack['diagnostic_capture_complete' if diagnostic else 'success'])
+    def test_diagnostic_surviving_provenance_cannot_be_promoted(self):
+        self.request.write_text(json.dumps(diagnostic_request()));self.job.checkpoint(REQUEST,diagnostic=True)
+        original=copy.deepcopy(self.job.report)
+        for survivor in ('observations','source','kind','ack'):
+            row=copy.deepcopy(original)
+            row.pop('diagnostic_capture');row.pop('diagnostic_ui_observations')
+            row['original'].pop('diagnostic_failure_kind');row['original']['source']=store.NORMAL_IMAGE_SOURCE
+            if survivor=='observations':row['diagnostic_ui_observations']=original['diagnostic_ui_observations']
+            elif survivor=='source':row['original']['source']=store.DIAGNOSTIC_IMAGE_SOURCE
+            elif survivor=='kind':row['original']['diagnostic_failure_kind']=store.DIAGNOSTIC_KIND
+            elif survivor=='ack':row['diagnostic_capture']=original['diagnostic_capture']
+            row['capture']={'id':REQUEST,'success':True,'original_sha256':row['original']['sha256'],'width':3840,'height':2160,'mode':'RGB'}
+            row['ui_observations']=request();self.job.report=row
+            with self.subTest(survivor=survivor),self.assertRaises(ValueError):self.job.select_delivery()
+            row['delivery_image']={**row['original'],'kind':'unchanged native original'}
+            row['capture_qualified']=True;row['complete']=True;self.job.persist()
+            with self.subTest(survivor=survivor),self.assertRaises(ValueError):store.pack(self.root,BINDING,1,2)
+    def test_diagnostic_source_and_failed_request_provenance_are_bound(self):
+        self.request.write_text(json.dumps(diagnostic_request()));self.job.checkpoint(REQUEST,diagnostic=True)
+        for change in ('normal-source','missing-source','unknown-source','failed-with-wrong-request'):
+            row=copy.deepcopy(self.job.report)
+            if change=='normal-source':row['original']['source']=store.NORMAL_IMAGE_SOURCE
+            elif change=='missing-source':row['original'].pop('source')
+            elif change=='unknown-source':row['original']['source']='unknown'
+            else:
+                row['diagnostic_capture']['diagnostic_capture_complete']=False
+                row['diagnostic_ui_observations']['id']=OTHER
+            with self.subTest(change=change),self.assertRaises(ValueError):store.validate_image_bindings(self.job.folder,row)
+    def test_normal_delivery_requires_exact_request_and_ack_provenance(self):
+        self.job.checkpoint(REQUEST);original=copy.deepcopy(self.job.report)
+        for change in ('no-ack','no-request','wrong-request-id','wrong-ack-id','wrong-dimensions','no-ack-id',
+                       'diagnostic-request','extra-ack-kind','wrong-source','no-source','failed-ack'):
+            row=copy.deepcopy(original)
+            if change=='no-ack':row.pop('capture')
+            elif change=='no-request':row.pop('ui_observations')
+            elif change=='wrong-request-id':row['ui_observations']['id']=OTHER
+            elif change=='wrong-ack-id':row['capture']['id']=OTHER
+            elif change=='wrong-dimensions':row['capture']['width']=1
+            elif change=='no-ack-id':row['capture'].pop('id')
+            elif change=='diagnostic-request':row['ui_observations']=diagnostic_request()
+            elif change=='extra-ack-kind':row['capture']['failure_kind']=store.DIAGNOSTIC_KIND
+            elif change=='wrong-source':row['original']['source']=store.DIAGNOSTIC_IMAGE_SOURCE
+            elif change=='no-source':row['original'].pop('source')
+            elif change=='failed-ack':row['capture']['success']=False
+            self.job.report=row
+            with self.subTest(change=change),self.assertRaises(ValueError):self.job.select_delivery()
+            row['delivery_image']={**row['original'],'kind':'unchanged native original'};self.job.persist()
+            with self.subTest(change=change),self.assertRaises(ValueError):store.pack(self.root,BINDING,1,2)
+    def test_diagnostic_capture_keeps_exact_held_caps(self):
+        self.request.write_text(json.dumps(diagnostic_request()))
+        now=[2.0];self.job.clock=lambda:now[0];ordinary=self.job.execute;caps=[]
+        def execute(command,**kwargs):
+            caps.append(kwargs['seconds']);result=ordinary(command,**kwargs);now[0]+=kwargs['seconds']-.01;return result
+        self.job.execute=execute;self.job.checkpoint(REQUEST,diagnostic=True)
+        self.assertEqual(caps,[180,180,180,15,10]);self.assertLess(now[0],2+600-20)
+        self.assertTrue(json.loads(self.ack.read_text())['diagnostic_capture_complete'])
+        self.assertIsNone(self.job.checkpoint_deadline)
+    def test_diagnostic_still_rejects_wrong_binary_and_mutated_fixture(self):
+        for kind in ('binary','fixture'):
+            with self.subTest(kind=kind):
+                if self.calls:self.setUp()
+                self.request.write_text(json.dumps(diagnostic_request()))
+                path=self.app/'CelluloidVision' if kind=='binary' else next((self.migrated/'Documents'/store.FIXTURE_NAME).glob('*.image'))
+                path.write_bytes(b'not the original')
+                with self.assertRaises(ValueError):self.job.checkpoint(REQUEST,diagnostic=True)
+                self.assertFalse(any('screenshot' in c for c in self.calls))
+    def test_diagnostic_signal_before_checkpoint_has_no_device_or_ack_work(self):
+        self.request.write_text(json.dumps(diagnostic_request()))
+        def callback(rid,**flags):
+            os.kill(os.getpid(),signal.SIGTERM);self.job.checkpoint(rid,**flags)
+        self.run_observer(callback,diagnostic=True)
+        self.assertEqual(self.calls,[])
+    def test_diagnostic_signal_during_ack_preserves_barrier(self):
+        self.request.write_text(json.dumps(diagnostic_request()))
+        fsync=os.fsync
+        def interrupt(fd):fsync(fd);os.kill(os.getpid(),signal.SIGTERM)
+        with mock.patch.object(store.os,'fsync',side_effect=interrupt):self.run_observer(self.job.checkpoint,diagnostic=True)
+        self.assertFalse(self.ack.with_suffix('.ack-staged').exists())
+        self.assertFalse(self.job.report['diagnostic_capture']['diagnostic_capture_complete'])
+    def test_diagnostic_late_hold_never_acknowledges_capture(self):
+        self.request.write_text(json.dumps(diagnostic_request()));now=[2];self.job.clock=lambda:now[0];ordinary=self.job.execute
+        def execute(command,**kwargs):
+            result=ordinary(command,**kwargs)
+            if '--inspect' in command:now[0]=603
+            return result
+        self.job.execute=execute
+        self.run_observer(self.job.checkpoint,diagnostic=True)
+        self.assertFalse(self.job.report['diagnostic_capture']['diagnostic_capture_complete'])
+    def run_observer(self, callback, seconds=1200, diagnostic=False):
         parser = store.RequestLines(callback)
-        script = 'import time; print('+repr(store.REQUEST_PREFIX+REQUEST)+', flush=True); time.sleep(10)'
+        prefix=store.DIAGNOSTIC_REQUEST_PREFIX if diagnostic else store.REQUEST_PREFIX
+        script = 'import time; print('+repr(prefix+REQUEST)+', flush=True); time.sleep(10)'
         with self.assertRaises(CaptureStopped):
             self.job.call('ui', [sys.executable, '-c', script], seconds, observer=parser)
         self.assertTrue(self.job.blocked)
@@ -1161,7 +1351,10 @@ class EncodingTests(unittest.TestCase):
         self.job = store.Job(ROOT, self.root, BINDING, 1, execute=self.execute, clock=lambda: 2)
         self.job.image_helper = self.root/'image-helper'
         self.original = self.job.folder/'capture-original.jpeg'; self.original.write_bytes(b'r'*200)
-        self.job.report['original'] = store.file_record(self.original, 1000)
+        self.job.report['original'] = {**store.file_record(self.original, 1000),'source':store.NORMAL_IMAGE_SOURCE,'validation':IMAGE.copy()}
+        self.job.report['ui_observations'] = request()
+        self.job.report['capture'] = {'id':REQUEST,'success':True,'original_sha256':self.job.report['original']['sha256'],
+            'width':3840,'height':2160,'mode':'RGB'}
     def execute(self, command, **kwargs):
         quality = int(command[-1]); self.qualities.append(quality)
         Path(command[-2]).write_bytes(b'd'*self.sizes[quality])

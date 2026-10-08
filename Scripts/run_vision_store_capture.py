@@ -34,10 +34,10 @@ def load_native_helpers():
 # need only standard libraries and never initialize native helper modules.
 if __name__ != '__main__': load_native_helpers()
 
-BASE = '10a022a85b134caa5f20c2fee431967f836e3049'
+BASE = '4ca29e97faf1dfb79c193ae8196a2a9ed45d036b'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = '016cc0d7d64bcbf21c8bd099b0e7178f6c59296f'
-BRANCH = 'refs/heads/codex/vision-store-single'
+BASE_TREE = 'a656ea25a42e913af5c4d085d9e7302728154bc7'
+BRANCH = 'refs/heads/vision-store-single'
 WORKFLOW = '.github/workflows/vision-store-single.yml'
 SELECTOR = 'CelluloidVisionUITests/NativeVisionUITests/testStoreSingleHeldEditorCapture'
 APP_ID = 'Mango.Celluloid'
@@ -60,8 +60,13 @@ EVIDENCE_FILES = {name: cap for name, cap in (
     (BARRIER, 32_768), ('native-icon-provenance-runtime.json', 1_000_000))}
 ADDED = ()
 MODIFIED = (WORKFLOW,
-    'Scripts/run_vision_store_capture.py', 'Scripts/test_vision_store_capture.py')
+    'Scripts/run_vision_store_capture.py', 'Scripts/test_vision_store_capture.py',
+    'Platforms/VisionUITests/NativeVisionUITests.swift')
 REQUEST_PREFIX = 'CELLULOID_STORE_CAPTURE_REQUEST '
+DIAGNOSTIC_REQUEST_PREFIX = 'CELLULOID_STORE_DIAGNOSTIC_CAPTURE_REQUEST '
+DIAGNOSTIC_KIND = 'preview-image-not-found'
+NORMAL_IMAGE_SOURCE = 'simctl full-display JPEG at held XCTest checkpoint'
+DIAGNOSTIC_IMAGE_SOURCE = 'diagnostic simctl full-display JPEG after failed preview assertion; not Store qualified'
 METADATA_NAME = '.com.apple.mobile_container_manager.metadata.plist'
 # Conservative resource ceilings, not a claim about unmeasured visionOS counts.
 # Reuse the reviewed per-query ceiling; original work/held deadlines still bind.
@@ -417,6 +422,23 @@ def validate_request(row, request_id):
     return row
 
 
+def validate_diagnostic_request(row, request_id):
+    expected = {'schema':'Celluloid.StoreDiagnosticRequest.1','id':request_id,
+        'bundle_identifier':APP_ID,'document':FIXTURE_NAME,'locale':'en_US','language':'en',
+        'sample_width':120,'sample_height':80,'failure_kind':DIAGNOSTIC_KIND,
+        'dimensions_observed':True,'preview_wait_succeeded':False,'store_qualified':False}
+    need(type(row) is dict and set(row) == set(expected)|{'observations'}, 'Malformed diagnostic request')
+    need(all(row[key] == value and type(row[key]) is type(value) for key,value in expected.items()), 'Wrong diagnostic checkpoint')
+    obs = row['observations']
+    counts = ('preview_image_count','preview_any_count','canvas_any_count','progress_count','alerts_count','sheets_count','keyboards_count')
+    flags = ('placeholder_visible','export_exists','export_enabled','dimensions_still_visible','ax_complete')
+    need(type(obs) is dict and set(obs) == set(counts)|set(flags)|{'ax_full_bytes'}, 'Malformed diagnostic observations')
+    need(all(type(obs[key]) is int and 0 <= obs[key] <= 4096 for key in counts), 'Invalid diagnostic counts')
+    need(all(type(obs[key]) is bool for key in flags), 'Invalid diagnostic flags')
+    need(type(obs['ax_full_bytes']) is int and 0 <= obs['ax_full_bytes'] <= 16_777_216, 'Invalid diagnostic AX bound')
+    return row
+
+
 def validate_image(row):
     need(type(row) is dict and row.get('format') == 'JPEG' and row.get('mode') == 'RGB'
         and row.get('width') == 3840 and row.get('height') == 2160
@@ -468,17 +490,22 @@ class RequestLines:
         self.pending[stream] += data
         while b'\n' in self.pending[stream]:
             line, self.pending[stream] = self.pending[stream].split(b'\n', 1)
-            if REQUEST_PREFIX.encode() not in line: continue
+            prefixes = [prefix for prefix in (REQUEST_PREFIX,DIAGNOSTIC_REQUEST_PREFIX) if prefix.encode() in line]
+            if not prefixes: continue
             need(stream == 'stdout', 'Checkpoint marker must be on stdout')
+            need(len(prefixes) == 1, 'Mixed checkpoint marker')
+            prefix = prefixes[0]
             text = line.decode('utf-8', 'strict').strip()
-            match = re.fullmatch(re.escape(REQUEST_PREFIX)+r'([0-9A-F-]{36})', text)
+            match = re.fullmatch(re.escape(prefix)+r'([0-9A-F-]{36})', text)
             need(match is not None, 'Malformed checkpoint marker')
             request_id = fixed_uuid(match[1]); need(not self.ids, 'Only one capture request is allowed')
-            self.ids.append(request_id); self.callback(request_id)
+            self.ids.append(request_id)
+            if prefix == DIAGNOSTIC_REQUEST_PREFIX: self.callback(request_id,diagnostic=True)
+            else: self.callback(request_id)
         need(len(self.pending[stream]) <= 131_072, 'Unbounded UI output line')
     def finish(self):
         for stream, data in list(self.pending.items()):
-            need(REQUEST_PREFIX.encode() not in data, 'Unterminated checkpoint marker after producer exit')
+            need(not any(prefix.encode() in data for prefix in (REQUEST_PREFIX,DIAGNOSTIC_REQUEST_PREFIX)), 'Unterminated checkpoint marker after producer exit')
         need(len(self.ids) == 1, 'Exactly one real held checkpoint is required')
 
 
@@ -649,11 +676,15 @@ class Job:
         need(sorted(git('scope', 'diff', '--name-status', BASE, 'HEAD', '--').splitlines()) == sorted(expected), 'Unexpected product/source scope')
         self.report[stage] = {'tree': git('tree', 'rev-parse', 'HEAD^{tree}'), 'base': BASE, 'unchanged_product_scope': True}
         self.persist()
-    def checkpoint(self, request_id):
+    def checkpoint(self, request_id, diagnostic=False):
         self.check_active()
+        need(type(diagnostic) is bool, 'Invalid checkpoint kind')
         need(self.capture_count == 0, 'Second capture forbidden'); self.capture_count += 1
         self.checkpoint_deadline = self.clock()+600
-        ack = None; outcome = {'id': request_id, 'success': False}
+        report_key = 'diagnostic_capture' if diagnostic else 'capture'
+        success_key = 'diagnostic_capture_complete' if diagnostic else 'success'
+        ack = None; outcome = {'id':request_id,success_key:False}
+        if diagnostic: outcome.update(schema='Celluloid.StoreDiagnosticAck.1',failure_kind=DIAGNOSTIC_KIND,store_qualified=False)
         try:
             self.report['installed_at_checkpoint'] = self.container('capture-installed', APP_ID, 'Bundle')
             data = self.container('capture-data', APP_ID)
@@ -665,8 +696,9 @@ class Job:
             candidate_ack = scratch/('Celluloid-store-'+request_id+'.ack')
             need(not candidate_ack.exists() and not candidate_ack.is_symlink(), 'Stale checkpoint acknowledgement')
             ack = candidate_ack
-            row = validate_request(json_file(request, 16_384), request_id)
-            self.report['ui_observations'] = row; self.persist()
+            validator = validate_diagnostic_request if diagnostic else validate_request
+            row = validator(json_file(request, 16_384), request_id)
+            self.report['diagnostic_ui_observations' if diagnostic else 'ui_observations'] = row; self.persist()
             original = self.temp/'capture-original.jpeg'
             need(not original.exists() and not original.is_symlink(), 'Do not overwrite capture')
             self.call('screenshot', ['xcrun', 'simctl', 'io', self.device, 'screenshot', '--type=jpeg', str(original)], 15)
@@ -676,16 +708,17 @@ class Job:
             self.check_active()
             retained = self.folder/'capture-original.jpeg'; retained.write_bytes(original.read_bytes())
             need(file_record(retained, ORIGINAL_CAP) == raw, 'Original byte copy changed')
+            if diagnostic: raw['diagnostic_failure_kind'] = DIAGNOSTIC_KIND
+            raw['source'] = DIAGNOSTIC_IMAGE_SOURCE if diagnostic else NORMAL_IMAGE_SOURCE
             self.report['original'] = raw; self.persist()
             raw['validation'] = validate_image(json.loads(self.call('inspect-original', [str(self.image_helper), '--inspect', str(original)], 10)))
-            raw['source'] = 'simctl full-display JPEG at held XCTest checkpoint'
             self.report['original'] = raw
             self.check_active()
-            outcome.update(success=True, original_sha256=raw['sha256'], width=3840, height=2160, mode='RGB')
-            self.report['capture'] = outcome; self.persist()
+            outcome.update({success_key:True,'original_sha256':raw['sha256'],'width':3840,'height':2160,'mode':'RGB'})
+            self.report[report_key] = outcome; self.persist()
             need(file_record(original, ORIGINAL_CAP)['sha256'] == raw['sha256'] and file_record(retained, ORIGINAL_CAP)['sha256'] == raw['sha256'], 'Original changed before acknowledgement')
         except BaseException as error:
-            outcome.update(success=False, error=str(error)); self.report['capture'] = outcome; self.persist(); raise
+            outcome.update({success_key:False,'error':str(error)}); self.report[report_key] = outcome; self.persist(); raise
         finally:
             # Never touch a device-owned path after uncertainty. A rejected
             # known request gets failure ack; every UI failure stays failed.
@@ -693,14 +726,14 @@ class Job:
                 try:
                     def check_ack():
                         self.check_active()
-                        if outcome['success']:
+                        if outcome[success_key]:
                             for path in (self.temp/'capture-original.jpeg', self.folder/'capture-original.jpeg'):
                                 need(file_record(path, ORIGINAL_CAP)['sha256'] == outcome['original_sha256'], 'Original changed before acknowledgement')
                         self.check_active()
                     write_ack(ack, outcome, check_ack)
                 except BaseException as error:
-                    outcome.update(success=False, error=str(error))
-                    self.report['capture'] = outcome; self.persist()
+                    outcome.update({success_key:False,'error':str(error)})
+                    self.report[report_key] = outcome; self.persist()
                     raise
                 finally:
                     self.checkpoint_deadline = None
@@ -708,7 +741,9 @@ class Job:
                 self.checkpoint_deadline = None
     def select_delivery(self):
         self.check_active()
+        need('diagnostic_capture' not in self.report, 'Diagnostic image cannot qualify for delivery')
         validate_image_bindings(self.folder, self.report)
+        need(self.report.get('capture', {}).get('success') is True, 'Delivery requires successful normal capture acknowledgement')
         original = self.folder/'capture-original.jpeg'; raw = self.report['original']
         if raw['bytes'] <= STORE_CAP:
             self.report['delivery_image'] = {**raw, 'kind': 'unchanged native original'}
@@ -778,6 +813,7 @@ class Job:
         self.report['sample_before'] = pristine_snapshot(container, self.report['sample_input']); self.persist()
         lines = RequestLines(self.checkpoint)
         ui = self.call('ui', capture_test_command(self.temp, self.device), 1200, observer=lines)
+        need('diagnostic_capture' not in self.report, 'Diagnostic checkpoint cannot qualify as a passing case')
         lines.finish(); self.report['xctest'] = verify_cases(ui, [SELECTOR])
         need(self.capture_count == 1 and self.report.get('capture', {}).get('success') is True, 'Missing single successful capture')
         expected_ack = 'CELLULOID_STORE_CAPTURE_ACK '+lines.ids[0]+' sha256='+self.report['original']['sha256']
@@ -798,7 +834,7 @@ class Job:
                 except BaseException as error:
                     self.report['cleanup'].append({'action': action, 'success': False, 'error': str(error)}); break
         self.report['device_uncertain'] = self.blocked
-        self.report['complete'] = bool(self.report.get('capture_qualified') and not self.blocked and len(self.report['cleanup']) == 2 and all(r['success'] for r in self.report['cleanup']))
+        self.report['complete'] = bool('diagnostic_capture' not in self.report and self.report.get('capture_qualified') and not self.blocked and len(self.report['cleanup']) == 2 and all(r['success'] for r in self.report['cleanup']))
         self.report['elapsed_seconds'] = self.clock()-self.started
         print('VISION_JOB_END '+json.dumps({k:self.report.get(k) for k in ('complete','device_uncertain','error','elapsed_seconds')}),flush=True)
         self.persist()
@@ -822,10 +858,43 @@ def validate_image_bindings(folder, report, *, require_delivery=False, records=N
         need(actual.get(name) == {key: record.get(key) for key in ('name', 'bytes', 'sha256')},
              'Checkpoint/encoding image hash or size changed: '+name)
     raw, delivery = report.get('original'), report.get('delivery_image')
+    diagnostic = report.get('diagnostic_capture')
+    # Every surviving indicator is binding. Removing only some kind fields must
+    # not reclassify retained failure pixels as a successful checkpoint.
+    diagnostic_kind = ('diagnostic_capture' in report or 'diagnostic_ui_observations' in report
+        or (type(raw) is dict and ('diagnostic_failure_kind' in raw or raw.get('source') == DIAGNOSTIC_IMAGE_SOURCE)))
+    if diagnostic_kind:
+        need(type(diagnostic) is dict and diagnostic.get('schema') == 'Celluloid.StoreDiagnosticAck.1'
+            and diagnostic.get('failure_kind') == DIAGNOSTIC_KIND and diagnostic.get('store_qualified') is False
+            and type(diagnostic.get('diagnostic_capture_complete')) is bool and 'success' not in diagnostic,
+            'Malformed diagnostic image provenance')
+        need('capture' not in report and 'ui_observations' not in report and report.get('capture_qualified') is not True
+            and report.get('complete') is not True and delivery is None and not require_delivery,
+            'Diagnostic image must never qualify as a Store result')
+        fixed_uuid(diagnostic.get('id'))
+        need(raw is None or (raw.get('diagnostic_failure_kind') == DIAGNOSTIC_KIND
+            and raw.get('source') == DIAGNOSTIC_IMAGE_SOURCE), 'Missing or changed diagnostic image kind/source')
+        if raw is not None or 'diagnostic_ui_observations' in report:
+            validate_diagnostic_request(report.get('diagnostic_ui_observations'),diagnostic['id'])
+        if diagnostic['diagnostic_capture_complete']:
+            validate_diagnostic_request(report.get('diagnostic_ui_observations'),diagnostic['id'])
+            need((diagnostic.get('width'),diagnostic.get('height'),diagnostic.get('mode')) == (3840,2160,'RGB'), 'Invalid diagnostic image dimensions')
+            need(raw is not None and diagnostic.get('original_sha256') == raw['sha256'], 'Diagnostic checkpoint hash mismatch')
+            validate_image(raw.get('validation'))
     if raw is not None or 'capture-original.jpeg' in actual:
         match(raw, 'capture-original.jpeg')
-    if report.get('capture', {}).get('success') is True:
-        need(raw is not None and report['capture'].get('original_sha256') == raw['sha256'], 'Capture checkpoint hash mismatch')
+        need(raw.get('source') == (DIAGNOSTIC_IMAGE_SOURCE if diagnostic_kind else NORMAL_IMAGE_SOURCE), 'Changed checkpoint image source')
+    capture = report.get('capture', {})
+    need(type(capture) is dict, 'Malformed normal capture acknowledgement')
+    if require_delivery or delivery is not None or report.get('capture_qualified') is True or report.get('complete') is True:
+        need(capture.get('success') is True, 'Delivery requires successful normal capture acknowledgement')
+    if capture.get('success') is True:
+        need(set(capture) == {'id','success','original_sha256','width','height','mode'}, 'Malformed normal capture acknowledgement')
+        fixed_uuid(capture.get('id'))
+        validate_request(report.get('ui_observations'),capture['id'])
+        need(type(capture.get('width')) is int and type(capture.get('height')) is int
+            and (capture['width'],capture['height'],capture['mode']) == (3840,2160,'RGB'), 'Invalid normal capture dimensions')
+        need(raw is not None and capture.get('original_sha256') == raw['sha256'], 'Capture checkpoint hash mismatch')
         validate_image(raw.get('validation'))
     need(not require_delivery or delivery is not None, 'Missing delivery image')
     if delivery is not None:
