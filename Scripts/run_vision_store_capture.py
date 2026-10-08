@@ -20,27 +20,33 @@ import stat
 import uuid
 from pathlib import Path
 # Request validation is also used by stdlib-only pack/verdict subprocesses.
-FIXTURE_NAME = 'VisionRemaining.celluloid'
+FIXTURE_NAME = 'Citrus.celluloid'
+SOURCE_WIDTH = SOURCE_HEIGHT = 1254
+SOURCE_ID = 'C669EEEC-B101-4A5B-8579-42479B800FE7'
+DEMO_ASSET_PATH = 'StoreCaptureAssets/demo-citrus-sunny.png'
+DEMO_ASSET = {
+    'source_commit':'0287cd5ffe524f50884f2b8167cff7403366ae29',
+    'source_path':DEMO_ASSET_PATH,'git_blob':'49c4dfaa7f09c2db9f4853cadbb5baaa47490157',
+    'bytes':2880485,'sha256':'cd4c5178d550003b452b75904caba58a72c6eadc4658a083469c7684b4c00b03',
+    'width':1254,'height':1254,'format':'PNG','mode':'RGB',
+    'origin':'Previously approved original synthetic demonstration image, OpenAI image generation 2026-10-06; not real-user photography or an app screenshot.'}
 
 def load_native_helpers():
     global capture, CaptureStopped, stream_capture, ARCHIVE_RAW_CAP, retain_archive_output
-    global built_vision_app, write_synthetic_fixture, snapshot_fixture, test_command
-    global verify_cases, synthetic_fixture_bytes
+    global built_vision_app, test_command, verify_cases
     from mac_archive_capture import capture, CaptureStopped
     from vision_store_stream import capture as stream_capture
     from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
-    from run_vision_remaining import (built_vision_app, write_synthetic_fixture,
-        snapshot_fixture, test_command, verify_cases, synthetic_fixture_bytes, FIXTURE_NAME as native_fixture_name)
-    if native_fixture_name != FIXTURE_NAME: raise ValueError('Native fixture contract changed')
+    from run_vision_remaining import built_vision_app, test_command, verify_cases
 
 
 # Preserve the imported host-test API. CLI resolver/pack/verdict/default modes
 # need only standard libraries and never initialize native helper modules.
 if __name__ != '__main__': load_native_helpers()
 
-BASE = '90afaf4b1c1c1232ee27a435dd9b80ebd1218477'
+BASE = 'af430dc715ad0a54be72765c42396548d1354aec'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = 'a5860657ced15d0eadffaf85a9952a8ca13d76c9'
+BASE_TREE = '162be3fdb10f6e4612625de8b85f3d64c9c75866'
 BRANCH = 'refs/heads/vision-store-single'
 COHORTS = ('one', 'two')
 WORKFLOW = '.github/workflows/vision-store-single.yml'
@@ -64,9 +70,10 @@ EVIDENCE_FILES = {name: cap for name, cap in (
     ('build.log', 524_298), ('ui.log', 524_298), ('screenshot.log', 524_298),
     ('shutdown.log', 524_298), ('delete.log', 524_298),
     (BARRIER, 32_768), ('native-icon-provenance-runtime.json', 1_000_000))}
-ADDED = ()
+ADDED = (DEMO_ASSET_PATH,)
 MODIFIED = (WORKFLOW,
-    'Scripts/run_vision_store_capture.py', 'Scripts/test_vision_store_capture.py')
+    'Scripts/run_vision_store_capture.py', 'Scripts/test_vision_store_capture.py',
+    'Platforms/VisionUITests/NativeVisionUITests.swift')
 REQUEST_PREFIX = 'CELLULOID_STORE_CAPTURE_REQUEST '
 DIAGNOSTIC_REQUEST_PREFIX = 'CELLULOID_STORE_DIAGNOSTIC_CAPTURE_REQUEST '
 DIAGNOSTIC_KIND = 'preview-image-not-found'
@@ -404,19 +411,142 @@ def validate_metadata_operation(temp, binding, started, device, bundle, kind):
     need(current.get('command') == [sys.executable,str(Path(__file__).resolve()),'--resolve-container',device,bundle,kind], 'Wrong metadata operation command')
 
 
+def store_recipe_bytes():
+    recipe={'format':'Celluloid.Document','version':1,'filter':'Original','overlays':[],
+        'canvasWidth':SOURCE_WIDTH,'canvasHeight':SOURCE_HEIGHT,'sources':[{'id':SOURCE_ID,
+        'displayName':'Citrus.png','pixelWidth':SOURCE_WIDTH,'pixelHeight':SOURCE_HEIGHT,
+        'crop':{'centerX':0.5,'centerY':0.5,'zoom':1}}]}
+    return json.dumps(recipe,sort_keys=True,separators=(',',':')).encode()
+
+
+def store_input_records():
+    recipe=store_recipe_bytes()
+    return [{'name':SOURCE_ID+'.image','bytes':DEMO_ASSET['bytes'],'sha256':DEMO_ASSET['sha256']},
+        {'name':'recipe.json','bytes':len(recipe),'sha256':hashlib.sha256(recipe).hexdigest()}]
+
+
+def read_store_input(path, expected):
+    """Read a single exact fixture file; no symlink/hardlink or unstable file."""
+    path=Path(path)
+    need(not path.is_symlink() and path.is_file(), 'Missing or linked Store input')
+    parent=open_directory(path.parent)
+    try:
+        fd=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=parent)
+        try:
+            before=os.fstat(fd)
+            need(stat.S_ISREG(before.st_mode) and before.st_nlink==1
+                and before.st_size==expected['bytes'], 'Wrong Store input file type/size')
+            with os.fdopen(fd,'rb',closefd=False) as stream:data=stream.read(expected['bytes']+1)
+            after=os.fstat(fd)
+            current=os.stat(path.name,dir_fd=parent,follow_symlinks=False)
+            need((before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns,before.st_ctime_ns,before.st_nlink)
+                == (after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns,after.st_ctime_ns,after.st_nlink),
+                'Store input changed during read')
+            need(stat.S_ISREG(current.st_mode) and current.st_nlink==1
+                and (current.st_dev,current.st_ino,current.st_size,current.st_mtime_ns,current.st_ctime_ns)
+                == (after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns,after.st_ctime_ns),
+                'Store input path changed during read')
+            need(len(data)==expected['bytes'] and hashlib.sha256(data).hexdigest()==expected['sha256'],
+                'Store input bytes changed')
+            return data
+        finally:os.close(fd)
+    finally:os.close(parent)
+
+
+def store_fixture_bytes(root=None):
+    root=Path(root) if root is not None else Path(__file__).resolve().parents[1]
+    data=read_store_input(root/DEMO_ASSET_PATH,DEMO_ASSET)
+    need(hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==DEMO_ASSET['git_blob'],
+        'Original demo Git blob mismatch')
+    need(data[:8]==b'\x89PNG\r\n\x1a\n' and data[16:29]==bytes.fromhex('000004e6000004e60802000000'),
+        'Original demo PNG dimensions/format mismatch')
+    return {SOURCE_ID+'.image':data,'recipe.json':store_recipe_bytes()}
+
+
+def validate_store_fixture_metadata(row):
+    keys={'schema','bundle_identifier','package_name','pixel_width','pixel_height','initial_overlays',
+        'data_home','documents_path','package_path','files','source_asset'}
+    need(type(row) is dict and set(row)==keys, 'Malformed Store fixture metadata')
+    need(row['schema']=='Celluloid.StorePhotoFixture.1' and row['bundle_identifier']==APP_ID
+        and row['package_name']==FIXTURE_NAME and row['source_asset']==DEMO_ASSET
+        and row['files']==store_input_records(), 'Wrong Store fixture provenance')
+    need(type(row['source_asset']) is dict
+        and all(type(row['source_asset'][key]) is type(value) for key,value in DEMO_ASSET.items())
+        and type(row['files']) is list and all(type(record) is dict and type(record['bytes']) is int for record in row['files']),
+        'Malformed Store fixture provenance types')
+    for key,value in [('pixel_width',SOURCE_WIDTH),('pixel_height',SOURCE_HEIGHT),('initial_overlays',0)]:
+        need(type(row[key]) is int and row[key]==value, 'Wrong Store fixture dimensions/layers')
+    for key in ('data_home','documents_path','package_path'):
+        need(type(row[key]) is str and len(row[key])<=2048 and Path(row[key]).is_absolute()
+            and '..' not in Path(row[key]).parts, 'Noncanonical Store fixture path')
+    home=Path(row['data_home'])
+    need(Path(row['documents_path'])==home/'Documents'
+        and Path(row['package_path'])==home/'Documents'/FIXTURE_NAME, 'Store fixture boundary mismatch')
+    return row
+
+
+def write_store_fixture(container):
+    # The approved original PNG is INPUT only. The real app renders the result.
+    container=Path(container)
+    need(not container.is_symlink() and container.is_dir(), 'Unsafe Store data container')
+    fd=open_directory(container);os.close(fd)
+    documents=container/'Documents'
+    need(not documents.is_symlink(), 'Linked Store Documents directory')
+    documents.mkdir(exist_ok=True);fd=open_directory(documents);os.close(fd)
+    package=documents/FIXTURE_NAME
+    need(not package.exists() and not package.is_symlink(), 'Store sample may not overwrite a document')
+    inputs=store_fixture_bytes();package.mkdir()
+    for name,data in inputs.items():
+        with (package/name).open('xb') as stream:stream.write(data)
+    row={'schema':'Celluloid.StorePhotoFixture.1','bundle_identifier':APP_ID,'package_name':FIXTURE_NAME,
+        'pixel_width':SOURCE_WIDTH,'pixel_height':SOURCE_HEIGHT,'initial_overlays':0,
+        'data_home':str(container),'documents_path':str(documents),'package_path':str(package),
+        'files':store_input_records(),'source_asset':dict(DEMO_ASSET)}
+    validate_store_fixture_metadata(row);pristine_snapshot(container,row)
+    return row
+
+
 def pristine_snapshot(container, metadata):
-    # XCTest may migrate a data container. Re-query by owned device + bundle;
-    # accept changed UUID only after every actual sample byte matches again.
-    snapshot = snapshot_fixture(container, metadata, after_ui=True)
-    need(snapshot['files'] == metadata['files'], 'Sample input bytes changed')
-    need(snapshot['overlay_texts'] == [] and (snapshot['source_width'], snapshot['source_height']) == (120, 80), 'Sample no longer pristine')
-    return snapshot
+    # A container may migrate, but its full recipe and original must remain exact.
+    metadata=validate_store_fixture_metadata(metadata);container=Path(container)
+    need(not container.is_symlink() and container.is_dir(), 'Unsafe Store data container')
+    package=container/'Documents'/FIXTURE_NAME
+    fd=open_directory(package);os.close(fd)
+    records=store_input_records()
+    need({p.name for p in package.iterdir()}=={r['name'] for r in records}, 'Store sample child set changed')
+    for record in records:read_store_input(package/record['name'],record)
+    return {'container':str(container),'data_container_changed':container!=Path(metadata['data_home']),
+        'fixture_contents_verified':True,'package_path':str(package),'files':records,'overlay_texts':[],
+        'source_width':SOURCE_WIDTH,'source_height':SOURCE_HEIGHT,'source_asset':dict(DEMO_ASSET)}
+
+
+def validate_store_capture_input(report, after=False):
+    """Bind a retained capture to the exact approved source and unchanged recipe."""
+    metadata=validate_store_fixture_metadata(report.get('sample_input'))
+    stages=('sample_before','sample_at_checkpoint','sample_after') if after else ('sample_before','sample_at_checkpoint')
+    for stage in stages:
+        row=report.get(stage)
+        need(type(row) is dict and row.get('fixture_contents_verified') is True
+            and row.get('files')==metadata['files'] and row.get('source_asset')==DEMO_ASSET
+            and row.get('overlay_texts')==[] and type(row.get('source_width')) is int
+            and type(row.get('source_height')) is int
+            and (row['source_width'],row['source_height'])==(SOURCE_WIDTH,SOURCE_HEIGHT),
+            'Missing or changed Store input snapshot')
+        need(type(row.get('container')) is str and len(row['container'])<=2048
+            and Path(row['container']).is_absolute() and '..' not in Path(row['container']).parts
+            and row.get('package_path')==str(Path(row['container'])/'Documents'/FIXTURE_NAME)
+            and type(row.get('data_container_changed')) is bool
+            and row['data_container_changed']==(Path(row['container'])!=Path(metadata['data_home'])),
+            'Wrong Store input snapshot boundary')
+        if stage=='sample_before':
+            need(row['container']==metadata['data_home'] and row['data_container_changed'] is False,
+                'Pre-UI Store input moved before staging verification')
 
 
 def validate_request(row, request_id):
     expected = {'schema': 'Celluloid.StoreRequest.1', 'id': request_id,
         'bundle_identifier': APP_ID, 'document': FIXTURE_NAME, 'locale': 'en_US',
-        'language': 'en', 'sample_width': 120, 'sample_height': 80, 'preview_count': 1,
+        'language': 'en', 'sample_width': SOURCE_WIDTH, 'sample_height': SOURCE_HEIGHT, 'preview_count': 1,
         'controls': ['editor.import-files', 'editor.add-bubble', 'editor.export'],
         'ready': True, 'alerts': 0, 'sheets': 0, 'keyboards': 0, 'progress': 0}
     need(type(row) is dict and row == expected, 'Unqualified held UI request')
@@ -430,7 +560,7 @@ def validate_request(row, request_id):
 def validate_diagnostic_request(row, request_id):
     expected = {'schema':'Celluloid.StoreDiagnosticRequest.1','id':request_id,
         'bundle_identifier':APP_ID,'document':FIXTURE_NAME,'locale':'en_US','language':'en',
-        'sample_width':120,'sample_height':80,'failure_kind':DIAGNOSTIC_KIND,
+        'sample_width':SOURCE_WIDTH,'sample_height':SOURCE_HEIGHT,'failure_kind':DIAGNOSTIC_KIND,
         'dimensions_observed':True,'preview_wait_succeeded':False,'store_qualified':False}
     need(type(row) is dict and set(row) == set(expected)|{'observations'}, 'Malformed diagnostic request')
     need(all(row[key] == value and type(row[key]) is type(value) for key,value in expected.items()), 'Wrong diagnostic checkpoint')
@@ -530,7 +660,7 @@ class Job:
         self.diagnostics.mkdir(exist_ok=True)
         need(self.diagnostics.is_dir(), 'Missing diagnostics directory')
         self.report = {'schema': 'Celluloid.StoreCapture.1', 'binding': binding,
-            'started_monotonic': started, 'scope': 'One real held editor image; synthetic INPUT only; no functionality or store-acceptance claim',
+            'started_monotonic': started, 'scope': 'One real held editor image of an approved original demonstration photo INPUT; no functionality or store-acceptance claim',
             'complete': False, 'visual_review_status': 'pending', 'store_ready': False,
             'host_diagnostic_scope': 'CPU count and physical memory are capacity, not utilization or pressure. '
                 'Control timings separate host child delay from readiness only; they do not establish a CPU or memory cause.',
@@ -815,7 +945,7 @@ class Job:
         self.call('install', ['xcrun', 'simctl', 'install', self.device, str(app)], 360)
         container = self.container('seed-data', APP_ID)
         self.check_active()
-        self.report['sample_input'] = write_synthetic_fixture(container)
+        self.report['sample_input'] = write_store_fixture(container)
         self.report['sample_before'] = pristine_snapshot(container, self.report['sample_input']); self.persist()
         lines = RequestLines(self.checkpoint)
         ui = self.call('ui', capture_test_command(self.temp, self.device), 1200, observer=lines)
@@ -884,6 +1014,7 @@ def validate_image_bindings(folder, report, *, require_delivery=False, records=N
             validate_diagnostic_request(report.get('diagnostic_ui_observations'),diagnostic['id'])
         if diagnostic['diagnostic_capture_complete']:
             validate_diagnostic_request(report.get('diagnostic_ui_observations'),diagnostic['id'])
+            validate_store_capture_input(report)
             need((diagnostic.get('width'),diagnostic.get('height'),diagnostic.get('mode')) == (3840,2160,'RGB'), 'Invalid diagnostic image dimensions')
             need(raw is not None and diagnostic.get('original_sha256') == raw['sha256'], 'Diagnostic checkpoint hash mismatch')
             validate_image(raw.get('validation'))
@@ -898,6 +1029,8 @@ def validate_image_bindings(folder, report, *, require_delivery=False, records=N
         need(set(capture) == {'id','success','original_sha256','width','height','mode'}, 'Malformed normal capture acknowledgement')
         fixed_uuid(capture.get('id'))
         validate_request(report.get('ui_observations'),capture['id'])
+        validate_store_capture_input(report,after=(delivery is not None or require_delivery
+            or report.get('capture_qualified') is True or report.get('complete') is True))
         need(type(capture.get('width')) is int and type(capture.get('height')) is int
             and (capture['width'],capture['height'],capture['mode']) == (3840,2160,'RGB'), 'Invalid normal capture dimensions')
         need(raw is not None and capture.get('original_sha256') == raw['sha256'], 'Capture checkpoint hash mismatch')

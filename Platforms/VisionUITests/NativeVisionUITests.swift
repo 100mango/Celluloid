@@ -155,8 +155,8 @@ extension NativeVisionUITests {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch(); defer { app.terminate() }
-        try openRemainingDocument(in: app)
-        let dimensions = app.staticTexts["120 × 80 px"]
+        try openRemainingDocument(in: app, name: "Citrus")
+        let dimensions = app.staticTexts["1254 × 1254 px"]
         XCTAssertTrue(dimensions.waitForExistence(timeout: 20))
         let previews = app.images.matching(NSPredicate(format: "label == %@", "Edited photo preview"))
         let preview = previews.firstMatch
@@ -191,8 +191,8 @@ extension NativeVisionUITests {
         }
         let description: [String: Any] = [
             "schema": "Celluloid.StoreRequest.1", "id": id,
-            "bundle_identifier": "Mango.Celluloid", "document": "VisionRemaining.celluloid",
-            "locale": "en_US", "language": "en", "sample_width": 120, "sample_height": 80,
+            "bundle_identifier": "Mango.Celluloid", "document": "Citrus.celluloid",
+            "locale": "en_US", "language": "en", "sample_width": 1254, "sample_height": 1254,
             "preview_count": previews.count, "controls": controls, "ready": true,
             "alerts": app.alerts.count, "sheets": app.sheets.count,
             "keyboards": app.keyboards.count, "progress": app.progressIndicators.count
@@ -243,7 +243,7 @@ extension NativeVisionUITests {
             "sheets_count": app.sheets.count, "keyboards_count": app.keyboards.count,
             "placeholder_visible": app.staticTexts["Start with your photos"].exists,
             "export_exists": exportExists, "export_enabled": exportExists && export.isEnabled,
-            "dimensions_still_visible": app.staticTexts["120 × 80 px"].exists,
+            "dimensions_still_visible": app.staticTexts["1254 × 1254 px"].exists,
             "ax_complete": complete, "ax_full_bytes": bytes.count
         ]
         let id = UUID().uuidString
@@ -256,8 +256,8 @@ extension NativeVisionUITests {
         }
         let description: [String: Any] = [
             "schema": "Celluloid.StoreDiagnosticRequest.1", "id": id,
-            "bundle_identifier": "Mango.Celluloid", "document": "VisionRemaining.celluloid",
-            "locale": "en_US", "language": "en", "sample_width": 120, "sample_height": 80,
+            "bundle_identifier": "Mango.Celluloid", "document": "Citrus.celluloid",
+            "locale": "en_US", "language": "en", "sample_width": 1254, "sample_height": 1254,
             "failure_kind": "preview-image-not-found", "dimensions_observed": true,
             "preview_wait_succeeded": false, "store_qualified": false, "observations": observations
         ]
@@ -385,7 +385,8 @@ extension NativeVisionUITests {
             }
         }
     }
-    private func openRemainingDocument(in app: XCUIApplication) throws {
+    private func openRemainingDocument(in app: XCUIApplication, name: String = "VisionRemaining") throws {
+        XCTAssertTrue(["VisionRemaining", "Citrus"].contains(name))
         let documents = app.navigationBars.buttons["Documents"].firstMatch
         if documents.exists && documents.isHittable { documents.tap() }
         recordRemainingBrowser(app, stage: "initial")
@@ -406,12 +407,15 @@ extension NativeVisionUITests {
         XCTAssertTrue(folder.isEnabled); XCTAssertTrue(folder.isHittable)
         print("VISION_REMAINING_BROWSER_ITEM stage=owned-app-folder identifier=\(folder.identifier) label=\(folder.label) frame=\(folder.frame)")
         folder.tap()
-        // Exact Cell identifier and title observed in run37654222192. The
-        // mutable timestamp/byte-count label is diagnostic only, never a key.
-        let files = app.cells.matching(identifier: "VisionRemaining, celluloid")
+        // Preserve the observed remaining-fixture key. Store capture substitutes
+        // only its fixed document title, never timestamp/size or a broad match.
+        let files = name == "Citrus"
+            ? app.cells.matching(identifier: "Citrus, celluloid")
+            : app.cells.matching(identifier: "VisionRemaining, celluloid")
         let document = files.firstMatch
         let documentReady = document.waitForExistence(timeout: 20)
-        let documentTitleMatches = documentReady && document.staticTexts["VisionRemaining"].exists
+        let documentTitleMatches = documentReady && (name == "Citrus"
+            ? document.staticTexts["Citrus"].exists : document.staticTexts["VisionRemaining"].exists)
         if !documentReady || files.count != 1 || !documentTitleMatches || !document.isHittable { recordRemainingBrowser(app, stage: "exact-seed-document") }
         XCTAssertTrue(documentReady); XCTAssertEqual(files.count, 1); XCTAssertTrue(documentTitleMatches)
         XCTAssertTrue(document.isEnabled); XCTAssertTrue(document.isHittable)

@@ -34,14 +34,14 @@ def write_container_metadata(path, bundle=store.APP_ID, metadata_uuid=None):
 
 def request():
     return {'schema': 'Celluloid.StoreRequest.1', 'id': REQUEST, 'bundle_identifier': store.APP_ID,
-        'document': store.FIXTURE_NAME, 'locale': 'en_US', 'language': 'en', 'sample_width': 120,
-        'sample_height': 80, 'preview_count': 1, 'controls': ['editor.import-files', 'editor.add-bubble', 'editor.export'],
+        'document': store.FIXTURE_NAME, 'locale': 'en_US', 'language': 'en', 'sample_width': store.SOURCE_WIDTH,
+        'sample_height': store.SOURCE_HEIGHT, 'preview_count': 1, 'controls': ['editor.import-files', 'editor.add-bubble', 'editor.export'],
         'ready': True, 'alerts': 0, 'sheets': 0, 'keyboards': 0, 'progress': 0}
 
 def diagnostic_request():
     return {'schema':'Celluloid.StoreDiagnosticRequest.1','id':REQUEST,
         'bundle_identifier':store.APP_ID,'document':store.FIXTURE_NAME,'locale':'en_US','language':'en',
-        'sample_width':120,'sample_height':80,'failure_kind':store.DIAGNOSTIC_KIND,
+        'sample_width':store.SOURCE_WIDTH,'sample_height':store.SOURCE_HEIGHT,'failure_kind':store.DIAGNOSTIC_KIND,
         'dimensions_observed':True,'preview_wait_succeeded':False,'store_qualified':False,
         'observations':{'preview_image_count':0,'preview_any_count':0,'canvas_any_count':1,
             'progress_count':1,'alerts_count':0,'sheets_count':0,'keyboards_count':0,
@@ -241,7 +241,7 @@ class ContractTests(unittest.TestCase):
         case = text.split('func testStoreSingleHeldEditorCapture()', 1)[1].split('func testSeededDocument', 1)[0]
         for forbidden in ('typeText(', '.screenshot()', 'undo.tap', 'redo.tap', 'editor.export"].tap', 'add-bubble"].tap'):
             self.assertNotIn(forbidden, case)
-        self.assertIn('openRemainingDocument(in: app)', case)
+        self.assertIn('openRemainingDocument(in: app, name: "Citrus")', case)
         self.assertIn('timeout: 620', case); self.assertIn('executionTimeAllowance = 1200', case); self.assertIn('Edited photo preview', case)
     def test_stream_preserves_owned_cleanup_with_guarded_observer(self):
         base = (ROOT/'Scripts/mac_archive_capture.py').read_text()
@@ -274,20 +274,20 @@ class FilesTests(unittest.TestCase):
         with self.assertRaises(ValueError): store.safe_container(path, link, DEVICE)
     def test_pristine_bytes_survive_migration(self):
         a, b = self.container(), self.container(OTHER)
-        meta = store.write_synthetic_fixture(a); store.write_synthetic_fixture(b)
+        meta = store.write_store_fixture(a); store.write_store_fixture(b)
         snapshot = store.pristine_snapshot(b, meta)
         self.assertTrue(snapshot['data_container_changed']); self.assertTrue(snapshot['fixture_contents_verified'])
     def test_modified_recipe_or_source_rejected(self):
-        for filename in store.synthetic_fixture_bytes():
+        for filename in store.store_fixture_bytes():
             with self.subTest(filename=filename):
-                folder = self.root/filename; folder.mkdir(); meta = store.write_synthetic_fixture(folder)
+                folder = self.root/filename; folder.mkdir(); meta = store.write_store_fixture(folder)
                 path = folder/'Documents'/store.FIXTURE_NAME/filename; path.write_bytes(path.read_bytes()+b' ')
                 with self.assertRaises(ValueError): store.pristine_snapshot(folder, meta)
     def test_sample_overwrite_and_symlink_rejected(self):
-        folder = self.container(); store.write_synthetic_fixture(folder)
-        with self.assertRaises(ValueError): store.write_synthetic_fixture(folder)
+        folder = self.container(); store.write_store_fixture(folder)
+        with self.assertRaises(ValueError): store.write_store_fixture(folder)
         link = self.root/'unsafe'; link.symlink_to(folder, target_is_directory=True)
-        with self.assertRaises(ValueError): store.write_synthetic_fixture(link)
+        with self.assertRaises(ValueError): store.write_store_fixture(link)
     def test_file_cap_and_symlink(self):
         path = self.root/'test'; path.write_bytes(b'1234')
         with self.assertRaises(ValueError): store.file_record(path, 3)
@@ -331,6 +331,95 @@ class FilesTests(unittest.TestCase):
     def test_pack_original_deadline(self):
         (self.root/store.FOLDER).mkdir()
         with self.assertRaises(ValueError): store.pack(self.root, BINDING, 1, 1+store.PACK_END+1)
+
+
+class StorePhotoFixtureTests(unittest.TestCase):
+    setUp=FilesTests.setUp
+    container=FilesTests.container
+    def test_approved_original_png_and_recipe_are_exact_inputs(self):
+        import hashlib,struct
+        inputs=store.store_fixture_bytes();image=inputs[store.SOURCE_ID+'.image']
+        self.assertEqual(len(image),2880485)
+        self.assertEqual(hashlib.sha256(image).hexdigest(),'cd4c5178d550003b452b75904caba58a72c6eadc4658a083469c7684b4c00b03')
+        self.assertEqual(hashlib.sha1(b'blob '+str(len(image)).encode()+b'\0'+image).hexdigest(),'49c4dfaa7f09c2db9f4853cadbb5baaa47490157')
+        self.assertEqual(struct.unpack('>IIBBBBB',image[16:29]),(1254,1254,8,2,0,0,0))
+        recipe=json.loads(inputs['recipe.json'])
+        self.assertEqual(recipe['filter'],'Original');self.assertEqual(recipe['overlays'],[])
+        self.assertEqual((recipe['canvasWidth'],recipe['canvasHeight']),(1254,1254))
+        self.assertEqual(recipe['sources'][0]['displayName'],'Citrus.png')
+        self.assertEqual(recipe['sources'][0]['crop'],{'centerX':.5,'centerY':.5,'zoom':1})
+        self.assertEqual(set(inputs),{'recipe.json',store.SOURCE_ID+'.image'})
+    def test_owned_package_records_bind_every_original_byte_and_source(self):
+        container=self.container();row=store.write_store_fixture(container)
+        self.assertEqual(row['schema'],'Celluloid.StorePhotoFixture.1')
+        self.assertEqual(row['package_name'],'Citrus.celluloid');self.assertEqual(row['source_asset'],store.DEMO_ASSET)
+        snapshot=store.pristine_snapshot(container,row)
+        self.assertFalse(snapshot['data_container_changed']);self.assertEqual(snapshot['files'],row['files'])
+        report={'sample_input':row,'sample_before':snapshot,'sample_at_checkpoint':snapshot,'sample_after':snapshot}
+        store.validate_store_capture_input(report,after=True)
+    def test_foreign_or_mutated_photo_metadata_cannot_relabel_a_source(self):
+        row=store.write_store_fixture(self.container())
+        for field in ('source-sha','source-commit','source-blob','package','bundle','size-type','dimensions','escape'):
+            bad=copy.deepcopy(row)
+            if field=='source-sha':bad['source_asset']['sha256']='0'*64
+            elif field=='source-commit':bad['source_asset']['source_commit']='0'*40
+            elif field=='source-blob':bad['source_asset']['git_blob']='0'*40
+            elif field=='package':bad['package_name']='VisionRemaining.celluloid'
+            elif field=='bundle':bad['bundle_identifier']='other.application'
+            elif field=='size-type':bad['files'][0]['bytes']=float(bad['files'][0]['bytes'])
+            elif field=='dimensions':bad['pixel_width']=120
+            else:bad['package_path']=str(self.root/'outside')
+            with self.subTest(field=field),self.assertRaises(ValueError):store.validate_store_fixture_metadata(bad)
+    def test_source_and_owned_package_reject_symlinks_and_hardlinks(self):
+        import shutil
+        root=self.root/'source';asset=root/store.DEMO_ASSET_PATH;asset.parent.mkdir(parents=True)
+        shutil.copyfile(ROOT/store.DEMO_ASSET_PATH,asset)
+        other=self.root/'linked-image.png';os.link(asset,other)
+        with self.assertRaises(ValueError):store.store_fixture_bytes(root)
+        other.unlink();asset.rename(other);asset.symlink_to(other)
+        with self.assertRaises(ValueError):store.store_fixture_bytes(root)
+        asset.unlink();asset.write_bytes(other.read_bytes())
+        linked=self.root/'source-link';linked.symlink_to(root,target_is_directory=True)
+        with self.assertRaises((ValueError,OSError)):store.store_fixture_bytes(linked)
+        container=self.container();row=store.write_store_fixture(container)
+        original=container/'Documents'/store.FIXTURE_NAME/(store.SOURCE_ID+'.image')
+        alias=self.root/'owned-hardlink';os.link(original,alias)
+        with self.assertRaises(ValueError):store.pristine_snapshot(container,row)
+        alias.unlink();original.rename(alias);original.symlink_to(alias)
+        with self.assertRaises(ValueError):store.pristine_snapshot(container,row)
+    def test_original_path_replacement_during_read_is_rejected(self):
+        import shutil
+        root=self.root/'source';asset=root/store.DEMO_ASSET_PATH;asset.parent.mkdir(parents=True)
+        shutil.copyfile(ROOT/store.DEMO_ASSET_PATH,asset);data=asset.read_bytes();real=store.os.fstat;calls=[0]
+        def replace(fd):
+            calls[0]+=1
+            if calls[0]==2:asset.rename(asset.with_suffix('.old'));asset.write_bytes(data)
+            return real(fd)
+        with mock.patch.object(store.os,'fstat',side_effect=replace),self.assertRaisesRegex(ValueError,'changed during read'):
+            store.store_fixture_bytes(root)
+    def test_recipe_change_rejected_even_if_metadata_digest_is_rewritten(self):
+        import hashlib
+        container=self.container();row=store.write_store_fixture(container)
+        path=container/'Documents'/store.FIXTURE_NAME/'recipe.json';recipe=json.loads(path.read_bytes());recipe['filter']='Fade'
+        data=json.dumps(recipe,sort_keys=True,separators=(',',':')).encode();path.write_bytes(data)
+        row['files'][1].update(bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+        with self.assertRaises(ValueError):store.pristine_snapshot(container,row)
+    def test_capture_uses_citrus_but_legacy_functional_fixture_keeps_its_default(self):
+        text=(ROOT/'Platforms/VisionUITests/NativeVisionUITests.swift').read_text()
+        case=text.split('func testStoreSingleHeldEditorCapture()',1)[1].split('func testSeededDocument',1)[0]
+        self.assertIn('openRemainingDocument(in: app, name: "Citrus")',case)
+        self.assertIn('1254 × 1254 px',case);self.assertIn('"document": "Citrus.celluloid"',case)
+        self.assertNotIn('120 × 80 px',case);self.assertNotIn('VisionRemaining.celluloid',case)
+        self.assertIn('name: String = "VisionRemaining"',text)
+        self.assertIn('["VisionRemaining", "Citrus"].contains(name)',text)
+        self.assertIn('matching(identifier: "Citrus, celluloid")',text)
+        self.assertIn('matching(identifier: "VisionRemaining, celluloid")',text)
+    def test_old_blue_requests_cannot_qualify_the_photo_capture(self):
+        for diagnostic in (False,True):
+            row=diagnostic_request() if diagnostic else request()
+            row.update(document='VisionRemaining.celluloid',sample_width=120,sample_height=80)
+            with self.assertRaises(ValueError):(store.validate_diagnostic_request if diagnostic else store.validate_request)(row,REQUEST)
+
 
 class ProcessTests(unittest.TestCase):
     def setUp(self):
@@ -1049,6 +1138,10 @@ class PackCLITests(unittest.TestCase):
         original=folder/'capture-original.jpeg';original.write_bytes(b'host fixture bytes, never native image evidence')
         raw={**store.file_record(original,store.ORIGINAL_CAP),'source':store.DIAGNOSTIC_IMAGE_SOURCE if diagnostic else store.NORMAL_IMAGE_SOURCE,'validation':IMAGE.copy()}
         row['original']=raw
+        inputs=self.root/'input-container';inputs.mkdir()
+        row['sample_input']=store.write_store_fixture(inputs)
+        snapshot=store.pristine_snapshot(inputs,row['sample_input'])
+        for stage in ('sample_before','sample_at_checkpoint','sample_after'):row[stage]=copy.deepcopy(snapshot)
         if diagnostic:
             raw['diagnostic_failure_kind']=store.DIAGNOSTIC_KIND
             row['diagnostic_ui_observations']=diagnostic_request()
@@ -1112,9 +1205,23 @@ class PackCLITests(unittest.TestCase):
                 self.assertEqual(packed.returncode,1);self.assertIn(b'ValueError',packed.stderr)
                 self.assertNotIn(b'NameError',packed.stderr);self.assertNotIn(b'ModuleNotFoundError',packed.stderr)
                 self.assertFalse((folder/'manifest.json').exists())
+    def test_fresh_pack_rejects_wrong_photo_provenance_or_missing_snapshot(self):
+        for optimized in (False,True):
+            for diagnostic in (False,True):
+                for change in ('source','before','checkpoint','after'):
+                    if diagnostic and change=='after':continue
+                    source,driver,env,folder,row=self.image_fixture(diagnostic)
+                    if change=='source':row['sample_input']['source_asset']['sha256']='0'*64
+                    elif change=='before':row.pop('sample_before')
+                    elif change=='checkpoint':row['sample_at_checkpoint']['files'][0]['sha256']='0'*64
+                    else:row['sample_after']['source_width']=120
+                    (folder/'report.json').write_text(json.dumps(row))
+                    result=self.invoke(source,driver,env,'--pack',optimized)
+                    self.assertEqual(result.returncode,1);self.assertIn(b'ValueError',result.stderr)
+                    self.assertNotIn(b'NameError',result.stderr);self.assertFalse((folder/'manifest.json').exists())
     def test_stdlib_fixture_name_matches_native_fixture_contract(self):
-        from run_vision_remaining import FIXTURE_NAME
-        self.assertEqual(store.FIXTURE_NAME,FIXTURE_NAME)
+        self.assertEqual(store.FIXTURE_NAME,"Citrus.celluloid")
+        self.assertEqual((store.SOURCE_WIDTH,store.SOURCE_HEIGHT),(1254,1254))
     def test_both_cohorts_pack_and_verdict_bind_their_own_fresh_process(self):
         for cohort in store.COHORTS:
             self.cohort=cohort
@@ -1165,10 +1272,12 @@ class CheckpointTests(unittest.TestCase):
         self.job.devices_root = self.devices; self.job.device = DEVICE
         self.job.image_helper = self.root/'image-helper'
         self.app_data = self.container(CONTAINER)
-        metadata = store.write_synthetic_fixture(self.app_data)
+        metadata = store.write_store_fixture(self.app_data)
+        initial_snapshot = store.pristine_snapshot(self.app_data,metadata)
         self.app_data.rename(self.root/'retired-app-data')
-        self.migrated = self.container(OTHER); store.write_synthetic_fixture(self.migrated)
+        self.migrated = self.container(OTHER); store.write_store_fixture(self.migrated)
         self.job.report['sample_input'] = metadata
+        self.job.report['sample_before'] = initial_snapshot
         app_parent = self.container(CONTAINER, 'Bundle'); self.app = app_parent/'CelluloidVision.app'; self.app.mkdir()
         (self.app/'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': store.APP_ID, 'CFBundleExecutable': 'CelluloidVision', 'DTPlatformName': 'xrsimulator'}))
         (self.app/'CelluloidVision').write_bytes(b'mock binary')
@@ -1541,6 +1650,10 @@ class EncodingTests(unittest.TestCase):
         self.job.image_helper = self.root/'image-helper'
         self.original = self.job.folder/'capture-original.jpeg'; self.original.write_bytes(b'r'*200)
         self.job.report['original'] = {**store.file_record(self.original, 1000),'source':store.NORMAL_IMAGE_SOURCE,'validation':IMAGE.copy()}
+        inputs=self.root/'input-container';inputs.mkdir()
+        self.job.report['sample_input']=store.write_store_fixture(inputs)
+        snapshot=store.pristine_snapshot(inputs,self.job.report['sample_input'])
+        for stage in ('sample_before','sample_at_checkpoint','sample_after'):self.job.report[stage]=copy.deepcopy(snapshot)
         self.job.report['ui_observations'] = request()
         self.job.report['capture'] = {'id':REQUEST,'success':True,'original_sha256':self.job.report['original']['sha256'],
             'width':3840,'height':2160,'mode':'RGB'}
