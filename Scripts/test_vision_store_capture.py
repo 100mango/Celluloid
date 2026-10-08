@@ -1029,7 +1029,9 @@ class MetadataTests(unittest.TestCase):
         self.assertFalse(any('private-name' in str(event) for event in events))
     def test_prior_lookup_ceiling_preserves_held_and_work_bounds(self):
         self.assertEqual(store.METADATA_SECONDS,180)
-        self.assertLess(3*store.METADATA_SECONDS+15+10+20,600)
+        self.assertEqual(store.SCREENSHOT_SECONDS,25)
+        self.assertEqual(3*store.METADATA_SECONDS+store.SCREENSHOT_SECONDS+10+20,595)
+        self.assertLess(3*store.METADATA_SECONDS+store.SCREENSHOT_SECONDS+10+20,600)
         self.assertEqual((store.WORK_END,store.CLEANUP_END,store.PACK_END,store.FINISH_END),(1800,1920,2160,2400))
 
 
@@ -1302,9 +1304,49 @@ class CheckpointTests(unittest.TestCase):
         def execute(command,**kwargs):
             caps.append(kwargs['seconds']);result=ordinary(command,**kwargs);now[0]+=kwargs['seconds']-.01;return result
         self.job.execute=execute;self.job.checkpoint(REQUEST,diagnostic=True)
-        self.assertEqual(caps,[180,180,180,15,10]);self.assertLess(now[0],2+600-20)
+        self.assertEqual(caps,[180,180,180,25,10]);self.assertLess(now[0],2+600-20)
         self.assertTrue(json.loads(self.ack.read_text())['diagnostic_capture_complete'])
         self.assertIsNone(self.job.checkpoint_deadline)
+    def test_single_screenshot_between_old_and_new_cap_can_finish_without_retry(self):
+        for diagnostic in (False,True):
+            if self.calls:self.setUp()
+            if diagnostic:self.request.write_text(json.dumps(diagnostic_request()))
+            now=[2.0];self.job.clock=lambda:now[0];ordinary=self.job.execute
+            def execute(command,**kwargs):
+                result=ordinary(command,**kwargs)
+                if 'screenshot' in command:
+                    self.assertEqual(kwargs['seconds'],25);now[0]+=20
+                return result
+            self.job.execute=execute;self.job.checkpoint(REQUEST,diagnostic=diagnostic)
+            ack=json.loads(self.ack.read_text());self.assertTrue(ack['diagnostic_capture_complete' if diagnostic else 'success'])
+            self.assertEqual(sum('screenshot' in c for c in self.calls),1)
+            self.assertFalse(self.job.blocked)
+            if diagnostic:self.assertFalse(ack['store_qualified'])
+    def test_screenshot_late_zero_exit_still_blocks_inspect_ack_and_device_cleanup(self):
+        for diagnostic in (False,True):
+            if self.calls:self.setUp()
+            if diagnostic:self.request.write_text(json.dumps(diagnostic_request()))
+            now=[2.0];self.job.clock=lambda:now[0];ordinary=self.job.execute
+            def execute(command,**kwargs):
+                result=ordinary(command,**kwargs)
+                if 'screenshot' in command:now[0]+=25.001
+                return result
+            self.job.execute=execute
+            with self.assertRaisesRegex(TimeoutError,'Late/signalled/unfinalized'):self.job.checkpoint(REQUEST,diagnostic=diagnostic)
+            self.assertTrue(self.job.blocked);self.assertFalse(self.ack.exists())
+            self.assertEqual(len(self.calls),4);self.assertTrue('screenshot' in self.calls[-1])
+            self.assertNotIn('original',self.job.report);self.assertFalse((self.job.folder/'capture-original.jpeg').exists())
+            self.job.finish();self.assertEqual(len(self.calls),4);self.assertEqual(self.job.report['cleanup'],[])
+    def test_new_screenshot_allowance_cannot_cross_existing_held_reserve(self):
+        now=[2.0];self.job.clock=lambda:now[0];read=store.json_file
+        def delayed_request(path,cap):
+            row=read(path,cap)
+            if path==self.request:now[0]=2+600-25-20
+            return row
+        with mock.patch.object(store,'json_file',side_effect=delayed_request),self.assertRaisesRegex(ValueError,'wall-time reserve'):
+            self.job.checkpoint(REQUEST)
+        self.assertTrue(self.job.blocked);self.assertEqual(len(self.calls),3)
+        self.assertFalse(self.ack.exists());self.job.finish();self.assertEqual(len(self.calls),3)
     def test_diagnostic_still_rejects_wrong_binary_and_mutated_fixture(self):
         for kind in ('binary','fixture'):
             with self.subTest(kind=kind):
@@ -1358,14 +1400,14 @@ class CheckpointTests(unittest.TestCase):
             return result
         self.job.execute = execute
         self.job.checkpoint(REQUEST)
-        self.assertEqual(caps, [180, 180, 180, 15, 10])
+        self.assertEqual(caps, [180, 180, 180, 25, 10])
         self.assertTrue(json.loads(self.ack.read_text())['success'])
         self.assertLess(now[0], 2+600-20)
         self.assertIsNone(self.job.checkpoint_deadline)
         # The later lookup remains allowed after the held checkpoint has ended.
         now[0] = 603
         self.job.container('after-data', store.APP_ID)
-        self.assertEqual(caps, [180, 180, 180, 15, 10, 180])
+        self.assertEqual(caps, [180, 180, 180, 25, 10, 180])
         self.assertGreater(now[0], 2+600)
     def test_remaining_held_budget_blocks_full_data_cap_before_spawn(self):
         now = [2.0]; self.job.clock = lambda: now[0]

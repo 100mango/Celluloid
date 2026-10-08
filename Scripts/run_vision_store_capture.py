@@ -38,9 +38,9 @@ def load_native_helpers():
 # need only standard libraries and never initialize native helper modules.
 if __name__ != '__main__': load_native_helpers()
 
-BASE = '3f8d40f979970023201cac7b477431c839196ede'
+BASE = '90afaf4b1c1c1232ee27a435dd9b80ebd1218477'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = '0e670602dc680030586739066d9fc0075d97e155'
+BASE_TREE = 'a5860657ced15d0eadffaf85a9952a8ca13d76c9'
 BRANCH = 'refs/heads/vision-store-single'
 COHORTS = ('one', 'two')
 WORKFLOW = '.github/workflows/vision-store-single.yml'
@@ -56,6 +56,7 @@ DIAGNOSTICS = 'vision-store-diagnostics'
 DIAGNOSTIC_FILES = {'bootstrap.json': 16_384, 'report.json': 500_000, 'failure-tail.log': FAILURE_TAIL_CAP}
 # Parent-approved local bounds only; native admission remains disabled.
 ORIGINAL_CAP, STORE_CAP, EVIDENCE_CAP = 16_000_000, 3_000_000, 24_000_000
+SCREENSHOT_SECONDS = 25
 REPORT_CAP = 500_000
 EVIDENCE_FILES = {name: cap for name, cap in (
     ('report.json', REPORT_CAP), ('manifest.json', 32_768),
@@ -706,7 +707,7 @@ class Job:
             self.report['diagnostic_ui_observations' if diagnostic else 'ui_observations'] = row; self.persist()
             original = self.temp/'capture-original.jpeg'
             need(not original.exists() and not original.is_symlink(), 'Do not overwrite capture')
-            self.call('screenshot', ['xcrun', 'simctl', 'io', self.device, 'screenshot', '--type=jpeg', str(original)], 15)
+            self.call('screenshot', ['xcrun', 'simctl', 'io', self.device, 'screenshot', '--type=jpeg', str(original)], SCREENSHOT_SECONDS)
             raw = file_record(original, ORIGINAL_CAP)
             # Preserve raw bytes before image acceptance. A rejected resolution or
             # decode remains failure evidence; never relabel it a Store asset.

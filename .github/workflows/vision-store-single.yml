@@ -11,7 +11,7 @@ jobs:
   vision:
     # Two separate runner cohorts, one image each; failures remain failed.
     # Exact-tree root GO is required before publishing this fixed-ref update.
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/vision-store-single' && github.event.created == false && github.event.deleted == false && github.event.before == '3f8d40f979970023201cac7b477431c839196ede' && github.run_attempt == 1 }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/vision-store-single' && github.event.created == false && github.event.deleted == false && github.event.before == '90afaf4b1c1c1232ee27a435dd9b80ebd1218477' && github.run_attempt == 1 }}
     name: Hold one real editor view (${{ matrix.cohort }})
     continue-on-error: false
     strategy:
