@@ -142,7 +142,7 @@ class ContractTests(unittest.TestCase):
         phases = {n.args[0].value: n.args[2].value for n in calls if n.func.attr == 'call' and len(n.args) >= 3}
         self.assertEqual(phases['install'], 360)
         self.assertEqual({k: phases[k] for k in ('build','boot','ui')}, {'build':600,'boot':45,'ui':1200})
-        self.assertNotIn('bootstatus', phases)
+        self.assertEqual(phases['bootstatus'],240)
         # Preserve the prior host-side fixture-write guard; add no aggregate max-cap gate.
         guards = [n for n in calls if n.func.attr == 'check_active']
         self.assertEqual(len(guards), 1); self.assertEqual(guards[0].args, [])
@@ -259,7 +259,7 @@ class ProcessTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
     def job(self, execute): return store.Job(ROOT, self.root, BINDING, 1, execute=execute, clock=lambda: 2)
-    def work_to_install(self, boot_result):
+    def work_to_install(self, boot_result, readiness_result=0, control_failure=None, readiness_setup_error=None):
         app = self.root/'products/CelluloidVision.app'
         app.mkdir(parents=True)
         runner = app.parent/'CelluloidVisionUITests-Runner.app'; runner.mkdir()
@@ -279,6 +279,11 @@ class ProcessTests(unittest.TestCase):
             if command[:4] == ['xcrun', 'simctl', 'list', 'devicetypes']:
                 output = json.dumps({'devicetypes': [{'identifier': device_type}]}).encode()
             if command[:3] == ['xcrun', 'simctl', 'create']: output = DEVICE.encode()
+            if command == [sys.executable,'-c',store.HOST_CONTROL_SCRIPT]:
+                phase = 'host-control-after-boot' if any(c[:3] == ['xcrun','simctl','boot'] for c in calls) else 'host-control-before-boot'
+                self.assertEqual(options['seconds'],30); self.assertEqual(options['cap'],1024)
+                if control_failure == phase: return subprocess.CompletedProcess(command,0,b'bad receipt',b'')
+                return subprocess.CompletedProcess(command,0,b'VISION_HOST_CONTROL_ENTRY 2.0\nVISION_HOST_CONTROL_EXIT 2.0\n',b'')
             if command[:3] == ['xcrun', 'simctl', 'boot']:
                 self.assertEqual(command, ['xcrun', 'simctl', 'boot', DEVICE])
                 self.assertEqual(options['seconds'], 45)
@@ -287,20 +292,38 @@ class ProcessTests(unittest.TestCase):
                     job.clock = lambda: 48  # Started at 2; even zero exit after 47 fails.
                     return subprocess.CompletedProcess(command, 0, b'', b'')
                 return subprocess.CompletedProcess(command, boot_result, b'', b'')
+            if command[:3] == ['xcrun','simctl','bootstatus']:
+                self.assertEqual(command,['xcrun','simctl','bootstatus',DEVICE,'-b'])
+                self.assertEqual(options['seconds'],240)
+                if isinstance(readiness_result,BaseException): raise readiness_result
+                if readiness_result == 'late-zero':
+                    job.clock=lambda:243
+                    return subprocess.CompletedProcess(command,0,b'Device already booted, nothing to do.',b'')
+                return subprocess.CompletedProcess(command,readiness_result,b'Finished',b'')
             if command[:3] == ['xcrun', 'simctl', 'install']:
                 self.assertEqual(command, ['xcrun', 'simctl', 'install', DEVICE, str(app)])
                 self.assertEqual(options['seconds'], 360)
                 return subprocess.CompletedProcess(command, 1, b'host-only stop at install', b'')
             return subprocess.CompletedProcess(command, 0, output, b'')
         job = self.job(execute)
+        if readiness_setup_error is not None:
+            original_persist=job.persist;raised=[False]
+            def persist():
+                if 'readiness' in job.report and not raised[0]:
+                    raised[0]=True;raise readiness_setup_error
+                original_persist()
+            job.persist=persist
         with mock.patch.object(job, 'source_identity'), mock.patch.object(store, 'built_vision_app', return_value=(app, 'b'*64)):
-            with self.assertRaises((ValueError, CaptureStopped, TimeoutError)) as caught:
+            with self.assertRaises((ValueError, CaptureStopped, TimeoutError, OSError, KeyboardInterrupt)) as caught:
                 job.work()
         return job, calls, caught.exception
-    def test_fresh_successful_boot_proceeds_directly_to_exact_install(self):
+    def test_successful_controls_and_readiness_continue_same_cohort_to_exact_install(self):
         job, calls, error = self.work_to_install(0)
         device_commands = [command[2] for command in calls if command[:2] == ['xcrun', 'simctl']]
-        self.assertEqual(device_commands, ['list', 'list', 'create', 'boot', 'install'])
+        self.assertEqual(device_commands, ['list', 'list', 'create', 'boot', 'bootstatus', 'install'])
+        self.assertEqual([row['phase'] for row in job.report['host_controls']],list(store.HOST_CONTROL_PHASES))
+        self.assertTrue(all(row['complete'] for row in job.report['host_controls']))
+        self.assertTrue(job.report['readiness']['complete'])
         self.assertEqual(str(error), 'Known completed command failed: install')
         self.assertFalse(job.blocked)
     def test_failed_or_uncertain_boot_never_installs(self):
@@ -309,8 +332,32 @@ class ProcessTests(unittest.TestCase):
                 self.root = Path(folder)
                 job, calls, error = self.work_to_install(result)
                 self.assertFalse(any(command[:3] == ['xcrun', 'simctl', 'install'] for command in calls))
-                self.assertEqual(job.blocked, result != 1)
+                self.assertTrue(job.blocked)
                 self.assertEqual(job.device, DEVICE)
+    def test_readiness_failure_or_late_exit_stops_install_and_device_cleanup(self):
+        for result in (1,-9,None,'late-zero',CaptureStopped('duration-limit',True),
+                       CaptureStopped('interrupted-by-signal-15',True,signal.SIGTERM)):
+            with self.subTest(result=result),tempfile.TemporaryDirectory() as folder:
+                self.root=Path(folder);job,calls,error=self.work_to_install(0,readiness_result=result)
+                self.assertTrue(job.blocked);self.assertFalse(job.report['readiness']['complete'])
+                self.assertFalse(any(c[:3] == ['xcrun','simctl','install'] for c in calls))
+                count=len(calls);job.finish();self.assertEqual(len(calls),count);self.assertEqual(job.report['cleanup'],[])
+    def test_control_failures_stop_remaining_device_work(self):
+        for phase in store.HOST_CONTROL_PHASES:
+            with self.subTest(phase=phase),tempfile.TemporaryDirectory() as folder:
+                self.root=Path(folder);job,calls,error=self.work_to_install(0,control_failure=phase)
+                self.assertTrue(job.blocked);self.assertFalse(job.report['readiness']['complete'])
+                forbidden=('bootstatus','install') if phase.endswith('after-boot') else ('boot','bootstatus','install')
+                self.assertFalse(any(c[:2] == ['xcrun','simctl'] and c[2] in forbidden for c in calls))
+                count=len(calls);job.finish();self.assertEqual(len(calls),count);self.assertEqual(job.report['cleanup'],[])
+    def test_readiness_initial_persist_failure_or_interrupt_stops_device_work(self):
+        for error in (OSError('Injected readiness persistence failure'),KeyboardInterrupt()):
+            with self.subTest(error=type(error).__name__),tempfile.TemporaryDirectory() as folder:
+                self.root=Path(folder);job,calls,caught=self.work_to_install(0,readiness_setup_error=error)
+                self.assertIs(caught,error);self.assertTrue(job.blocked)
+                self.assertTrue((self.root/store.BARRIER).is_file())
+                self.assertEqual([c[2] for c in calls if c[:2] == ['xcrun','simctl']],['list','list','create'])
+                count=len(calls);job.finish();self.assertEqual(len(calls),count);self.assertEqual(job.report['cleanup'],[])
     def test_all_fixed_container_queries_use_bounded_metadata_and_no_simctl(self):
         container = self.root/DEVICE/'data/Containers/Data/Application'/CONTAINER
         container.mkdir(parents=True); write_container_metadata(container)
@@ -426,6 +473,84 @@ class ProcessTests(unittest.TestCase):
         with self.assertRaises(CaptureStopped) as caught:
             stream_capture([sys.executable, '-c', 'import time; time.sleep(10)'], seconds=.05, cap=100)
         self.assertTrue(caught.exception.cleanup_confirmed)
+
+class HostControlTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
+    def test_aggregate_snapshot_uses_only_bounded_builtin_values(self):
+        values={'SC_PAGE_SIZE':4096,'SC_PHYS_PAGES':1000,'SC_AVPHYS_PAGES':0}
+        with mock.patch.object(store.os,'cpu_count',return_value=3), \
+             mock.patch.object(store.os,'sysconf',side_effect=lambda key:values[key]), \
+             mock.patch.object(store.os,'getloadavg',return_value=(900.0,800.0,700.0)), \
+             mock.patch.object(store.os,'open',side_effect=AssertionError('No file reads')):
+            row=store.host_snapshot()
+        self.assertEqual(row,{'logical_cpu_capacity':3,'physical_memory_capacity_bytes':4096000,
+            'available_physical_memory_bytes':0,'load_average':[900.0,800.0,700.0]})
+        self.assertLess(len(json.dumps(row)),1024)
+    def test_unsupported_or_invalid_aggregate_counters_are_null_not_health_failures(self):
+        for value in (None,True,-1,0,4097):
+            with self.subTest(value=value),mock.patch.object(store.os,'cpu_count',return_value=value), \
+                 mock.patch.object(store.os,'sysconf',side_effect=ValueError('private value')), \
+                 mock.patch.object(store.os,'getloadavg',side_effect=OSError('private value')):
+                self.assertEqual(store.host_snapshot(),{'logical_cpu_capacity':None,'physical_memory_capacity_bytes':None,
+                    'available_physical_memory_bytes':None,'load_average':None})
+        with mock.patch.object(store.os,'sysconf',side_effect=lambda key:{'SC_PAGE_SIZE':4096,'SC_PHYS_PAGES':10,'SC_AVPHYS_PAGES':11}[key]):
+            self.assertIsNone(store.host_snapshot()['available_physical_memory_bytes'])
+    def test_real_known_subprocess_entry_and_completion_are_retained(self):
+        job=store.Job(ROOT,self.root,BINDING,time.monotonic())
+        with mock.patch.object(store,'host_loadavg',return_value=[999.0,999.0,999.0]):
+            job.host_control(store.HOST_CONTROL_PHASES[0])
+        row=job.report['host_controls'][0]
+        self.assertTrue(row['complete'])  # No CPU/load admission threshold.
+        self.assertLessEqual(row['entry_delay_seconds'],row['observed_total_seconds'])
+        self.assertGreaterEqual(row['child_interval_seconds'],0)
+        self.assertEqual(job.report['operations'][0]['archive_log']['raw_capture_limit_bytes'],1024)
+        self.assertEqual(job.report['operations'][0]['command'],[sys.executable,'-c',store.HOST_CONTROL_SCRIPT])
+        self.assertFalse(job.blocked)
+        with self.assertRaisesRegex(ValueError,'Duplicate'):job.host_control(store.HOST_CONTROL_PHASES[0])
+        self.assertEqual(len(job.report['host_controls']),1)
+    def test_malformed_future_or_noisy_receipt_blocks_device_work(self):
+        good=b'VISION_HOST_CONTROL_ENTRY 2.0\nVISION_HOST_CONTROL_EXIT 2.0\n'
+        for output,error in [(b'private value',b''),(good.replace(b'2.0',b'nan'),b''),
+                             (good.replace(b'2.0',b'3.0'),b''),(good,b'noise')]:
+            with self.subTest(output=output,error=error),tempfile.TemporaryDirectory() as folder:
+                execute=mock.Mock(return_value=subprocess.CompletedProcess([],0,output,error))
+                job=store.Job(ROOT,folder,BINDING,1,execute=execute,clock=lambda:2);job.device=DEVICE
+                with self.assertRaises(ValueError):job.host_control(store.HOST_CONTROL_PHASES[0])
+                self.assertTrue(job.blocked);job.finish();self.assertEqual(execute.call_count,1)
+                self.assertEqual(job.report['cleanup'],[]);self.assertFalse(job.report['host_controls'][0]['complete'])
+    def test_real_control_timeout_byte_limit_and_signal_keep_owned_stop_barrier(self):
+        cases=[('import time;time.sleep(2)',.05,'duration-limit'),
+            ('print("x"*2048,flush=True)',5,'byte-limit'),
+            ('import os,signal,time;os.kill(os.getppid(),signal.SIGTERM);time.sleep(2)',5,'interrupted-by-signal-15')]
+        for script,cap,reason in cases:
+            with self.subTest(reason=reason),tempfile.TemporaryDirectory() as folder:
+                job=store.Job(ROOT,folder,BINDING,time.monotonic());job.device=DEVICE
+                with mock.patch.object(store,'HOST_CONTROL_SCRIPT',script),mock.patch.object(store,'HOST_CONTROL_SECONDS',cap):
+                    with self.assertRaises(CaptureStopped) as caught:job.host_control(store.HOST_CONTROL_PHASES[0])
+                self.assertEqual(str(caught.exception),reason);self.assertTrue(caught.exception.cleanup_confirmed)
+                if reason.startswith('interrupted'):self.assertEqual(caught.exception.cancelled_signal,signal.SIGTERM)
+                self.assertTrue(job.blocked);job.finish();self.assertEqual(job.report['cleanup'],[])
+                self.assertEqual(len(job.report['operations']),1)
+                self.assertLessEqual(job.report['operations'][0]['archive_log']['captured_total_bytes'],1024)
+    def test_added_controls_and_readiness_keep_original_critical_path_admission(self):
+        self.assertEqual(2*store.HOST_CONTROL_SECONDS+240,300)
+        self.assertEqual((store.WORK_END,store.CLEANUP_END,store.PACK_END,store.FINISH_END),(1800,1920,2160,2400))
+        for phase,seconds in [('bootstatus',240),('install',360),('ui',1200)]:
+            for epsilon in (-.001,0):
+                with self.subTest(phase=phase,epsilon=epsilon),tempfile.TemporaryDirectory() as folder:
+                    now=1+store.WORK_END-seconds-20+epsilon
+                    execute=mock.Mock(return_value=subprocess.CompletedProcess([],0,b'',b''))
+                    job=store.Job(ROOT,folder,BINDING,1,execute=execute,clock=lambda:now)
+                    if epsilon<0:job.call(phase,['mock'],seconds);execute.assert_called_once()
+                    else:
+                        with self.assertRaisesRegex(ValueError,'wall-time reserve'):job.call(phase,['mock'],seconds)
+                        execute.assert_not_called()
+        with tempfile.TemporaryDirectory() as folder:
+            execute=mock.Mock(side_effect=AssertionError('Late control must not spawn'))
+            job=store.Job(ROOT,folder,BINDING,1,execute=execute,clock=lambda:1+store.WORK_END-store.HOST_CONTROL_SECONDS-20)
+            with self.assertRaisesRegex(ValueError,'wall-time reserve'):job.host_control(store.HOST_CONTROL_PHASES[0])
+            execute.assert_not_called()
 
 class MetadataTests(unittest.TestCase):
     def setUp(self):
@@ -579,16 +704,16 @@ class MetadataTests(unittest.TestCase):
         command = [sys.executable,str(Path(store.__file__).resolve()),'--resolve-container',DEVICE,store.APP_ID,'Data']
         report = {'binding':BINDING,'started_monotonic':1,'device':DEVICE,
             'source-before':{'base':store.BASE,'unchanged_product_scope':True},
-            'operations':[{'phase':phase,'complete':True,'return_code':0} for phase in ('create','boot','install')]
+            'operations':[{'phase':phase,'complete':True,'return_code':0} for phase in ('create',*store.HOST_CONTROL_PHASES,'boot','bootstatus','install')]
                 +[{'phase':'seed-data','complete':False,'seconds':store.METADATA_SECONDS,'command':command}]}
         return folder/'report.json',report
     def test_lookup_requires_persisted_fresh_device_and_exact_operation(self):
         path,report = self.operation_report(); path.write_text(json.dumps(report))
         store.validate_metadata_operation(self.root,BINDING,1,DEVICE,store.APP_ID,'Data')
-        for change in ('binding','device','create','boot','install','uncertain','phase','command','complete','source'):
+        for change in ('binding','device','create',*store.HOST_CONTROL_PHASES,'boot','bootstatus','install','uncertain','phase','command','complete','source'):
             row = copy.deepcopy(report)
             if change in ('binding','device'): row[change] = 'wrong'
-            elif change in ('create','boot','install'): row['operations'] = [r for r in row['operations'] if r['phase'] != change]
+            elif change in ('create',*store.HOST_CONTROL_PHASES,'boot','bootstatus','install'): row['operations'] = [r for r in row['operations'] if r['phase'] != change]
             elif change == 'uncertain': row['operations'][1]['uncertain'] = True
             elif change == 'source': row['source-before']['base'] = 'f'*40
             else: row['operations'][-1][change] = True if change == 'complete' else 'wrong'
@@ -629,7 +754,7 @@ class MetadataTests(unittest.TestCase):
         command = [sys.executable,str(driver),'--resolve-container',DEVICE,store.APP_ID,'Data']
         report = {'binding':binding,'started_monotonic':started,'device':DEVICE,
             'source-before':{'base':store.BASE,'unchanged_product_scope':True},'complete':False,
-            'operations':[{'phase':phase,'complete':True,'return_code':0} for phase in ('create','boot','install')]
+            'operations':[{'phase':phase,'complete':True,'return_code':0} for phase in ('create',*store.HOST_CONTROL_PHASES,'boot','bootstatus','install')]
                 +[{'phase':'seed-data','complete':False,'seconds':store.METADATA_SECONDS,'command':command}]}
         (folder/'report.json').write_text(json.dumps(report))
         (temp/store.CLOCK).write_text(json.dumps({'binding':binding,'started_monotonic':started}))

@@ -34,9 +34,9 @@ def load_native_helpers():
 # need only standard libraries and never initialize native helper modules.
 if __name__ != '__main__': load_native_helpers()
 
-BASE = 'fee44c06b88f3641c351a7c8bace5f140b38d9f1'
+BASE = '10a022a85b134caa5f20c2fee431967f836e3049'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = 'b3b6933eee08bf6c2c80bbace6160439934f527d'
+BASE_TREE = '016cc0d7d64bcbf21c8bd099b0e7178f6c59296f'
 BRANCH = 'refs/heads/codex/vision-store-single'
 WORKFLOW = '.github/workflows/vision-store-single.yml'
 SELECTOR = 'CelluloidVisionUITests/NativeVisionUITests/testStoreSingleHeldEditorCapture'
@@ -67,6 +67,11 @@ METADATA_NAME = '.com.apple.mobile_container_manager.metadata.plist'
 # Reuse the reviewed per-query ceiling; original work/held deadlines still bind.
 METADATA_CAP, METADATA_TOTAL_CAP, METADATA_ENTRIES, METADATA_SECONDS = 262_144, 16_777_216, 4096, 180
 RESOLVER_STAGE_CAP, RESOLVER_STAGE_LIMIT = 8192, 32
+HOST_CONTROL_SECONDS, HOST_CONTROL_CAP = 30, 1024
+HOST_CONTROL_PHASES = ('host-control-before-boot','host-control-after-boot')
+HOST_CONTROL_SCRIPT = ('import time\n'
+    'print("VISION_HOST_CONTROL_ENTRY",time.monotonic(),flush=True)\n'
+    'print("VISION_HOST_CONTROL_EXIT",time.monotonic(),flush=True)\n')
 RESOLVER_FAILURE_STEPS = frozenset(('root','scan-open','scan-next','entry-limit','entry-stat',
     'entry-type','entry-uuid','entry-open','entry-stat-open','entry-stability','entry-close',
     'metadata-open','metadata-stat','metadata-type','metadata-links','metadata-size','metadata-read',
@@ -138,6 +143,24 @@ def host_loadavg():
             return list(load)
     except (AttributeError,OSError): pass
     return None
+
+
+def host_snapshot():
+    """Bounded aggregate OS counters only; no process, path or environment data."""
+    def positive(read, cap, zero=False):
+        try:
+            value = read()
+            return value if type(value) is int and (0 <= value if zero else 0 < value) and value <= cap else None
+        except (AttributeError,OSError,ValueError): return None
+    cpu = positive(lambda: os.cpu_count(),4096)
+    page = positive(lambda: os.sysconf('SC_PAGE_SIZE'),1_048_576)
+    pages = positive(lambda: os.sysconf('SC_PHYS_PAGES'),1<<48)
+    available = positive(lambda: os.sysconf('SC_AVPHYS_PAGES'),1<<48,zero=True)
+    memory = page*pages if page is not None and pages is not None else None
+    free = page*available if page is not None and available is not None else None
+    return {'logical_cpu_capacity':cpu,'physical_memory_capacity_bytes':memory,
+        'available_physical_memory_bytes':free if free is not None and memory is not None and free <= memory else None,
+        'load_average':host_loadavg()}
 
 
 if _RESOLVER_MODE: resolver_stage('stdlib-ready')
@@ -361,7 +384,7 @@ def validate_metadata_operation(temp, binding, started, device, bundle, kind):
         and report.get('source-before', {}).get('unchanged_product_scope') is True, 'Fresh source identity missing')
     operations = report.get('operations', [])
     need(operations and not any(row.get('uncertain') or row.get('error') for row in operations), 'Uncertain metadata operation')
-    for phase in ('create','boot','install'):
+    for phase in ('create',*HOST_CONTROL_PHASES,'boot','bootstatus','install'):
         rows = [row for row in operations if row.get('phase') == phase]
         need(len(rows) == 1 and rows[0].get('complete') is True
             and type(rows[0].get('return_code')) is int and rows[0]['return_code'] == 0, 'Fresh device operation missing')
@@ -476,6 +499,8 @@ class Job:
         self.report = {'schema': 'Celluloid.StoreCapture.1', 'binding': binding,
             'started_monotonic': started, 'scope': 'One real held editor image; synthetic INPUT only; no functionality or store-acceptance claim',
             'complete': False, 'visual_review_status': 'pending', 'store_ready': False,
+            'host_diagnostic_scope': 'CPU count and physical memory are capacity, not utilization or pressure. '
+                'Control timings separate host child delay from readiness only; they do not establish a CPU or memory cause.',
             'signed': False, 'apple_upload': False, 'operations': []}
         self.persist()
     def persist(self):
@@ -526,7 +551,8 @@ class Job:
             executor = stream_capture if observer is not None else self.execute
             options = {'observer': observer, 'control': self.bind_observer_guard} if observer is not None else {}
             self.check_active(seconds+20, cleanup=cleanup)
-            result = executor(command, seconds=seconds, cap=ARCHIVE_RAW_CAP, cleanup_grace=10, **options)
+            capture_cap = HOST_CONTROL_CAP if phase in HOST_CONTROL_PHASES else ARCHIVE_RAW_CAP
+            result = executor(command, seconds=seconds, cap=capture_cap, cleanup_grace=10, **options)
             stdout, stderr, complete = result.stdout, result.stderr, True
             row['return_code'] = result.returncode
             if result.returncode is None or result.returncode < 0 or self.clock() > row['started_monotonic']+seconds:
@@ -550,6 +576,7 @@ class Job:
             if observer is not None: self.observer_guard = None
             row['finished_monotonic'] = self.clock()
             retain_archive_output(row, stdout, stderr, capture_complete=complete)
+            if phase in HOST_CONTROL_PHASES: row['archive_log']['raw_capture_limit_bytes'] = HOST_CONTROL_CAP
             text = row.pop('stdout')+'\n[stderr]\n'+row.pop('stderr')
             # Same flushed, bounded phase/tail reporting used by successful base83.
             print('VISION_PHASE_END '+json.dumps({'phase':phase,'complete':row['complete'],'return_code':row.get('return_code'),
@@ -567,6 +594,30 @@ class Job:
                 path = self.folder/(phase+'.log'); path.write_text(text)
                 row['retained_log'] = file_record(path, EVIDENCE_FILES[path.name])
             self.persist()
+    def host_control(self, phase):
+        need(phase in HOST_CONTROL_PHASES, 'Unexpected host control phase')
+        need(not any(row['phase'] == phase for row in self.report.get('host_controls',[])), 'Duplicate host control')
+        self.check_active(HOST_CONTROL_SECONDS+20)
+        row = {'phase':phase,'host_before':host_snapshot(),'complete':False}
+        self.report.setdefault('host_controls',[]).append(row); self.persist()
+        try:
+            value = self.call(phase,[sys.executable,'-c',HOST_CONTROL_SCRIPT],HOST_CONTROL_SECONDS)
+            operation = self.report['operations'][-1]
+            matched = re.fullmatch(r'VISION_HOST_CONTROL_ENTRY ([0-9]+(?:\.[0-9]+)?)\n'
+                r'VISION_HOST_CONTROL_EXIT ([0-9]+(?:\.[0-9]+)?)\n',value)
+            need(matched is not None, 'Malformed host control receipt')
+            entry, end = map(float,matched.groups())
+            start, finished = operation['started_monotonic'], self.clock()
+            need(all(math.isfinite(v) for v in (entry,end)) and start <= entry <= end <= finished
+                and finished <= start+HOST_CONTROL_SECONDS, 'Late or invalid host control clock')
+            need(operation['archive_log']['streams']['stderr']['full_bytes'] == 0, 'Unexpected host control stderr')
+            row.update(complete=True,entry_delay_seconds=entry-start,
+                child_interval_seconds=end-entry,observed_total_seconds=finished-start)
+        except BaseException:
+            if not self.blocked: self.barrier({'phase':phase,'error':'Host control qualification failed','uncertain':True})
+            raise
+        finally:
+            row['host_after'] = host_snapshot(); self.persist()
     def container(self, phase, bundle, kind='Data'):
         need(CONTAINER_PHASES.get(phase) == (bundle,kind), 'Wrong metadata resolution phase')
         value = self.call(phase, [sys.executable,str(Path(__file__).resolve()),'--resolve-container',
@@ -708,9 +759,18 @@ class Job:
         need(sum(r.get('identifier') == wanted_type for r in types) == 1 and wanted_type in {r['identifier'] for r in runtime[0]['supportedDeviceTypes']}, 'Expected compatible 4K Vision device type')
         self.device = fixed_uuid(self.call('create', ['xcrun', 'simctl', 'create', 'Celluloid Store '+self.binding['GITHUB_SHA'][:12], wanted_type, wanted_runtime], 30).strip())
         self.report.update(device=self.device, runtime=runtime[0], device_type=wanted_type)
-        self.call('boot', ['xcrun', 'simctl', 'boot', self.device], 45)
-        # Continue only after this fresh device's boot completes within its cap.
-        # Actual install and held UI evidence remain mandatory readiness checks.
+        try:
+            self.report['readiness'] = {'complete':False,'device':self.device}; self.persist()
+            self.host_control('host-control-before-boot')
+            self.call('boot', ['xcrun', 'simctl', 'boot', self.device], 45)
+            self.host_control('host-control-after-boot')
+            self.call('bootstatus', ['xcrun', 'simctl', 'bootstatus', self.device, '-b'], 240)
+            self.report['readiness']['complete'] = True; self.persist()
+        except BaseException:
+            if not self.blocked: self.barrier({'phase':'pre-install-readiness',
+                'error':'Readiness qualification failed','uncertain':True})
+            raise
+        # Readiness gates admission, not success: actual install and held UI remain mandatory.
         self.call('install', ['xcrun', 'simctl', 'install', self.device, str(app)], 360)
         container = self.container('seed-data', APP_ID)
         self.check_active()
