@@ -1005,6 +1005,88 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual((store.WORK_END,store.CLEANUP_END,store.PACK_END,store.FINISH_END),(1800,1920,2160,2400))
 
 
+class PackCLITests(unittest.TestCase):
+    # Fresh processes contain only the driver and admission JSON, never native
+    # helper modules. Mock bytes below are not screenshots or UI evidence.
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.base=Path(self.temp.name);self.fixture_count=0
+    cli_fixture=MetadataTests.cli_fixture
+    def image_fixture(self,diagnostic=False,derivative=False):
+        self.fixture_count+=1;self.root=self.base/str(self.fixture_count)
+        source,driver,env=self.cli_fixture();folder=Path(env['RUNNER_TEMP'])/store.FOLDER
+        row=json.loads((folder/'report.json').read_bytes())
+        original=folder/'capture-original.jpeg';original.write_bytes(b'host fixture bytes, never native image evidence')
+        raw={**store.file_record(original,store.ORIGINAL_CAP),'source':store.DIAGNOSTIC_IMAGE_SOURCE if diagnostic else store.NORMAL_IMAGE_SOURCE,'validation':IMAGE.copy()}
+        row['original']=raw
+        if diagnostic:
+            raw['diagnostic_failure_kind']=store.DIAGNOSTIC_KIND
+            row['diagnostic_ui_observations']=diagnostic_request()
+            row['diagnostic_capture']={'schema':'Celluloid.StoreDiagnosticAck.1','id':REQUEST,
+                'failure_kind':store.DIAGNOSTIC_KIND,'store_qualified':False,'diagnostic_capture_complete':True,
+                'original_sha256':raw['sha256'],'width':3840,'height':2160,'mode':'RGB'}
+        else:
+            row.update(complete=True,capture_qualified=True,ui_observations=request())
+            row['capture']={'id':REQUEST,'success':True,'original_sha256':raw['sha256'],'width':3840,'height':2160,'mode':'RGB'}
+            if derivative:
+                image=folder/'store-image.jpeg';image.write_bytes(b'host derivative fixture bytes')
+                row['delivery_image']={**store.file_record(image,store.STORE_CAP),**IMAGE,
+                    'kind':'same-size lossy derivative','original_sha256':raw['sha256']}
+            else:row['delivery_image']={**raw,'kind':'unchanged native original'}
+        (folder/'report.json').write_text(json.dumps(row))
+        return source,driver,env,folder,row
+    def invoke(self,source,driver,env,mode,optimized):
+        return subprocess.run([sys.executable,*(['-O'] if optimized else []),str(driver),mode],
+            cwd=source,env={**env,'VISION_UPLOAD_OUTCOME':'success'},capture_output=True,timeout=10)
+    def test_complete_normal_and_diagnostic_pack_verdict_in_fresh_processes(self):
+        import zipfile
+        for optimized in (False,True):
+            for diagnostic,derivative in ((False,False),(False,True),(True,False)):
+                with self.subTest(optimized=optimized,diagnostic=diagnostic,derivative=derivative):
+                    source,driver,env,folder,row=self.image_fixture(diagnostic,derivative)
+                    self.assertEqual({p.name for p in driver.parent.iterdir()},{driver.name,'vision_store_admission.json'})
+                    packed=self.invoke(source,driver,env,'--pack',optimized)
+                    self.assertEqual(packed.returncode,0,packed.stderr.decode());self.assertIn(b'VISION_PACK_END',packed.stdout)
+                    manifest=json.loads((folder/'manifest.json').read_bytes())
+                    self.assertFalse(manifest['store_ready']);self.assertEqual(manifest['binding'],row['binding'])
+                    self.assertEqual({r['name'] for r in manifest['members']},{p.name for p in folder.iterdir()}-{'manifest.json'})
+                    for record in manifest['members']:self.assertEqual(store.file_record(folder/record['name'],store.EVIDENCE_FILES[record['name']]),record)
+                    archive=source/'fixture-artifact.zip'
+                    with zipfile.ZipFile(archive,'w') as z:
+                        for path in folder.iterdir():z.writestr(path.name,path.read_bytes())
+                    with zipfile.ZipFile(archive) as z:
+                        self.assertEqual(set(z.namelist()),{p.name for p in folder.iterdir()})
+                        for path in folder.iterdir():self.assertEqual(z.read(path.name),path.read_bytes())
+                    verdict=self.invoke(source,driver,env,'--finish-upload',optimized)
+                    self.assertEqual(verdict.returncode,1 if diagnostic else 0,verdict.stderr.decode())
+                    self.assertEqual(verdict.stderr,b'')
+                    (folder/'capture-original.jpeg').write_bytes(b'tampered after packing')
+                    failed=self.invoke(source,driver,env,'--finish-upload',optimized)
+                    self.assertEqual(failed.returncode,1);self.assertIn(b'Packed evidence hash or size changed',failed.stderr)
+    def test_failed_diagnostic_inspection_remains_packable_in_fresh_process(self):
+        for optimized in (False,True):
+            source,driver,env,folder,row=self.image_fixture(diagnostic=True)
+            row['diagnostic_capture']['diagnostic_capture_complete']=False;row['diagnostic_capture']['error']='Mock inspection failure'
+            row['original'].pop('validation');(folder/'report.json').write_text(json.dumps(row))
+            packed=self.invoke(source,driver,env,'--pack',optimized)
+            self.assertEqual(packed.returncode,0,packed.stderr.decode())
+            verdict=self.invoke(source,driver,env,'--finish-upload',optimized)
+            self.assertEqual(verdict.returncode,1);self.assertEqual(verdict.stderr,b'')
+    def test_fresh_pack_rejects_swapped_request_schema(self):
+        for optimized in (False,True):
+            for diagnostic in (False,True):
+                source,driver,env,folder,row=self.image_fixture(diagnostic)
+                row['diagnostic_ui_observations' if diagnostic else 'ui_observations']=request() if diagnostic else diagnostic_request()
+                (folder/'report.json').write_text(json.dumps(row))
+                packed=self.invoke(source,driver,env,'--pack',optimized)
+                self.assertEqual(packed.returncode,1);self.assertIn(b'ValueError',packed.stderr)
+                self.assertNotIn(b'NameError',packed.stderr);self.assertNotIn(b'ModuleNotFoundError',packed.stderr)
+                self.assertFalse((folder/'manifest.json').exists())
+    def test_stdlib_fixture_name_matches_native_fixture_contract(self):
+        from run_vision_remaining import FIXTURE_NAME
+        self.assertEqual(store.FIXTURE_NAME,FIXTURE_NAME)
+
+
 class CheckpointTests(unittest.TestCase):
     # Mocked image bytes below are never native UI evidence or delivered assets.
     def setUp(self):

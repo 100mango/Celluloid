@@ -9,9 +9,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   vision:
-    # Only the reviewed update from the failed preview cohort can qualify, once.
+    # Only the reviewed pack-entry repair of the captured cohort can qualify, once.
     # Exact-tree root GO is required before publishing this fixed-ref update.
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/vision-store-single' && github.event.created == false && github.event.deleted == false && github.event.before == '4ca29e97faf1dfb79c193ae8196a2a9ed45d036b' && github.run_attempt == 1 }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/vision-store-single' && github.event.created == false && github.event.deleted == false && github.event.before == 'b8f21a3702ca7677687cc695f19e3c512769437a' && github.run_attempt == 1 }}
     name: Hold one real editor view and capture full-display JPEG
     runs-on: xcode-27
     timeout-minutes: 42

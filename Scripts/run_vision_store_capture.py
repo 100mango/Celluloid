@@ -19,24 +19,28 @@ import re
 import stat
 import uuid
 from pathlib import Path
+# Request validation is also used by stdlib-only pack/verdict subprocesses.
+FIXTURE_NAME = 'VisionRemaining.celluloid'
+
 def load_native_helpers():
     global capture, CaptureStopped, stream_capture, ARCHIVE_RAW_CAP, retain_archive_output
     global built_vision_app, write_synthetic_fixture, snapshot_fixture, test_command
-    global verify_cases, synthetic_fixture_bytes, FIXTURE_NAME
+    global verify_cases, synthetic_fixture_bytes
     from mac_archive_capture import capture, CaptureStopped
     from vision_store_stream import capture as stream_capture
     from vision_remaining_retention import ARCHIVE_RAW_CAP, retain_archive_output
     from run_vision_remaining import (built_vision_app, write_synthetic_fixture,
-        snapshot_fixture, test_command, verify_cases, synthetic_fixture_bytes, FIXTURE_NAME)
+        snapshot_fixture, test_command, verify_cases, synthetic_fixture_bytes, FIXTURE_NAME as native_fixture_name)
+    if native_fixture_name != FIXTURE_NAME: raise ValueError('Native fixture contract changed')
 
 
 # Preserve the imported host-test API. CLI resolver/pack/verdict/default modes
 # need only standard libraries and never initialize native helper modules.
 if __name__ != '__main__': load_native_helpers()
 
-BASE = '4ca29e97faf1dfb79c193ae8196a2a9ed45d036b'
+BASE = 'b8f21a3702ca7677687cc695f19e3c512769437a'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = 'a656ea25a42e913af5c4d085d9e7302728154bc7'
+BASE_TREE = 'b4c8e733fafd11b8b81a8f9e13cd91addf88448c'
 BRANCH = 'refs/heads/vision-store-single'
 WORKFLOW = '.github/workflows/vision-store-single.yml'
 SELECTOR = 'CelluloidVisionUITests/NativeVisionUITests/testStoreSingleHeldEditorCapture'
@@ -60,8 +64,7 @@ EVIDENCE_FILES = {name: cap for name, cap in (
     (BARRIER, 32_768), ('native-icon-provenance-runtime.json', 1_000_000))}
 ADDED = ()
 MODIFIED = (WORKFLOW,
-    'Scripts/run_vision_store_capture.py', 'Scripts/test_vision_store_capture.py',
-    'Platforms/VisionUITests/NativeVisionUITests.swift')
+    'Scripts/run_vision_store_capture.py', 'Scripts/test_vision_store_capture.py')
 REQUEST_PREFIX = 'CELLULOID_STORE_CAPTURE_REQUEST '
 DIAGNOSTIC_REQUEST_PREFIX = 'CELLULOID_STORE_DIAGNOSTIC_CAPTURE_REQUEST '
 DIAGNOSTIC_KIND = 'preview-image-not-found'
