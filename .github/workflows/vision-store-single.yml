@@ -1,4 +1,4 @@
-name: Capture one Celluloid Vision editor image
+name: Capture Celluloid Vision editor in two bounded cohorts
 on:
   push:
     branches: [vision-store-single]
@@ -9,15 +9,22 @@ concurrency:
   cancel-in-progress: false
 jobs:
   vision:
-    # Only the reviewed pack-entry repair of the captured cohort can qualify, once.
+    # Two separate runner cohorts, one image each; failures remain failed.
     # Exact-tree root GO is required before publishing this fixed-ref update.
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/vision-store-single' && github.event.created == false && github.event.deleted == false && github.event.before == 'b8f21a3702ca7677687cc695f19e3c512769437a' && github.run_attempt == 1 }}
-    name: Hold one real editor view and capture full-display JPEG
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/vision-store-single' && github.event.created == false && github.event.deleted == false && github.event.before == '3f8d40f979970023201cac7b477431c839196ede' && github.run_attempt == 1 }}
+    name: Hold one real editor view (${{ matrix.cohort }})
+    continue-on-error: false
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        cohort: [one, two]
     runs-on: xcode-27
     timeout-minutes: 42
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
       CELLULOID_STORE_ROOT_GO_SHA: ${{ github.sha }}
+      CELLULOID_STORE_COHORT: ${{ matrix.cohort }}
     steps:
       - name: Record original clock before checkout
         timeout-minutes: 1
@@ -26,7 +33,8 @@ jobs:
           python3 - <<'PY'
           import json,os,time
           from pathlib import Path
-          keys=('GITHUB_REPOSITORY','GITHUB_REF','GITHUB_WORKFLOW_REF','GITHUB_RUN_ATTEMPT','GITHUB_JOB','GITHUB_EVENT_NAME','DEVELOPER_DIR','GITHUB_SHA','GITHUB_WORKFLOW_SHA','GITHUB_RUN_ID')
+          keys=('GITHUB_REPOSITORY','GITHUB_REF','GITHUB_WORKFLOW_REF','GITHUB_RUN_ATTEMPT','GITHUB_JOB','GITHUB_EVENT_NAME','DEVELOPER_DIR','GITHUB_SHA','GITHUB_WORKFLOW_SHA','GITHUB_RUN_ID','CELLULOID_STORE_COHORT')
+          if os.environ['CELLULOID_STORE_COHORT'] not in ('one','two'): raise ValueError('Invalid fixed matrix cohort')
           temp=Path(os.environ['RUNNER_TEMP'])
           row={'started_monotonic':time.monotonic(),'binding':{k:os.environ[k] for k in keys}}
           diagnostics=temp/'vision-store-diagnostics'
@@ -59,7 +67,7 @@ jobs:
         timeout-minutes: 2
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: celluloid-vision-store-single-${{ github.run_id }}-${{ github.run_attempt }}
+          name: celluloid-vision-store-single-${{ matrix.cohort }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/vision-store-evidence/report.json
             ${{ runner.temp }}/vision-store-evidence/manifest.json
@@ -86,7 +94,7 @@ jobs:
         timeout-minutes: 1
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: celluloid-vision-store-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          name: celluloid-vision-store-diagnostics-${{ matrix.cohort }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/vision-store-diagnostics/bootstrap.json
             ${{ runner.temp }}/vision-store-diagnostics/report.json

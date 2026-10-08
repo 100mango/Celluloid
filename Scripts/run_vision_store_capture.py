@@ -38,10 +38,11 @@ def load_native_helpers():
 # need only standard libraries and never initialize native helper modules.
 if __name__ != '__main__': load_native_helpers()
 
-BASE = 'b8f21a3702ca7677687cc695f19e3c512769437a'
+BASE = '3f8d40f979970023201cac7b477431c839196ede'
 EDITOR_OPEN_SOURCE = 'abe9fc5560b230edc93b0312ef78b26b3d3dab55'
-BASE_TREE = 'b4c8e733fafd11b8b81a8f9e13cd91addf88448c'
+BASE_TREE = '0e670602dc680030586739066d9fc0075d97e155'
 BRANCH = 'refs/heads/vision-store-single'
+COHORTS = ('one', 'two')
 WORKFLOW = '.github/workflows/vision-store-single.yml'
 SELECTOR = 'CelluloidVisionUITests/NativeVisionUITests/testStoreSingleHeldEditorCapture'
 APP_ID = 'Mango.Celluloid'
@@ -459,7 +460,8 @@ def environment(env):
     sha = env.get('GITHUB_SHA', '')
     need(re.fullmatch('[0-9a-f]{40}', sha) and env.get('GITHUB_WORKFLOW_SHA') == sha, 'Wrong source/workflow SHA')
     need(re.fullmatch('[1-9][0-9]{0,19}', env.get('GITHUB_RUN_ID', '')), 'Invalid run ID')
-    return {key: env[key] for key in (*fixed, 'GITHUB_SHA', 'GITHUB_WORKFLOW_SHA', 'GITHUB_RUN_ID')}
+    need(env.get('CELLULOID_STORE_COHORT') in COHORTS, 'Invalid fixed matrix cohort')
+    return {key: env[key] for key in (*fixed, 'GITHUB_SHA', 'GITHUB_WORKFLOW_SHA', 'GITHUB_RUN_ID', 'CELLULOID_STORE_COHORT')}
 
 
 def admission(root, env, binding):
@@ -795,7 +797,7 @@ class Job:
         wanted_type = 'com.apple.CoreSimulator.SimDeviceType.Apple-Vision-Pro-4K'
         types = json.loads(self.call('types', ['xcrun', 'simctl', 'list', 'devicetypes', '--json'], 30))['devicetypes']
         need(sum(r.get('identifier') == wanted_type for r in types) == 1 and wanted_type in {r['identifier'] for r in runtime[0]['supportedDeviceTypes']}, 'Expected compatible 4K Vision device type')
-        self.device = fixed_uuid(self.call('create', ['xcrun', 'simctl', 'create', 'Celluloid Store '+self.binding['GITHUB_SHA'][:12], wanted_type, wanted_runtime], 30).strip())
+        self.device = fixed_uuid(self.call('create', ['xcrun', 'simctl', 'create', 'Celluloid Store '+self.binding['CELLULOID_STORE_COHORT']+' '+self.binding['GITHUB_SHA'][:12], wanted_type, wanted_runtime], 30).strip())
         self.report.update(device=self.device, runtime=runtime[0], device_type=wanted_type)
         try:
             self.report['readiness'] = {'complete':False,'device':self.device}; self.persist()
@@ -934,6 +936,9 @@ def pack(temp, binding, started, now):
     need(not (folder/'manifest.json').exists(), 'Do not overwrite a packed manifest')
     members = [file_record(folder/name, cap) for name, cap in sorted(EVIDENCE_FILES.items()) if name != 'manifest.json' and (folder/name).exists()]
     report = json_file(folder/'report.json', REPORT_CAP)
+    need(binding.get('CELLULOID_STORE_COHORT') in COHORTS
+        and report.get('binding') == binding and report.get('started_monotonic') == started,
+        'Packed report cohort/clock mismatch')
     validate_image_bindings(folder, report, require_delivery=report.get('complete') is True,
         records={item['name']: item for item in members})
     row = {'binding': binding, 'started_monotonic': started, 'packed_monotonic': now, 'members': members,
@@ -955,6 +960,9 @@ def verify_packed_images(temp, binding, started):
     need(actual == expected, 'Packed evidence hash or size changed')
     need({path.name for path in folder.iterdir()} == set(names)|{'manifest.json'}, 'Packed member set changed')
     report = json_file(folder/'report.json', REPORT_CAP)
+    need(binding.get('CELLULOID_STORE_COHORT') in COHORTS
+        and report.get('binding') == binding and report.get('started_monotonic') == started,
+        'Packed report cohort/clock mismatch')
     validate_image_bindings(folder, report, require_delivery=report.get('complete') is True,
         records={row['name']: row for row in actual})
     return report

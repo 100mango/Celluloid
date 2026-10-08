@@ -25,7 +25,7 @@ CONTAINER = '22222222-2222-4222-8222-222222222222'
 OTHER = '33333333-3333-4333-8333-333333333333'
 REQUEST = '44444444-4444-4444-8444-444444444444'
 IMAGE = {'format': 'JPEG', 'mode': 'RGB', 'width': 3840, 'height': 2160, 'alpha': False, 'decoded': True}
-BINDING = {'GITHUB_SHA': 'a'*40}
+BINDING = {'GITHUB_SHA': 'a'*40, 'CELLULOID_STORE_COHORT':'one'}
 
 def write_container_metadata(path, bundle=store.APP_ID, metadata_uuid=None):
     (path/store.METADATA_NAME).write_bytes(plistlib.dumps({
@@ -73,7 +73,7 @@ class ContractTests(unittest.TestCase):
             'GITHUB_WORKFLOW_REF': '100mango/Celluloid/'+store.WORKFLOW+'@'+store.BRANCH,
             'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_JOB': 'vision', 'GITHUB_EVENT_NAME': 'push',
             'DEVELOPER_DIR': '/Applications/Xcode_27.app/Contents/Developer',
-            'GITHUB_SHA': 'a'*40, 'GITHUB_WORKFLOW_SHA': 'a'*40, 'GITHUB_RUN_ID': '123'}
+            'GITHUB_SHA': 'a'*40, 'GITHUB_WORKFLOW_SHA': 'a'*40, 'GITHUB_RUN_ID': '123', 'CELLULOID_STORE_COHORT':'one'}
         self.assertEqual(store.environment(env), env)
         for key, value in [('GITHUB_EVENT_NAME', 'workflow_dispatch'), ('GITHUB_RUN_ATTEMPT', '2'),
                            ('GITHUB_REF', 'refs/heads/codex/vision-edit-final')]:
@@ -82,6 +82,34 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(store.validate_image(IMAGE), IMAGE)
         for key, value in [('width', 1280), ('height', 720), ('alpha', True), ('mode', 'RGBA'), ('mode', 'CMYK'), ('decoded', False), ('format', 'PNG')]:
             with self.subTest(key=key, value=value), self.assertRaises(ValueError): store.validate_image({**IMAGE, key: value})
+    def test_fixed_two_cohort_workflow_has_unmasked_independent_outcomes(self):
+        import re
+        text=(ROOT/store.WORKFLOW).read_text()
+        self.assertEqual(store.COHORTS,('one','two'))
+        self.assertEqual(re.findall(r'(?m)^  ([A-Za-z_][\w-]*):$',text.split('jobs:\n',1)[1]),['vision'])
+        self.assertIn('    strategy:\n      fail-fast: false\n      max-parallel: 2\n      matrix:\n        cohort: [one, two]\n',text)
+        self.assertEqual(text.count('    strategy:\n'),1)
+        self.assertEqual(re.findall(r'(?m)^        cohort: \[([^\]]+)\]$',text),['one, two'])
+        self.assertIn('    continue-on-error: false\n',text)
+        self.assertNotIn('continue-on-error: true',text);self.assertNotIn('fail-fast: true',text)
+        self.assertNotIn('include:',text);self.assertNotIn('exclude:',text)
+        self.assertIn('    name: Hold one real editor view (${{ matrix.cohort }})',text)
+        self.assertIn('      CELLULOID_STORE_COHORT: ${{ matrix.cohort }}',text)
+        self.assertIn("'GITHUB_RUN_ID','CELLULOID_STORE_COHORT')",text)
+        names=re.findall(r'(?m)^          name: (celluloid-vision-store-.*)$',text)
+        self.assertEqual(names,[f'celluloid-vision-store-{kind}-${{{{ matrix.cohort }}}}-${{{{ github.run_id }}}}-${{{{ github.run_attempt }}}}' for kind in ('single','diagnostics')])
+        resolved={name.replace('${{ matrix.cohort }}',cohort) for name in names for cohort in store.COHORTS}
+        self.assertEqual(len(resolved),4)
+    def test_environment_requires_exact_cohort_in_provenance(self):
+        env={'GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_REF':store.BRANCH,
+            'GITHUB_WORKFLOW_REF':'100mango/Celluloid/'+store.WORKFLOW+'@'+store.BRANCH,
+            'GITHUB_RUN_ATTEMPT':'1','GITHUB_JOB':'vision','GITHUB_EVENT_NAME':'push',
+            'DEVELOPER_DIR':'/Applications/Xcode_27.app/Contents/Developer',
+            'GITHUB_SHA':'a'*40,'GITHUB_WORKFLOW_SHA':'a'*40,'GITHUB_RUN_ID':'123'}
+        for cohort in store.COHORTS:
+            self.assertEqual(store.environment({**env,'CELLULOID_STORE_COHORT':cohort})['CELLULOID_STORE_COHORT'],cohort)
+        for cohort in (None,'','three','one/two','ONE',1):
+            with self.subTest(cohort=cohort),self.assertRaises(ValueError):store.environment({**env,'CELLULOID_STORE_COHORT':cohort})
     def test_ui_contract(self):
         store.validate_request(request(), REQUEST)
         for key, value in [('ready', False), ('bundle_identifier', 'com.mango.touchColor'), ('document', 'Personal.celluloid'), ('preview_count', 0), ('preview_count', True), ('alerts', 1), ('sheets', 1), ('keyboards', 1), ('progress', 1), ('locale', 'zh_CN')]:
@@ -270,7 +298,7 @@ class FilesTests(unittest.TestCase):
         with self.assertRaises(ValueError): store.pack(self.root, BINDING, 1, 2)
     def test_pack_retains_exact_original_bytes(self):
         folder = self.root/store.FOLDER; folder.mkdir(); data = b'original test bytes'; (folder/'capture-original.jpeg').write_bytes(data)
-        (folder/'report.json').write_text(json.dumps({'original': {**store.file_record(folder/'capture-original.jpeg', store.ORIGINAL_CAP),
+        (folder/'report.json').write_text(json.dumps({'binding':BINDING,'started_monotonic':1,'original': {**store.file_record(folder/'capture-original.jpeg', store.ORIGINAL_CAP),
             'source':store.NORMAL_IMAGE_SOURCE}}))
         manifest = store.pack(self.root, BINDING, 1, 2)
         self.assertFalse(manifest['store_ready']); self.assertEqual((folder/'capture-original.jpeg').read_bytes(), data)
@@ -799,7 +827,7 @@ class MetadataTests(unittest.TestCase):
             'GITHUB_WORKFLOW_REF':'100mango/Celluloid/'+store.WORKFLOW+'@'+store.BRANCH,
             'GITHUB_RUN_ATTEMPT':'1','GITHUB_JOB':'vision','GITHUB_EVENT_NAME':'push',
             'DEVELOPER_DIR':'/Applications/Xcode_27.app/Contents/Developer',
-            'GITHUB_SHA':'a'*40,'GITHUB_WORKFLOW_SHA':'a'*40,'GITHUB_RUN_ID':'123'}
+            'GITHUB_SHA':'a'*40,'GITHUB_WORKFLOW_SHA':'a'*40,'GITHUB_RUN_ID':'123','CELLULOID_STORE_COHORT':getattr(self,'cohort','one')}
         started = time.monotonic()
         command = [sys.executable,str(driver),'--resolve-container',DEVICE,store.APP_ID,'Data']
         report = {'binding':binding,'started_monotonic':started,'device':DEVICE,
@@ -1085,6 +1113,43 @@ class PackCLITests(unittest.TestCase):
     def test_stdlib_fixture_name_matches_native_fixture_contract(self):
         from run_vision_remaining import FIXTURE_NAME
         self.assertEqual(store.FIXTURE_NAME,FIXTURE_NAME)
+    def test_both_cohorts_pack_and_verdict_bind_their_own_fresh_process(self):
+        for cohort in store.COHORTS:
+            self.cohort=cohort
+            for optimized in (False,True):
+                source,driver,env,folder,row=self.image_fixture()
+                self.assertEqual(env['CELLULOID_STORE_COHORT'],cohort)
+                self.assertEqual(row['binding']['CELLULOID_STORE_COHORT'],cohort)
+                result=self.invoke(source,driver,env,'--pack',optimized)
+                self.assertEqual(result.returncode,0,result.stderr.decode())
+                manifest=json.loads((folder/'manifest.json').read_bytes())
+                self.assertEqual(manifest['binding']['CELLULOID_STORE_COHORT'],cohort)
+                self.assertEqual(self.invoke(source,driver,env,'--finish-upload',optimized).returncode,0)
+    def test_cross_cohort_or_clock_report_rejected_before_pack(self):
+        for optimized in (False,True):
+            for change in ('cohort','clock'):
+                source,driver,env,folder,row=self.image_fixture()
+                if change=='cohort':row['binding']['CELLULOID_STORE_COHORT']='two'
+                else:row['started_monotonic']-=1
+                (folder/'report.json').write_text(json.dumps(row))
+                result=self.invoke(source,driver,env,'--pack',optimized)
+                self.assertEqual(result.returncode,1);self.assertIn(b'Packed report cohort/clock mismatch',result.stderr)
+                self.assertFalse((folder/'manifest.json').exists())
+    def test_cross_cohort_report_rejected_even_with_updated_member_digest(self):
+        for optimized in (False,True):
+            for change in ('report','manifest','clock'):
+                source,driver,env,folder,row=self.image_fixture()
+                self.assertEqual(self.invoke(source,driver,env,'--pack',optimized).returncode,0)
+                manifest=json.loads((folder/'manifest.json').read_bytes())
+                if change=='manifest':manifest['binding']['CELLULOID_STORE_COHORT']='two'
+                else:
+                    if change=='report':row['binding']['CELLULOID_STORE_COHORT']='two'
+                    else:row['started_monotonic']-=1
+                    (folder/'report.json').write_text(json.dumps(row))
+                    manifest['members']=[store.file_record(folder/'report.json',store.REPORT_CAP) if r['name']=='report.json' else r for r in manifest['members']]
+                (folder/'manifest.json').write_text(json.dumps(manifest))
+                result=self.invoke(source,driver,env,'--finish-upload',optimized)
+                self.assertEqual(result.returncode,1);self.assertIn(b'mismatch',result.stderr)
 
 
 class CheckpointTests(unittest.TestCase):
