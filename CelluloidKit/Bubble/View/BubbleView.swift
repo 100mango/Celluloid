@@ -7,15 +7,16 @@
 //
 
 import UIKit
-import MZFormSheetPresentationController
 
 open class BubbleView: AttachView {
     //MARK: Property
     lazy var editTextBubbton: UIButton = {
-        let button = UIButton(type: .custom)
+        let button = DecorationControlButton(type: .custom)
         button.isHidden = true
         button.frame = CGRect(x: 0, y: 0, width: self.buttonWidth, height: self.buttonWidth)
-        button.setImage(UIImage(asset: .Btn_icon_sticker_text_normal), for: UIControlState())
+        button.setImage(UIImage(asset: .Btn_icon_sticker_text_normal), for: .normal)
+        button.accessibilityLabel = NSLocalizedString("Edit Bubble Text", bundle: extensionBundle, comment: "Bubble control")
+        button.accessibilityIdentifier = "bubble-edit-text"
         button.addTarget(self, action: #selector(editText), for: .touchUpInside)
         return button
     }()
@@ -23,6 +24,7 @@ open class BubbleView: AttachView {
     open var bubbleModel: BubbleModel {
         didSet {
             bubbleLabel.text = bubbleModel.content
+            imageView.accessibilityValue = bubbleModel.content
             bubbleLabel.adjustFrame()
         }
     }
@@ -59,6 +61,10 @@ open class BubbleView: AttachView {
         self.addSubview(editTextBubbton)
         self.imageView.image = bubbleModel.bubbleImage
         self.imageView.addSubview(bubbleLabel)
+        imageView.accessibilityLabel = NSLocalizedString("Bubble", bundle: extensionBundle, comment: "")
+        imageView.accessibilityValue = bubbleModel.content
+        imageView.accessibilityCustomActions?.append(UIAccessibilityCustomAction(
+            name: NSLocalizedString("Edit Bubble Text", bundle: extensionBundle, comment: ""), target: self, selector: #selector(accessibleEditText)))
     }
 
     public required init?(coder aDecoder: NSCoder) {
@@ -76,14 +82,15 @@ open class BubbleView: AttachView {
 
 //MARK: Action
 extension BubbleView {
+    @objc func accessibleEditText() -> Bool { editText(); return true }
     @objc func editText() {
         let editBubbleVC = EditBubbleViewController(bubbleModel: self.bubbleModel)
         editBubbleVC.delegate = self
         let navigationVC = UINavigationController(rootViewController: editBubbleVC)
-        let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
-        formSheetController.presentationController?.shouldUseMotionEffect = true
-        formSheetController.presentationController?.shouldCenterVertically = true
-        self.parentViewController?.present(formSheetController, animated: true, completion: nil)
+        // Keep the editing task visually and accessibly modal on every size.
+        // A form sheet left old caption text visible outside its focus boundary.
+        navigationVC.modalPresentationStyle = .fullScreen
+        self.parentViewController?.present(navigationVC, animated: true)
     }
 }
 

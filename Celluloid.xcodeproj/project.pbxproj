@@ -1,1115 +1,1310 @@
 // !$*UTF8*$!
 {
-	archiveVersion = 1;
-	classes = {
+	"archiveVersion" = "1";
+	"classes" = {
 	};
-	objectVersion = 46;
-	objects = {
-
-/* Begin PBXBuildFile section */
-		160C58FD9254A906AA80A2C4 /* Pods_CelluloidKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B28FB260AAFC44AF0B81C827 /* Pods_CelluloidKit.framework */; };
-		1EA1CE5534CCFAEAF5C069F5 /* Pods_Celluloid.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B870BE9FD003101A4AAA17D /* Pods_Celluloid.framework */; };
-		258256A28047D0DE10328EA0 /* Pods_CelluloidPhotoExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6BD8BF675D857FBF341A407A /* Pods_CelluloidPhotoExtension.framework */; };
-		DB14F7711C803608000FA15F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7701C803608000FA15F /* AppDelegate.swift */; };
-		DB14F7731C803608000FA15F /* CollageViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7721C803608000FA15F /* CollageViewController.swift */; };
-		DB14F7781C803608000FA15F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7771C803608000FA15F /* Assets.xcassets */; };
-		DB14F77B1C803608000FA15F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7791C803608000FA15F /* LaunchScreen.storyboard */; };
-		DB14F78A1C8083A1000FA15F /* CelluloidKit.h in Headers */ = {isa = PBXBuildFile; fileRef = DB14F7891C8083A1000FA15F /* CelluloidKit.h */; settings = {ATTRIBUTES = (Public, ); }; };
-		DB14F79C1C8083A1000FA15F /* CelluloidKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7871C8083A1000FA15F /* CelluloidKit.framework */; };
-		DB14F79D1C8083A1000FA15F /* CelluloidKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7871C8083A1000FA15F /* CelluloidKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		DB14F7AC1C808579000FA15F /* PhotosUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7AB1C808579000FA15F /* PhotosUI.framework */; };
-		DB14F7AE1C808579000FA15F /* Photos.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7AD1C808579000FA15F /* Photos.framework */; };
-		DB14F7B11C808579000FA15F /* PhotoEditingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7B01C808579000FA15F /* PhotoEditingViewController.swift */; };
-		DB14F7B41C808579000FA15F /* MainInterface.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7B21C808579000FA15F /* MainInterface.storyboard */; };
-		DB14F7B81C808579000FA15F /* CelluloidPhotoExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = DB14F7A91C808579000FA15F /* CelluloidPhotoExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		DB14F7C01C84348B000FA15F /* CelluloidKit.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7BF1C84348B000FA15F /* CelluloidKit.xcassets */; };
-		DB14F7C21C8437EC000FA15F /* Assets.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7C11C8437EC000FA15F /* Assets.swift */; };
-		DB14F7C61C8469F7000FA15F /* UIView-Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */; };
-		DB1B1D9C1CF7FAC700DB9FFC /* SharePhotoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1B1D9B1CF7FAC700DB9FFC /* SharePhotoViewController.swift */; };
-		DB1DE64C1C881DEB0076EE76 /* BubbleModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1DE64B1C881DEB0076EE76 /* BubbleModel.swift */; };
-		DB1DE6501C882EEC0076EE76 /* AttachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1DE64F1C882EEC0076EE76 /* AttachView.swift */; };
-		DB2875AC1CB394F800CB8977 /* JSONCodableExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2875AB1CB394F800CB8977 /* JSONCodableExtension.swift */; };
-		DB4FA9161CEC1A8900C78A99 /* AdjustmentData.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB4FA9151CEC1A8900C78A99 /* AdjustmentData.swift */; };
-		DB4FA9181CEC1D4A00C78A99 /* BaseEditPhotoController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB4FA9171CEC1D4A00C78A99 /* BaseEditPhotoController.swift */; };
-		DB4FA91A1CEC5BCF00C78A99 /* EntranceViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB4FA9191CEC5BCF00C78A99 /* EntranceViewController.swift */; };
-		DB5D9A1B1CA023540045E49B /* ImageOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */; };
-		DB5F9E9E1D2C015F00772697 /* CelluloidKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB14F7871C8083A1000FA15F /* CelluloidKit.framework */; };
-		DB6A158E1CC5DD3C00DFF71E /* StickerPickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */; };
-		DB6A15921CC7461500DFF71E /* BasePickerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB6A15911CC7461500DFF71E /* BasePickerController.swift */; };
-		DB72089D1CEB0C8D001E4F4F /* EditPhotoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB72089C1CEB0C8D001E4F4F /* EditPhotoViewController.swift */; };
-		DB7208A01CEB155D001E4F4F /* FilterPickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB72089F1CEB155D001E4F4F /* FilterPickerViewController.swift */; };
-		DB7989801CDA4EF700419114 /* CollageStylePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB79897F1CDA4EF700419114 /* CollageStylePanel.swift */; };
-		DB7A35691C9557AD00AB3283 /* BubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35681C9557AD00AB3283 /* BubbleView.swift */; };
-		DB7A356E1C958BB300AB3283 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35701C958BB300AB3283 /* Localizable.strings */; };
-		DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35721C958DA700AB3283 /* Localizable.swift */; };
-		DB7A35871C9596C200AB3283 /* BubblePickerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35861C9596C200AB3283 /* BubblePickerViewController.swift */; };
-		DB7A35AE1C965D2100AB3283 /* bubble.json in Resources */ = {isa = PBXBuildFile; fileRef = DB7A35AD1C965D2100AB3283 /* bubble.json */; };
-		DB7A35B01C969FFA00AB3283 /* BubbleLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */; };
-		DB7A79691CE9902900EBC93B /* UIView-Borders.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB7A79681CE9902900EBC93B /* UIView-Borders.swift */; };
-		DB80D6641CAB9EF6006B2F60 /* Filter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB80D6631CAB9EF6006B2F60 /* Filter.swift */; };
-		DB83EFA91CD992F600962016 /* ImageArrangedPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFA81CD992F600962016 /* ImageArrangedPanel.swift */; };
-		DB83EFAC1CD995C800962016 /* PhotoModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFAB1CD995C800962016 /* PhotoModel.swift */; };
-		DB83EFAF1CD9F37F00962016 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFAE1CD9F37F00962016 /* Log.swift */; };
-		DB83EFB11CDA0ADD00962016 /* CollageModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83EFB01CDA0ADD00962016 /* CollageModel.swift */; };
-		DB83EFB81CDA276F00962016 /* collage.json in Resources */ = {isa = PBXBuildFile; fileRef = DB83EFB71CDA276F00962016 /* collage.json */; };
-		DB8A90F91CEDE81000CF0B31 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DB14F7771C803608000FA15F /* Assets.xcassets */; };
-		DBA390F21C868172006248A4 /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA390F11C868172006248A4 /* Style.swift */; };
-		DBDC81E71CC7506C0036F18E /* StickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDC81E61CC7506C0036F18E /* StickerModel.swift */; };
-		DBDC81EA1CC75BDF0036F18E /* StickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDC81E91CC75BDF0036F18E /* StickerView.swift */; };
-		DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */; };
-		DBF094C11CE18385006FA424 /* CollageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF094C01CE18385006FA424 /* CollageView.swift */; };
-		DBF094C31CE1A14E006FA424 /* CollageContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF094C21CE1A14E006FA424 /* CollageContentView.swift */; };
-		DBF094C51CE5A8E0006FA424 /* EditPhotoToolBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF094C41CE5A8E0006FA424 /* EditPhotoToolBar.swift */; };
-/* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-		DB14F79A1C8083A1000FA15F /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = DB14F7651C803608000FA15F /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = DB14F7861C8083A1000FA15F;
-			remoteInfo = CelluloidKit;
+	"objectVersion" = "56";
+	"objects" = {
+		"58C138FC66F6E96F7B9AC16F" = {
+			"isa" = "XCRemoteSwiftPackageReference";
+			"repositoryURL" = "https://github.com/SnapKit/SnapKit.git";
+			"requirement" = {
+				"kind" = "exactVersion";
+				"version" = "5.7.1";
+			};
 		};
-		DB14F7B61C808579000FA15F /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = DB14F7651C803608000FA15F /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = DB14F7A81C808579000FA15F;
-			remoteInfo = CelluloidPhotoExtension;
+		"5DC541A7B7457790CD19E005" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.framework";
+			"path" = "CelluloidKit.framework";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+			"includeInIndex" = "0";
 		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		DB14F7A31C8083A1000FA15F /* Embed Frameworks */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				DB14F79D1C8083A1000FA15F /* CelluloidKit.framework in Embed Frameworks */,
-			);
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
+		"01D998A9F43850C686AD87A1" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.app-extension";
+			"path" = "CelluloidPhotoExtension.appex";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+			"includeInIndex" = "0";
 		};
-		DB14F7BC1C808579000FA15F /* Embed App Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				DB14F7B81C808579000FA15F /* CelluloidPhotoExtension.appex in Embed App Extensions */,
-			);
-			name = "Embed App Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
+		"2F36698ED899568254E2531D" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.application";
+			"path" = "Celluloid.app";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+			"includeInIndex" = "0";
 		};
-/* End PBXCopyFilesBuildPhase section */
-
-/* Begin PBXFileReference section */
-		0661DC6517162731701160C5 /* Pods-CelluloidPhotoExtension.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CelluloidPhotoExtension.debug.xcconfig"; path = "Pods/Target Support Files/Pods-CelluloidPhotoExtension/Pods-CelluloidPhotoExtension.debug.xcconfig"; sourceTree = "<group>"; };
-		6BD8BF675D857FBF341A407A /* Pods_CelluloidPhotoExtension.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_CelluloidPhotoExtension.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		7B870BE9FD003101A4AAA17D /* Pods_Celluloid.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Celluloid.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		9090D5931C2D1E8C051EDB28 /* Pods-CelluloidKit.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CelluloidKit.debug.xcconfig"; path = "Pods/Target Support Files/Pods-CelluloidKit/Pods-CelluloidKit.debug.xcconfig"; sourceTree = "<group>"; };
-		AB89F2C26175F4792B591645 /* Pods-CelluloidKit.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CelluloidKit.release.xcconfig"; path = "Pods/Target Support Files/Pods-CelluloidKit/Pods-CelluloidKit.release.xcconfig"; sourceTree = "<group>"; };
-		B09EFB0F9079D177778EE888 /* Pods-Celluloid.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Celluloid.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Celluloid/Pods-Celluloid.debug.xcconfig"; sourceTree = "<group>"; };
-		B28FB260AAFC44AF0B81C827 /* Pods_CelluloidKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_CelluloidKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		DB14F76D1C803608000FA15F /* Celluloid.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Celluloid.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		DB14F7701C803608000FA15F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		DB14F7721C803608000FA15F /* CollageViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollageViewController.swift; sourceTree = "<group>"; };
-		DB14F7771C803608000FA15F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		DB14F77A1C803608000FA15F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
-		DB14F77C1C803608000FA15F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		DB14F7871C8083A1000FA15F /* CelluloidKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = CelluloidKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		DB14F7891C8083A1000FA15F /* CelluloidKit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CelluloidKit.h; sourceTree = "<group>"; };
-		DB14F78B1C8083A1000FA15F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		DB14F7A91C808579000FA15F /* CelluloidPhotoExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CelluloidPhotoExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		DB14F7AB1C808579000FA15F /* PhotosUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PhotosUI.framework; path = System/Library/Frameworks/PhotosUI.framework; sourceTree = SDKROOT; };
-		DB14F7AD1C808579000FA15F /* Photos.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Photos.framework; path = System/Library/Frameworks/Photos.framework; sourceTree = SDKROOT; };
-		DB14F7B01C808579000FA15F /* PhotoEditingViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoEditingViewController.swift; sourceTree = "<group>"; };
-		DB14F7B31C808579000FA15F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/MainInterface.storyboard; sourceTree = "<group>"; };
-		DB14F7B51C808579000FA15F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		DB14F7BF1C84348B000FA15F /* CelluloidKit.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = CelluloidKit.xcassets; sourceTree = "<group>"; };
-		DB14F7C11C8437EC000FA15F /* Assets.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Assets.swift; sourceTree = "<group>"; };
-		DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "UIView-Extension.swift"; sourceTree = "<group>"; };
-		DB1B1D9B1CF7FAC700DB9FFC /* SharePhotoViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = SharePhotoViewController.swift; path = Controller/SharePhotoViewController.swift; sourceTree = "<group>"; };
-		DB1DE64B1C881DEB0076EE76 /* BubbleModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleModel.swift; path = Bubble/Model/BubbleModel.swift; sourceTree = "<group>"; };
-		DB1DE64F1C882EEC0076EE76 /* AttachView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = AttachView.swift; path = View/AttachView.swift; sourceTree = "<group>"; };
-		DB2875AB1CB394F800CB8977 /* JSONCodableExtension.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = JSONCodableExtension.swift; sourceTree = "<group>"; };
-		DB4FA9151CEC1A8900C78A99 /* AdjustmentData.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AdjustmentData.swift; sourceTree = "<group>"; };
-		DB4FA9171CEC1D4A00C78A99 /* BaseEditPhotoController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BaseEditPhotoController.swift; path = Controller/BaseEditPhotoController.swift; sourceTree = "<group>"; };
-		DB4FA9191CEC5BCF00C78A99 /* EntranceViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EntranceViewController.swift; path = Controller/EntranceViewController.swift; sourceTree = "<group>"; };
-		DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ImageOverlayView.swift; path = View/ImageOverlayView.swift; sourceTree = "<group>"; };
-		DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = StickerPickerViewController.swift; path = Sticker/Controller/StickerPickerViewController.swift; sourceTree = "<group>"; };
-		DB6A15911CC7461500DFF71E /* BasePickerController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BasePickerController.swift; path = Controller/BasePickerController.swift; sourceTree = "<group>"; };
-		DB72089C1CEB0C8D001E4F4F /* EditPhotoViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditPhotoViewController.swift; path = Controller/EditPhotoViewController.swift; sourceTree = "<group>"; };
-		DB72089F1CEB155D001E4F4F /* FilterPickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = FilterPickerViewController.swift; path = Filter/Controller/FilterPickerViewController.swift; sourceTree = "<group>"; };
-		DB79897F1CDA4EF700419114 /* CollageStylePanel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = CollageStylePanel.swift; path = View/CollageStylePanel.swift; sourceTree = "<group>"; };
-		DB7A35681C9557AD00AB3283 /* BubbleView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleView.swift; path = Bubble/View/BubbleView.swift; sourceTree = "<group>"; };
-		DB7A356C1C958A6D00AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/LaunchScreen.strings"; sourceTree = "<group>"; };
-		DB7A356D1C958A6D00AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/MainInterface.strings"; sourceTree = "<group>"; };
-		DB7A356F1C958BB300AB3283 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
-		DB7A35711C958BB600AB3283 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
-		DB7A35721C958DA700AB3283 /* Localizable.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Localizable.swift; sourceTree = "<group>"; };
-		DB7A35861C9596C200AB3283 /* BubblePickerViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubblePickerViewController.swift; path = Bubble/Controller/BubblePickerViewController.swift; sourceTree = "<group>"; };
-		DB7A35AD1C965D2100AB3283 /* bubble.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = bubble.json; sourceTree = "<group>"; };
-		DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BubbleLabel.swift; path = Bubble/View/BubbleLabel.swift; sourceTree = "<group>"; };
-		DB7A79681CE9902900EBC93B /* UIView-Borders.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "UIView-Borders.swift"; sourceTree = "<group>"; };
-		DB80D6631CAB9EF6006B2F60 /* Filter.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Filter.swift; path = Filter/Filter.swift; sourceTree = "<group>"; };
-		DB83EFA81CD992F600962016 /* ImageArrangedPanel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = ImageArrangedPanel.swift; path = View/ImageArrangedPanel.swift; sourceTree = "<group>"; };
-		DB83EFAB1CD995C800962016 /* PhotoModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PhotoModel.swift; path = Model/PhotoModel.swift; sourceTree = "<group>"; };
-		DB83EFAE1CD9F37F00962016 /* Log.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = Log.swift; path = Utility/Log.swift; sourceTree = "<group>"; };
-		DB83EFB01CDA0ADD00962016 /* CollageModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = CollageModel.swift; path = Model/CollageModel.swift; sourceTree = "<group>"; };
-		DB83EFB71CDA276F00962016 /* collage.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = collage.json; sourceTree = "<group>"; };
-		DB85D263A355F31C8C68EDAB /* Pods-Celluloid.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Celluloid.release.xcconfig"; path = "Pods/Target Support Files/Pods-Celluloid/Pods-Celluloid.release.xcconfig"; sourceTree = "<group>"; };
-		DBA390F11C868172006248A4 /* Style.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Style.swift; sourceTree = "<group>"; };
-		DBDC81E61CC7506C0036F18E /* StickerModel.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = StickerModel.swift; path = Sticker/Model/StickerModel.swift; sourceTree = "<group>"; };
-		DBDC81E91CC75BDF0036F18E /* StickerView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = StickerView.swift; path = Sticker/View/StickerView.swift; sourceTree = "<group>"; };
-		DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditBubbleViewController.swift; path = Bubble/Controller/EditBubbleViewController.swift; sourceTree = "<group>"; };
-		DBF094C01CE18385006FA424 /* CollageView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = CollageView.swift; path = View/CollageView.swift; sourceTree = "<group>"; };
-		DBF094C21CE1A14E006FA424 /* CollageContentView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = CollageContentView.swift; path = View/CollageContentView.swift; sourceTree = "<group>"; };
-		DBF094C41CE5A8E0006FA424 /* EditPhotoToolBar.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = EditPhotoToolBar.swift; path = View/EditPhotoToolBar.swift; sourceTree = "<group>"; };
-		F9507630A5206F362B7E024E /* Pods-CelluloidPhotoExtension.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CelluloidPhotoExtension.release.xcconfig"; path = "Pods/Target Support Files/Pods-CelluloidPhotoExtension/Pods-CelluloidPhotoExtension.release.xcconfig"; sourceTree = "<group>"; };
-/* End PBXFileReference section */
-
-/* Begin PBXFrameworksBuildPhase section */
-		DB14F76A1C803608000FA15F /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				DB14F79C1C8083A1000FA15F /* CelluloidKit.framework in Frameworks */,
-				1EA1CE5534CCFAEAF5C069F5 /* Pods_Celluloid.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
+		"BFF0B16C480DB2315BA9FD88" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.cfbundle";
+			"path" = "CelluloidTests.xctest";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+			"includeInIndex" = "0";
 		};
-		DB14F7831C8083A1000FA15F /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				160C58FD9254A906AA80A2C4 /* Pods_CelluloidKit.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
+		"2A91E5445F2F41258B05F031" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.cfbundle";
+			"path" = "CelluloidUITests.xctest";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+			"includeInIndex" = "0";
 		};
-		DB14F7A61C808579000FA15F /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				DB5F9E9E1D2C015F00772697 /* CelluloidKit.framework in Frameworks */,
-				DB14F7AC1C808579000FA15F /* PhotosUI.framework in Frameworks */,
-				DB14F7AE1C808579000FA15F /* Photos.framework in Frameworks */,
-				258256A28047D0DE10328EA0 /* Pods_CelluloidPhotoExtension.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
+		"403A285172AED69FADBBD9D9" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Bubble/Controller/BubblePickerViewController.swift";
+			"sourceTree" = "<group>";
 		};
-/* End PBXFrameworksBuildPhase section */
-
-/* Begin PBXGroup section */
-		699FC3789DA83B1C816A619A /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				B09EFB0F9079D177778EE888 /* Pods-Celluloid.debug.xcconfig */,
-				DB85D263A355F31C8C68EDAB /* Pods-Celluloid.release.xcconfig */,
-				0661DC6517162731701160C5 /* Pods-CelluloidPhotoExtension.debug.xcconfig */,
-				F9507630A5206F362B7E024E /* Pods-CelluloidPhotoExtension.release.xcconfig */,
-				9090D5931C2D1E8C051EDB28 /* Pods-CelluloidKit.debug.xcconfig */,
-				AB89F2C26175F4792B591645 /* Pods-CelluloidKit.release.xcconfig */,
-			);
-			name = Pods;
-			sourceTree = "<group>";
+		"0DFBE779F4CEE2D9596BAB6F" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "403A285172AED69FADBBD9D9";
 		};
-		DB14F7641C803608000FA15F = {
-			isa = PBXGroup;
-			children = (
-				DB14F76F1C803608000FA15F /* Celluloid */,
-				DB14F7881C8083A1000FA15F /* CelluloidKit */,
-				DB14F7AF1C808579000FA15F /* CelluloidPhotoExtension */,
-				DB14F7AA1C808579000FA15F /* Frameworks */,
-				DB14F76E1C803608000FA15F /* Products */,
-				699FC3789DA83B1C816A619A /* Pods */,
-			);
-			sourceTree = "<group>";
+		"A243B634A6FB8C8C1CAE1710" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Bubble/Controller/EditBubbleViewController.swift";
+			"sourceTree" = "<group>";
 		};
-		DB14F76E1C803608000FA15F /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				DB14F76D1C803608000FA15F /* Celluloid.app */,
-				DB14F7871C8083A1000FA15F /* CelluloidKit.framework */,
-				DB14F7A91C808579000FA15F /* CelluloidPhotoExtension.appex */,
-			);
-			name = Products;
-			sourceTree = "<group>";
+		"B1A4B7C3CEA7B384306CAD04" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A243B634A6FB8C8C1CAE1710";
 		};
-		DB14F76F1C803608000FA15F /* Celluloid */ = {
-			isa = PBXGroup;
-			children = (
-				DB83EFB21CDA113700962016 /* Resources */,
-				DB83EFAA1CD995A100962016 /* Model */,
-				DB83EFA71CD992D100962016 /* View */,
-				DB7208991CEAB923001E4F4F /* Controller */,
-				DB14F7701C803608000FA15F /* AppDelegate.swift */,
-				DB14F7771C803608000FA15F /* Assets.xcassets */,
-				DB14F7791C803608000FA15F /* LaunchScreen.storyboard */,
-				DB14F77C1C803608000FA15F /* Info.plist */,
-			);
-			path = Celluloid;
-			sourceTree = "<group>";
+		"31B696B57138421650499BD6" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Bubble/Model/BubbleModel.swift";
+			"sourceTree" = "<group>";
 		};
-		DB14F7881C8083A1000FA15F /* CelluloidKit */ = {
-			isa = PBXGroup;
-			children = (
-				DB6A158B1CC5DB4D00DFF71E /* Sticker */,
-				DB80D6601CAB9EB3006B2F60 /* Filter */,
-				DBA390F41C86CF55006248A4 /* Bubble */,
-				DB7208A11CEC17BC001E4F4F /* Model */,
-				DB14F7C71C85807D000FA15F /* View */,
-				DB6A158F1CC7458A00DFF71E /* Controller */,
-				DBA390F31C86CD92006248A4 /* Constant */,
-				DB7A35AC1C965CEB00AB3283 /* Resources */,
-				DB6A15901CC745E100DFF71E /* Extension */,
-				DB83EFAD1CD9F35E00962016 /* Utility */,
-				DB14F78B1C8083A1000FA15F /* Info.plist */,
-				DB14F7891C8083A1000FA15F /* CelluloidKit.h */,
-			);
-			path = CelluloidKit;
-			sourceTree = "<group>";
+		"1D91B633221BA7165E858F88" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "31B696B57138421650499BD6";
 		};
-		DB14F7AA1C808579000FA15F /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				DB14F7AB1C808579000FA15F /* PhotosUI.framework */,
-				DB14F7AD1C808579000FA15F /* Photos.framework */,
-				7B870BE9FD003101A4AAA17D /* Pods_Celluloid.framework */,
-				6BD8BF675D857FBF341A407A /* Pods_CelluloidPhotoExtension.framework */,
-				B28FB260AAFC44AF0B81C827 /* Pods_CelluloidKit.framework */,
-			);
-			name = Frameworks;
-			sourceTree = "<group>";
+		"43E417A8DB3161A8ECA43EEC" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Bubble/View/BubbleLabel.swift";
+			"sourceTree" = "<group>";
 		};
-		DB14F7AF1C808579000FA15F /* CelluloidPhotoExtension */ = {
-			isa = PBXGroup;
-			children = (
-				DBC81CCC1C9BE35A00423098 /* Model */,
-				DB14F7B01C808579000FA15F /* PhotoEditingViewController.swift */,
-				DB14F7B21C808579000FA15F /* MainInterface.storyboard */,
-				DB14F7B51C808579000FA15F /* Info.plist */,
-			);
-			path = CelluloidPhotoExtension;
-			sourceTree = "<group>";
+		"9E15B09DAD9CDC33C433B29E" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "43E417A8DB3161A8ECA43EEC";
 		};
-		DB14F7C71C85807D000FA15F /* View */ = {
-			isa = PBXGroup;
-			children = (
-				DB1DE64F1C882EEC0076EE76 /* AttachView.swift */,
-				DB5D9A1A1CA023540045E49B /* ImageOverlayView.swift */,
-				DBF094C41CE5A8E0006FA424 /* EditPhotoToolBar.swift */,
-			);
-			name = View;
-			sourceTree = "<group>";
+		"9952DC940B46E74A756DE4A8" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Bubble/View/BubbleView.swift";
+			"sourceTree" = "<group>";
 		};
-		DB1DE6451C87EB6D0076EE76 /* Model */ = {
-			isa = PBXGroup;
-			children = (
-				DB1DE64B1C881DEB0076EE76 /* BubbleModel.swift */,
-			);
-			name = Model;
-			sourceTree = "<group>";
+		"3014FF5B56F431BAEA85F5DC" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "9952DC940B46E74A756DE4A8";
 		};
-		DB1DE6481C87EBC10076EE76 /* Controller */ = {
-			isa = PBXGroup;
-			children = (
-				DB7A35861C9596C200AB3283 /* BubblePickerViewController.swift */,
-				DBE5C5E01C93EAF70060959E /* EditBubbleViewController.swift */,
-			);
-			name = Controller;
-			sourceTree = "<group>";
+		"BA54C1D879225780140264DD" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "folder.assetcatalog";
+			"path" = "CelluloidKit/CelluloidKit.xcassets";
+			"sourceTree" = "<group>";
 		};
-		DB6A158B1CC5DB4D00DFF71E /* Sticker */ = {
-			isa = PBXGroup;
-			children = (
-				DBDC81E81CC75B910036F18E /* View */,
-				DBDC81E51CC7504B0036F18E /* Model */,
-				DB6A158C1CC5DCC100DFF71E /* Controller */,
-			);
-			name = Sticker;
-			sourceTree = "<group>";
+		"DFE7F3C33A200A95184BC62B" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "BA54C1D879225780140264DD";
 		};
-		DB6A158C1CC5DCC100DFF71E /* Controller */ = {
-			isa = PBXGroup;
-			children = (
-				DB6A158D1CC5DD3C00DFF71E /* StickerPickerViewController.swift */,
-			);
-			name = Controller;
-			sourceTree = "<group>";
+		"8308428C4BFD9FE69ECA58A2" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Constant/Assets.swift";
+			"sourceTree" = "<group>";
 		};
-		DB6A158F1CC7458A00DFF71E /* Controller */ = {
-			isa = PBXGroup;
-			children = (
-				DB6A15911CC7461500DFF71E /* BasePickerController.swift */,
-				DB4FA9171CEC1D4A00C78A99 /* BaseEditPhotoController.swift */,
-			);
-			name = Controller;
-			sourceTree = "<group>";
+		"5DEF38535A07F1F12409AC8B" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "8308428C4BFD9FE69ECA58A2";
 		};
-		DB6A15901CC745E100DFF71E /* Extension */ = {
-			isa = PBXGroup;
-			children = (
-				DB7A79681CE9902900EBC93B /* UIView-Borders.swift */,
-				DB14F7C51C8469F7000FA15F /* UIView-Extension.swift */,
-				DB2875AB1CB394F800CB8977 /* JSONCodableExtension.swift */,
-			);
-			path = Extension;
-			sourceTree = "<group>";
+		"EC021A4F18497C3BB5FD5343" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Constant/Localizable.swift";
+			"sourceTree" = "<group>";
 		};
-		DB7208991CEAB923001E4F4F /* Controller */ = {
-			isa = PBXGroup;
-			children = (
-				DB14F7721C803608000FA15F /* CollageViewController.swift */,
-				DB72089C1CEB0C8D001E4F4F /* EditPhotoViewController.swift */,
-				DB4FA9191CEC5BCF00C78A99 /* EntranceViewController.swift */,
-				DB1B1D9B1CF7FAC700DB9FFC /* SharePhotoViewController.swift */,
-			);
-			name = Controller;
-			sourceTree = "<group>";
+		"E9CCEB0A96DFE86050FE937C" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "EC021A4F18497C3BB5FD5343";
 		};
-		DB72089E1CEB1515001E4F4F /* Controller */ = {
-			isa = PBXGroup;
-			children = (
-				DB72089F1CEB155D001E4F4F /* FilterPickerViewController.swift */,
-			);
-			name = Controller;
-			sourceTree = "<group>";
+		"7EC82ED1563C1BD02A0C2EEA" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Constant/Style.swift";
+			"sourceTree" = "<group>";
 		};
-		DB7208A11CEC17BC001E4F4F /* Model */ = {
-			isa = PBXGroup;
-			children = (
-				DB4FA9151CEC1A8900C78A99 /* AdjustmentData.swift */,
-			);
-			path = Model;
-			sourceTree = "<group>";
+		"93B71EA63EC86B74CCFF7AD5" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7EC82ED1563C1BD02A0C2EEA";
 		};
-		DB7A35671C95578800AB3283 /* View */ = {
-			isa = PBXGroup;
-			children = (
-				DB7A35681C9557AD00AB3283 /* BubbleView.swift */,
-				DB7A35AF1C969FFA00AB3283 /* BubbleLabel.swift */,
-			);
-			name = View;
-			sourceTree = "<group>";
+		"C88457E8647B02B278DB2B5B" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Controller/BaseEditPhotoController.swift";
+			"sourceTree" = "<group>";
 		};
-		DB7A35AC1C965CEB00AB3283 /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				DB7A35AD1C965D2100AB3283 /* bubble.json */,
-				DB14F7BF1C84348B000FA15F /* CelluloidKit.xcassets */,
-			);
-			name = Resources;
-			sourceTree = "<group>";
+		"9B238251622999E3904692A2" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "C88457E8647B02B278DB2B5B";
 		};
-		DB80D6601CAB9EB3006B2F60 /* Filter */ = {
-			isa = PBXGroup;
-			children = (
-				DB72089E1CEB1515001E4F4F /* Controller */,
-				DB80D6631CAB9EF6006B2F60 /* Filter.swift */,
-			);
-			name = Filter;
-			sourceTree = "<group>";
+		"068B6BBB2527904BDB71C4F8" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Controller/BasePickerController.swift";
+			"sourceTree" = "<group>";
 		};
-		DB83EFA71CD992D100962016 /* View */ = {
-			isa = PBXGroup;
-			children = (
-				DB83EFA81CD992F600962016 /* ImageArrangedPanel.swift */,
-				DB79897F1CDA4EF700419114 /* CollageStylePanel.swift */,
-				DBF094C01CE18385006FA424 /* CollageView.swift */,
-				DBF094C21CE1A14E006FA424 /* CollageContentView.swift */,
-			);
-			name = View;
-			sourceTree = "<group>";
+		"7A41149401D14692A836928B" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "068B6BBB2527904BDB71C4F8";
 		};
-		DB83EFAA1CD995A100962016 /* Model */ = {
-			isa = PBXGroup;
-			children = (
-				DB83EFAB1CD995C800962016 /* PhotoModel.swift */,
-				DB83EFB01CDA0ADD00962016 /* CollageModel.swift */,
-			);
-			name = Model;
-			sourceTree = "<group>";
+		"386F4D1898CF856A67B0E6D8" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Controller/PhotoExport.swift";
+			"sourceTree" = "<group>";
 		};
-		DB83EFAD1CD9F35E00962016 /* Utility */ = {
-			isa = PBXGroup;
-			children = (
-				DB83EFAE1CD9F37F00962016 /* Log.swift */,
-			);
-			name = Utility;
-			sourceTree = "<group>";
+		"0609F2E2EA46738527924D1C" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "386F4D1898CF856A67B0E6D8";
 		};
-		DB83EFB21CDA113700962016 /* Resources */ = {
-			isa = PBXGroup;
-			children = (
-				DB83EFB71CDA276F00962016 /* collage.json */,
-			);
-			name = Resources;
-			sourceTree = "<group>";
+		"F91C84686E8675DDB420A2A1" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Extension/JSONCodableExtension.swift";
+			"sourceTree" = "<group>";
 		};
-		DBA390F31C86CD92006248A4 /* Constant */ = {
-			isa = PBXGroup;
-			children = (
-				DB14F7C11C8437EC000FA15F /* Assets.swift */,
-				DBA390F11C868172006248A4 /* Style.swift */,
-				DB7A35721C958DA700AB3283 /* Localizable.swift */,
-				DB7A35701C958BB300AB3283 /* Localizable.strings */,
-			);
-			path = Constant;
-			sourceTree = "<group>";
+		"441792FF36A40C9F2E93A8CC" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "F91C84686E8675DDB420A2A1";
 		};
-		DBA390F41C86CF55006248A4 /* Bubble */ = {
-			isa = PBXGroup;
-			children = (
-				DB1DE6451C87EB6D0076EE76 /* Model */,
-				DB7A35671C95578800AB3283 /* View */,
-				DB1DE6481C87EBC10076EE76 /* Controller */,
-			);
-			name = Bubble;
-			sourceTree = "<group>";
+		"DC101CB82895C05E9F6AE900" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Extension/UIView-Borders.swift";
+			"sourceTree" = "<group>";
 		};
-		DBC81CCC1C9BE35A00423098 /* Model */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = Model;
-			sourceTree = "<group>";
+		"E26D1D11DD9EB6FC07945927" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "DC101CB82895C05E9F6AE900";
 		};
-		DBDC81E51CC7504B0036F18E /* Model */ = {
-			isa = PBXGroup;
-			children = (
-				DBDC81E61CC7506C0036F18E /* StickerModel.swift */,
-			);
-			name = Model;
-			sourceTree = "<group>";
+		"5EAC73720B26E1508281698F" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Extension/UIView-Extension.swift";
+			"sourceTree" = "<group>";
 		};
-		DBDC81E81CC75B910036F18E /* View */ = {
-			isa = PBXGroup;
-			children = (
-				DBDC81E91CC75BDF0036F18E /* StickerView.swift */,
-			);
-			name = View;
-			sourceTree = "<group>";
+		"F49B0DA4DAF8EEC2C30AE3A4" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "5EAC73720B26E1508281698F";
 		};
-/* End PBXGroup section */
-
-/* Begin PBXHeadersBuildPhase section */
-		DB14F7841C8083A1000FA15F /* Headers */ = {
-			isa = PBXHeadersBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				DB14F78A1C8083A1000FA15F /* CelluloidKit.h in Headers */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
+		"E9A83499C16AD84597BB5E4F" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Filter/Controller/FilterPickerViewController.swift";
+			"sourceTree" = "<group>";
 		};
-/* End PBXHeadersBuildPhase section */
-
-/* Begin PBXNativeTarget section */
-		DB14F76C1C803608000FA15F /* Celluloid */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = DB14F77F1C803608000FA15F /* Build configuration list for PBXNativeTarget "Celluloid" */;
-			buildPhases = (
-				2791A7841537A2A7A52A126E /* [CP] Check Pods Manifest.lock */,
-				DB14F7691C803608000FA15F /* Sources */,
-				DB14F76A1C803608000FA15F /* Frameworks */,
-				DB14F76B1C803608000FA15F /* Resources */,
-				DB14F7A31C8083A1000FA15F /* Embed Frameworks */,
-				DB14F7BC1C808579000FA15F /* Embed App Extensions */,
-				B364123C19E6707E10ADDEB2 /* [CP] Embed Pods Frameworks */,
-				AF8B6BD10CE4D630E81434FD /* [CP] Copy Pods Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				DB14F79B1C8083A1000FA15F /* PBXTargetDependency */,
-				DB14F7B71C808579000FA15F /* PBXTargetDependency */,
-			);
-			name = Celluloid;
-			productName = Celluloid;
-			productReference = DB14F76D1C803608000FA15F /* Celluloid.app */;
-			productType = "com.apple.product-type.application";
+		"7BB47E5DE7B2544C81D133E3" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E9A83499C16AD84597BB5E4F";
 		};
-		DB14F7861C8083A1000FA15F /* CelluloidKit */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = DB14F7A21C8083A1000FA15F /* Build configuration list for PBXNativeTarget "CelluloidKit" */;
-			buildPhases = (
-				C7C0E4082408C1ED3CCDFEDD /* [CP] Check Pods Manifest.lock */,
-				DB14F7821C8083A1000FA15F /* Sources */,
-				DB14F7831C8083A1000FA15F /* Frameworks */,
-				DB14F7841C8083A1000FA15F /* Headers */,
-				DB14F7851C8083A1000FA15F /* Resources */,
-				5E8D615AA30C4AFCED679CAE /* [CP] Copy Pods Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = CelluloidKit;
-			productName = CelluloidKit;
-			productReference = DB14F7871C8083A1000FA15F /* CelluloidKit.framework */;
-			productType = "com.apple.product-type.framework";
+		"D26801AC6FDB848D94294665" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Filter/Filter.swift";
+			"sourceTree" = "<group>";
 		};
-		DB14F7A81C808579000FA15F /* CelluloidPhotoExtension */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = DB14F7B91C808579000FA15F /* Build configuration list for PBXNativeTarget "CelluloidPhotoExtension" */;
-			buildPhases = (
-				C7108747CB9FA4F846ECF72A /* [CP] Check Pods Manifest.lock */,
-				DB14F7A51C808579000FA15F /* Sources */,
-				DB14F7A61C808579000FA15F /* Frameworks */,
-				DB14F7A71C808579000FA15F /* Resources */,
-				167B96E4A110108942DA7FA3 /* [CP] Copy Pods Resources */,
-				DB5F9E9F1D2CBE8E00772697 /* ShellScript */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = CelluloidPhotoExtension;
-			productName = CelluloidPhotoExtension;
-			productReference = DB14F7A91C808579000FA15F /* CelluloidPhotoExtension.appex */;
-			productType = "com.apple.product-type.app-extension";
+		"FDE41487BCDFA59C273B1677" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "D26801AC6FDB848D94294665";
 		};
-/* End PBXNativeTarget section */
-
-/* Begin PBXProject section */
-		DB14F7651C803608000FA15F /* Project object */ = {
-			isa = PBXProject;
-			attributes = {
-				LastSwiftUpdateCheck = 0720;
-				LastUpgradeCheck = 0820;
-				ORGANIZATIONNAME = Mango;
-				TargetAttributes = {
-					DB14F76C1C803608000FA15F = {
-						CreatedOnToolsVersion = 7.2.1;
-						LastSwiftMigration = 0820;
+		"A649B2835CA9B31A4ADCA008" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Model/AdjustmentData.swift";
+			"sourceTree" = "<group>";
+		};
+		"209A49E0B3448D518C9B57FA" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A649B2835CA9B31A4ADCA008";
+		};
+		"D9AAEEA1FAAF01D20243B356" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Sticker/Controller/StickerPickerViewController.swift";
+			"sourceTree" = "<group>";
+		};
+		"2EF31CC80D564DB102F37AA7" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "D9AAEEA1FAAF01D20243B356";
+		};
+		"5FB7830F82AF88A349A3E1D4" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Sticker/Model/StickerModel.swift";
+			"sourceTree" = "<group>";
+		};
+		"5BA5A89FD7E6CD5C882742AC" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "5FB7830F82AF88A349A3E1D4";
+		};
+		"9620BC858C7CD3157609AC92" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Sticker/View/StickerView.swift";
+			"sourceTree" = "<group>";
+		};
+		"583D98CBAB85FF9D4F09BD0E" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "9620BC858C7CD3157609AC92";
+		};
+		"429E8367FBF71D5C0ACFF621" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text";
+			"path" = "CelluloidKit/ThirdPartyNotices/SnapKit-LICENSE.txt";
+			"sourceTree" = "<group>";
+		};
+		"3443E5A6A81F3F1E901D44F9" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "429E8367FBF71D5C0ACFF621";
+		};
+		"15F0CB9766457D249A96AECB" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/Utility/Log.swift";
+			"sourceTree" = "<group>";
+		};
+		"1DB03B54F258C751CC6A8FFB" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "15F0CB9766457D249A96AECB";
+		};
+		"62B786D9B81BB951D7ACD9A8" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/View/AttachView.swift";
+			"sourceTree" = "<group>";
+		};
+		"70A58929646B2EEB689946B8" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "62B786D9B81BB951D7ACD9A8";
+		};
+		"259767AA3ECF4AC9D7A33FF0" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/View/EditPhotoToolBar.swift";
+			"sourceTree" = "<group>";
+		};
+		"CBA968E8430DB2E1878AB133" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "259767AA3ECF4AC9D7A33FF0";
+		};
+		"90E81D95B17FF3AF2C7CF8E8" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidKit/View/ImageOverlayView.swift";
+			"sourceTree" = "<group>";
+		};
+		"6278E7A608A7FB0C1ABBA9F0" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "90E81D95B17FF3AF2C7CF8E8";
+		};
+		"90D16715F4BB85CA2370AF8E" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.json";
+			"path" = "CelluloidKit/bubble.json";
+			"sourceTree" = "<group>";
+		};
+		"D3F324F6722C4C38D60ACD17" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "90D16715F4BB85CA2370AF8E";
+		};
+		"6CDC19517F6FDEE9F362DCEC" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.strings";
+			"path" = "CelluloidKit/Constant/en.lproj/Localizable.strings";
+			"sourceTree" = "<group>";
+			"name" = "en";
+		};
+		"F349AB9108DA2C5739113186" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.strings";
+			"path" = "CelluloidKit/Constant/zh-Hans.lproj/Localizable.strings";
+			"sourceTree" = "<group>";
+			"name" = "zh-Hans";
+		};
+		"DA364A413D87B93742CCD776" = {
+			"isa" = "PBXVariantGroup";
+			"children" = ("6CDC19517F6FDEE9F362DCEC", "F349AB9108DA2C5739113186");
+			"name" = "Localizable.strings";
+			"sourceTree" = "<group>";
+		};
+		"340F13666C74421CD080A41F" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "DA364A413D87B93742CCD776";
+		};
+		"7F3649D6ADFCADABE3D6B21C" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "58C138FC66F6E96F7B9AC16F";
+			"productName" = "SnapKit";
+		};
+		"50EE531AF4DCD42996E79A46" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "7F3649D6ADFCADABE3D6B21C";
+		};
+		"B576EBB7AD4044E4A759ABE2" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("0DFBE779F4CEE2D9596BAB6F", "B1A4B7C3CEA7B384306CAD04", "1D91B633221BA7165E858F88", "9E15B09DAD9CDC33C433B29E", "3014FF5B56F431BAEA85F5DC", "5DEF38535A07F1F12409AC8B", "E9CCEB0A96DFE86050FE937C", "93B71EA63EC86B74CCFF7AD5", "9B238251622999E3904692A2", "7A41149401D14692A836928B", "0609F2E2EA46738527924D1C", "441792FF36A40C9F2E93A8CC", "E26D1D11DD9EB6FC07945927", "F49B0DA4DAF8EEC2C30AE3A4", "7BB47E5DE7B2544C81D133E3", "FDE41487BCDFA59C273B1677", "209A49E0B3448D518C9B57FA", "2EF31CC80D564DB102F37AA7", "5BA5A89FD7E6CD5C882742AC", "583D98CBAB85FF9D4F09BD0E", "1DB03B54F258C751CC6A8FFB", "70A58929646B2EEB689946B8", "CBA968E8430DB2E1878AB133", "6278E7A608A7FB0C1ABBA9F0");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"014ECC314FDE6D702C7318D5" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("50EE531AF4DCD42996E79A46");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"B82193C4137E2C90F6C41C86" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("DFE7F3C33A200A95184BC62B", "3443E5A6A81F3F1E901D44F9", "D3F324F6722C4C38D60ACD17", "340F13666C74421CD080A41F");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"AAB7F5D8711D76DE65AB76C6" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Debug";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.CelluloidKit";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
+				"TARGETED_DEVICE_FAMILY" = "1,2";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"INFOPLIST_FILE" = "CelluloidKit/Info.plist";
+				"DEFINES_MODULE" = "YES";
+				"SKIP_INSTALL" = "YES";
+				"APPLICATION_EXTENSION_API_ONLY" = "YES";
+				"INSTALL_PATH" = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				"DYLIB_INSTALL_NAME_BASE" = "@rpath";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
+			};
+		};
+		"1819DF04E9213B4B2E056804" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Release";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.CelluloidKit";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
+				"TARGETED_DEVICE_FAMILY" = "1,2";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"INFOPLIST_FILE" = "CelluloidKit/Info.plist";
+				"DEFINES_MODULE" = "YES";
+				"SKIP_INSTALL" = "YES";
+				"APPLICATION_EXTENSION_API_ONLY" = "YES";
+				"INSTALL_PATH" = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				"DYLIB_INSTALL_NAME_BASE" = "@rpath";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
+			};
+		};
+		"FA698C19D053476E771FEBD3" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("AAB7F5D8711D76DE65AB76C6", "1819DF04E9213B4B2E056804");
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"B0E350E826AC8171B8584755" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "CelluloidKit";
+			"productName" = "CelluloidKit";
+			"productReference" = "5DC541A7B7457790CD19E005";
+			"productType" = "com.apple.product-type.framework";
+			"buildConfigurationList" = "FA698C19D053476E771FEBD3";
+			"buildPhases" = ("B576EBB7AD4044E4A759ABE2", "014ECC314FDE6D702C7318D5", "B82193C4137E2C90F6C41C86");
+			"buildRules" = ();
+			"dependencies" = ();
+			"packageProductDependencies" = ("7F3649D6ADFCADABE3D6B21C");
+		};
+		"E366C823D3F5EAE74D0993F4" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidPhotoExtension/PhotoEditingViewController.swift";
+			"sourceTree" = "<group>";
+		};
+		"16736C61CF65844316E3B04E" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E366C823D3F5EAE74D0993F4";
+		};
+		"4DA01BE4E1D33F4BD1137EC0" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "file.storyboard";
+			"path" = "CelluloidPhotoExtension/Base.lproj/MainInterface.storyboard";
+			"sourceTree" = "<group>";
+			"name" = "Base";
+		};
+		"30A476F0B17E610CA82AE22B" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.strings";
+			"path" = "CelluloidPhotoExtension/zh-Hans.lproj/MainInterface.strings";
+			"sourceTree" = "<group>";
+			"name" = "zh-Hans";
+		};
+		"4C65F4A64FFFAA1FDC868A61" = {
+			"isa" = "PBXVariantGroup";
+			"children" = ("4DA01BE4E1D33F4BD1137EC0", "30A476F0B17E610CA82AE22B");
+			"name" = "MainInterface.storyboard";
+			"sourceTree" = "<group>";
+		};
+		"A2B651A75317E6C53CD4C5B8" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "4C65F4A64FFFAA1FDC868A61";
+		};
+		"A4BA65ECFB68F432B45BE006" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "98F54143AB4E86B28C3AFEE0";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "B0E350E826AC8171B8584755";
+			"remoteInfo" = "CelluloidKit";
+		};
+		"3603EC87C4046F77447FBF00" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "B0E350E826AC8171B8584755";
+			"targetProxy" = "A4BA65ECFB68F432B45BE006";
+		};
+		"E62E7E200B8DCD13C49C56FE" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "5DC541A7B7457790CD19E005";
+		};
+		"B6AAB4B0F38C8F82639F0005" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("16736C61CF65844316E3B04E");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"E0522F0441DB6A9C4E1CEC0C" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("E62E7E200B8DCD13C49C56FE");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"5E0C715C043E5801AAB4A28C" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("A2B651A75317E6C53CD4C5B8");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"6FC31694E26CCA28B68F55BF" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Debug";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.CelluloidPhotoExtension";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
+				"TARGETED_DEVICE_FAMILY" = "1,2";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"INFOPLIST_FILE" = "CelluloidPhotoExtension/Info.plist";
+				"SKIP_INSTALL" = "YES";
+				"APPLICATION_EXTENSION_API_ONLY" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
+			};
+		};
+		"78672E00AE8EA5E9678C24E8" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Release";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.CelluloidPhotoExtension";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
+				"TARGETED_DEVICE_FAMILY" = "1,2";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"INFOPLIST_FILE" = "CelluloidPhotoExtension/Info.plist";
+				"SKIP_INSTALL" = "YES";
+				"APPLICATION_EXTENSION_API_ONLY" = "YES";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
+			};
+		};
+		"6B369653D0C7A967E7FEDA0B" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("6FC31694E26CCA28B68F55BF", "78672E00AE8EA5E9678C24E8");
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"E83CFC254AF6F43C3E0E4102" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "CelluloidPhotoExtension";
+			"productName" = "CelluloidPhotoExtension";
+			"productReference" = "01D998A9F43850C686AD87A1";
+			"productType" = "com.apple.product-type.app-extension";
+			"buildConfigurationList" = "6B369653D0C7A967E7FEDA0B";
+			"buildPhases" = ("B6AAB4B0F38C8F82639F0005", "E0522F0441DB6A9C4E1CEC0C", "5E0C715C043E5801AAB4A28C");
+			"buildRules" = ();
+			"dependencies" = ("3603EC87C4046F77447FBF00");
+			"packageProductDependencies" = ();
+		};
+		"E64A6D2CD5383657A06E7372" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Celluloid/AppDelegate.swift";
+			"sourceTree" = "<group>";
+		};
+		"607178BCE0226DEB726805A5" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E64A6D2CD5383657A06E7372";
+		};
+		"6366F9DE5DEDD38B6BC4F147" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "folder.assetcatalog";
+			"path" = "Celluloid/Assets.xcassets";
+			"sourceTree" = "<group>";
+		};
+		"E868C5347E181498EE9066CC" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "6366F9DE5DEDD38B6BC4F147";
+		};
+		"3654FFA69CEC42E747EA94E6" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Celluloid/CollageViewController.swift";
+			"sourceTree" = "<group>";
+		};
+		"481B85B11ECF9F80B0DF9A38" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "3654FFA69CEC42E747EA94E6";
+		};
+		"E0C8C3453B535032D891E315" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Celluloid/Controller/EditPhotoViewController.swift";
+			"sourceTree" = "<group>";
+		};
+		"00BC84A55A3F66C7B5F3F9D4" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E0C8C3453B535032D891E315";
+		};
+		"165A734F8F49357C7274D80E" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Celluloid/Controller/EntranceViewController.swift";
+			"sourceTree" = "<group>";
+		};
+		"9A6C57047CA7B6A83894B564" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "165A734F8F49357C7274D80E";
+		};
+		"72B429FC16EC3E305AB4AE2D" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Celluloid/Controller/PhotoPickerViewController.swift";
+			"sourceTree" = "<group>";
+		};
+		"65677F454E0585E2131DA9EF" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "72B429FC16EC3E305AB4AE2D";
+		};
+		"F0CFF198AA5AD3C35318A388" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Celluloid/Controller/SharePhotoViewController.swift";
+			"sourceTree" = "<group>";
+		};
+		"13878AE218185A9DD6992EE6" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "F0CFF198AA5AD3C35318A388";
+		};
+		"A2FF4A4DB94C8D597EA78B20" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Celluloid/Model/CollageModel.swift";
+			"sourceTree" = "<group>";
+		};
+		"106FF072F7CD5BF6D1620932" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A2FF4A4DB94C8D597EA78B20";
+		};
+		"E64C2DAADBFAFD68DD662628" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Celluloid/Model/PhotoModel.swift";
+			"sourceTree" = "<group>";
+		};
+		"86F2A80A825FF76131AD8FB0" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E64C2DAADBFAFD68DD662628";
+		};
+		"6C9EA988BD98F90B24A17ACB" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Celluloid/View/CollageContentView.swift";
+			"sourceTree" = "<group>";
+		};
+		"F04C089F99A07DD41AD6300B" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "6C9EA988BD98F90B24A17ACB";
+		};
+		"B8C6A2A37CAEE8DA609455CB" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Celluloid/View/CollageStylePanel.swift";
+			"sourceTree" = "<group>";
+		};
+		"A5C065C2A247B44D70BBD8A4" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "B8C6A2A37CAEE8DA609455CB";
+		};
+		"FF7DE8DD1EA4F9D3D30B384A" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Celluloid/View/CollageView.swift";
+			"sourceTree" = "<group>";
+		};
+		"995319D10440C7704C1C574A" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "FF7DE8DD1EA4F9D3D30B384A";
+		};
+		"8D1CF8B207189503A3F89781" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Celluloid/View/ImageArrangedPanel.swift";
+			"sourceTree" = "<group>";
+		};
+		"0780B617D9E7244A02E9E919" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "8D1CF8B207189503A3F89781";
+		};
+		"B514277CAE3184F4431E7D26" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.json";
+			"path" = "Celluloid/collage.json";
+			"sourceTree" = "<group>";
+		};
+		"5F8D81EE395CBA1AD91583A1" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "B514277CAE3184F4431E7D26";
+		};
+		"CC44FF6658EFEAA27C219015" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "file.storyboard";
+			"path" = "Celluloid/Base.lproj/LaunchScreen.storyboard";
+			"sourceTree" = "<group>";
+			"name" = "Base";
+		};
+		"B6ED0AD0583109E2BA2648E4" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.strings";
+			"path" = "Celluloid/zh-Hans.lproj/LaunchScreen.strings";
+			"sourceTree" = "<group>";
+			"name" = "zh-Hans";
+		};
+		"86A8C0FF66C154F25AB6E79A" = {
+			"isa" = "PBXVariantGroup";
+			"children" = ("CC44FF6658EFEAA27C219015", "B6ED0AD0583109E2BA2648E4");
+			"name" = "LaunchScreen.storyboard";
+			"sourceTree" = "<group>";
+		};
+		"BA3C6BFAC92A867E18E1410B" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "86A8C0FF66C154F25AB6E79A";
+		};
+		"2366C662BB2658F413607B92" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.strings";
+			"path" = "Celluloid/zh-Hans.lproj/InfoPlist.strings";
+			"sourceTree" = "<group>";
+			"name" = "zh-Hans";
+		};
+		"C805640F4331C58E9AC40B18" = {
+			"isa" = "PBXVariantGroup";
+			"children" = ("2366C662BB2658F413607B92");
+			"name" = "InfoPlist.strings";
+			"sourceTree" = "<group>";
+		};
+		"D3C15EBD428D5CAA518B0B87" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "C805640F4331C58E9AC40B18";
+		};
+		"49B49B6C38442AC24578B7E3" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.plist.strings";
+			"path" = "Celluloid/zh-Hans.lproj/Localizable.strings";
+			"sourceTree" = "<group>";
+			"name" = "zh-Hans";
+		};
+		"CABFAC7A032AB4EB6CECBAD8" = {
+			"isa" = "PBXVariantGroup";
+			"children" = ("49B49B6C38442AC24578B7E3");
+			"name" = "Localizable.strings";
+			"sourceTree" = "<group>";
+		};
+		"18B1DDC13D3E83C498C81F3D" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "CABFAC7A032AB4EB6CECBAD8";
+		};
+		"8957534E1180019C511CC071" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "58C138FC66F6E96F7B9AC16F";
+			"productName" = "SnapKit";
+		};
+		"CF01E142367E318D68F643C0" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "8957534E1180019C511CC071";
+		};
+		"3536F479A7EE02E05B84FCF8" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "98F54143AB4E86B28C3AFEE0";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "B0E350E826AC8171B8584755";
+			"remoteInfo" = "CelluloidKit";
+		};
+		"B41AC5836002255791ACF414" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "B0E350E826AC8171B8584755";
+			"targetProxy" = "3536F479A7EE02E05B84FCF8";
+		};
+		"BEA18020AA02EB886A6E2B56" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "5DC541A7B7457790CD19E005";
+		};
+		"CD0D83E38F628A3BE9DA5D5A" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "98F54143AB4E86B28C3AFEE0";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "E83CFC254AF6F43C3E0E4102";
+			"remoteInfo" = "CelluloidPhotoExtension";
+		};
+		"9BD18749120F4D69B936630A" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "E83CFC254AF6F43C3E0E4102";
+			"targetProxy" = "CD0D83E38F628A3BE9DA5D5A";
+		};
+		"8533968324D3D6C7784FA436" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("607178BCE0226DEB726805A5", "481B85B11ECF9F80B0DF9A38", "00BC84A55A3F66C7B5F3F9D4", "9A6C57047CA7B6A83894B564", "65677F454E0585E2131DA9EF", "13878AE218185A9DD6992EE6", "106FF072F7CD5BF6D1620932", "86F2A80A825FF76131AD8FB0", "F04C089F99A07DD41AD6300B", "A5C065C2A247B44D70BBD8A4", "995319D10440C7704C1C574A", "0780B617D9E7244A02E9E919");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"6F96489D6C96ED758B1D42FA" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("CF01E142367E318D68F643C0", "BEA18020AA02EB886A6E2B56");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"53B096E06C433DBF4241E57F" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("E868C5347E181498EE9066CC", "5F8D81EE395CBA1AD91583A1", "BA3C6BFAC92A867E18E1410B", "D3C15EBD428D5CAA518B0B87", "18B1DDC13D3E83C498C81F3D");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"153611E95EA9D8DFFC19DE8E" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "5DC541A7B7457790CD19E005";
+			"settings" = {
+				"ATTRIBUTES" = ("RemoveHeadersOnCopy", "CodeSignOnCopy");
+			};
+		};
+		"ECF7647EE3B5FCF0C31C9B2F" = {
+			"isa" = "PBXCopyFilesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"dstPath" = "";
+			"dstSubfolderSpec" = "10";
+			"files" = ("153611E95EA9D8DFFC19DE8E");
+			"name" = "Embed CelluloidKit";
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"FDC13B7409C5239D288A4DBD" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "01D998A9F43850C686AD87A1";
+			"settings" = {
+				"ATTRIBUTES" = ("RemoveHeadersOnCopy", "CodeSignOnCopy");
+			};
+		};
+		"6E36B7966E7EF37DCD98986A" = {
+			"isa" = "PBXCopyFilesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"dstPath" = "";
+			"dstSubfolderSpec" = "13";
+			"files" = ("FDC13B7409C5239D288A4DBD");
+			"name" = "Embed CelluloidPhotoExtension";
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"C3AE044BD5C5998F85560E30" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Debug";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
+				"TARGETED_DEVICE_FAMILY" = "1,2";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"INFOPLIST_FILE" = "Celluloid/Info.plist";
+				"ASSETCATALOG_COMPILER_APPICON_NAME" = "AppIcon";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
+			};
+		};
+		"BE30AE42D1CB2B900321FACD" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Release";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
+				"TARGETED_DEVICE_FAMILY" = "1,2";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"INFOPLIST_FILE" = "Celluloid/Info.plist";
+				"ASSETCATALOG_COMPILER_APPICON_NAME" = "AppIcon";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
+			};
+		};
+		"7A90BA589C9AE00829E11043" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("C3AE044BD5C5998F85560E30", "BE30AE42D1CB2B900321FACD");
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"F93EE5769BE02B356518D728" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "Celluloid";
+			"productName" = "Celluloid";
+			"productReference" = "2F36698ED899568254E2531D";
+			"productType" = "com.apple.product-type.application";
+			"buildConfigurationList" = "7A90BA589C9AE00829E11043";
+			"buildPhases" = ("8533968324D3D6C7784FA436", "6F96489D6C96ED758B1D42FA", "53B096E06C433DBF4241E57F", "ECF7647EE3B5FCF0C31C9B2F", "6E36B7966E7EF37DCD98986A");
+			"buildRules" = ();
+			"dependencies" = ("B41AC5836002255791ACF414", "9BD18749120F4D69B936630A");
+			"packageProductDependencies" = ("8957534E1180019C511CC071");
+		};
+		"8E4D97A7977A7F959507513F" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E366C823D3F5EAE74D0993F4";
+		};
+		"40CB56698C112041EADF19C8" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidTests/AdaptiveInterfaceTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"C732D65A508ED17A7A1CB700" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "40CB56698C112041EADF19C8";
+		};
+		"BB99047D5A87A94BDBB3FD0A" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidTests/AdjustmentDataTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"AD7DEC4C4519C233DCA02A87" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "BB99047D5A87A94BDBB3FD0A";
+		};
+		"1FEAAD44ED20110CC9E56A42" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidTests/CelluloidTestFixtures.swift";
+			"sourceTree" = "<group>";
+		};
+		"2C1AA16585801C504F7D8ACF" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "1FEAAD44ED20110CC9E56A42";
+		};
+		"2CAF2A809DE7D59E6AE8285B" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidTests/CollageCompositionTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"6C2D9FD65EB8C05B5D31B6B2" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "2CAF2A809DE7D59E6AE8285B";
+		};
+		"1781DA890EE13A3494AA7A66" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidTests/EditorRegressionTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"A60AE53A60F655ECAC58ED59" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "1781DA890EE13A3494AA7A66";
+		};
+		"A56CCF704778AA96C6057C8F" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidTests/ExportAndInteractionTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"EEDC4847EB83A00BC6899470" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A56CCF704778AA96C6057C8F";
+		};
+		"DFED841E9B978F2AAF21D717" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidTests/LargeDecoratedExportTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"A7D279F968D9CF96E338A31D" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "DFED841E9B978F2AAF21D717";
+		};
+		"310AF030E11C7F850D2F4079" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidTests/OverlayResizeTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"A85F0BDA26E19862ABE6C7A8" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "310AF030E11C7F850D2F4079";
+		};
+		"BAB5B91C9059E927F76FDEAC" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "98F54143AB4E86B28C3AFEE0";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "F93EE5769BE02B356518D728";
+			"remoteInfo" = "Celluloid";
+		};
+		"1BE09B543DC42B8A37E4120F" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "F93EE5769BE02B356518D728";
+			"targetProxy" = "BAB5B91C9059E927F76FDEAC";
+		};
+		"EE0E23A10849D5B379123E2E" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "98F54143AB4E86B28C3AFEE0";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "B0E350E826AC8171B8584755";
+			"remoteInfo" = "CelluloidKit";
+		};
+		"A9F97AA00990D847BC7F1781" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "B0E350E826AC8171B8584755";
+			"targetProxy" = "EE0E23A10849D5B379123E2E";
+		};
+		"670B9BC2CBC96ABE0A04158B" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "5DC541A7B7457790CD19E005";
+		};
+		"DD14CA9110537355EE3A4E8B" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("8E4D97A7977A7F959507513F", "C732D65A508ED17A7A1CB700", "AD7DEC4C4519C233DCA02A87", "2C1AA16585801C504F7D8ACF", "6C2D9FD65EB8C05B5D31B6B2", "A60AE53A60F655ECAC58ED59", "EEDC4847EB83A00BC6899470", "A7D279F968D9CF96E338A31D", "A85F0BDA26E19862ABE6C7A8");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"ED17C70D8686742D3B12F292" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("670B9BC2CBC96ABE0A04158B");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"E9F23F571113A026E066C550" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ();
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"F7CF8DC0415BD4C69BE39289" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Debug";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.Tests";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
+				"TARGETED_DEVICE_FAMILY" = "1,2";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/Celluloid.app/Celluloid";
+				"BUNDLE_LOADER" = "$(TEST_HOST)";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
+			};
+		};
+		"CDF81136FAF14161A3874946" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Release";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.Tests";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
+				"TARGETED_DEVICE_FAMILY" = "1,2";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"TEST_HOST" = "$(BUILT_PRODUCTS_DIR)/Celluloid.app/Celluloid";
+				"BUNDLE_LOADER" = "$(TEST_HOST)";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
+			};
+		};
+		"C7471DF63D1A3FB2BB785947" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("F7CF8DC0415BD4C69BE39289", "CDF81136FAF14161A3874946");
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"22D33AA2C63A2ACDC5FB23A7" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "CelluloidTests";
+			"productName" = "CelluloidTests";
+			"productReference" = "BFF0B16C480DB2315BA9FD88";
+			"productType" = "com.apple.product-type.bundle.unit-test";
+			"buildConfigurationList" = "C7471DF63D1A3FB2BB785947";
+			"buildPhases" = ("DD14CA9110537355EE3A4E8B", "ED17C70D8686742D3B12F292", "E9F23F571113A026E066C550");
+			"buildRules" = ();
+			"dependencies" = ("1BE09B543DC42B8A37E4120F", "A9F97AA00990D847BC7F1781");
+			"packageProductDependencies" = ();
+		};
+		"4A488343238B6C91F1475E0D" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidUITests/CelluloidSystemPermissionTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"24937F62567A7F80DD4E6F53" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "4A488343238B6C91F1475E0D";
+		};
+		"FB5BD9A9CE7361D0D9033A62" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "CelluloidUITests/CelluloidUITests.swift";
+			"sourceTree" = "<group>";
+		};
+		"347CE7BE3123971C77DBD214" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "FB5BD9A9CE7361D0D9033A62";
+		};
+		"041CEBE5EDF25D5BA6824EFB" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "98F54143AB4E86B28C3AFEE0";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "F93EE5769BE02B356518D728";
+			"remoteInfo" = "Celluloid";
+		};
+		"6E4EADA9BF7070F2CBAF12AA" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "F93EE5769BE02B356518D728";
+			"targetProxy" = "041CEBE5EDF25D5BA6824EFB";
+		};
+		"72CE5DFA58A973DD5E99314D" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ("24937F62567A7F80DD4E6F53", "347CE7BE3123971C77DBD214");
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"D80FF61368B12280BA570DD2" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ();
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"FEAAA1395C9C7D264FB03206" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = ();
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"2A3E3D72CD9B237D377788B7" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Debug";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.UITests";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
+				"TARGETED_DEVICE_FAMILY" = "1,2";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"TEST_TARGET_NAME" = "Celluloid";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
+			};
+		};
+		"C40B765F6EC53413A81356C2" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Release";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "Mango.Celluloid.UITests";
+				"SWIFT_VERSION" = "5.0";
+				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
+				"TARGETED_DEVICE_FAMILY" = "1,2";
+				"CODE_SIGN_STYLE" = "Automatic";
+				"CURRENT_PROJECT_VERSION" = "2";
+				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
+				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"TEST_TARGET_NAME" = "Celluloid";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
+			};
+		};
+		"4BA1D3C399CB53CEBEC19044" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("2A3E3D72CD9B237D377788B7", "C40B765F6EC53413A81356C2");
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"040E1D583261243AF4524DE1" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "CelluloidUITests";
+			"productName" = "CelluloidUITests";
+			"productReference" = "2A91E5445F2F41258B05F031";
+			"productType" = "com.apple.product-type.bundle.ui-testing";
+			"buildConfigurationList" = "4BA1D3C399CB53CEBEC19044";
+			"buildPhases" = ("72CE5DFA58A973DD5E99314D", "D80FF61368B12280BA570DD2", "FEAAA1395C9C7D264FB03206");
+			"buildRules" = ();
+			"dependencies" = ("6E4EADA9BF7070F2CBAF12AA");
+			"packageProductDependencies" = ();
+		};
+		"FBDC4F23F93125BBEEAE800C" = {
+			"isa" = "PBXGroup";
+			"name" = "Products";
+			"children" = ("5DC541A7B7457790CD19E005", "01D998A9F43850C686AD87A1", "2F36698ED899568254E2531D", "BFF0B16C480DB2315BA9FD88", "2A91E5445F2F41258B05F031");
+			"sourceTree" = "<group>";
+		};
+		"325F10A6957A34D66CB8C0E4" = {
+			"isa" = "PBXGroup";
+			"children" = ("403A285172AED69FADBBD9D9", "A243B634A6FB8C8C1CAE1710", "31B696B57138421650499BD6", "43E417A8DB3161A8ECA43EEC", "9952DC940B46E74A756DE4A8", "BA54C1D879225780140264DD", "8308428C4BFD9FE69ECA58A2", "EC021A4F18497C3BB5FD5343", "7EC82ED1563C1BD02A0C2EEA", "C88457E8647B02B278DB2B5B", "068B6BBB2527904BDB71C4F8", "386F4D1898CF856A67B0E6D8", "F91C84686E8675DDB420A2A1", "DC101CB82895C05E9F6AE900", "5EAC73720B26E1508281698F", "E9A83499C16AD84597BB5E4F", "D26801AC6FDB848D94294665", "A649B2835CA9B31A4ADCA008", "D9AAEEA1FAAF01D20243B356", "5FB7830F82AF88A349A3E1D4", "9620BC858C7CD3157609AC92", "429E8367FBF71D5C0ACFF621", "15F0CB9766457D249A96AECB", "62B786D9B81BB951D7ACD9A8", "259767AA3ECF4AC9D7A33FF0", "90E81D95B17FF3AF2C7CF8E8", "90D16715F4BB85CA2370AF8E", "DA364A413D87B93742CCD776", "E366C823D3F5EAE74D0993F4", "4C65F4A64FFFAA1FDC868A61", "E64A6D2CD5383657A06E7372", "6366F9DE5DEDD38B6BC4F147", "3654FFA69CEC42E747EA94E6", "E0C8C3453B535032D891E315", "165A734F8F49357C7274D80E", "72B429FC16EC3E305AB4AE2D", "F0CFF198AA5AD3C35318A388", "A2FF4A4DB94C8D597EA78B20", "E64C2DAADBFAFD68DD662628", "6C9EA988BD98F90B24A17ACB", "B8C6A2A37CAEE8DA609455CB", "FF7DE8DD1EA4F9D3D30B384A", "8D1CF8B207189503A3F89781", "B514277CAE3184F4431E7D26", "86A8C0FF66C154F25AB6E79A", "C805640F4331C58E9AC40B18", "CABFAC7A032AB4EB6CECBAD8", "40CB56698C112041EADF19C8", "BB99047D5A87A94BDBB3FD0A", "1FEAAD44ED20110CC9E56A42", "2CAF2A809DE7D59E6AE8285B", "1781DA890EE13A3494AA7A66", "A56CCF704778AA96C6057C8F", "DFED841E9B978F2AAF21D717", "310AF030E11C7F850D2F4079", "4A488343238B6C91F1475E0D", "FB5BD9A9CE7361D0D9033A62", "FBDC4F23F93125BBEEAE800C");
+			"sourceTree" = "<group>";
+		};
+		"89E1FD6268CC0F221A2BE178" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Debug";
+			"buildSettings" = {
+				"SDKROOT" = "iphoneos";
+				"CLANG_ENABLE_MODULES" = "YES";
+				"CLANG_ENABLE_OBJC_ARC" = "YES";
+				"GCC_C_LANGUAGE_STANDARD" = "gnu17";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
+				"SWIFT_VERSION" = "5.0";
+				"ENABLE_BITCODE" = "NO";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS" = "DEBUG";
+				"ENABLE_TESTABILITY" = "YES";
+				"ONLY_ACTIVE_ARCH" = "YES";
+			};
+		};
+		"E6DE6C99132752C914FEF632" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Release";
+			"buildSettings" = {
+				"SDKROOT" = "iphoneos";
+				"CLANG_ENABLE_MODULES" = "YES";
+				"CLANG_ENABLE_OBJC_ARC" = "YES";
+				"GCC_C_LANGUAGE_STANDARD" = "gnu17";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
+				"SWIFT_VERSION" = "5.0";
+				"ENABLE_BITCODE" = "NO";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
+			};
+		};
+		"862894B703A6DEDF96A9DD6C" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("89E1FD6268CC0F221A2BE178", "E6DE6C99132752C914FEF632");
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"98F54143AB4E86B28C3AFEE0" = {
+			"isa" = "PBXProject";
+			"attributes" = {
+				"LastUpgradeCheck" = "2700";
+				"BuildIndependentTargetsInParallel" = "YES";
+				"TargetAttributes" = {
+					"22D33AA2C63A2ACDC5FB23A7" = {
+						"TestTargetID" = "F93EE5769BE02B356518D728";
 					};
-					DB14F7861C8083A1000FA15F = {
-						CreatedOnToolsVersion = 7.2.1;
-						LastSwiftMigration = 0820;
-					};
-					DB14F7A81C808579000FA15F = {
-						CreatedOnToolsVersion = 7.2.1;
-						LastSwiftMigration = 0820;
+					"040E1D583261243AF4524DE1" = {
+						"TestTargetID" = "F93EE5769BE02B356518D728";
 					};
 				};
 			};
-			buildConfigurationList = DB14F7681C803608000FA15F /* Build configuration list for PBXProject "Celluloid" */;
-			compatibilityVersion = "Xcode 3.2";
-			developmentRegion = English;
-			hasScannedForEncodings = 0;
-			knownRegions = (
-				en,
-				Base,
-				"zh-Hans",
-			);
-			mainGroup = DB14F7641C803608000FA15F;
-			productRefGroup = DB14F76E1C803608000FA15F /* Products */;
-			projectDirPath = "";
-			projectRoot = "";
-			targets = (
-				DB14F76C1C803608000FA15F /* Celluloid */,
-				DB14F7861C8083A1000FA15F /* CelluloidKit */,
-				DB14F7A81C808579000FA15F /* CelluloidPhotoExtension */,
-			);
+			"buildConfigurationList" = "862894B703A6DEDF96A9DD6C";
+			"compatibilityVersion" = "Xcode 14.0";
+			"developmentRegion" = "en";
+			"hasScannedForEncodings" = "0";
+			"knownRegions" = ("en", "Base", "zh-Hans");
+			"mainGroup" = "325F10A6957A34D66CB8C0E4";
+			"productRefGroup" = "FBDC4F23F93125BBEEAE800C";
+			"projectDirPath" = "";
+			"projectRoot" = "";
+			"targets" = ("B0E350E826AC8171B8584755", "E83CFC254AF6F43C3E0E4102", "F93EE5769BE02B356518D728", "22D33AA2C63A2ACDC5FB23A7", "040E1D583261243AF4524DE1");
+			"packageReferences" = ("58C138FC66F6E96F7B9AC16F");
 		};
-/* End PBXProject section */
-
-/* Begin PBXResourcesBuildPhase section */
-		DB14F76B1C803608000FA15F /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				DB14F77B1C803608000FA15F /* LaunchScreen.storyboard in Resources */,
-				DB83EFB81CDA276F00962016 /* collage.json in Resources */,
-				DB14F7781C803608000FA15F /* Assets.xcassets in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		DB14F7851C8083A1000FA15F /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				DB14F7C01C84348B000FA15F /* CelluloidKit.xcassets in Resources */,
-				DB7A356E1C958BB300AB3283 /* Localizable.strings in Resources */,
-				DB7A35AE1C965D2100AB3283 /* bubble.json in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		DB14F7A71C808579000FA15F /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				DB8A90F91CEDE81000CF0B31 /* Assets.xcassets in Resources */,
-				DB14F7B41C808579000FA15F /* MainInterface.storyboard in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		167B96E4A110108942DA7FA3 /* [CP] Copy Pods Resources */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "[CP] Copy Pods Resources";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-CelluloidPhotoExtension/Pods-CelluloidPhotoExtension-resources.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		2791A7841537A2A7A52A126E /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n";
-			showEnvVarsInLog = 0;
-		};
-		5E8D615AA30C4AFCED679CAE /* [CP] Copy Pods Resources */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "[CP] Copy Pods Resources";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-CelluloidKit/Pods-CelluloidKit-resources.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		AF8B6BD10CE4D630E81434FD /* [CP] Copy Pods Resources */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "[CP] Copy Pods Resources";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-Celluloid/Pods-Celluloid-resources.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		B364123C19E6707E10ADDEB2 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-Celluloid/Pods-Celluloid-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		C7108747CB9FA4F846ECF72A /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n";
-			showEnvVarsInLog = 0;
-		};
-		C7C0E4082408C1ED3CCDFEDD /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n";
-			showEnvVarsInLog = 0;
-		};
-		DB5F9E9F1D2CBE8E00772697 /* ShellScript */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "cd \"${CONFIGURATION_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/\"\nif [[ -d \"Frameworks\" ]]; then\nrm -fr Frameworks\nfi";
-		};
-/* End PBXShellScriptBuildPhase section */
-
-/* Begin PBXSourcesBuildPhase section */
-		DB14F7691C803608000FA15F /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				DBF094C31CE1A14E006FA424 /* CollageContentView.swift in Sources */,
-				DB72089D1CEB0C8D001E4F4F /* EditPhotoViewController.swift in Sources */,
-				DB14F7731C803608000FA15F /* CollageViewController.swift in Sources */,
-				DB83EFA91CD992F600962016 /* ImageArrangedPanel.swift in Sources */,
-				DB7989801CDA4EF700419114 /* CollageStylePanel.swift in Sources */,
-				DB83EFAC1CD995C800962016 /* PhotoModel.swift in Sources */,
-				DBF094C11CE18385006FA424 /* CollageView.swift in Sources */,
-				DB14F7711C803608000FA15F /* AppDelegate.swift in Sources */,
-				DB1B1D9C1CF7FAC700DB9FFC /* SharePhotoViewController.swift in Sources */,
-				DB83EFB11CDA0ADD00962016 /* CollageModel.swift in Sources */,
-				DB4FA91A1CEC5BCF00C78A99 /* EntranceViewController.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		DB14F7821C8083A1000FA15F /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				DB5D9A1B1CA023540045E49B /* ImageOverlayView.swift in Sources */,
-				DB7A35871C9596C200AB3283 /* BubblePickerViewController.swift in Sources */,
-				DB6A15921CC7461500DFF71E /* BasePickerController.swift in Sources */,
-				DB1DE6501C882EEC0076EE76 /* AttachView.swift in Sources */,
-				DB7A35B01C969FFA00AB3283 /* BubbleLabel.swift in Sources */,
-				DB7A35731C958DA700AB3283 /* Localizable.swift in Sources */,
-				DBE5C5E11C93EAF70060959E /* EditBubbleViewController.swift in Sources */,
-				DB7A35691C9557AD00AB3283 /* BubbleView.swift in Sources */,
-				DB7208A01CEB155D001E4F4F /* FilterPickerViewController.swift in Sources */,
-				DB80D6641CAB9EF6006B2F60 /* Filter.swift in Sources */,
-				DB6A158E1CC5DD3C00DFF71E /* StickerPickerViewController.swift in Sources */,
-				DB14F7C61C8469F7000FA15F /* UIView-Extension.swift in Sources */,
-				DB14F7C21C8437EC000FA15F /* Assets.swift in Sources */,
-				DBA390F21C868172006248A4 /* Style.swift in Sources */,
-				DB83EFAF1CD9F37F00962016 /* Log.swift in Sources */,
-				DBDC81EA1CC75BDF0036F18E /* StickerView.swift in Sources */,
-				DBF094C51CE5A8E0006FA424 /* EditPhotoToolBar.swift in Sources */,
-				DB4FA9161CEC1A8900C78A99 /* AdjustmentData.swift in Sources */,
-				DB7A79691CE9902900EBC93B /* UIView-Borders.swift in Sources */,
-				DB2875AC1CB394F800CB8977 /* JSONCodableExtension.swift in Sources */,
-				DB1DE64C1C881DEB0076EE76 /* BubbleModel.swift in Sources */,
-				DBDC81E71CC7506C0036F18E /* StickerModel.swift in Sources */,
-				DB4FA9181CEC1D4A00C78A99 /* BaseEditPhotoController.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		DB14F7A51C808579000FA15F /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				DB14F7B11C808579000FA15F /* PhotoEditingViewController.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		DB14F79B1C8083A1000FA15F /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = DB14F7861C8083A1000FA15F /* CelluloidKit */;
-			targetProxy = DB14F79A1C8083A1000FA15F /* PBXContainerItemProxy */;
-		};
-		DB14F7B71C808579000FA15F /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = DB14F7A81C808579000FA15F /* CelluloidPhotoExtension */;
-			targetProxy = DB14F7B61C808579000FA15F /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
-/* Begin PBXVariantGroup section */
-		DB14F7791C803608000FA15F /* LaunchScreen.storyboard */ = {
-			isa = PBXVariantGroup;
-			children = (
-				DB14F77A1C803608000FA15F /* Base */,
-				DB7A356C1C958A6D00AB3283 /* zh-Hans */,
-			);
-			name = LaunchScreen.storyboard;
-			sourceTree = "<group>";
-		};
-		DB14F7B21C808579000FA15F /* MainInterface.storyboard */ = {
-			isa = PBXVariantGroup;
-			children = (
-				DB14F7B31C808579000FA15F /* Base */,
-				DB7A356D1C958A6D00AB3283 /* zh-Hans */,
-			);
-			name = MainInterface.storyboard;
-			sourceTree = "<group>";
-		};
-		DB7A35701C958BB300AB3283 /* Localizable.strings */ = {
-			isa = PBXVariantGroup;
-			children = (
-				DB7A356F1C958BB300AB3283 /* en */,
-				DB7A35711C958BB600AB3283 /* zh-Hans */,
-			);
-			name = Localizable.strings;
-			sourceTree = "<group>";
-		};
-/* End PBXVariantGroup section */
-
-/* Begin XCBuildConfiguration section */
-		DB14F77D1C803608000FA15F /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = dwarf;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_TESTABILITY = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu99;
-				GCC_DYNAMIC_NO_PIC = NO;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"DEBUG=1",
-					"$(inherited)",
-				);
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 9.0;
-				MTL_ENABLE_DEBUG_INFO = YES;
-				ONLY_ACTIVE_ARCH = YES;
-				SDKROOT = iphoneos;
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		DB14F77E1C803608000FA15F /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu99;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 9.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				SDKROOT = iphoneos;
-				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
-		DB14F7801C803608000FA15F /* Debug */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = B09EFB0F9079D177778EE888 /* Pods-Celluloid.debug.xcconfig */;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				INFOPLIST_FILE = Celluloid/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = Mango.Celluloid;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 3.0;
-			};
-			name = Debug;
-		};
-		DB14F7811C803608000FA15F /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = DB85D263A355F31C8C68EDAB /* Pods-Celluloid.release.xcconfig */;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				INFOPLIST_FILE = Celluloid/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = Mango.Celluloid;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 3.0;
-			};
-			name = Release;
-		};
-		DB14F79E1C8083A1000FA15F /* Debug */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 9090D5931C2D1E8C051EDB28 /* Pods-CelluloidKit.debug.xcconfig */;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-				APPLICATION_EXTENSION_API_ONLY = YES;
-				CLANG_ENABLE_MODULES = YES;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
-				CURRENT_PROJECT_VERSION = 1;
-				DEFINES_MODULE = YES;
-				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 1;
-				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				INFOPLIST_FILE = CelluloidKit/Info.plist;
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = Mango.CelluloidKit;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 3.0;
-				VERSIONING_SYSTEM = "apple-generic";
-				VERSION_INFO_PREFIX = "";
-			};
-			name = Debug;
-		};
-		DB14F79F1C8083A1000FA15F /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = AB89F2C26175F4792B591645 /* Pods-CelluloidKit.release.xcconfig */;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-				APPLICATION_EXTENSION_API_ONLY = YES;
-				CLANG_ENABLE_MODULES = YES;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
-				CURRENT_PROJECT_VERSION = 1;
-				DEFINES_MODULE = YES;
-				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 1;
-				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				INFOPLIST_FILE = CelluloidKit/Info.plist;
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = Mango.CelluloidKit;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_VERSION = 3.0;
-				VERSIONING_SYSTEM = "apple-generic";
-				VERSION_INFO_PREFIX = "";
-			};
-			name = Release;
-		};
-		DB14F7BA1C808579000FA15F /* Debug */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = 0661DC6517162731701160C5 /* Pods-CelluloidPhotoExtension.debug.xcconfig */;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				INFOPLIST_FILE = CelluloidPhotoExtension/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = Mango.Celluloid.CelluloidPhotoExtension;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_VERSION = 3.0;
-			};
-			name = Debug;
-		};
-		DB14F7BB1C808579000FA15F /* Release */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = F9507630A5206F362B7E024E /* Pods-CelluloidPhotoExtension.release.xcconfig */;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				INFOPLIST_FILE = CelluloidPhotoExtension/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
-				PRODUCT_BUNDLE_IDENTIFIER = Mango.Celluloid.CelluloidPhotoExtension;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SWIFT_VERSION = 3.0;
-			};
-			name = Release;
-		};
-/* End XCBuildConfiguration section */
-
-/* Begin XCConfigurationList section */
-		DB14F7681C803608000FA15F /* Build configuration list for PBXProject "Celluloid" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				DB14F77D1C803608000FA15F /* Debug */,
-				DB14F77E1C803608000FA15F /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		DB14F77F1C803608000FA15F /* Build configuration list for PBXNativeTarget "Celluloid" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				DB14F7801C803608000FA15F /* Debug */,
-				DB14F7811C803608000FA15F /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		DB14F7A21C8083A1000FA15F /* Build configuration list for PBXNativeTarget "CelluloidKit" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				DB14F79E1C8083A1000FA15F /* Debug */,
-				DB14F79F1C8083A1000FA15F /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		DB14F7B91C808579000FA15F /* Build configuration list for PBXNativeTarget "CelluloidPhotoExtension" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				DB14F7BA1C808579000FA15F /* Debug */,
-				DB14F7BB1C808579000FA15F /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-/* End XCConfigurationList section */
 	};
-	rootObject = DB14F7651C803608000FA15F /* Project object */;
+	"rootObject" = "98F54143AB4E86B28C3AFEE0";
 }

@@ -75,19 +75,23 @@ public extension UIView {
     
     public func renderWithBounds(_ bounds: CGRect? = nil) -> UIImage {
         let bounds = bounds ?? self.bounds
-        UIGraphicsBeginImageContextWithOptions(bounds.size, true, 0);
-        drawHierarchy(in: CGRect(x: -bounds.origin.x, y: -bounds.origin.y, width: self.width , height: self.height), afterScreenUpdates: true)
-        let screenshot = UIGraphicsGetImageFromCurrentImageContext();
-        UIGraphicsEndImageContext();
-        return screenshot!;
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: bounds.size, format: format).image { _ in
+            drawHierarchy(in: CGRect(x: -bounds.origin.x, y: -bounds.origin.y,
+                                     width: width, height: height), afterScreenUpdates: true)
+        }
     }
     
     public func render() -> UIImage {
-        UIGraphicsBeginImageContextWithOptions(self.bounds.size, false, 0);
-        self.layer.render(in: UIGraphicsGetCurrentContext()!)
-        let render = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        return render!
+        layoutIfNeeded()
+        subviews.forEach { $0.layoutIfNeeded() }
+        // One output pixel per image point prevents 2x/3x full-resolution memory amplification.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: bounds.size, format: format).image { context in
+            layer.render(in: context.cgContext)
+        }
     }
 }
 

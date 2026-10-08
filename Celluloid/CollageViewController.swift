@@ -7,16 +7,16 @@
 //
 
 import UIKit
+import SnapKit
 import CelluloidKit
-import BSImagePicker
 import Photos
-import Async
-import AssistantKit
 
 class CollageViewController: UIViewController {
     
     //MARK: Property
     var assets: [PHAsset]
+    private var lastLayoutSize = CGSize.zero
+    private var saving = false
     
     fileprivate lazy var collageStylePanel: CollageStylePanel = {
         let panel = CollageStylePanel(models: [])
@@ -53,11 +53,13 @@ class CollageViewController: UIViewController {
         self.view.backgroundColor = .white
         self.navigationItem.setLeftBarButton(leftButtonItem, animated: false)
         self.navigationItem.setRightBarButton(rightButtonItem, animated: false)
+        rightButtonItem.accessibilityIdentifier = "collage-done"
+        rightButtonItem.isEnabled = false
         
         self.view.addSubview(stackView)
         stackView.snp.makeConstraints { (make) in
-            make.top.equalTo(self.view.snp.top)
-            make.bottom.equalTo(self.view.snp.bottom)
+            make.top.equalTo(self.view.safeAreaLayoutGuide.snp.top)
+            make.bottom.equalTo(self.view.safeAreaLayoutGuide.snp.bottom)
             make.left.right.equalTo(stackView.superview!)
         }
         //init layout
@@ -65,14 +67,17 @@ class CollageViewController: UIViewController {
         
         //setup data for views
         let models = assets.map { PhotoModel(asset: $0) }
-        let collageModels = CollageModel.collageModels(CollageImageCount(rawValue: assets.count)!)
+        guard let count = CollageImageCount(rawValue: assets.count) else { return }
+        let collageModels = CollageModel.collageModels(count)
+        guard let first = collageModels.first else { return }
         //arrangedPanel
         imageArrangedPanel.photoModels = models
         imageArrangedPanel.reload()
         //stylePanel
         collageStylePanel.collageModels = collageModels
         //collageView
-        collageView.setupWithCollageModel(collageModels.first!, photoModels: models)
+        collageView.setupWithCollageModel(first, photoModels: models)
+        preload(models)
     }
     
     //MARK: init
@@ -95,6 +100,7 @@ extension CollageViewController {
     
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         
+        super.viewWillTransition(to: size, with: coordinator)
         coordinator.animate(alongsideTransition: { context  in
             self.setupConstraintForSize(self.view.size)
             self.collageView.resize()
@@ -104,65 +110,32 @@ extension CollageViewController {
     }
     
     fileprivate func setupConstraintForSize(_ size: CGSize) {
-        
-        if size.width > size.height {
-            imageArrangedPanel.snp.makeConstraints({ (make) in
-                make.width.equalTo(arrangedPanelConstant)
-                make.height.equalTo(imageArrangedPanel.superview!)
-            })
-            collageStylePanel.scrollDirection = .vertical
-            collageStylePanel.snp.makeConstraints({ (make) in
-                make.width.equalTo(stylePanelConstant)
-                make.height.equalTo(collageStylePanel.superview!)
-            })
-            collageView.snp.makeConstraints({ (make) in
-                make.height.width.equalTo(collageView.superview!.snp.height)
-            })
-            stackView.axis = .horizontal
-            stackView.layoutIfNeeded()
-        } else {
-            imageArrangedPanel.snp.makeConstraints({ (make) in
-                make.height.equalTo(arrangedPanelConstant)
-                make.width.equalTo(imageArrangedPanel.superview!)
-            })
-            collageStylePanel.scrollDirection = .horizontal
-            collageStylePanel.snp.makeConstraints({ (make) in
-                make.height.equalTo(stylePanelConstant)
-                make.width.equalTo(collageStylePanel.superview!)
-            })
-            collageView.snp.makeConstraints({ (make) in
-                make.height.width.equalTo(collageView.superview!.snp.height)
-            })
-            fixCornerCaseLayout(size)
-            stackView.axis = .vertical
-            stackView.layoutIfNeeded()
+        let horizontal = size.width > size.height
+        stackView.axis = horizontal ? .horizontal : .vertical
+        collageStylePanel.scrollDirection = horizontal ? .vertical : .horizontal
+        let available = view.safeAreaLayoutGuide.layoutFrame.size
+        let side = max(1, min(available.width - (horizontal ? arrangedPanelConstant + stylePanelConstant : 0),
+                              available.height - (horizontal ? 0 : arrangedPanelConstant + stylePanelConstant)))
+        imageArrangedPanel.snp.remakeConstraints { make in
+            if horizontal { make.width.equalTo(arrangedPanelConstant); make.height.equalToSuperview() }
+            else { make.height.equalTo(arrangedPanelConstant); make.width.equalToSuperview() }
         }
+        collageStylePanel.snp.remakeConstraints { make in
+            if horizontal { make.width.equalTo(stylePanelConstant); make.height.equalToSuperview() }
+            else { make.height.equalTo(stylePanelConstant); make.width.equalToSuperview() }
+        }
+        collageView.snp.remakeConstraints { $0.width.height.equalTo(side) }
     }
-    
-    fileprivate func fixCornerCaseLayout(_ size: CGSize) {
-        /*用于修复Split View,Landscape Slide Over,Window Bounds: w:694 h:768时的界面问题*/
-        let overflow: Bool = (size.width + arrangedPanelConstant + stylePanelConstant) > size.height
-        if overflow {
-            collageView.snp.makeConstraints ({ (make) in
-                make.height.width.equalTo(400)
-            })
-        }
-        //fix 3.5 inshes devices
-        if Device.screen == .inches_3_5 {
-            imageArrangedPanel.snp.makeConstraints({ (make) in
-                make.height.equalTo(40)
-                make.width.equalTo(imageArrangedPanel.superview!)
-            })
-            collageStylePanel.scrollDirection = .horizontal
-            collageStylePanel.snp.makeConstraints({ (make) in
-                make.height.equalTo(60)
-                make.width.equalTo(collageStylePanel.superview!)
-            })
-            collageView.snp.makeConstraints({ (make) in
-                make.height.width.equalTo(collageView.superview!.snp.height)
-            })
-        }
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let size = view.safeAreaLayoutGuide.layoutFrame.size
+        guard size != lastLayoutSize else { return }
+        lastLayoutSize = size
+        setupConstraintForSize(size)
+        stackView.layoutIfNeeded()
+        collageView.resize()
     }
+
 }
 
 
@@ -196,26 +169,62 @@ private extension Selector {
 
 private extension CollageViewController {
     
+    func preload(_ models: [PhotoModel]) {
+        rightButtonItem.isEnabled = false
+        let group = DispatchGroup()
+        var loadError: Error?
+        for model in models {
+            group.enter()
+            model.loadImage { result in
+                if case .failure(let error) = result { loadError = error }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            if let error = loadError {
+                let alert = UIAlertController(title: NSLocalizedString("Unable to Load Photos", comment: "Load error"), message: error.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: NSLocalizedString("Retry", comment: "Retry"), style: .default) { _ in self.preload(models) })
+                alert.addAction(UIAlertAction(title: tr(.cancel), style: .cancel))
+                self.present(alert, animated: true)
+            } else {
+                self.collageView.resize()
+                self.rightButtonItem.isEnabled = true
+            }
+        }
+    }
+
     @objc func dismissSelf() {
+        guard !saving else { return }
         self.dismiss(animated: true, completion: nil)
     }
     
     @objc func done() {
-        
+        guard !saving, let models = collageView.photoModels,
+              models.allSatisfy({ $0.loadedImage != nil }) else { return }
+        saving = true
         let holder = UIView(frame: CGRect(x: 0, y: 0, width: 800, height: 800))
         let collageView = CollageView(frame: CGRect(x: 0, y: 0, width: 800, height: 800))
         holder.addSubview(collageView)
         collageView.setupWithCollageModel(self.collageView.collageModel!, photoModels: self.collageView.photoModels!,forEdit: false)
         let image = holder.render()
         
-        PHPhotoLibrary.shared().performChanges({ 
-            let newRequest = PHAssetChangeRequest.creationRequestForAsset(from: image)
-            newRequest.creationDate = Date()
-            }) { success, error in
-        }
-        
-        if let nav = self.navigationController {
-            nav.pushViewController(SharePhotoViewController(image: image), animated: true)
+        rightButtonItem.isEnabled = false
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetChangeRequest.creationRequestForAsset(from: image).creationDate = Date()
+        }) { [weak self] success, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.saving = false
+                self.rightButtonItem.isEnabled = true
+                if success {
+                    self.navigationController?.pushViewController(SharePhotoViewController(image: image), animated: true)
+                } else {
+                    let alert = UIAlertController(title: NSLocalizedString("Unable to Save", comment: "Save error"), message: error?.localizedDescription, preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: tr(.done), style: .default))
+                    self.present(alert, animated: true)
+                }
+            }
         }
     }
 }

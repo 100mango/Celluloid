@@ -7,8 +7,10 @@
 //
 
 import UIKit
+import CelluloidKit
+import SnapKit
 
-protocol ImageArrangedPanelDelegate: class {
+protocol ImageArrangedPanelDelegate: AnyObject {
     func imageArrangedPanel(_ imageArrangedPanel: ImageArrangedPanel, didEditModels models: [PhotoModel])
 }
 
@@ -64,6 +66,7 @@ class ImageArrangedPanel: UIView {
     }
     
     override func layoutSubviews() {
+        super.layoutSubviews()
         if self.width > self.height {
             let width = self.height - (spacing * 2)
             flowLayout.itemSize = CGSize(width:  width, height: width)
@@ -103,9 +106,9 @@ extension ImageArrangedPanel: ArrangedCollectionViewCellDelegate {
                 collectionView.deleteItems(at: [indexPath])
                 self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
             } else {
-                let alert = UIAlertController(title: nil, message: "拼图最少需要两张照片", preferredStyle: .alert)
+                let alert = UIAlertController(title: nil, message: NSLocalizedString("A collage needs at least two photos.", comment: "Minimum collage selection"), preferredStyle: .alert)
                 self.parentViewController?.present(alert, animated: true, completion: nil)
-                alert.addAction(UIAlertAction(title: "确定", style: .cancel, handler: { action in
+                alert.addAction(UIAlertAction(title: tr(.done), style: .cancel, handler: { action in
                     alert.dismiss(animated: true, completion: nil)
                 }))
             }
@@ -124,16 +127,20 @@ extension ImageArrangedPanel: UICollectionViewDataSource {
         
         let cell = collectionView.dequeueReusableCellForIndexPath(indexPath) as ArrangedCollectionViewCell
         cell.delegate = self
-        
-        photoModels[indexPath.row].requstImage { image in
-            cell.imageView.image = image
+        let model = photoModels[indexPath.row]
+        cell.representedIdentifier = model.asset.localIdentifier
+        cell.imageView.image = nil
+        model.requstImage { [weak cell] image in
+            guard cell?.representedIdentifier == model.asset.localIdentifier else { return }
+            cell?.imageView.image = image
         }
         return cell
     }
     
     func collectionView(_ collectionView: UICollectionView, moveItemAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
     
-        swap(&photoModels[sourceIndexPath.row], &photoModels[destinationIndexPath.row])
+        let moved = photoModels.remove(at: sourceIndexPath.item)
+        photoModels.insert(moved, at: destinationIndexPath.item)
         self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
     }
     
@@ -147,12 +154,13 @@ extension ImageArrangedPanel: UICollectionViewDelegate {
 
 
 //MARK: ArrangedCollectionViewCell
-private protocol ArrangedCollectionViewCellDelegate: class {
+private protocol ArrangedCollectionViewCellDelegate: AnyObject {
     func shouldRemoveCell(_ cell: ArrangedCollectionViewCell)
 }
 
 
 private class ArrangedCollectionViewCell: UICollectionViewCell {
+    var representedIdentifier: String?
     
     let imageView: UIImageView = {
         let imageView = UIImageView()
@@ -168,7 +176,7 @@ private class ArrangedCollectionViewCell: UICollectionViewCell {
         return button
     }()
     
-    var delegate: ArrangedCollectionViewCellDelegate?
+    weak var delegate: ArrangedCollectionViewCellDelegate?
     
     override init(frame: CGRect) {
         

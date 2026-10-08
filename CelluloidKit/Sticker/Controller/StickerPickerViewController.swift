@@ -6,9 +6,9 @@
 //  Copyright © 2016年 Mango. All rights reserved.
 //
 
-import Foundation
+import UIKit
 
-public protocol StickerPickerViewControllerDelegate: class {
+public protocol StickerPickerViewControllerDelegate: AnyObject {
     func stickerPickerViewController(_ stickerPickerViewController: StickerPickerViewController, didSelectSticker sticker: StickerModel)
 }
 
@@ -35,8 +35,11 @@ extension StickerPickerViewController {
     
     public override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         
-        let cell = collectionView.dequeueReusableCellForIndexPath(indexPath)
+        let cell: UICollectionViewCell = collectionView.dequeueReusableCellForIndexPath(indexPath)
         cell.backgroundColor = .cellLightPurple
+        cell.isAccessibilityElement = true
+        cell.accessibilityTraits = .button
+        cell.accessibilityLabel = String(format: NSLocalizedString("Sticker %d", bundle: extensionBundle, comment: "Picker item"), indexPath.row + 1)
         cell.contentView.subviews.forEach {
             $0.removeFromSuperview()
         }
@@ -53,7 +56,7 @@ extension StickerPickerViewController {
 
 //MARK: CollectionView delegate
 extension StickerPickerViewController {
-    public func collectionView(_ collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: IndexPath) {
+    public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         let sticker = StickerModel.stickers[indexPath.row]
         self.delegate?.stickerPickerViewController(self, didSelectSticker: sticker)
         self.dismiss(animated: true, completion: nil)

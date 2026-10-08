@@ -6,7 +6,8 @@
 //  Copyright © 2016年 Mango. All rights reserved.
 //
 
-import Foundation
+import UIKit
+import SnapKit
 
 open class BasePickerController: UIViewController {
     
@@ -33,8 +34,8 @@ open class BasePickerController: UIViewController {
         view.addSubview(collectionView)
         collectionView.snp.makeConstraints { make in
 
-            make.top.equalTo(self.view.top)
-            make.bottom.equalTo(self.view.bottom)
+            make.top.equalTo(self.view.safeAreaLayoutGuide.snp.top)
+            make.bottom.equalTo(self.view.safeAreaLayoutGuide.snp.bottom)
             make.left.right.equalTo(collectionView.superview!)
         }
 
@@ -44,6 +45,7 @@ open class BasePickerController: UIViewController {
     }
     
     override open func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
         let layout = collectionView.collectionViewLayout as! UICollectionViewFlowLayout
         let cellMargin = CGFloat(10)
         let cellWidth = (view.width - cellMargin * 3)/2

@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import CelluloidKit
 
 class CollageView: UIView {
     
@@ -46,6 +47,6 @@ class CollageView: UIView {
     }
     
     func resize(){
-        self.subviews.flatMap { $0 as? CollageContentView }.forEach { $0.layout() }
+        self.subviews.compactMap { $0 as? CollageContentView }.forEach { $0.layout() }
     }
 }

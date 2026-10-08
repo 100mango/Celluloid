@@ -7,9 +7,9 @@
 //
 
 import UIKit
-import MZFormSheetPresentationController
+import SnapKit
 
-public protocol EditPhotoToolBarDelegate: class {
+public protocol EditPhotoToolBarDelegate: AnyObject {
     
     func editPhotoToolBar(_ editPhotoToolBar: EditPhotoToolBar, didSelectBubble bubble: BubbleModel)
     
@@ -34,18 +34,24 @@ open class EditPhotoToolBar: UIView {
     
     fileprivate lazy var filterButton: EditPhotoToolBarItem = {
         let item = EditPhotoToolBarItem(image: UIImage(asset: .FilterButton), title: tr(.filter))
+        item.accessibilityIdentifier = "tool-filter"
+        item.accessibilityLabel = tr(.filter)
         item.addTarget(self, action: .touchFilterButton, for: .touchUpInside)
         return item
     }()
     
     fileprivate lazy var bubleButton: EditPhotoToolBarItem = {
         let item = EditPhotoToolBarItem(image: UIImage(asset: .BubbleButton), title: tr(.bubble))
+        item.accessibilityIdentifier = "tool-bubble"
+        item.accessibilityLabel = tr(.bubble)
         item.addTarget(self, action: .touchBubbleButton, for: .touchUpInside)
         return item
     }()
     
     fileprivate lazy var stickerButton: EditPhotoToolBarItem = {
         let item = EditPhotoToolBarItem(image: UIImage(asset: .StickerButton), title: tr(.sticker))
+        item.accessibilityIdentifier = "tool-sticker"
+        item.accessibilityLabel = tr(.sticker)
         item.addTarget(self, action: .touchStickerButton, for: .touchUpInside)
         return item
     }()
@@ -79,8 +85,33 @@ open class EditPhotoToolBar: UIView {
         commonInit()
     }
     
-    //MARK: layout
+    // The labels are part of app chrome, not exported artwork. Their full
+    // Dynamic Type height must participate in the editor's preview layout.
+    var titleLabels: [UILabel] { buttons.map { $0.label } }
+    var itemControls: [UIControl] { buttons }
+    private var previousLayoutWidth: CGFloat = 0
+
+    open override var intrinsicContentSize: CGSize {
+        let itemWidth = max(1, bounds.width / CGFloat(buttons.count) - 12)
+        let titleHeight = buttons.map {
+            $0.label.sizeThatFits(CGSize(width: itemWidth, height: .greatestFiniteMagnitude)).height
+        }.max() ?? 0
+        return CGSize(width: UIView.noIntrinsicMetric, height: max(49, ceil(titleHeight) + 22 + 1 + 8))
+    }
+
     open override func layoutSubviews() {
+        super.layoutSubviews()
+        if previousLayoutWidth != bounds.width {
+            previousLayoutWidth = bounds.width
+            invalidateIntrinsicContentSize()
+        }
+    }
+
+    open override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory else { return }
+        buttons.forEach { $0.label.font = .preferredFont(forTextStyle: .caption1, compatibleWith: traitCollection) }
+        invalidateIntrinsicContentSize()
     }
 }
 
@@ -130,10 +161,10 @@ private extension EditPhotoToolBar {
     
     func presentViewControllerFromSheet(_ vc: UIViewController) {
         let navigationVC = UINavigationController(rootViewController: vc)
-        let formSheetController = MZFormSheetPresentationViewController(contentViewController: navigationVC)
-        formSheetController.presentationController?.shouldUseMotionEffect = true
-        formSheetController.presentationController?.shouldCenterVertically = true
-        self.parentViewController?.present(formSheetController, animated: true, completion: nil)
+        navigationVC.modalPresentationStyle = .formSheet
+        navigationVC.sheetPresentationController?.detents = [.medium(), .large()]
+        navigationVC.sheetPresentationController?.prefersGrabberVisible = true
+        self.parentViewController?.present(navigationVC, animated: true)
     }
 }
 
@@ -174,7 +205,9 @@ private class EditPhotoToolBarItem: UIControl {
     
     lazy var label: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 12)
+        label.font = .preferredFont(forTextStyle: .caption1)
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 0
         label.textColor = .alphaWhiteColor
         label.textAlignment = .center
         return label
@@ -217,7 +250,13 @@ private class EditPhotoToolBarItem: UIControl {
         
         self.addSubview(stackView)
         stackView.snp.makeConstraints  { (make) in
-            make.center.equalTo(stackView.superview!)
+            make.centerY.equalTo(stackView.superview!)
+            make.leading.trailing.equalTo(stackView.superview!).inset(6)
+            make.top.greaterThanOrEqualTo(stackView.superview!).offset(4)
+            make.bottom.lessThanOrEqualTo(stackView.superview!).offset(-4)
+        }
+        label.snp.makeConstraints { make in
+            make.width.equalTo(stackView)
         }
         
         self.addSubview(line)
@@ -227,6 +266,8 @@ private class EditPhotoToolBarItem: UIControl {
             make.centerX.bottom.equalTo(line.superview!)
         }
         
+        isAccessibilityElement = true
+        accessibilityTraits = .button
         self.addSubview(button)
         button.snp.makeConstraints  { (make) in
             make.edges.equalTo(button.superview!)

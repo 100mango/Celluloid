@@ -6,7 +6,7 @@
 //  Copyright © 2016年 Mango. All rights reserved.
 //
 
-import Foundation
+import UIKit
 
 public func
     Log(_ text: String,  fileName: String = #file, function: String =  #function, line: Int = #line) {

@@ -9,7 +9,7 @@
 import UIKit
 import SnapKit
 
-public protocol BubblePickerViewControllerDelegate: class {
+public protocol BubblePickerViewControllerDelegate: AnyObject {
     func bubblePickerViewController(_ bubblePickerViewController: BubblePickerViewController, didSelectBubble bubble: BubbleModel)
 }
 
@@ -36,8 +36,11 @@ extension BubblePickerViewController {
     
     public override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         
-        let cell = collectionView.dequeueReusableCellForIndexPath(indexPath)
+        let cell: UICollectionViewCell = collectionView.dequeueReusableCellForIndexPath(indexPath)
         cell.backgroundColor = .cellLightPurple
+        cell.isAccessibilityElement = true
+        cell.accessibilityTraits = .button
+        cell.accessibilityLabel = String(format: NSLocalizedString("Bubble %d", bundle: extensionBundle, comment: "Picker item"), indexPath.row + 1)
         cell.contentView.subviews.forEach {
             $0.removeFromSuperview()
         }
@@ -54,7 +57,7 @@ extension BubblePickerViewController {
 
 //MARK: CollectionView delegate
 extension BubblePickerViewController {
-    public func collectionView(_ collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: IndexPath) {
+    public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         let bubble = BubbleModel.bubbles[indexPath.row]
         let editBubbleViewController = EditBubbleViewController(bubbleModel: bubble)
         editBubbleViewController.delegate = self

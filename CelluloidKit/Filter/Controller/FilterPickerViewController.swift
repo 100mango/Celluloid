@@ -6,9 +6,9 @@
 //  Copyright © 2016年 Mango. All rights reserved.
 //
 
-import Foundation
+import UIKit
 
-public protocol FilterPickerViewControllerDelegate: class {
+public protocol FilterPickerViewControllerDelegate: AnyObject {
     func filterPickerViewController(_ filterPickerViewController: FilterPickerViewController, didSelectFilter filter: FilterType)
 }
 
@@ -58,8 +58,12 @@ private extension FilterPickerViewController {
     
     func makeFilterCell(_ indexPath: IndexPath) ->  UICollectionViewCell {
         
-        let cell = collectionView.dequeueReusableCellForIndexPath(indexPath)
+        let cell: UICollectionViewCell = collectionView.dequeueReusableCellForIndexPath(indexPath)
         cell.backgroundColor = .cellLightPurple
+        cell.isAccessibilityElement = true
+        cell.accessibilityTraits = .button
+        let names = ["Original", "Sepia", "Posterize", "Crystal", "Pixelate Faces"]
+        cell.accessibilityLabel = NSLocalizedString(names[indexPath.row], bundle: extensionBundle, comment: "Filter name")
         cell.contentView.subviews.forEach {
             $0.removeFromSuperview()
         }
@@ -101,7 +105,7 @@ private extension FilterPickerViewController {
 //MARK: CollectionView delegate
 
 extension FilterPickerViewController {
-    public func collectionView(_ collectionView: UICollectionView, didSelectItemAtIndexPath indexPath: IndexPath) {
+    public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         if let type = FilterCellType(rawValue: indexPath.row) {
             handleSelectFilter(type)
         }

@@ -7,9 +7,10 @@
 //
 
 import UIKit
+import SnapKit
 import CelluloidKit
 
-protocol CollageStylePanelDelegate: class {
+protocol CollageStylePanelDelegate: AnyObject {
     func collageStylePanel(_ collageStylePanel: CollageStylePanel, didSelctModel model: CollageModel)
 }
 
@@ -47,7 +48,7 @@ class CollageStylePanel: UIView {
         }
     }
     
-    var scrollDirection: UICollectionViewScrollDirection = .horizontal {
+    var scrollDirection: UICollectionView.ScrollDirection = .horizontal {
         didSet {
             let layout = collectionView.collectionViewLayout as! UICollectionViewFlowLayout
             layout.scrollDirection = scrollDirection
@@ -72,6 +73,7 @@ class CollageStylePanel: UIView {
     
     //MARK: layout
     override func layoutSubviews() {
+        super.layoutSubviews()
         if self.width > self.height {
             flowLayout.itemSize = CGSize(width:  self.height - 20, height: self.height - 20)
         } else {

@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import SnapKit
 import CelluloidKit
 
 class SharePhotoViewController: UIViewController {
@@ -14,22 +15,36 @@ class SharePhotoViewController: UIViewController {
     lazy var shareButton: UIButton = {
         let button = UIButton()
         button.setTitle(tr(.share), for: .normal)
+        button.accessibilityIdentifier = "share-photo"
+        button.titleLabel?.font = .preferredFont(forTextStyle: .body)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.titleLabel?.numberOfLines = 0
+        button.titleLabel?.textAlignment = .center
+        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
         button.addTarget(self, action: .share, for: .touchUpInside)
         button.layer.cornerRadius = 22
         button.layer.borderWidth = 1
         button.layer.borderColor = UIColor.white.cgColor
         button.backgroundColor = .clear
+        button.setTitleColor(.white, for: .normal)
         return button
     }()
     
     lazy var doneButton: UIButton = {
         let button = UIButton()
         button.setTitle(tr(.done), for: .normal)
+        button.accessibilityIdentifier = "share-done"
+        button.titleLabel?.font = .preferredFont(forTextStyle: .body)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.titleLabel?.numberOfLines = 0
+        button.titleLabel?.textAlignment = .center
+        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
         button.addTarget(self, action: .done, for: .touchUpInside)
         button.layer.cornerRadius = 22
         button.layer.borderWidth = 1
         button.layer.borderColor = UIColor.white.cgColor
         button.backgroundColor = .clear
+        button.setTitleColor(.white, for: .normal)
         return button
     }()
     
@@ -37,7 +52,11 @@ class SharePhotoViewController: UIViewController {
     let savedLabel: UILabel = {
         let label = UILabel()
         label.text = tr(.saved)
-        label.font = .systemFont(ofSize: 20)
+        label.accessibilityIdentifier = "photo-saved"
+        label.font = .preferredFont(forTextStyle: .title3)
+        label.adjustsFontForContentSizeCategory = true
+        label.numberOfLines = 0
+        label.textAlignment = .center
         label.textColor = .white
         return label
     }()
@@ -55,39 +74,105 @@ class SharePhotoViewController: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
     
+    private let scrollView = UIScrollView()
+    private let contentView = UIView()
+    private lazy var actions: UIStackView = {
+        let stack = UIStackView(arrangedSubviews: [shareButton, doneButton])
+        stack.axis = .vertical
+        stack.spacing = 12
+        stack.distribution = .fillEqually
+        return stack
+    }()
+    private lazy var contentStack: UIStackView = {
+        let stack = UIStackView(arrangedSubviews: [savedIcon, savedLabel, actions])
+        stack.axis = .vertical
+        stack.alignment = .fill
+        stack.spacing = 16
+        return stack
+    }()
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        self.navigationItem.hidesBackButton = true
-        
-        self.view.addSubview(shareButton)
-        shareButton.snp.makeConstraints  { (make) in
-            make.centerX.equalTo(shareButton.superview!)
-            make.centerY.equalTo(shareButton.superview!).offset(100)
-            make.width.equalTo(140)
-            make.height.equalTo(44)
+        navigationItem.hidesBackButton = true
+        // A centered scrollable group keeps Done reachable even in compact landscape
+        // and at accessibility text sizes, rather than positioning it below the screen.
+        view.addSubview(scrollView)
+        scrollView.snp.makeConstraints { $0.edges.equalTo(view.safeAreaLayoutGuide) }
+        scrollView.addSubview(contentView)
+        contentView.snp.makeConstraints { make in
+            make.edges.equalTo(scrollView.contentLayoutGuide)
+            make.width.equalTo(scrollView.frameLayoutGuide)
+            make.height.greaterThanOrEqualTo(scrollView.frameLayoutGuide)
+            make.height.equalTo(scrollView.frameLayoutGuide).priority(250)
         }
-        
-        self.view.addSubview(doneButton)
-        doneButton.snp.makeConstraints  { (make) in
-            make.top.equalTo(shareButton.snp.bottom).offset(20)
-            make.centerX.equalTo(shareButton)
-            make.width.equalTo(140)
-            make.height.equalTo(44)
+        contentView.addSubview(contentStack)
+        contentStack.snp.makeConstraints { make in
+            make.center.equalToSuperview()
+            make.top.greaterThanOrEqualToSuperview().offset(16)
+            make.bottom.lessThanOrEqualToSuperview().offset(-16)
+            make.leading.greaterThanOrEqualToSuperview().offset(16)
+            make.trailing.lessThanOrEqualToSuperview().offset(-16)
+            make.width.lessThanOrEqualTo(360)
+            make.width.equalToSuperview().offset(-32).priority(750)
         }
-        
-        self.view.addSubview(savedIcon)
-        savedIcon.snp.makeConstraints  { (make) in
-            make.centerY.equalTo(savedIcon.superview!).offset(-100)
-            make.centerX.equalTo(savedIcon.superview!)
-        }
-        
-        self.view.addSubview(savedLabel)
-        savedLabel.snp.makeConstraints  { (make) in
-            make.top.equalTo(savedIcon.snp.bottom).offset(30)
-            make.centerX.equalTo(savedIcon)
+        savedIcon.contentMode = .scaleAspectFit
+        savedIcon.snp.makeConstraints { $0.height.equalTo(48) }
+        shareButton.snp.makeConstraints { $0.height.greaterThanOrEqualTo(44) }
+        doneButton.snp.makeConstraints { $0.height.greaterThanOrEqualTo(44) }
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        hideUnusedSystemToolbar()
+    }
+
+    private func hideUnusedSystemToolbar() {
+        guard let navigation = navigationController else { return }
+        // This screen has its own Share/Done controls and no system toolbar items.
+        // iOS27 can leave an empty, full-window toolbar accessibility surface after
+        // pushing from the editor and rotating. Hide that unused surface explicitly
+        // rather than allowing it to obscure the actual controls' activation points.
+        guard let toolbar = navigation.toolbar else { return }
+        if !navigation.isToolbarHidden || !toolbar.isHidden || !toolbar.accessibilityElementsHidden {
+            #if DEBUG
+            print("SHARE_NATIVE_TOOLBAR_HIDE logicalHidden=\(navigation.isToolbarHidden) viewHidden=\(toolbar.isHidden) axHidden=\(toolbar.accessibilityElementsHidden) frame=\(toolbar.frame)")
+            #endif
+            navigation.setToolbarHidden(true, animated: false)
+            toolbar.isHidden = true
+            toolbar.accessibilityElementsHidden = true
         }
     }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        hideUnusedSystemToolbar()
+        let axis: NSLayoutConstraint.Axis = view.bounds.width > view.bounds.height ? .horizontal : .vertical
+        if actions.axis != axis { actions.axis = axis }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-diagnostics") {
+            DispatchQueue.main.async { [weak self] in self?.updateHitTestDiagnostics() }
+        }
+        #endif
+    }
+
+    #if DEBUG
+    private func updateHitTestDiagnostics() {
+        guard let window = view.window else { return }
+        let frame = doneButton.convert(doneButton.bounds, to: window)
+        let hit = window.hitTest(CGPoint(x: frame.midX, y: frame.midY), with: nil)
+        var ancestry: [String] = []
+        var ancestor = hit
+        while let current = ancestor, ancestry.count < 12 {
+            ancestry.append(String(describing: type(of: current)))
+            ancestor = current.superview
+        }
+        let toolbar = navigationController?.toolbar
+        toolbar?.accessibilityIdentifier = "diagnostic-public-navigation-toolbar"
+        let toolbarState = toolbar.map { "id=\($0.accessibilityIdentifier ?? ""),frame=\($0.frame),hidden=\($0.isHidden),axHidden=\($0.accessibilityElementsHidden),alpha=\($0.alpha),items=\($0.items?.count ?? 0)" } ?? "nil"
+        doneButton.accessibilityValue = "DIAGNOSTIC window=\(window.bounds) done=\(frame) actualHitIsDone=\(hit === doneButton || hit?.isDescendant(of: doneButton) == true) ancestry=\(ancestry) logicalToolbarHidden=\(navigationController?.isToolbarHidden ?? true) toolbar=\(toolbarState)"
+    }
+    #endif
+
     
 }
 
@@ -102,6 +187,7 @@ extension SharePhotoViewController {
     @objc func share() {
         let activityViewController = UIActivityViewController(activityItems: [image], applicationActivities: nil)
         activityViewController.popoverPresentationController?.sourceView = self.shareButton
+        activityViewController.popoverPresentationController?.sourceRect = self.shareButton.bounds
         present(activityViewController, animated: true, completion: nil)
     }
     

@@ -18,3 +18,24 @@
 "share" = "分享";
 "saved" = "保存成功";
 "beautify" = "美化";
+"Delete Decoration" = "删除装饰";
+"Resize and Rotate Decoration" = "调整装饰大小和旋转";
+"Edit Bubble Text" = "编辑气泡文字";
+"Photo Decoration" = "照片装饰";
+"Make Larger" = "放大";
+"Make Smaller" = "缩小";
+"Rotate Clockwise" = "顺时针旋转";
+"Move Left" = "左移";
+"Move Right" = "右移";
+"Move Up" = "上移";
+"Move Down" = "下移";
+"Bubble" = "气泡";
+"Sticker %d" = "贴纸 %d";
+"Bubble %d" = "气泡 %d";
+"Original" = "原图";
+"Sepia" = "复古";
+"Posterize" = "色调分离";
+"Crystal" = "水晶";
+"Pixelate Faces" = "人脸像素化";
+
+"Bubble Text" = "气泡文字";

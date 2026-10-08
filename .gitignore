@@ -64,3 +64,11 @@ Carthage/Build
 
 fastlane/report.xml
 fastlane/screenshots
+
+.build/
+TestResults-*.xcresult/
+build-*.log
+test-*.log
+archive.log
+
+__pycache__/

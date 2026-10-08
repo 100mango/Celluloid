@@ -1,0 +1,17 @@
+"Photos access is unavailable. Allow access in Settings to edit your library." = "无法访问照片。请前往设置允许照片访问，以编辑照片图库。";
+"Manage Photos" = "管理照片";
+"No photos are available. Add photos or update your selection." = "暂无可用照片。请添加照片或更新允许访问的照片。";
+"The photo could not be loaded. Check your connection and Photos access, then try again." = "无法载入照片。请检查网络连接和照片访问权限，然后重试。";
+"The photo could not be saved. Your original photo is unchanged." = "无法保存照片，原始照片未被修改。";
+"Unable to Edit Photo" = "无法编辑照片";
+"The edited image could not be rendered." = "无法生成编辑后的图片。";
+"A photo could not be loaded. Check your connection and Photos access, then retry." = "有照片无法载入。请检查网络连接和照片访问权限，然后重试。";
+"Unable to Load Photos" = "无法载入照片";
+"Unable to Save" = "无法保存";
+"Retry" = "重试";
+"A collage needs at least two photos." = "拼图至少需要两张照片。";
+
+"Privacy Policy" = "隐私政策";
+"Opens the app privacy policy." = "打开应用隐私政策。";
+
+"Open Settings" = "打开设置";
