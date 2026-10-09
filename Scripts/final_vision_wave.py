@@ -202,10 +202,16 @@ def inspect_case(log,method,summary,kind='ui',udid=None,runtime_version=None):
   for k,v in [('passedTests',1),('failedTests',0),('skippedTests',0)]:need(type(rows[0].get(k)) is int and rows[0][k]==v,'summary-device-'+k)
  return {'method':method,'kind':kind,'events':events,'passed':True,'summary_counts':{k:summary[k] for k in ['totalTestCount','passedTests','failedTests','skippedTests']}}
 
+# Exact observed subsystem record; classification never establishes harmlessness
+# or official runtime-warning status. Its original line remains in the raw log.
+BACKLIGHT_XPC_RECORD='\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{6}\\+\\d{4} CelluloidVision\\[\\d+:\\d+\\] \\[assertions\\] failed to observe with mask <BLSXPCBacklightProxyObserverMask: 0x[0-9A-Fa-f]+; didUpdateToState: YES; eventsArray: YES> error:<XPC error received on message reply handler \\(3:BSServiceConnectionErrorDomain\\) "The operation couldn’t be completed\\. XPC error received on message reply handler">'
+
 def inspect_deployment_transcript(log,udid):
  owner='CelluloidVisionTests.NativeVisionTests';case="Test Case '-["+owner+' '+DEPLOYMENT_METHOD+"]' "
  lines=log.splitlines();events=[line for line in lines if line.startswith('Test Case ')]
- need(re.search(r'(?im)(?:^.*\berror:|^Testing (?:failed|cancelled|canceled|cancellation):|\*\*[^\n]*(?:FAILED|CANCELLED|CANCELED|CANCELLATION)[^\n]*\*\*|\bPermissionError\b|\bpermission denied\b|\boperation not permitted\b|\btimed out\b|\btimeout\b)',log) is None,'deployment-explicit-error-denial-or-timeout')
+ system_records=[line for line in lines if re.fullmatch(BACKLIGHT_XPC_RECORD,line) is not None]
+ need(not any(re.search(r'\berror:',line,re.I) and re.fullmatch(BACKLIGHT_XPC_RECORD,line) is None for line in lines),'deployment-unclassified-tool-or-log-error')
+ need(re.search(r'(?im)(?:^Testing (?:failed|cancelled|canceled|cancellation):|\*\*[^\n]*(?:FAILED|CANCELLED|CANCELED|CANCELLATION)[^\n]*\*\*|\bPermissionError\b|\bpermission denied\b|\boperation not permitted\b|\btimed out\b|\btimeout\b)',log) is None,'deployment-explicit-error-denial-or-timeout')
  need(len(events)==2 and events[0]==case+'started.' and re.fullmatch(re.escape(case)+r'passed \([0-9.]+ seconds\)\.',events[1]) is not None,'deployment-exact-single-case')
  markers=[line for line in lines if line.startswith('VISION_NATIVE_RUNTIME ')]
  need(len(markers)==1,'deployment-one-host-marker')
@@ -214,7 +220,7 @@ def inspect_deployment_transcript(log,udid):
  expected=str(Path.home()/'Library/Developer/CoreSimulator/Devices'/udid/'data/Containers/Bundle/Application')
  uuid=r'[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}'
  need(re.fullmatch(re.escape(expected)+'/'+uuid+r'/CelluloidVision\.app',marker[1]) is not None,'deployment-host-not-owned-device')
- return {'method':DEPLOYMENT_METHOD,'events':['started','passed'],'host_bundle':marker[1],'bundle_identifier':'Mango.Celluloid','scenes':int(marker[2]),'platform':'xrsimulator','owned_udid':udid}
+ return {'method':DEPLOYMENT_METHOD,'events':['started','passed'],'host_bundle':marker[1],'bundle_identifier':'Mango.Celluloid','scenes':int(marker[2]),'platform':'xrsimulator','owned_udid':udid,'system_log_observations':{'backlight_xpc_records':len(system_records),'classification':'system-subsystem-shaped record; not proven harmless or official runtime-warning evidence','decoded_transcript_sha256':digest(log.encode())}}
 
 def verify_managed_deployment(log,summary,udid,runtime,window):
  host=inspect_deployment_transcript(log,udid)

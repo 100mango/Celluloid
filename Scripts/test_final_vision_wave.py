@@ -77,6 +77,8 @@ def observed_selftest_process(scenario,cap):
 def safe_selftest_result(result):
  return json.dumps(selftest_outcome_projection(result),sort_keys=True,allow_nan=False)
 
+BACKLIGHT_SAMPLE='2026-10-09 16:30:11.620905+0000 CelluloidVision[5650:24578] [assertions] failed to observe with mask <BLSXPCBacklightProxyObserverMask: 0x105784950; didUpdateToState: YES; eventsArray: YES> error:<XPC error received on message reply handler (3:BSServiceConnectionErrorDomain) "The operation couldn’t be completed. XPC error received on message reply handler">'
+
 class WaveTests(unittest.TestCase):
  def test_exact_single_method_config_and_closed_default(self):
   for m in w.UI_METHODS:self.assertEqual(w.validate_config(config(m),env(m))['selected_method'],m)
@@ -419,5 +421,24 @@ class WaveTests(unittest.TestCase):
   for mode,count in [('uncertain',1),('exit65',1),('wrong-host',1),('cancel',1),('permission-exception',1),('warning',2)]:
    with self.subTest(mode=mode):
     report,calls,blocked,error=self.run_managed_fixture(mode);self.assertIsNotNone(error);self.assertTrue(blocked);self.assertEqual(len(calls),count);self.assertNotIn('managed_deployment',report)
+
+ def test_exact_backlight_record_is_observed_and_original_log_identity_kept(self):
+  uid,runtime,log,ss=self.deployment_receipts();raw=BACKLIGHT_SAMPLE+'\n'+log;out=w.inspect_deployment_transcript(raw,uid);obs=out['system_log_observations']
+  self.assertEqual(obs['backlight_xpc_records'],1);self.assertEqual(obs['decoded_transcript_sha256'],w.digest(raw.encode()));self.assertIn('not proven harmless',obs['classification'])
+  duplicate=BACKLIGHT_SAMPLE+'\n'+raw;self.assertEqual(w.inspect_deployment_transcript(duplicate,uid)['system_log_observations']['backlight_xpc_records'],2)
+ def test_backlight_variants_denial_timeout_cancel_domain_and_observer_stay_rejected(self):
+  uid,runtime,log,ss=self.deployment_receipts()
+  for line in [BACKLIGHT_SAMPLE.replace('BSServiceConnectionErrorDomain','DifferentDomain'),BACKLIGHT_SAMPLE.replace('BLSXPCBacklightProxyObserverMask','DifferentObserver'),BACKLIGHT_SAMPLE.replace('message reply handler (3:', 'Permission denied (3:'),BACKLIGHT_SAMPLE.replace('The operation couldn’t be completed.','timeout'),BACKLIGHT_SAMPLE.replace('The operation couldn’t be completed.','cancelled'),BACKLIGHT_SAMPLE+' PermissionError',BACKLIGHT_SAMPLE+' ** TEST EXECUTE CANCELLED **',BACKLIGHT_SAMPLE.replace('[assertions]','[product]'),BACKLIGHT_SAMPLE.replace('didUpdateToState: YES','didUpdateToState: NO')]:
+   with self.subTest(line=line[-70:]),self.assertRaises(ValueError):w.inspect_deployment_transcript(line+'\n'+log,uid)
+ def test_backlight_classification_never_suppresses_other_tool_errors_or_terminals(self):
+  uid,runtime,log,ss=self.deployment_receipts()
+  for error in ['xcodebuild: error: failed destination','/owned/File.swift:12:3: error: genuine compile error','error: unknown tool failure','CelluloidVision[1:2] [unknown] error: unknown record','Testing failed: unexpected','** TEST EXECUTE FAILED **','** TEST EXECUTE CANCELLED **','Permission denied','timeout during launch']:
+   with self.subTest(error=error),self.assertRaises(ValueError):w.inspect_deployment_transcript(BACKLIGHT_SAMPLE+'\n'+log+'\n'+error,uid)
+ def test_backlight_record_does_not_supply_or_relax_official_runtime_warning_evidence(self):
+  uid,runtime,log,ss=self.deployment_receipts();raw=BACKLIGHT_SAMPLE+'\n'+log;window={'started_unix':11220,'finished_unix':11222}
+  self.assertTrue(w.verify_managed_deployment(raw,ss,uid,runtime,window)['passed'])
+  for value in [None,False,{},[{'message':'Publishing changes from within view updates is not allowed'}],[{'message':BACKLIGHT_SAMPLE}]]:
+   bad=copy.deepcopy(ss);bad['runtimeWarnings']=value
+   with self.assertRaises(ValueError):w.verify_managed_deployment(raw,bad,uid,runtime,window)
 
 if __name__=='__main__':unittest.main()
