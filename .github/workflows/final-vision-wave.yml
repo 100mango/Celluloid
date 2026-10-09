@@ -1,0 +1,91 @@
+name: Final Celluloid one whole Vision UI method
+'on':
+  push:
+    branches:
+    - celluloid-final-vision-wave
+    paths:
+    - .github/final-vision-wave.json
+    - .github/workflows/final-vision-wave.yml
+    - Scripts/final_vision_wave.py
+    - Scripts/qualify_final_vision_wave_source.py
+    - Scripts/test_final_vision_wave.py
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-final-vision-wave
+  cancel-in-progress: false
+jobs:
+  vision-wave:
+    if: ${{ true && github.event_name == 'push' && github.ref == 'refs/heads/celluloid-final-vision-wave' && github.run_attempt == 1 }}
+    runs-on: xcode-27
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      PYTHONDONTWRITEBYTECODE: '1'
+      TZ: UTC
+      QUALIFICATION_PLATFORM: vision
+      VISION_WAVE_METHOD: testRealFilesImportBubbleAndPNGExport
+    steps:
+    - name: Start fixed thirty minute wave clock
+      run: |
+        python3 -B -S - <<'PY'
+        import json,os,time
+        from pathlib import Path
+        Path(os.environ['RUNNER_TEMP'],'final-vision-wave-clock.json').write_text(json.dumps({
+        'schema':'Celluloid.FinalVisionWaveClock.1','control_sha':os.environ['GITHUB_SHA'],
+        'run_id':os.environ['GITHUB_RUN_ID'],'run_attempt':os.environ['GITHUB_RUN_ATTEMPT'],
+        'selected_method':os.environ['VISION_WAVE_METHOD'],'started_monotonic':time.monotonic(),
+        'started_unix':time.time(),'native_seconds':1560,'final_seconds':1740}))
+        PY
+    - name: Checkout exact immutable product and five controls
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      timeout-minutes: 2
+      with:
+        persist-credentials: false
+        fetch-depth: 64
+        ref: ${{ github.sha }}
+    - name: Admit fixed product and selected whole UI method
+      id: admit
+      timeout-minutes: 1
+      run: python3 -B -S Scripts/qualify_final_vision_wave_source.py --phase before
+    - name: Test wave controls without site packages
+      id: control_tests
+      timeout-minutes: 1
+      run: |
+        python3 -B -S Scripts/test_final_vision_wave.py
+        python3 -B -O -S Scripts/test_final_vision_wave.py
+    - name: Run one selected whole UI method and required fixture only
+      id: wave
+      timeout-minutes: 28
+      run: python3 -B -S Scripts/final_vision_wave.py run
+    - name: Verify exact unchanged product and control after wave
+      id: source_after
+      if: ${{ always() && steps.admit.outcome == 'success' }}
+      timeout-minutes: 1
+      run: python3 -B -S Scripts/qualify_final_vision_wave_source.py --phase after
+    - name: Retain bounded per-method proof
+      id: collect
+      if: ${{ always() && steps.source_after.outcome == 'success' && steps.wave.outcome != 'skipped' }}
+      timeout-minutes: 1
+      run: python3 -B -S Scripts/final_vision_wave.py collect
+    - name: Admit evidence upload within original wave clock
+      id: upload_gate
+      if: ${{ always() && steps.collect.outputs.evidence_ready == 'true' }}
+      timeout-minutes: 1
+      run: python3 -B -S Scripts/final_vision_wave.py admit-upload
+    - name: Upload bounded selected-method evidence
+      id: upload
+      if: ${{ always() && steps.upload_gate.outputs.upload_admitted == 'true' }}
+      timeout-minutes: 1
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: celluloid-final-vision-wave-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/vision-wave-evidence/
+        if-no-files-found: error
+        retention-days: 1
+    - name: Require successful upload within original wave clock
+      if: ${{ always() && steps.upload_gate.outputs.upload_admitted == 'true' }}
+      timeout-minutes: 1
+      env:
+        VISION_WAVE_UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+      run: python3 -B -S Scripts/final_vision_wave.py finish-upload
