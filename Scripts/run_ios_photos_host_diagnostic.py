@@ -97,7 +97,7 @@ class HostDiagnostic(Acceptance):
         self.command('boot', ['xcrun', 'simctl', 'boot', device], 60, simulator=True)
         self.command('bootstatus', ['xcrun', 'simctl', 'bootstatus', device, '-b'], 300, simulator=True)
         # No preliminary product suite is needed to register the built app.
-        self.command('install-owned-app', ['xcrun', 'simctl', 'install', device, str(binary.parent)], 60, simulator=True)
+        self.command('install-owned-app', ['xcrun', 'simctl', 'install', device, str(binary.parent)], 120, simulator=True)
         require(self.bootstrap() == 0 and not self.uncertain, 'Real fixture bootstrap failed')
         command = [sys.executable, 'Scripts/run_ios_photos_host.py', '--device', device, '--derived', str(DERIVED),
             '--out', str(OUT / 'ios-photos-host'), '--owner', str(OUT / 'owned-simulator.json'),

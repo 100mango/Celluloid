@@ -283,5 +283,29 @@ class PhotosParentDeadlineTests(unittest.TestCase):
                 gate.cleanup();self.assertEqual(called.call_count,1);self.assertTrue(gate.uncertain);self.assertEqual(gate.device,'owned-device')
                 gate.cleanup();self.assertEqual(called.call_count,1)
 
+    def testObservedInstallBudgetIs120AndStillRejectsLateOrUnfundedWork(self):
+        import ast,inspect
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        source=inspect.getsource(diagnostic);calls=[n for n in ast.walk(ast.parse(source)) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='command' and n.args and isinstance(n.args[0],ast.Constant) and n.args[0].value=='install-owned-app']
+        self.assertEqual(len(calls),1);self.assertEqual(calls[0].args[2].value,120)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45])
+        for duration in [77.0164555,119.0,120.001]:
+            with self.subTest(duration=duration),tempfile.TemporaryDirectory() as folder:
+                clock=[100.0];gate=object.__new__(diagnostic.HostDiagnostic);gate.uncertain=False;gate.failures=[];seen=[]
+                def invoke(self,*args,**kwargs):seen.append(args);clock[0]+=duration;return 0,'synthetic completion'
+                with patch.object(diagnostic,'OUT',Path(folder)),patch.object(diagnostic.time,'monotonic',side_effect=lambda:clock[0]),patch.object(diagnostic.Acceptance,'command',invoke):
+                    if duration>120:
+                        with self.assertRaisesRegex(ValueError,'deadline exceeded'):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],120,simulator=True)
+                        with self.assertRaisesRegex(ValueError,'blocks further'):gate.command('photos-bootstrap',['must-not-dispatch'],750,simulator=True)
+                    else:self.assertEqual(gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],120,simulator=True),(0,'synthetic completion'))
+                self.assertEqual(len(seen),1);wrapped=seen[0][1];self.assertEqual(wrapped[wrapped.index('--seconds')+1],'120');self.assertEqual(wrapped[wrapped.index('--deadline-monotonic')+1],'220.0');self.assertIs(gate.uncertain,duration>120)
+        with tempfile.TemporaryDirectory() as folder:
+            gate=object.__new__(diagnostic.HostDiagnostic);gate.uncertain=False;gate.failures=[];gate.deadline=230.0
+            with patch.object(diagnostic,'OUT',Path(folder)),patch.object(diagnostic.time,'monotonic',return_value=100.0),patch.object(diagnostic.subprocess,'call') as called:
+                with self.assertRaisesRegex(ValueError,'full phase and cleanup allowance do not fit'):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],120,simulator=True)
+                called.assert_not_called()
+
+
 
 if __name__ == '__main__': unittest.main()
