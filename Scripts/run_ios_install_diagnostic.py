@@ -77,7 +77,7 @@ def bounded_admission(label,command,seconds):
     config_check(strict_json(ROOT/CONFIG));context_check(os.environ)
     receipt=strict_json(ADMISSION)
     require(receipt.get('source_sha')==os.environ['GITHUB_SHA'] and receipt.get('base_sha')==BASE_SHA and receipt.get('base_tree')==BASE_TREE and receipt.get('run_id')==os.environ['GITHUB_RUN_ID'] and receipt.get('run_attempt')=='1' and receipt.get('diagnostic_only') is True and receipt.get('host_methods_planned')==0 and receipt.get('control_fingerprint')==fingerprint(),'Missing/stale exact install admission')
-    simple={'clean-start':(15,['git','diff','--exit-code','HEAD','--']),'toolchain':(30,['xcodebuild','-version']),'host-portable':(30,[sys.executable,'-S','Scripts/test_ios_install_diagnostic.py']),'devices-before':(20,['xcrun','simctl','list','devices','available','-j']),'devices-after-create':(20,['xcrun','simctl','list','devices','available','-j']),'create-owned-device':(60,[sys.executable,'Scripts/select_test_devices.py','iPhone SE (3rd generation)']),'runtime-metadata':(20,['xcrun','simctl','list','runtimes','-j']),'host-memory':(5,['/usr/sbin/sysctl','hw.ncpu','hw.memsize','vm.swapusage'])}
+    simple={'clean-start':(15,['git','diff','--exit-code','HEAD','--']),'toolchain':(30,['xcodebuild','-version']),'host-portable':(30,[sys.executable,'-S','Scripts/test_ios_install_diagnostic.py']),'devices-before':(20,['xcrun','simctl','list','devices','available','-j']),'devices-after-create':(20,['xcrun','simctl','list','devices','available','-j']),'create-owned-device':(60,[sys.executable,'Scripts/select_test_devices.py','iPhone SE (3rd generation)'])}
     if label in simple:expected_cap,expected=simple[label]
     else:
         owner=strict_json(OUT/'owned-simulator.json');device=owner.get('device_id');require(type(device) is str and str(uuid.UUID(device)).upper()==device,'Malformed owned device')
@@ -156,18 +156,13 @@ def owned_inventory_projection(before,after,owner):
             'before_owned_matches':[], 'after_owned_matches':[{'runtime_id':rt,**{k:item[k] for k in ['udid','name','state','isAvailable']}}],
             'local_full_inventory_sha256':{'before':digest(before),'after':digest(after)},'full_inventory_publicly_retained':False}
 
-def owned_runtime_projection(value,owner):
-    require(type(value) is dict and value.get('identifier')==owner['runtime_id']=='com.apple.CoreSimulator.SimRuntime.iOS-27-0' and value.get('isAvailable') is True,'Runtime metadata differs')
-    result={}
-    for key in ['identifier','name','version','buildversion','isAvailable']:
-        if key not in value:continue
-        item=value[key]
-        require((key=='isAvailable' and item is True) or (key!='isAvailable' and type(item) is str and 0<len(item)<=128),'Malformed runtime metadata')
-        result[key]=item
-    return result
+def known_runtime_metadata(owner):
+    require(owner.get('runtime_id')=='com.apple.CoreSimulator.SimRuntime.iOS-27-0','Wrong admitted runtime identity')
+    return {'identifier':owner['runtime_id'],**{k:owner[k] for k in ['source_sha','run_id','run_attempt']},
+            'exact_runtime_build':None,'exact_runtime_build_status':'unavailable_no_additional_query'}
 
 def pressure_snapshot():
-    value={'monotonic':time.monotonic(),'cpu_count':os.cpu_count()}
+    value={'monotonic':time.monotonic(),'cpu_count':os.cpu_count(),'memory_bytes':None,'memory_status':'unavailable_no_additional_query'}
     try:value['load_average']=list(os.getloadavg())
     except OSError as error:value['load_error']=type(error).__name__
     return value
@@ -211,13 +206,8 @@ class InstallDiagnostic(HostDiagnostic):
         binary=DERIVED/'Build/Products/Debug-iphonesimulator/Celluloid.app/Celluloid';binding=build_binding(binary,self.source,self.source_tree);save(OUT/'build-binding.json',binding)
         require(binding['app_binary_sha256']==EXPECTED_BINARY and binding['app_bundle_sha256']==EXPECTED_BUNDLE,'Built install payload differs from successful and failed historical payloads')
         self.command('boot',['xcrun','simctl','boot',device],60,simulator=True);self.command('bootstatus',['xcrun','simctl','bootstatus',device,'-b'],300,simulator=True)
-        code,raw=self.command('runtime-metadata',['xcrun','simctl','list','runtimes','-j'],20,simulator=True,allow_failure=True)
-        if code==0:
-            try:
-                matches=[x for x in extract_json(raw,'runtimes')['runtimes'] if x.get('identifier')==owner['runtime_id']];require(len(matches)==1,'Ambiguous exact runtime metadata');save(OUT/'owned-runtime.json',owned_runtime_projection(matches[0],owner))
-            except (ValueError,KeyError,TypeError) as error:self.diagnostic_errors.append({'phase':'runtime-metadata','error':type(error).__name__})
+        save(OUT/'owned-runtime.json',known_runtime_metadata(owner))
         self.pressure_before=pressure_snapshot();save(OUT/'install-pressure-before.json',self.pressure_before)
-        self.command('host-memory',['/usr/sbin/sysctl','hw.ncpu','hw.memsize','vm.swapusage'],5,allow_failure=True)
         require(not self.uncertain and self.deadline-time.monotonic()>=255,'Collector/install/cleanup reserves do not fit')
         self.install_attempted=True
         try:

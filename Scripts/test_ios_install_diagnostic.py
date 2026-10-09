@@ -41,7 +41,7 @@ class AdmissionTests(unittest.TestCase):
         for change in [lambda r,o:r.update(run_id='124'),lambda r,o:r.update(control_fingerprint='wrong'),lambda r,o:o.update(created_by_this_job=False),lambda r,o:o.update(absent_before_create=False),lambda r,o:o.update(source_sha='c'*40),lambda r,o:o.update(run_id='124')]:
             with self.assertRaises(ValueError):self.bounded('install-owned-app',command,120,change)
     def testUnknownCommandAndHostExecutionCannotEnterWrapper(self):
-        for label,command,cap in [('actual-photos-host',['xcodebuild','test-without-building'],630),('sample',['sample','999','3'],8),('bootstrap',['xcrun','simctl','privacy'],750),('host-memory',['ps','-ax'],5)]:
+        for label,command,cap in [('actual-photos-host',['xcodebuild','test-without-building'],630),('sample',['sample','999','3'],8),('bootstrap',['xcrun','simctl','privacy'],750),('host-memory',['ps','-ax'],5),('host-memory',['/usr/sbin/sysctl','hw.ncpu','hw.memsize','vm.swapusage'],5),('runtime-metadata',['xcrun','simctl','list','runtimes','-j'],20)]:
             with self.assertRaises(ValueError):self.bounded(label,command,cap)
 
 class RouteTests(unittest.TestCase):
@@ -147,12 +147,18 @@ class PublicEvidenceTests(unittest.TestCase):
         for mutate in [lambda b,a,o:b['devices'][o['runtime_id']].append(a['devices'][o['runtime_id']][-1]),lambda b,a,o:a['devices'][o['runtime_id']].append(a['devices'][o['runtime_id']][-1]),lambda b,a,o:o.update(device_id='wrong'),lambda b,a,o:o.update(runtime_id='wrong'),lambda b,a,o:o.update(absent_before_create=False),lambda b,a,o:a['devices'][o['runtime_id']][-1].update(state='Booted'),lambda b,a,o:a['devices'][o['runtime_id']][-1].update(name='Private personal simulator')]:
             b,a,o=self.values();mutate(b,a,o)
             with self.assertRaises(ValueError):gate.owned_inventory_projection(b,a,o)
-    def testRuntimeProjectionCannotRetainMountOrBundlePaths(self):
-        _,_,owner=self.values();raw={'identifier':owner['runtime_id'],'name':'iOS27.0','version':'27.0','buildversion':'24A434','isAvailable':True,'bundlePath':'/private/runtime','runtimeRoot':'/private/mount','supportedDeviceTypes':[{'name':'private'}]}
-        value=gate.owned_runtime_projection(raw,owner);self.assertEqual(set(value),{'identifier','name','version','buildversion','isAvailable'});self.assertNotIn('/private',json.dumps(value))
-        for key,item in [('identifier','other'),('isAvailable',False),('name',['private']),('version','x'*129)]:
-            changed=dict(raw);changed[key]=item
-            with self.assertRaises(ValueError):gate.owned_runtime_projection(changed,owner)
+    def testRuntimeMetadataRetainsOnlyKnownOwnerWithoutInventingBuild(self):
+        _,_,owner=self.values();value=gate.known_runtime_metadata(owner)
+        self.assertEqual(value,{'identifier':owner['runtime_id'],'source_sha':owner['source_sha'],'run_id':owner['run_id'],'run_attempt':owner['run_attempt'],'exact_runtime_build':None,'exact_runtime_build_status':'unavailable_no_additional_query'})
+        with self.assertRaises(ValueError):gate.known_runtime_metadata(dict(owner,runtime_id='unknown'))
+    def testNoOptionalNativeCommandCanPrecedeTheOneInstall(self):
+        source=(gate.ROOT/'Scripts/run_ios_install_diagnostic.py').read_text();tree=ast.parse(source);run=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='run');calls=[]
+        for n in ast.walk(run):
+            if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='command':calls.append(n.args[0].value)
+        self.assertNotIn('runtime-metadata',calls);self.assertNotIn('host-memory',calls);self.assertEqual(calls.count('install-owned-app'),1)
+        with patch('subprocess.Popen',side_effect=AssertionError('optional process')),patch.object(os,'cpu_count',return_value=6),patch.object(os,'getloadavg',return_value=(1.0,2.0,3.0)):
+            value=gate.pressure_snapshot()
+        self.assertEqual(value['cpu_count'],6);self.assertEqual(value['load_average'],[1.0,2.0,3.0]);self.assertIsNone(value['memory_bytes']);self.assertEqual(value['memory_status'],'unavailable_no_additional_query')
     def testPublicUploadIsExactOwnedEvidenceAllowlist(self):
         workflow=(gate.ROOT/gate.WORKFLOW).read_text();block=workflow.split('          path: |\n',1)[1].split('          retention-days:',1)[0];paths=[x.strip() for x in block.splitlines() if x.strip()]
         expected=['build/install-diagnostic-source.txt','build/install-diagnostic-source-before.json','build/install-diagnostic-source-after.json']+['build/swiftui-acceptance/'+x for x in PUBLIC_OWNED_PATHS]
@@ -163,7 +169,7 @@ class PublicEvidenceTests(unittest.TestCase):
     def testProjectionIsAfterFreshValidationAndRawInputsStayLocal(self):
         source=(gate.ROOT/'Scripts/run_ios_install_diagnostic.py').read_text();tree=ast.parse(source);run=next(x for x in ast.walk(tree) if isinstance(x,ast.FunctionDef) and x.name=='run');text=ast.get_source_segment(source,run)
         self.assertLess(text.index('owner=owner_receipt('),text.index('owned_inventory_projection(before,after,owner)'));self.assertIn("save(OUT/'devices-before.json',before)",text);self.assertIn("save(OUT/'devices-after-create.json',after)",text)
-        self.assertIn("save(OUT/'owned-runtime.json',owned_runtime_projection(matches[0],owner))",text)
+        self.assertIn("save(OUT/'owned-runtime.json',known_runtime_metadata(owner))",text)
 
 
 WRAPPER_PREFIX = "install_diagnostic_route = absolute_deadline and os.environ.get('GITHUB_REF') == 'refs/heads/cell-ios-install-diagnostic'\ninstall_observer_context = None\ninstall_observer_wait = None\ninstall_observation = None\ninstall_cancelled = [None]\nif install_diagnostic_route:\n    # Only this exact new route defers cancellation while it owns children.\n    import atexit\n    from run_ios_install_diagnostic import bounded_admission, OBSERVATIONS, InstallObservation, defer_cancellation\n    install_cancelled = defer_cancellation()\n    install_observer_context = bounded_admission(args.label, args.command, args.seconds)\n    if args.label == 'install-owned-app':\n        from ios_install_observer import wait_with_one_sample\n        install_observer_wait = wait_with_one_sample\n"
