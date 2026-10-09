@@ -11,6 +11,10 @@ from combined_evidence_budget import BUDGETS
 MAX_EVIDENCE=BUDGETS['vision']
 HOSTED=('testNativeVisionDocumentImportRenderSaveReopenAndExport','testSharedFieldMutationsRetainUnicodeAcrossBothOrdersUndoAndReopen','testPrepareVisionRemainingDocumentFixture','testNativeVisionExecutableAndSceneAreLive')
 PRODUCER='testPrepareVisionRemainingDocumentFixture'
+DEPLOYMENT_METHOD='testNativeVisionExecutableAndSceneAreLive'
+DEPLOYMENT_SECONDS=240
+DEPLOYMENT_SUMMARY_SECONDS=60
+DEPLOYMENT_PAIR_SECONDS=315 # 240 work +15 process cleanup +60 summary (including its cleanup).
 SHOTS={UI_METHODS[0]:('native-vision-launch','native-vision-editor-ready'),UI_METHODS[1]:('vision-imported-editable-bubble','vision-png-export-verified','vision-saved-document-reopened'),UI_METHODS[2]:(),UI_METHODS[3]:('vision-zh-Hans-privacy',)}
 DEPENDENCIES={UI_METHODS[0]:'ui-created-document',UI_METHODS[1]:'own-generated-png',UI_METHODS[2]:'hosted-producer-package',UI_METHODS[3]:'ui-created-document'}
 def need(value,reason):
@@ -197,6 +201,54 @@ def inspect_case(log,method,summary,kind='ui',udid=None,runtime_version=None):
   device=rows[0].get('device',{});need(device.get('deviceId')==udid and device.get('osVersion')==runtime_version and device.get('architecture')=='arm64' and device.get('platform') in {'visionOS Simulator','xrOS Simulator'},'summary-runtime-binding')
   for k,v in [('passedTests',1),('failedTests',0),('skippedTests',0)]:need(type(rows[0].get(k)) is int and rows[0][k]==v,'summary-device-'+k)
  return {'method':method,'kind':kind,'events':events,'passed':True,'summary_counts':{k:summary[k] for k in ['totalTestCount','passedTests','failedTests','skippedTests']}}
+
+def inspect_deployment_transcript(log,udid):
+ owner='CelluloidVisionTests.NativeVisionTests';case="Test Case '-["+owner+' '+DEPLOYMENT_METHOD+"]' "
+ lines=log.splitlines();events=[line for line in lines if line.startswith('Test Case ')]
+ need(re.search(r'(?im)(?:^.*\berror:|^Testing (?:failed|cancelled|canceled|cancellation):|\*\*[^\n]*(?:FAILED|CANCELLED|CANCELED|CANCELLATION)[^\n]*\*\*|\bPermissionError\b|\bpermission denied\b|\boperation not permitted\b|\btimed out\b|\btimeout\b)',log) is None,'deployment-explicit-error-denial-or-timeout')
+ need(len(events)==2 and events[0]==case+'started.' and re.fullmatch(re.escape(case)+r'passed \([0-9.]+ seconds\)\.',events[1]) is not None,'deployment-exact-single-case')
+ markers=[line for line in lines if line.startswith('VISION_NATIVE_RUNTIME ')]
+ need(len(markers)==1,'deployment-one-host-marker')
+ need(lines.index(events[0])<lines.index(markers[0])<lines.index(events[1]),'deployment-host-marker-outside-case')
+ marker=re.fullmatch(r'VISION_NATIVE_RUNTIME bundle=(.+) scenes=([1-9][0-9]*) platform=xrsimulator',markers[0]);need(marker is not None,'deployment-host-scene-platform')
+ expected=str(Path.home()/'Library/Developer/CoreSimulator/Devices'/udid/'data/Containers/Bundle/Application')
+ uuid=r'[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}'
+ need(re.fullmatch(re.escape(expected)+'/'+uuid+r'/CelluloidVision\.app',marker[1]) is not None,'deployment-host-not-owned-device')
+ return {'method':DEPLOYMENT_METHOD,'events':['started','passed'],'host_bundle':marker[1],'bundle_identifier':'Mango.Celluloid','scenes':int(marker[2]),'platform':'xrsimulator','owned_udid':udid}
+
+def verify_managed_deployment(log,summary,udid,runtime,window):
+ host=inspect_deployment_transcript(log,udid)
+ case=inspect_case(log,DEPLOYMENT_METHOD,summary,kind='deployment',udid=udid,runtime_version=runtime['version'])
+ need(summary.get('result')=='Passed','deployment-summary-result')
+ if 'buildversion' in runtime:need(summary['devicesAndConfigurations'][0]['device'].get('osBuildNumber')==runtime['buildversion'],'deployment-summary-runtime-build')
+ need(type(window) is dict and set(window)=={'started_unix','finished_unix'} and all(number(v) and v>0 for v in window.values()),'deployment-call-window')
+ need(all(number(summary.get(k)) for k in ('startTime','finishTime')) and window['started_unix']<=summary['startTime']<summary['finishTime']<=window['finished_unix'],'deployment-summary-outside-call-window')
+ need(type(summary.get('runtimeWarnings')) is list and summary['runtimeWarnings']==[],'deployment-runtime-warning-evidence')
+ return {'host':host,'case':case,'runtime_warning_count':0,'passed':True,'scope':'one hosted deployment method; not Files or all-eight qualification'}
+
+def run_managed_deployment(commands,call,clock,temp,udid,runtime,prefix,report):
+ try:
+  # Replace only the Files route's old 315-second independent install envelope.
+  # All receipt/parsing/summary time consumes this one absolute pair window.
+  started=time.monotonic();latest=sample_ui_admission(clock,started)['latest_start_monotonic']
+  need(started+DEPLOYMENT_PAIR_SECONDS<=latest,'full-managed-deployment-pair-before-ui-does-not-fit')
+  end=started+DEPLOYMENT_PAIR_SECONDS;bundle=temp/(prefix+'-deployment.xcresult')
+  report['deployment_budget']={'started_monotonic':started,'pair_deadline_monotonic':end,'latest_ui_start_monotonic':latest,'work_seconds':DEPLOYMENT_SECONDS,'process_cleanup_seconds':15,'summary_total_seconds':DEPLOYMENT_SUMMARY_SECONDS,'pair_total_seconds':DEPLOYMENT_PAIR_SECONDS,'dispatch_proven':False}
+  selection=['-only-testing:CelluloidVisionTests/NativeVisionTests/'+DEPLOYMENT_METHOD]
+  call_started=time.time()
+  log,result=call(xctest_command(temp,udid,bundle,selection),'deployment-tests',DEPLOYMENT_SECONDS+15,deadline=end-DEPLOYMENT_SUMMARY_SECONDS)
+  window={'started_unix':call_started,'finished_unix':time.time()};report['deployment_call_window']=window
+  need(result.get('finalized') is True and result.get('return_code')==0 and not result.get('timed_out') and not result.get('overflow'),'deployment-process-not-successful')
+  report['deployment_transcript']=inspect_deployment_transcript(log,udid)
+  # full=True refuses before dispatch if the original pair has less than 60 left.
+  raw,_=call(['xcrun','xcresulttool','get','test-results','summary','--path',bundle],'deployment-summary',DEPLOYMENT_SUMMARY_SECONDS,deadline=end,full=True)
+  summary=strict_json(raw);proof=verify_managed_deployment(log,summary,udid,runtime,window)
+  finished=time.monotonic();need(finished<end,'deployment-verification-after-pair-deadline')
+  report['deployment_summary']=summary;report['managed_deployment']={**proof,'control_sha':clock['control_sha'],'product_sha':SOURCE,'hosted_test_sha256':'7ab4d6811af3cff725aa08a0b52efc7dc7b5b02ede5589ae695c0930aa5a1ecc'}
+  report['deployment_budget']['completed_monotonic']=finished
+ except BaseException:
+  commands.blocked=True
+  raise
 
 def verify_producer(log,container):
  lines=[line.split(' ',1)[1] for line in log.splitlines() if line.startswith('VISION_REMAINING_FIXTURE_JSON ')]
@@ -748,7 +800,8 @@ def execute(env):
   call(['xcrun','simctl','boot',udid],'boot',195)
   call(['xcrun','simctl','bootstatus',udid,'-b'],'bootstatus',255)
   app=temp/'vision-wave-build/Build/Products/Debug-xrsimulator/CelluloidVision.app'
-  call(['xcrun','simctl','install',udid,app],'install',315)
+  if method==FILES_METHOD:run_managed_deployment(commands,call,clock,temp,udid,runtime,prefix,report)
+  else:call(['xcrun','simctl','install',udid,app],'install',315)
   # Preserve the existing separate pretest launch/PID/simctl capture. No
   # Chinese XCTest screenshot is removed, replaced, suppressed or deduplicated.
   raw,_=call(['xcrun','simctl','launch',udid,'Mango.Celluloid'],'pretest-launch',195)
@@ -842,7 +895,9 @@ def validate_report_identity(report,env):
  need(report.get('ui_limit_seconds')==UI_SECONDS and report.get('all_eight_qualified') is False and report.get('archive_qualified') is False,'report-claim')
  need(type(report.get('screenshots')) is dict and set(report['screenshots'])<=set(SHOTS[method]),'report-images')
  need(type(report.get('selected_method_passed')) is bool and type(report.get('wave_qualified')) is bool and type(report.get('errors')) is list,'report-status')
- if report['wave_qualified']:need(report['selected_method_passed'] and not report['errors'] and set(report['screenshots'])==set(SHOTS[method]),'unsupported-wave-success')
+ if report['wave_qualified']:
+  need(report['selected_method_passed'] and not report['errors'] and set(report['screenshots'])==set(SHOTS[method]),'unsupported-wave-success')
+  if method==FILES_METHOD:need(report.get('managed_deployment',{}).get('passed') is True,'missing-managed-deployment-proof')
  return validate_clock(report['clock'],env)
 
 
@@ -864,9 +919,28 @@ def collect(env):
    if required:raise ValueError('required-evidence-byte-cap-'+name)
    manifest['omissions'].append({'name':name,'reason':'byte-cap'});return
   (out/name).write_bytes(raw);size+=len(raw);manifest['files'].append({'name':name,'bytes':len(raw),'sha256':digest(raw)})
+ if report.get('managed_deployment',{}).get('passed') is True:
+  try:
+   need(report['selected_method']==FILES_METHOD,'deployment-wrong-selected-method')
+   deployed=[e for e in report['commands'] if e.get('label','').endswith('-deployment-tests')];summaries=[e for e in report['commands'] if e.get('label','').endswith('-deployment-summary')]
+   need(len(deployed)==len(summaries)==1,'one-deployment-case-and-summary-required')
+   prefix='vision-wave-2-'+env['GITHUB_RUN_ID']+'-'+env['GITHUB_RUN_ATTEMPT'];bundle=temp/(prefix+'-deployment.xcresult')
+   expected_test=xctest_command(temp,report['udid'],bundle,['-only-testing:CelluloidVisionTests/NativeVisionTests/'+DEPLOYMENT_METHOD])
+   expected_summary=['xcrun','xcresulttool','get','test-results','summary','--path',str(bundle)]
+   raws=[]
+   for event,stage,argv in [(deployed[0],'deployment-tests',expected_test),(summaries[0],'deployment-summary',expected_summary)]:
+    need(event['label']==prefix+'-'+stage and event.get('argv')==list(map(str,argv)) and event.get('log')==prefix+'-'+stage+'.log','deployment-command-binding')
+    need(event.get('finalized') is True and event.get('return_code')==0 and not event.get('timed_out') and not event.get('overflow'),'deployment-proof-command-not-passed')
+    raw=safe_read(temp/event['log'],MAX_OUTPUT);need(len(raw)==event['log_bytes'] and digest(raw)==event['log_sha256'],'deployment-command-log-binding');raws.append(raw)
+   actual=strict_json(raws[1]);need(actual==report['deployment_summary'],'deployment-summary-replay-mismatch')
+   replay=verify_managed_deployment(raws[0].decode(),actual,report['udid'],report['runtime'],report['deployment_call_window'])
+   expected={**replay,'control_sha':env['GITHUB_SHA'],'product_sha':SOURCE,'hosted_test_sha256':'7ab4d6811af3cff725aa08a0b52efc7dc7b5b02ede5589ae695c0930aa5a1ecc'}
+   need(expected==report['managed_deployment'],'deployment-proof-replay-mismatch')
+  except (ValueError,OSError,KeyError,TypeError) as error:
+   report['managed_deployment']['passed']=False;report['wave_qualified']=False;report['errors'].append('retained deployment replay: '+str(error))
  for name in ['combined-source-before.json','combined-source-after.json']:retain(name,safe_read(temp/name,16384))
  for event in report['commands']:
-  if 'log' in event and ('ui-tests' in event['label'] or 'producer-tests' in event['label'] or 'summary' in event['label']):
+  if 'log' in event and ('ui-tests' in event['label'] or 'producer-tests' in event['label'] or 'deployment-tests' in event['label'] or 'summary' in event['label']):
    need(Path(event['log']).name==event['log'],'log-path')
    if event['log_bytes']==0:manifest['omissions'].append({'name':event['log'],'reason':'empty captured output'});continue
    p=temp/event['log'];raw=safe_read(p,MAX_OUTPUT);need(len(raw)==event['log_bytes'] and digest(raw)==event['log_sha256'],'log-identity')
@@ -875,6 +949,13 @@ def collect(env):
     if started not in raw.decode('utf8','replace').splitlines():
      report['ui_transcript_retention']={'state':'withheld-before-selected-case','reason':'exact selected Test Case never started; raw pre-test diagnostics may enumerate unrelated destinations','log':p.name,'source_bytes':len(raw),'source_sha256':digest(raw),'original_return_code':event.get('return_code')}
      manifest['omissions'].append({'name':p.name,'reason':'selected-case-never-started'});continue
+   if event['label'].endswith('-deployment-tests'):
+    started="Test Case '-[CelluloidVisionTests.NativeVisionTests "+DEPLOYMENT_METHOD+"]' started."
+    if started not in raw.decode('utf8','replace').splitlines():
+     report['deployment_transcript_retention']={'state':'withheld-before-selected-case','reason':'exact deployment Test Case never started','log':p.name,'source_bytes':len(raw),'source_sha256':digest(raw),'original_return_code':event.get('return_code')}
+     manifest['omissions'].append({'name':p.name,'reason':'deployment-case-never-started'});continue
+   if event['label'].endswith('-deployment-summary') and not report.get('managed_deployment',{}).get('passed'):
+    manifest['omissions'].append({'name':p.name,'reason':'unverified-managed-summary; command hash/status retained'});continue
    retain(p.name,raw)
  if report.get('selected_method_passed') is True:
   try:

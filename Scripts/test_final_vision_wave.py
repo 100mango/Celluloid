@@ -13,7 +13,7 @@ def env(method=None):return {'GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'123','GITHUB_R
 def config(method=None):return {'schema':1,'READY':True,'platform':'vision','product_parent_sha':w.SOURCE,'product_parent_tree':w.TREE,'maximum_additional_spend_usd':0,'confirmation':'RUN_ONE_UNSIGNED_PLATFORM_ZERO_USD','selected_method':method or w.UI_METHODS[1]}
 def clock():
  e=env();return {'schema':'Celluloid.FinalVisionWaveClock.1','control_sha':e['GITHUB_SHA'],'run_id':'123','run_attempt':'1','selected_method':e['VISION_WAVE_METHOD'],'started_monotonic':time.monotonic(),'started_unix':time.time(),'native_seconds':1560,'final_seconds':1740}
-def summary():return {'totalTestCount':1,'passedTests':1,'failedTests':0,'skippedTests':0,'testFailures':[],'expectedFailures':0}
+def summary():return {'totalTestCount':1,'passedTests':1,'failedTests':0,'skippedTests':0,'testFailures':[],'expectedFailures':0,'runtimeWarnings':[]}
 def caselog(method,status='passed',kind='ui'):
  owner='CelluloidVisionUITests.NativeVisionUITests' if kind=='ui' else 'CelluloidVisionTests.NativeVisionTests'
  return f"Test Case '-[{owner} {method}]' started.\nTest Case '-[{owner} {method}]' {status} (1.000 seconds).\n"
@@ -247,8 +247,12 @@ class WaveTests(unittest.TestCase):
       elif argv[:2]==['ps','-p']:out='1234 /synthetic/CelluloidVision.app/CelluloidVision'
       elif argv[:3]==['xcrun','simctl','io']:Path(argv[-1]).write_bytes(b'\xff\xd8\xffsynthetic')
       elif 'test-without-building' in argv:
+       self.deploy_start=time.time()
        Path(argv[argv.index('-resultBundlePath')+1]).mkdir()
-       if 'producer-tests' in label:
+       if 'deployment-tests' in label:
+        marker='VISION_NATIVE_RUNTIME bundle='+str(Path.home()/'Library/Developer/CoreSimulator/Devices'/uid/'data/Containers/Bundle/Application/00000000-0000-0000-0000-000000000001/CelluloidVision.app')+' scenes=1 platform=xrsimulator\n'
+        out=caselog(w.DEPLOYMENT_METHOD,kind='deployment').replace('\nTest Case','\n'+marker+'Test Case',1)
+       elif 'producer-tests' in label:
         fixture=owner.fixture(container);out=caselog(w.PRODUCER,kind='producer')+'VISION_REMAINING_FIXTURE_JSON '+json.dumps(fixture)+'\n'
        else:
         out=caselog(method)
@@ -257,19 +261,22 @@ class WaveTests(unittest.TestCase):
          model_marker={**fixture_marker,'schema':'Celluloid.VisionFilesModel.1','stage':'post-redo','expected_text':'Vision 世界','matched':True,'actual_label':'Select layer: Vision 世界'}
          out+='VISION_FILES_FIXTURE_JSON '+json.dumps(fixture_marker)+'\nVISION_FILES_MODEL_JSON '+json.dumps(model_marker)+'\n'
       elif argv[:5]==['xcrun','xcresulttool','get','test-results','summary']:
-       ss=summary();ss['devicesAndConfigurations']=[{'device':{'deviceId':uid,'osVersion':'27.0','architecture':'arm64','platform':'visionOS Simulator'},'passedTests':1,'failedTests':0,'skippedTests':0}];out=json.dumps(ss)
+       ss=summary();ss['devicesAndConfigurations']=[{'device':{'deviceId':uid,'osVersion':'27.0','architecture':'arm64','platform':'visionOS Simulator'},'passedTests':1,'failedTests':0,'skippedTests':0}]
+       if 'deployment-summary' in label:ss.update(result='Passed',startTime=self.deploy_start,finishTime=self.deploy_finish)
+       out=json.dumps(ss)
       elif argv[:4]==['xcrun','xcresulttool','export','attachments']:
        folder=Path(argv[-1]);folder.mkdir();items=[]
        for i,name in enumerate(w.SHOTS[method]):
         filename=str(i)+'.png';(folder/filename).write_bytes(b'\x89PNG\r\n\x1a\nfixture');items.append({'suggestedHumanReadableName':name+'_0_id.png','exportedFileName':filename})
        (folder/'manifest.json').write_text(json.dumps([{'testIdentifier':'NativeVisionUITests/'+method+'()','attachments':items}]))
-      raw=out.encode();path=self.temp/(label+'.log');path.write_bytes(raw);self.events.append({'label':label,'log':path.name,'log_bytes':len(raw),'log_sha256':w.digest(raw),**result})
+      if 'deployment-tests' in label:self.deploy_finish=time.time()
+      raw=out.encode();path=self.temp/(label+'.log');path.write_bytes(raw);self.events.append({'label':label,'argv':argv,'log':path.name,'log_bytes':len(raw),'log_sha256':w.digest(raw),**result})
       return out,result
     try:
      with contextlib.redirect_stdout(io.StringIO()),patch.object(w,'ROOT',repo),patch.object(w,'VisionCommands',FakeCommands),patch.object(w,'validate_inventory',return_value={'synthetic':'source'}),patch.object(w.time,'sleep'),patch.object(w,'capture_initial_fixture',return_value={'synthetic':True}),patch.object(w,'read_fixture',return_value={'status':'captured','expected_layer_present':True,'expected_text_matches':True,'save_completion_proven':False}):report=w.execute(e)
     finally:os.chdir(original_cwd)
     self.assertTrue(report['wave_qualified'],report['errors']);self.assertFalse(report['all_eight_qualified']);self.assertEqual(report['omitted_ui_methods'],[m for m in w.UI_METHODS if m!=method])
-    tests=[(a,k) for a,k in called if 'test-without-building' in a];self.assertEqual(len(tests),2 if method==w.UI_METHODS[2] else 1)
+    tests=[(a,k) for a,k in called if 'test-without-building' in a];self.assertEqual(len(tests),2 if method in (w.UI_METHODS[2],w.FILES_METHOD) else 1)
     ui=[(a,k) for a,k in tests if w.selectors_for(method)['ui'][0] in a];self.assertEqual(len(ui),1);self.assertEqual(ui[0][1]['seconds'],735);self.assertTrue(ui[0][1]['full'])
     self.assertEqual((container/'Documents/VisionSynthetic.png').exists(),method==w.UI_METHODS[1]);self.assertEqual('producer_fixture' in report,method==w.UI_METHODS[2])
     self.assertFalse(any('archive' in a for a,k in called))
@@ -345,4 +352,72 @@ class WaveTests(unittest.TestCase):
       for later in ('shutdown','delete','ui-summary','attachments'):
        with self.assertRaisesRegex(ValueError,'earlier-process-uncertain-or-timeout'):commands.run(['xcrun'],'vision-wave-2-123-1-'+later,deadline=time.monotonic()+30,seconds=20)
       self.assertEqual(dispatch.call_count,1)
+ def deployment_receipts(self):
+  uid='00000000-0000-0000-0000-000000000123';runtime={'version':'27.0','buildversion':'24M362'}
+  marker='VISION_NATIVE_RUNTIME bundle='+str(Path.home()/'Library/Developer/CoreSimulator/Devices'/uid/'data/Containers/Bundle/Application/00000000-0000-0000-0000-000000000001/CelluloidVision.app')+' scenes=1 platform=xrsimulator'
+  log=caselog(w.DEPLOYMENT_METHOD,kind='deployment').replace('\nTest Case','\n'+marker+'\nTest Case',1)
+  ss=summary();ss.update(result='Passed',startTime=11220.5,finishTime=11221.5,devicesAndConfigurations=[{'device':{'deviceId':uid,'osVersion':'27.0','osBuildNumber':'24M362','architecture':'arm64','platform':'visionOS Simulator'},'passedTests':1,'failedTests':0,'skippedTests':0}])
+  return uid,runtime,log,ss
+ def test_managed_host_marker_belongs_inside_exact_single_case_and_owned_device(self):
+  uid,runtime,log,ss=self.deployment_receipts();self.assertEqual(w.inspect_deployment_transcript(log,uid)['scenes'],1)
+  lines=log.splitlines()
+  for bad in ['\n'.join([lines[1],lines[0],lines[2]]),'\n'.join([lines[0],lines[2],lines[1]]),log+lines[1],log+caselog('unexpected'),log.replace(uid,'11111111-1111-1111-1111-111111111111'),log.replace('scenes=1','scenes=0'),log.replace('platform=xrsimulator','platform=iphoneos'),log.replace('CelluloidVision.app','Other.app'),log.replace('passed (','skipped (')]:
+   with self.subTest(bad=bad[:55]),self.assertRaises(ValueError):w.inspect_deployment_transcript(bad,uid)
+ def test_managed_explicit_error_denial_timeout_never_admits_summary(self):
+  uid,runtime,log,ss=self.deployment_receipts()
+  for bad in ['error: xcode failed','Testing failed: synthetic','** TEST EXECUTE FAILED **','PermissionError','Operation not permitted','permission denied','Timed out waiting for launch','timeout from host','** TEST EXECUTE CANCELLED **','** TEST EXECUTE CANCELED **','Testing cancelled: synthetic','Testing cancellation: synthetic']:
+   with self.subTest(bad=bad),self.assertRaises(ValueError):w.inspect_deployment_transcript(log+'\n'+bad,uid)
+ def test_managed_summary_requires_passed_zero_warning_build_and_current_times(self):
+  uid,runtime,log,ss=self.deployment_receipts();window={'started_unix':11220,'finished_unix':11222};self.assertTrue(w.verify_managed_deployment(log,ss,uid,runtime,window)['passed'])
+  mutations=[lambda x:x.update(result='Failed'),lambda x:x.pop('runtimeWarnings'),lambda x:x.update(runtimeWarnings=None),lambda x:x.update(runtimeWarnings=[{'message':'actual warning'}]),lambda x:x.update(startTime=11219),lambda x:x.update(finishTime=11223),lambda x:x.update(finishTime=x['startTime']),lambda x:x.update(startTime=True),lambda x:x['devicesAndConfigurations'][0]['device'].update(osBuildNumber='wrong'),lambda x:x['devicesAndConfigurations'][0]['device'].update(deviceId='wrong'),lambda x:x.update(skippedTests=1)]
+  for mutation in mutations:
+   bad=copy.deepcopy(ss);mutation(bad)
+   with self.assertRaises(ValueError):w.verify_managed_deployment(log,bad,uid,runtime,window)
+ def run_managed_fixture(self,mode='healthy',now_start=1220):
+  uid,runtime,log,ss=self.deployment_receipts();now=[float(now_start)];calls=[];report={};error=None
+  with tempfile.TemporaryDirectory() as t:
+   commands=w.VisionCommands(Path(t))
+   def helper(argv,work,end,**kwargs):
+    calls.append({'argv':argv,'work':work,'end':end});deployment='test-without-building' in argv
+    if mode=='cancel':raise KeyboardInterrupt()
+    if mode=='permission-exception':raise PermissionError('controlled')
+    if deployment:
+     now[0]+=254 if mode=='slow-parse' else 2
+     output=log.encode()
+     if mode=='wrong-host':output=log.replace(uid,'11111111-1111-1111-1111-111111111111').encode()
+    else:
+     now[0]+=1
+     if mode=='warning':ss['runtimeWarnings']=[{'message':'actual warning'}]
+     output=json.dumps(ss).encode()
+    r={'output':output,'return_code':0,'bytes_read':len(output),'pipe_eof':True,'child_reaped':True,'timed_out':False,'overflow':False,'cleanup_error':None,'finalized':True,'elapsed_seconds':2 if deployment else 1,'command_deadline_monotonic':work,'cleanup_deadline_monotonic':end}
+    if mode=='uncertain':r.update(finalized=False,child_reaped=False,cleanup_error='PermissionError')
+    if mode=='exit65':r['return_code']=65
+    return r
+   original=w.inspect_deployment_transcript
+   def inspect(*a):
+    out=original(*a)
+    if mode=='slow-parse':now[0]+=1.001
+    return out
+   def call(argv,label,seconds,**kwargs):return commands.run(argv,label,seconds=seconds,**kwargs)
+   with contextlib.redirect_stdout(io.StringIO()),patch.object(w.time,'monotonic',side_effect=lambda:now[0]),patch.object(w.time,'time',side_effect=lambda:10000+now[0]),patch.object(w,'bounded_optional_process',side_effect=helper),patch.object(w,'inspect_deployment_transcript',side_effect=inspect):
+    try:w.run_managed_deployment(commands,call,{'started_monotonic':1000,'control_sha':'a'*40},Path(t),uid,runtime,'vision-wave-2-123-1',report)
+    except BaseException as e:error=e
+   blocked=commands.blocked
+   if blocked:
+    with patch.object(w,'bounded_optional_process') as later,contextlib.redirect_stdout(io.StringIO()):
+     with self.assertRaises(ValueError):commands.run(['fake'],'later',deadline=2000,seconds=60)
+    later.assert_not_called()
+  return report,calls,blocked,error
+ def test_managed_pair_is_fixed_315_and_summary_has_full_60_without_renewal(self):
+  report,calls,blocked,error=self.run_managed_fixture();self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[0]['work'],1460);self.assertEqual(calls[0]['end'],1475);self.assertEqual(calls[1]['end']-calls[1]['work'],15);self.assertEqual(report['deployment_budget']['pair_deadline_monotonic'],1535);self.assertEqual(report['deployment_budget']['completed_monotonic'],1223);self.assertTrue(report['managed_deployment']['passed']);self.assertFalse(report['deployment_budget']['dispatch_proven'])
+  selected=[v for v in calls[0]['argv'] if v.startswith('-only-testing:')];self.assertEqual(selected,['-only-testing:CelluloidVisionTests/NativeVisionTests/'+w.DEPLOYMENT_METHOD]);self.assertNotIn('-skip-testing',str(calls[0]['argv']))
+ def test_managed_slow_transcript_parse_refuses_summary_and_latches(self):
+  report,calls,blocked,error=self.run_managed_fixture('slow-parse');self.assertIsInstance(error,ValueError);self.assertIn('full-command-window',str(error));self.assertTrue(blocked);self.assertEqual(len(calls),1);self.assertNotIn('managed_deployment',report)
+ def test_managed_pair_budget_rejects_epsilon_before_any_command(self):
+  report,calls,blocked,error=self.run_managed_fixture(now_start=1380.0001);self.assertIsInstance(error,ValueError);self.assertIn('full-managed-deployment-pair',str(error));self.assertTrue(blocked);self.assertEqual(calls,[])
+ def test_managed_failure_cancel_denial_and_warning_block_all_later_dispatch(self):
+  for mode,count in [('uncertain',1),('exit65',1),('wrong-host',1),('cancel',1),('permission-exception',1),('warning',2)]:
+   with self.subTest(mode=mode):
+    report,calls,blocked,error=self.run_managed_fixture(mode);self.assertIsNotNone(error);self.assertTrue(blocked);self.assertEqual(len(calls),count);self.assertNotIn('managed_deployment',report)
+
 if __name__=='__main__':unittest.main()
