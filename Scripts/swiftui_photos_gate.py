@@ -138,7 +138,7 @@ def fresh_owned_device_observation(output):
     log=output/'owned-device-observation.log';receipt=output/'owned-device-observation.json'
     if log.exists() or receipt.exists():raise ValueError('Refuse stale owned-device observation')
     started=time.monotonic();deadline=started+20
-    command=[sys.executable,'Scripts/run_bounded.py','--seconds','20','--label','photos-owned-device-observation',
+    command=[sys.executable,'-S','Scripts/run_bounded.py','--seconds','20','--label','photos-owned-device-observation',
              '--deadline-monotonic',str(deadline),'xcrun','simctl','list','devices','available','-j']
     with log.open('wb') as stream:
         code=subprocess.call(command,stdout=stream,stderr=subprocess.STDOUT)

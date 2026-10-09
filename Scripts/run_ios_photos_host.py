@@ -206,7 +206,7 @@ def main():
         path = output / (label + '.log')
         dispatched=time.monotonic()
         with path.open('wb') as stream:
-            code = subprocess.call([sys.executable, 'Scripts/run_bounded.py', '--seconds', str(seconds),
+            code = subprocess.call([sys.executable, '-S', 'Scripts/run_bounded.py', '--seconds', str(seconds),
                 '--label', 'ios-photos-host-' + label, '--deadline-monotonic', str(dispatched+seconds), *command], env=environment, stdout=stream, stderr=subprocess.STDOUT)
         log = path.read_text(errors='replace');elapsed=time.monotonic()-dispatched
         late=elapsed>seconds

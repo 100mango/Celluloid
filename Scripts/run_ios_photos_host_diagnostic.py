@@ -18,7 +18,7 @@ class HostDiagnostic(Acceptance):
         # Reuse the existing group-owned adapter, but include interpreter/startup
         # latency in the parent deadline. Nested bootstrap retains its own caps.
         if not nested_owned:
-            command=[sys.executable,'Scripts/run_bounded.py','--seconds',str(seconds),'--label',name,
+            command=[sys.executable,'-S','Scripts/run_bounded.py','--seconds',str(seconds),'--label',name,
                      '--deadline-monotonic',str(dispatched+seconds),*command]
         try:
             result=super().command(name,command,seconds,simulator=simulator,allow_failure=allow_failure,nested_owned=True)
@@ -40,7 +40,7 @@ class HostDiagnostic(Acceptance):
         for action in ['shutdown','delete']:
             if deadline-time.monotonic()<35:return
             dispatched=time.monotonic();path=OUT/('cleanup-'+action+'.log')
-            command=[sys.executable,'Scripts/run_bounded.py','--seconds','30','--label','cleanup-'+action,
+            command=[sys.executable,'-S','Scripts/run_bounded.py','--seconds','30','--label','cleanup-'+action,
                      '--deadline-monotonic',str(dispatched+30),'xcrun','simctl',action,self.device]
             try:
                 with path.open('wb') as stream:code=subprocess.call(command,cwd=ROOT,stdout=stream,stderr=subprocess.STDOUT)

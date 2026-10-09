@@ -191,19 +191,28 @@ class PhotosParentDeadlineTests(unittest.TestCase):
         import contextlib,io,os,runpy,subprocess,sys
         from unittest.mock import MagicMock,patch
         root=Path(__file__).resolve().parents[1];clock=[3.0 if expired else 1.0]
-        process=MagicMock(pid=12345,returncode=None if mode=='denied' else 0)
+        process=MagicMock(pid=12345,returncode=None if mode=='denied' or mode.startswith('slow-cleanup') else 0)
         def create(*args,**kwargs):
             if mode=='slow-start':clock[0]=3.0
             return process
         def wait(*args,**kwargs):
-            if mode=='denied':raise subprocess.TimeoutExpired('owned',1)
+            if mode=='slow-cleanup-second-signal' and process.wait.call_count==2:clock[0]+=5.0
+            if mode=='denied' or mode.startswith('slow-cleanup'):raise subprocess.TimeoutExpired('owned',1)
             if mode=='late-zero':clock[0]=3.0
             return 0
         process.wait.side_effect=wait;process.poll.return_value=process.returncode
         argv=['run_bounded.py','--seconds','20','--label','photos-unit','--deadline-monotonic','2','owned-fake-command']
-        env={'GITHUB_REF':'refs/heads/wrong' if wrong_route else 'refs/heads/cell-ios-photos-host-final','GITHUB_REPOSITORY':'100mango/Celluloid'}
-        out=io.StringIO()
-        with patch.dict(os.environ,env),patch.object(sys,'argv',argv),patch('time.monotonic',side_effect=lambda:clock[0]),patch('subprocess.Popen',side_effect=create) as opened,patch('os.killpg',side_effect=PermissionError('synthetic denial') if mode=='denied' else None) as killed,contextlib.redirect_stdout(out),contextlib.redirect_stderr(io.StringIO()):
+        env={'GITHUB_REF':'refs/heads/wrong' if wrong_route else 'refs/heads/cell-ios-photos-host-final','GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1'}
+        class TimingOutput(io.StringIO):
+            def write(self,value):
+                if mode=='slow-spawn-receipt' and '"phase": "spawn-begin"' in value:clock[0]=3.0
+                if mode=='slow-wait-receipt' and '"phase": "wait-begin"' in value:clock[0]=3.0
+                if mode=='slow-cleanup-signal' and '"phase": "cleanup-signal-attempt"' in value:clock[0]=12.0
+                if mode=='slow-cleanup-wait' and '"phase": "cleanup-wait-begin"' in value:clock[0]=12.0
+                if mode=='slow-cleanup-second-signal' and '"phase": "cleanup-signal-attempt"' in value and '"signal_name": "SIGKILL"' in value:clock[0]=12.0
+                return super().write(value)
+        out=TimingOutput()
+        with patch.dict(os.environ,env),patch.object(sys,'argv',argv),patch('time.monotonic',side_effect=lambda:clock[0]),patch('subprocess.Popen',side_effect=create) as opened,patch('subprocess.run',side_effect=AssertionError('unexpected native query')),patch('os.getpgid',side_effect=AssertionError('unexpected group query')),patch('os.killpg',side_effect=PermissionError('synthetic denial') if mode=='denied' else None) as killed,contextlib.redirect_stdout(out),contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as caught:runpy.run_path(str(root/'Scripts/run_bounded.py'),run_name='__main__')
         return caught.exception.code,out.getvalue(),opened,process,killed
     def testTimelyOwnedChildSucceedsWithRemainingParentBudget(self):
@@ -305,6 +314,68 @@ class PhotosParentDeadlineTests(unittest.TestCase):
             with patch.object(diagnostic,'OUT',Path(folder)),patch.object(diagnostic.time,'monotonic',return_value=100.0),patch.object(diagnostic.subprocess,'call') as called:
                 with self.assertRaisesRegex(ValueError,'full phase and cleanup allowance do not fit'):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],120,simulator=True)
                 called.assert_not_called()
+
+
+    def testPhotosTimingRecordsOnlyExistingStagesAndKeepsTimeoutReapedFailure(self):
+        for mode in ['timely','late-zero','slow-start','denied']:
+            with self.subTest(mode=mode):
+                code,log,opened,process,killed=self.bounded(mode)
+                rows=[json.loads(line.split('PHOTOS_BOUNDED_TIMING ',1)[1]) for line in log.splitlines() if line.startswith('PHOTOS_BOUNDED_TIMING ')]
+                self.assertTrue(rows);self.assertEqual(rows[0]['phase'],'wrapper-ready');self.assertEqual(rows[-1]['phase'],'wrapper-end')
+                self.assertTrue(all(r['schema']=='Celluloid.PhotosBoundedTiming.1' and r['source_sha']=='a'*40 and r['run_id']=='123' and r['run_attempt']=='1' for r in rows))
+                self.assertTrue(all(r['wrapper_entry_monotonic']<=r['monotonic'] and r['parent_deadline_monotonic']==2 for r in rows))
+                spawn=next(r for r in rows if r['phase']=='spawn-return');self.assertEqual((spawn['child_pid'],spawn['child_pgid'],spawn['start_new_session']),(12345,12345,True))
+                if mode=='timely':
+                    self.assertEqual(code,0);self.assertEqual(next(r for r in rows if r['phase']=='wait-begin')['remaining_seconds'],1)
+                    self.assertFalse(any(r['phase']=='cleanup-result' for r in rows))
+                else:
+                    self.assertEqual(code,124);cleanup=[r for r in rows if r['phase']=='cleanup-result'];self.assertTrue(cleanup);self.assertTrue(all(r['group_exit_confirmed'] is False for r in cleanup))
+                    if mode=='denied':self.assertEqual(cleanup[-1]['status'],'signal_denied');self.assertEqual([r['signal_name'] for r in rows if r['phase']=='cleanup-signal-attempt'],['SIGTERM'])
+                    else:self.assertEqual(cleanup[-1]['status'],'child_reaped');self.assertEqual(cleanup[-1]['child_returncode'],0)
+        code,log,opened,process,killed=self.bounded('timely',expired=True)
+        self.assertEqual(code,124);self.assertIn('"phase": "expired-before-spawn"',log);self.assertNotIn('"phase": "spawn-begin"',log);opened.assert_not_called()
+
+    def testTimingReceiptDelayCannotPermitLateSpawnOrExtendActualWait(self):
+        for mode in ['slow-spawn-receipt','slow-wait-receipt']:
+            code,log,opened,process,killed=self.bounded(mode)
+            self.assertEqual(code,124);process.wait.assert_not_called();killed.assert_not_called()
+            if mode=='slow-spawn-receipt':opened.assert_not_called();self.assertIn('"child_started": false',log)
+            else:opened.assert_called_once();self.assertIn('"status": "child_reaped"',log)
+
+    def testCleanupReceiptDelayCannotWaitOrEscalatePastFixedTenSeconds(self):
+        import signal
+        for mode in ['slow-cleanup-signal','slow-cleanup-wait','slow-cleanup-second-signal']:
+            with self.subTest(mode=mode):
+                code,log,opened,process,killed=self.bounded(mode);self.assertEqual(code,124)
+                rows=[json.loads(line.split('PHOTOS_BOUNDED_TIMING ',1)[1]) for line in log.splitlines() if line.startswith('PHOTOS_BOUNDED_TIMING ')]
+                timeout=next(r for r in rows if r['phase']=='timeout-observed');self.assertEqual(timeout['cleanup_deadline_monotonic'],timeout['cleanup_started_monotonic']+10)
+                cleanup=[r for r in rows if r['phase']=='cleanup-result'];self.assertEqual(cleanup[-1]['status'],'bounded_cleanup_expired');self.assertTrue(all(r['group_exit_confirmed'] is False for r in cleanup))
+                if mode=='slow-cleanup-signal':killed.assert_not_called();self.assertEqual(process.wait.call_count,1)
+                else:killed.assert_called_once_with(12345,signal.SIGTERM);self.assertEqual(process.wait.call_count,2 if mode=='slow-cleanup-second-signal' else 1)
+
+    def testOtherRoutesDoNotEmitPhotosTimingOrUseNewNativeQueries(self):
+        import contextlib,io,os,runpy,sys
+        from unittest.mock import MagicMock,patch
+        root=Path(__file__).resolve().parents[1];process=MagicMock(pid=12345,returncode=0);process.wait.return_value=0;out=io.StringIO()
+        argv=['run_bounded.py','--seconds','20','--label','original-scope','owned-fake-command']
+        with patch.dict(os.environ,{'GITHUB_REF':'refs/heads/swiftui-first-native','GITHUB_REPOSITORY':'100mango/Celluloid'},clear=True),patch.object(sys,'argv',argv),patch('subprocess.Popen',return_value=process),patch('subprocess.run',side_effect=AssertionError('new native query')),patch('os.getpgid',side_effect=AssertionError('new group query')),contextlib.redirect_stdout(out),self.assertRaises(SystemExit) as caught:
+            runpy.run_path(str(root/'Scripts/run_bounded.py'),run_name='__main__')
+        self.assertEqual(caught.exception.code,0);self.assertNotIn('PHOTOS_BOUNDED_TIMING',out.getvalue());process.wait.assert_called_once_with(timeout=20)
+
+    def testOnlyExistingPhotosAbsoluteWrappersUseSiteFreeAndRetainedLogs(self):
+        import ast
+        root=Path(__file__).resolve().parents[1];count=0
+        for name,expected in [('run_ios_photos_host_diagnostic.py',2),('swiftui_photos_gate.py',1),('run_ios_photos_host.py',1)]:
+            source=(root/'Scripts'/name).read_text();lists=[n for n in ast.walk(ast.parse(source)) if isinstance(n,ast.List) and n.elts and isinstance(n.elts[0],ast.Attribute) and isinstance(n.elts[0].value,ast.Name) and n.elts[0].value.id=='sys' and n.elts[0].attr=='executable' and any(isinstance(e,ast.Constant) and e.value=='Scripts/run_bounded.py' for e in n.elts)]
+            self.assertEqual(len(lists),expected)
+            for node in lists:
+                self.assertEqual(node.elts[1].value,'-S');self.assertEqual(node.elts[2].value,'Scripts/run_bounded.py');self.assertTrue(any(isinstance(e,ast.Constant) and e.value=='--deadline-monotonic' for e in node.elts))
+            count+=len(lists)
+        self.assertEqual(count,4)
+        gate=(root/'Scripts/swiftui_photos_gate.py').read_text();self.assertIn("if expected_ref == 'refs/heads/cell-ios-photos-host-final':\n        observed = fresh_owned_device_observation(output)\n    else:\n        observed = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], text=True, timeout=20))",gate)
+        wrapper=(root/'Scripts/run_bounded.py').read_text();self.assertIn("import time\n_wrapper_entry_monotonic = time.monotonic()\n\nimport argparse",wrapper)
+        self.assertLess(wrapper.index("parser.error('Invalid reviewed Photos-host parent deadline')"),wrapper.index("photos_timing('wrapper-ready')"))
+        self.assertIn('            build/swiftui-acceptance/',(root/host.PROBE_WORKFLOW).read_text())
 
 
 

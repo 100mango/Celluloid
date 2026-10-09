@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Bound a simulator setup command; terminate only the command's own process group."""
+import time
+_wrapper_entry_monotonic = time.monotonic()
+
 import argparse
 import datetime
 import json
@@ -8,7 +11,6 @@ import os
 import signal
 import subprocess
 import sys
-import time
 
 from original_ios_process_guard import OwnedCommand, error_record
 
@@ -28,6 +30,34 @@ if absolute_deadline:
             or not math.isfinite(args.seconds) or not math.isfinite(args.deadline_monotonic) or args.deadline_monotonic <= 0
             or args.deadline_monotonic > time.monotonic() + args.seconds):
         parser.error('Invalid reviewed Photos-host parent deadline')
+def photos_timing(phase, **values):
+    # Only the already-admitted Photos absolute-deadline route emits this
+    # receipt. Entry was sampled with time alone, before other module imports.
+    if not absolute_deadline:
+        return
+    print('PHOTOS_BOUNDED_TIMING', json.dumps({
+        'schema': 'Celluloid.PhotosBoundedTiming.1', 'phase': phase, 'label': args.label,
+        'source_sha': os.environ.get('GITHUB_SHA'), 'run_id': os.environ.get('GITHUB_RUN_ID'),
+        'run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'), 'wrapper_pid': os.getpid(),
+        'wrapper_entry_monotonic': _wrapper_entry_monotonic, 'monotonic': time.monotonic(),
+        'parent_deadline_monotonic': args.deadline_monotonic,
+        **values}), flush=True)
+
+
+def cleanup_result(status, returncode=None, **values):
+    # Retain the original guard's semantics. A reaped direct child never proves
+    # that every inherited process-group member or simulator service exited.
+    owner.cleanup_result(status, returncode, **values)
+    if absolute_deadline:
+        details = dict(values)
+        if details.get('error') is not None:
+            details['error'] = error_record(details['error'])
+        photos_timing('cleanup-result', status=status, child_returncode=returncode,
+                      cleanup_deadline_monotonic=photos_cleanup_deadline,
+                      group_exit_confirmed=False, **details)
+
+
+photos_timing('wrapper-ready')
 started = time.monotonic() if args.original_ios_first_summary else None
 first_summary = None
 if args.original_ios_first_summary:
@@ -39,73 +69,116 @@ if first_summary is None:
     started = time.monotonic()
     deadline = min(started + args.seconds, args.deadline_monotonic) if absolute_deadline else started + args.seconds
 print('BOUNDED_COMMAND_BEGIN', json.dumps({'label': args.label, 'utc': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'seconds': args.seconds, 'command': args.command}), flush=True)
-if absolute_deadline and time.monotonic() >= deadline:
-    print('BOUNDED_COMMAND_TIMEOUT', args.label, 'parent deadline expired before child dispatch', flush=True)
-    print('BOUNDED_COMMAND_END', json.dumps({'label': args.label, 'exit_code': 124, 'elapsed_seconds': round(time.monotonic() - started, 3), 'child_started': False}), flush=True)
-    sys.exit(124)
+def refuse_expired_parent():
+    if absolute_deadline and time.monotonic() >= deadline:
+        photos_timing('expired-before-spawn', child_started=False)
+        print('BOUNDED_COMMAND_TIMEOUT', args.label, 'parent deadline expired before child dispatch', flush=True)
+        photos_timing('wrapper-end', exit_code=124, child_started=False)
+        print('BOUNDED_COMMAND_END', json.dumps({'label': args.label, 'exit_code': 124, 'elapsed_seconds': round(time.monotonic() - started, 3), 'child_started': False}), flush=True)
+        sys.exit(124)
+
+
+refuse_expired_parent()
+photos_timing('spawn-begin')
+# Receipt I/O must not authorize a child after the parent deadline.
+refuse_expired_parent()
 try:
     if first_summary is not None and time.monotonic() >= deadline:
         raise subprocess.TimeoutExpired(args.command, args.seconds)
     process = subprocess.Popen(args.command, start_new_session=True)
     owner.started(process)
+    photos_timing('spawn-return', child_pid=process.pid, child_pgid=process.pid, start_new_session=True)
 except BaseException as original:
     owner.failed(original, timed_out=isinstance(original, subprocess.TimeoutExpired))
+    photos_timing('spawn-failed', error=error_record(original))
     raise
+wait_budget_seconds = None
 try:
     if owner.enabled or absolute_deadline:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise subprocess.TimeoutExpired(args.command, args.seconds)
+        photos_timing('wait-begin', child_pid=process.pid, remaining_seconds=remaining)
+        if absolute_deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(args.command, args.seconds)
+        wait_budget_seconds = remaining
         code = process.wait(timeout=remaining)
+        photos_timing('wait-return', child_pid=process.pid, child_returncode=code, wait_budget_seconds=remaining)
         if time.monotonic() > deadline:
             raise subprocess.TimeoutExpired(args.command, args.seconds)
     else:
         code = process.wait(timeout=args.seconds)
 except subprocess.TimeoutExpired as original:
+    photos_cleanup_started = time.monotonic() if absolute_deadline else None
+    photos_cleanup_deadline = photos_cleanup_started + 10 if absolute_deadline else None
     print('BOUNDED_COMMAND_TIMEOUT', args.label, flush=True)
+    photos_timing('timeout-observed', child_pid=process.pid, cleanup_started_monotonic=photos_cleanup_started,
+                  cleanup_deadline_monotonic=photos_cleanup_deadline, wait_budget_seconds=wait_budget_seconds)
     if owner.enabled or absolute_deadline:
         # Persist before cleanup. No diagnostics can consume cleanup allowance.
         owner.failed(original, timed_out=True)
-        reaped = process.poll()
-        if type(reaped) is int:
-            owner.cleanup_result('child_reaped', reaped)
+        if absolute_deadline and time.monotonic() >= photos_cleanup_deadline:
+            cleanup_result('bounded_cleanup_expired')
         else:
-            for sig, seconds in [(signal.SIGTERM, 5), (signal.SIGKILL, 5)]:
-                if first_summary is not None:
-                    seconds = min(seconds, first_summary['cleanup_deadline'] - time.monotonic())
-                    if seconds <= 0:
-                        owner.cleanup_result('bounded_cleanup_expired')
-                        break
-                name = signal.Signals(sig).name
-                try:
-                    os.killpg(process.pid, sig)
-                    owner.cleanup_result('unconfirmed', signal_name=name, outcome='sent')
-                except ProcessLookupError:
-                    owner.cleanup_result('unconfirmed', signal_name=name, outcome='absent')
-                except OSError as error:
-                    state = 'signal_denied' if isinstance(error, PermissionError) else 'signal_error'
-                    owner.cleanup_result(state, signal_name=name, outcome='denied' if state == 'signal_denied' else 'error', error=error)
-                    print('BOUNDED_COMMAND_CLEANUP_UNCONFIRMED', json.dumps(error_record(error)), flush=True)
-                    break  # Never switch signals or routes after denied cleanup.
-                try:
+            reaped = process.poll()
+            photos_timing('poll-after-timeout', child_pid=process.pid, child_returncode=reaped)
+            if type(reaped) is int:
+                cleanup_result('child_reaped', reaped)
+            else:
+                for sig, seconds in [(signal.SIGTERM, 5), (signal.SIGKILL, 5)]:
                     if first_summary is not None:
                         seconds = min(seconds, first_summary['cleanup_deadline'] - time.monotonic())
                         if seconds <= 0:
-                            owner.cleanup_result('bounded_cleanup_expired')
+                            cleanup_result('bounded_cleanup_expired')
                             break
-                    process.wait(timeout=seconds)
-                except subprocess.TimeoutExpired:
-                    owner.cleanup_result('bounded_cleanup_expired')
-                except BaseException as error:
-                    owner.cleanup_result('wait_failed')
-                    print('BOUNDED_COMMAND_CLEANUP_UNCONFIRMED', json.dumps(error_record(error)), flush=True)
-                    break
-                else:
-                    if first_summary is not None and time.monotonic() > first_summary['cleanup_deadline']:
-                        owner.cleanup_result('bounded_cleanup_expired')
+                    if absolute_deadline:
+                        seconds = min(seconds, photos_cleanup_deadline - time.monotonic())
+                        if seconds <= 0:
+                            cleanup_result('bounded_cleanup_expired')
+                            break
+                    name = signal.Signals(sig).name
+                    try:
+                        photos_timing('cleanup-signal-attempt', child_pid=process.pid, signal_name=name)
+                        if absolute_deadline and time.monotonic() >= photos_cleanup_deadline:
+                            cleanup_result('bounded_cleanup_expired')
+                            break
+                        os.killpg(process.pid, sig)
+                        cleanup_result('unconfirmed', signal_name=name, outcome='sent')
+                    except ProcessLookupError:
+                        cleanup_result('unconfirmed', signal_name=name, outcome='absent')
+                    except OSError as error:
+                        state = 'signal_denied' if isinstance(error, PermissionError) else 'signal_error'
+                        cleanup_result(state, signal_name=name, outcome='denied' if state == 'signal_denied' else 'error', error=error)
+                        print('BOUNDED_COMMAND_CLEANUP_UNCONFIRMED', json.dumps(error_record(error)), flush=True)
+                        break  # Never switch signals or routes after denied cleanup.
+                    try:
+                        if first_summary is not None:
+                            seconds = min(seconds, first_summary['cleanup_deadline'] - time.monotonic())
+                            if seconds <= 0:
+                                cleanup_result('bounded_cleanup_expired')
+                                break
+                        photos_timing('cleanup-wait-begin', child_pid=process.pid, maximum_seconds=seconds)
+                        if absolute_deadline:
+                            seconds = min(seconds, photos_cleanup_deadline - time.monotonic())
+                            if seconds <= 0:
+                                cleanup_result('bounded_cleanup_expired')
+                                break
+                        process.wait(timeout=seconds)
+                    except subprocess.TimeoutExpired:
+                        cleanup_result('bounded_cleanup_expired')
+                    except BaseException as error:
+                        cleanup_result('wait_failed')
+                        print('BOUNDED_COMMAND_CLEANUP_UNCONFIRMED', json.dumps(error_record(error)), flush=True)
+                        break
                     else:
-                        owner.cleanup_result('child_reaped', process.returncode)
-                    break
+                        if ((first_summary is not None and time.monotonic() > first_summary['cleanup_deadline'])
+                                or (absolute_deadline and time.monotonic() > photos_cleanup_deadline)):
+                            cleanup_result('bounded_cleanup_expired')
+                        else:
+                            cleanup_result('child_reaped', process.returncode)
+                        break
         code = 124
     else:
         # Only safe process identity diagnostics, never full arguments or environment.
@@ -142,5 +215,6 @@ else:
     owner.completed(code)
 if first_summary is not None:
     record(first_summary, code, time.monotonic())
+photos_timing('wrapper-end', exit_code=code)
 print('BOUNDED_COMMAND_END', json.dumps({'label': args.label, 'exit_code': code, 'elapsed_seconds': round(time.monotonic() - started, 3)}), flush=True)
 sys.exit(code if code >= 0 else 128 - code)
