@@ -1,0 +1,41 @@
+name: Mac original 2x parity probe (unsigned diagnostic)
+on:
+  push:
+    branches: [cell-mac-parity-probe]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-mac-original-2x-probe
+  cancel-in-progress: false
+jobs:
+  native-probe:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+          ref: ${{ github.sha }}
+      - name: Check fail-closed probe validators
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          python3 Scripts/test_mac_parity_probe.py
+          python3 -O Scripts/test_mac_parity_probe.py
+      - name: Compare current Mac pixels with original 2x UIKit
+        timeout-minutes: 18
+        run: python3 Scripts/run_mac_parity_probe.py
+      - name: Retain bounded diagnostic evidence
+        if: always()
+        timeout-minutes: 2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: celluloid-mac-parity-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cell-mac-parity-evidence/
+          retention-days: 1
+          if-no-files-found: error

@@ -85,6 +85,7 @@ for name,platform in settings_by_name.items():
             path='Packages/CelluloidCore/Tests/CelluloidDomainTests/Fixtures/'+fixture
             localized.append(add('build:mac-photos-fixture:'+fixture,'PBXBuildFile',fileRef=reference(path)))
         localized.append(add('build:mac-native-codec-source','PBXBuildFile',fileRef=reference('Platforms/MacExtensionTests/Fixtures/lifecycle-source.png')))
+        localized.append(add('build:mac-original-2x-controls','PBXBuildFile',fileRef=reference('Scripts/fixtures/platform-rendering-controls.json')))
     if name=='CelluloidTV':
         localized.append(add('build:tv-privacy-manifest','PBXBuildFile',fileRef=reference('Platforms/tvOS/PrivacyInfo.xcprivacy')))
         refs=[]

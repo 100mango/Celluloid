@@ -3,6 +3,7 @@ import AppKit
 import CryptoKit
 import CoreGraphics
 import CoreText
+import ImageIO
 import CelluloidDomain
 import CelluloidRendering
 
@@ -104,11 +105,110 @@ final class MacPhotoAdjustmentTests: XCTestCase {
             "sourceSHA256": digest(sourceBytes), "sourceBase64": sourceBytes.base64EncodedString(),
             "renderedSHA256": digest(rendered), "renderedBase64": rendered.base64EncodedString(), "components": components]
         print("MAC_LAYER_ADJUSTMENT_FIXTURE " + String(decoding: try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]), as: UTF8.self))
+        try compareCurrentMacWithOriginalUIKit2x(archive: bytes, source: sourceBytes, full: rendered, components: components)
         let decoded = try MacPhotoAdjustment.decode(bytes)
         XCTAssertEqual(decoded.bubbles[0].transform, bubble.transform); XCTAssertEqual(decoded.stickers[0].bounds, sticker.bounds)
         // This is NOT itself UIKit interoperability proof. The matching phone
         // test consumes these actual emitted bytes through its original reader.
     }
+    /// A strict current-render versus immutable original-UIKit 2x probe.
+    /// This is pre-host evidence; the production layered Photos guard stays on.
+    private func compareCurrentMacWithOriginalUIKit2x(archive: Data, source: Data, full: Data,
+                                                    components: [[String: String]]) throws {
+        struct ImageRecord: Decodable { let sha256: String, base64: String }
+        struct Profile: Decodable { let scale: Int; let images: [String: ImageRecord] }
+        struct Controls: Decodable {
+            let schema: String, sourceSHA: String, runtimeVersion: String, runtimeBuild: String, architecture: String
+            let archiveSHA256: String, sourcePNG_SHA256: String
+            let inputArchive: ImageRecord
+            let profiles: [String: Profile], common: [String: ImageRecord]
+        }
+        func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "platform-rendering-controls", withExtension: "json"))
+        let packet = try Data(contentsOf: url)
+        XCTAssertLessThanOrEqual(packet.count, 200_000)
+        XCTAssertEqual(digest(packet), "7b03cc5efba3a4bfdf40f1be5e33ff67d94eb6166d9659f2f8acc114540cb7b1")
+        let controls = try JSONDecoder().decode(Controls.self, from: packet)
+        XCTAssertEqual(controls.schema, "Celluloid.PlatformControls.1")
+        XCTAssertEqual(controls.sourceSHA, "52bf7a9c04e2d91880ca4e8fd3418cd94d32bb7e")
+        XCTAssertEqual(controls.runtimeVersion, "27.0"); XCTAssertEqual(controls.runtimeBuild, "24A434")
+        XCTAssertEqual(controls.architecture, "arm64")
+        XCTAssertEqual(digest(source), controls.sourcePNG_SHA256)
+        let profile = try XCTUnwrap(controls.profiles["2x"])
+        XCTAssertEqual(profile.scale, 2)
+        let originalArchive = try XCTUnwrap(Data(base64Encoded: controls.inputArchive.base64))
+        XCTAssertEqual(digest(originalArchive), controls.inputArchive.sha256)
+        XCTAssertEqual(controls.inputArchive.sha256, controls.archiveSHA256)
+        // The lane must additionally validate both complete typed archive graphs.
+        // Preserve their raw hashes; do not substitute native re-encoding hashes.
+        func rgba(_ bytes: Data) throws -> [UInt8] {
+            let source = try XCTUnwrap(CGImageSourceCreateWithData(bytes as CFData, nil))
+            XCTAssertEqual(CGImageSourceGetCount(source), 1)
+            let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+            XCTAssertEqual(image.width, 480); XCTAssertEqual(image.height, 640)
+            guard image.width == 480, image.height == 640 else {
+                throw NSError(domain: "Celluloid.Mac2xProbe", code: 1)
+            }
+            let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+            let bitmap = try XCTUnwrap(CGContext(data: nil, width: 480, height: 640, bitsPerComponent: 8,
+                bytesPerRow: 480 * 4, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            bitmap.draw(image, in: CGRect(x: 0, y: 0, width: 480, height: 640))
+            let storage = try XCTUnwrap(bitmap.data).assumingMemoryBound(to: UInt8.self)
+            return Array(UnsafeBufferPointer(start: storage, count: 480 * 640 * 4))
+        }
+        var actual: [String: Data] = ["full": full]
+        XCTAssertEqual(components.count, 4)
+        for component in components {
+            let name = try XCTUnwrap(component["name"])
+            XCTAssertNil(actual[name], "Duplicate rendered component")
+            let data = try XCTUnwrap(Data(base64Encoded: XCTUnwrap(component["base64"])))
+            XCTAssertEqual(digest(data), component["sha256"])
+            actual[name] = data
+        }
+        let names = ["full", "filtered-base", "bubble-artwork", "sticker-artwork", "all-artwork"]
+        XCTAssertEqual(Set(actual.keys), Set(names))
+        var rows: [[String: Any]] = []
+        for name in names {
+            let rendered = try XCTUnwrap(actual[name])
+            let original = try XCTUnwrap(profile.images[name] ?? controls.common[name])
+            let expected = try XCTUnwrap(Data(base64Encoded: original.base64))
+            XCTAssertEqual(digest(expected), original.sha256)
+            let a = try rgba(rendered), b = try rgba(expected)
+            var maxima = [Int](repeating: 0, count: 4)
+            var different = 0, minX = 480, minY = 640, maxX = -1, maxY = -1
+            for pixel in 0..<(480 * 640) {
+                var changed = false
+                for channel in 0..<4 {
+                    let delta = abs(Int(a[pixel * 4 + channel]) - Int(b[pixel * 4 + channel]))
+                    maxima[channel] = max(maxima[channel], delta); changed = changed || delta > 2
+                }
+                if changed {
+                    different += 1; let x = pixel % 480, y = pixel / 480
+                    minX = min(minX, x); minY = min(minY, y); maxX = max(maxX, x); maxY = max(maxY, y)
+                }
+            }
+            let maximum = maxima.max() ?? 0
+            let limit = ["filtered-base", "sticker-artwork"].contains(name) ? 0 : 2
+            rows.append(["name": name, "actualPNG_SHA256": digest(rendered), "originalPNG_SHA256": original.sha256,
+                         "maximumChannelDifference": maximum, "allowedMaximum": limit,
+                         "channelMaximumsRGBA": maxima, "pixelsAboveTwo": different,
+                         "boundsAboveTwo": [minX, minY, maxX, maxY]])
+            XCTAssertLessThanOrEqual(maximum, limit, "Current Mac output differs from immutable original UIKit 2x: \(name)")
+        }
+        let report: [String: Any] = ["schema": "Celluloid.MacOriginal2xProbe.1", "scope": "synthetic-pre-host-only",
+            "controlFileSHA256": digest(packet), "controlSourceSHA": controls.sourceSHA,
+            "controlProfile": "2x", "controlRuntime": controls.runtimeVersion, "controlBuild": controls.runtimeBuild,
+            "archiveSHA256": digest(archive), "controlArchiveSHA256": controls.archiveSHA256,
+            "sourcePNG_SHA256": digest(source), "actualPNG_SHA256": digest(full), "comparisons": rows,
+            "layeredPhotosOutputQualified": false]
+        let reportData = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
+        XCTAssertLessThanOrEqual(reportData.count, 16_384)
+        print("MAC_ORIGINAL_2X_PROBE " + String(decoding: reportData, as: UTF8.self))
+        let attachment = XCTAttachment(data: reportData, uniformTypeIdentifier: "public.json")
+        attachment.name = "native-mac-original-2x-probe.json"; attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testWrongTypedUnknownNonfiniteAndOverBudgetArchivesFailClosed() throws {
         func archive(_ root: [String: Any]) throws -> Data { try NSKeyedArchiver.archivedData(withRootObject: root, requiringSecureCoding: true) }
         XCTAssertThrowsError(try MacPhotoAdjustment.decode(archive(["filterType": "Original", "futureLayer": true])))
