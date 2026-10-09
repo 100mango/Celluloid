@@ -6,7 +6,7 @@ test "$(uname -s)" = Darwin
 test "${DEVELOPER_DIR:-}" = /Applications/Xcode_27.app/Contents/Developer
 mkdir -p build
 xcodebuild -version | tee build/swiftui-xcode-version.txt
-xcodebuild -version | grep -qx 'Xcode 27.0'
+grep -Fxq 'Xcode 27.0' build/swiftui-xcode-version.txt
 python3 Scripts/verify_swiftui_integration.py > build/swiftui-topology.json
 mkdir -p build/swiftui-acceptance
 out="$PWD/build/swiftui-acceptance"
