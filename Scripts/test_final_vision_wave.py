@@ -384,7 +384,7 @@ class WaveTests(unittest.TestCase):
     if mode=='cancel':raise KeyboardInterrupt()
     if mode=='permission-exception':raise PermissionError('controlled')
     if deployment:
-     now[0]+=254 if mode=='slow-parse' else 2
+     now[0]+=284 if mode in ('slow-parse','last-summary-start') else 2
      output=log.encode()
      if mode=='wrong-host':output=log.replace(uid,'11111111-1111-1111-1111-111111111111').encode()
     else:
@@ -394,14 +394,24 @@ class WaveTests(unittest.TestCase):
     r={'output':output,'return_code':0,'bytes_read':len(output),'pipe_eof':True,'child_reaped':True,'timed_out':False,'overflow':False,'cleanup_error':None,'finalized':True,'elapsed_seconds':2 if deployment else 1,'command_deadline_monotonic':work,'cleanup_deadline_monotonic':end}
     if mode=='uncertain':r.update(finalized=False,child_reaped=False,cleanup_error='PermissionError')
     if mode=='exit65':r['return_code']=65
+    if not deployment and mode=='summary-timeout':r.update(timed_out=True,elapsed_seconds=15.001)
+    if not deployment and mode=='summary-denial':r.update(finalized=False,child_reaped=False,cleanup_error='PermissionError')
     return r
    original=w.inspect_deployment_transcript
    def inspect(*a):
     out=original(*a)
     if mode=='slow-parse':now[0]+=1.001
+    if mode=='last-summary-start':now[0]+=1
     return out
+   original_verify=w.verify_managed_deployment
+   def verify(*a):
+    out=original_verify(*a)
+    if mode=='late-verification':now[0]=float(now_start)+315
+    return out
+   def receipt(phase,label,*a):
+    if phase=='BEGIN' and label=='deployment-summary' and mode=='summary-begin-delay':now[0]+=1
    def call(argv,label,seconds,**kwargs):return commands.run(argv,label,seconds=seconds,**kwargs)
-   with contextlib.redirect_stdout(io.StringIO()),patch.object(w.time,'monotonic',side_effect=lambda:now[0]),patch.object(w.time,'time',side_effect=lambda:10000+now[0]),patch.object(w,'bounded_optional_process',side_effect=helper),patch.object(w,'inspect_deployment_transcript',side_effect=inspect):
+   with contextlib.redirect_stdout(io.StringIO()),patch.object(w.time,'monotonic',side_effect=lambda:now[0]),patch.object(w.time,'time',side_effect=lambda:10000+now[0]),patch.object(w,'bounded_optional_process',side_effect=helper),patch.object(w,'inspect_deployment_transcript',side_effect=inspect),patch.object(w,'verify_managed_deployment',side_effect=verify),patch.object(w,'print_command_receipt',side_effect=receipt):
     try:w.run_managed_deployment(commands,call,{'started_monotonic':1000,'control_sha':'a'*40},Path(t),uid,runtime,'vision-wave-2-123-1',report)
     except BaseException as e:error=e
    blocked=commands.blocked
@@ -410,8 +420,9 @@ class WaveTests(unittest.TestCase):
      with self.assertRaises(ValueError):commands.run(['fake'],'later',deadline=2000,seconds=60)
     later.assert_not_called()
   return report,calls,blocked,error
- def test_managed_pair_is_fixed_315_and_summary_has_full_60_without_renewal(self):
-  report,calls,blocked,error=self.run_managed_fixture();self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[0]['work'],1460);self.assertEqual(calls[0]['end'],1475);self.assertEqual(calls[1]['end']-calls[1]['work'],15);self.assertEqual(report['deployment_budget']['pair_deadline_monotonic'],1535);self.assertEqual(report['deployment_budget']['completed_monotonic'],1223);self.assertTrue(report['managed_deployment']['passed']);self.assertFalse(report['deployment_budget']['dispatch_proven'])
+ def test_managed_pair_is_fixed_315_and_summary_has_full_30_without_renewal(self):
+  report,calls,blocked,error=self.run_managed_fixture();self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[0]['work'],1490);self.assertEqual(calls[0]['end'],1505);self.assertEqual(calls[1]['work'],1237);self.assertEqual(calls[1]['end'],1252);self.assertEqual(calls[1]['end']-calls[1]['work'],15);self.assertEqual(report['deployment_budget']['pair_deadline_monotonic'],1535);self.assertEqual(report['deployment_budget']['completed_monotonic'],1223);self.assertTrue(report['managed_deployment']['passed']);self.assertFalse(report['deployment_budget']['dispatch_proven'])
+  self.assertEqual((w.DEPLOYMENT_SECONDS,w.DEPLOYMENT_SUMMARY_SECONDS,w.DEPLOYMENT_PAIR_SECONDS,w.UI_SECONDS,w.NATIVE_SECONDS,w.FINAL_SECONDS),(270,30,315,720,1560,1740));self.assertEqual(report['deployment_budget']['process_cleanup_seconds'],15)
   selected=[v for v in calls[0]['argv'] if v.startswith('-only-testing:')];self.assertEqual(selected,['-only-testing:CelluloidVisionTests/NativeVisionTests/'+w.DEPLOYMENT_METHOD]);self.assertNotIn('-skip-testing',str(calls[0]['argv']))
  def test_managed_slow_transcript_parse_refuses_summary_and_latches(self):
   report,calls,blocked,error=self.run_managed_fixture('slow-parse');self.assertIsInstance(error,ValueError);self.assertIn('full-command-window',str(error));self.assertTrue(blocked);self.assertEqual(len(calls),1);self.assertNotIn('managed_deployment',report)
@@ -421,6 +432,17 @@ class WaveTests(unittest.TestCase):
   for mode,count in [('uncertain',1),('exit65',1),('wrong-host',1),('cancel',1),('permission-exception',1),('warning',2)]:
    with self.subTest(mode=mode):
     report,calls,blocked,error=self.run_managed_fixture(mode);self.assertIsNotNone(error);self.assertTrue(blocked);self.assertEqual(len(calls),count);self.assertNotIn('managed_deployment',report)
+
+ def test_managed_summary_last_full_30_fits_only_original_pair_end(self):
+  report,calls,blocked,error=self.run_managed_fixture('last-summary-start');self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[1]['work'],1520);self.assertEqual(calls[1]['end'],1535);self.assertEqual(report['deployment_budget']['completed_monotonic'],1507)
+ def test_managed_summary_begin_output_consumes_work_without_new_deadline(self):
+  report,calls,blocked,error=self.run_managed_fixture('summary-begin-delay');self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(calls[1]['work'],1237);self.assertEqual(calls[1]['end'],1252);self.assertEqual(report['deployment_budget']['completed_monotonic'],1224)
+ def test_managed_summary_timeout_or_denial_stays_failed_and_blocked(self):
+  for mode in ('summary-timeout','summary-denial'):
+   with self.subTest(mode=mode):
+    report,calls,blocked,error=self.run_managed_fixture(mode);self.assertIsInstance(error,ValueError);self.assertTrue(blocked);self.assertEqual(len(calls),2);self.assertNotIn('managed_deployment',report)
+ def test_managed_verification_at_original_pair_end_never_qualifies(self):
+  report,calls,blocked,error=self.run_managed_fixture('late-verification');self.assertIsInstance(error,ValueError);self.assertIn('deployment-verification-after-pair-deadline',str(error));self.assertTrue(blocked);self.assertEqual(len(calls),2);self.assertNotIn('managed_deployment',report)
 
  def test_exact_backlight_record_is_observed_and_original_log_identity_kept(self):
   uid,runtime,log,ss=self.deployment_receipts();raw=BACKLIGHT_SAMPLE+'\n'+log;out=w.inspect_deployment_transcript(raw,uid);obs=out['system_log_observations']

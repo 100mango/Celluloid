@@ -12,9 +12,9 @@ MAX_EVIDENCE=BUDGETS['vision']
 HOSTED=('testNativeVisionDocumentImportRenderSaveReopenAndExport','testSharedFieldMutationsRetainUnicodeAcrossBothOrdersUndoAndReopen','testPrepareVisionRemainingDocumentFixture','testNativeVisionExecutableAndSceneAreLive')
 PRODUCER='testPrepareVisionRemainingDocumentFixture'
 DEPLOYMENT_METHOD='testNativeVisionExecutableAndSceneAreLive'
-DEPLOYMENT_SECONDS=240
-DEPLOYMENT_SUMMARY_SECONDS=60
-DEPLOYMENT_PAIR_SECONDS=315 # 240 work +15 process cleanup +60 summary (including its cleanup).
+DEPLOYMENT_SECONDS=270
+DEPLOYMENT_SUMMARY_SECONDS=30
+DEPLOYMENT_PAIR_SECONDS=315 # 270 work +15 process cleanup +30 summary (including its cleanup).
 SHOTS={UI_METHODS[0]:('native-vision-launch','native-vision-editor-ready'),UI_METHODS[1]:('vision-imported-editable-bubble','vision-png-export-verified','vision-saved-document-reopened'),UI_METHODS[2]:(),UI_METHODS[3]:('vision-zh-Hans-privacy',)}
 DEPENDENCIES={UI_METHODS[0]:'ui-created-document',UI_METHODS[1]:'own-generated-png',UI_METHODS[2]:'hosted-producer-package',UI_METHODS[3]:'ui-created-document'}
 def need(value,reason):
@@ -246,7 +246,7 @@ def run_managed_deployment(commands,call,clock,temp,udid,runtime,prefix,report):
   window={'started_unix':call_started,'finished_unix':time.time()};report['deployment_call_window']=window
   need(result.get('finalized') is True and result.get('return_code')==0 and not result.get('timed_out') and not result.get('overflow'),'deployment-process-not-successful')
   report['deployment_transcript']=inspect_deployment_transcript(log,udid)
-  # full=True refuses before dispatch if the original pair has less than 60 left.
+  # full=True requires the original pair to retain 30 (15 work + 15 cleanup).
   raw,_=call(['xcrun','xcresulttool','get','test-results','summary','--path',bundle],'deployment-summary',DEPLOYMENT_SUMMARY_SECONDS,deadline=end,full=True)
   summary=strict_json(raw);proof=verify_managed_deployment(log,summary,udid,runtime,window)
   finished=time.monotonic();need(finished<end,'deployment-verification-after-pair-deadline')
