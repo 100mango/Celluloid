@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "READY": true,
+  "platform": "tv",
+  "product_parent_sha": "16970bd1dcb4fd01fcfa5b1a1cf117c24f21b562",
+  "product_parent_tree": "33ddc8c371e3480b6a65da7b4064daabae8a1b17",
+  "maximum_additional_spend_usd": 0,
+  "confirmation": "RUN_ONE_UNSIGNED_PLATFORM_ZERO_USD"
+}
