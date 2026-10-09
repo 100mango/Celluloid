@@ -88,11 +88,13 @@ def dump(path, value):
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + '\n')
 
 
-def validate_owner(receipt, device, environment, observed):
+def validate_owner(receipt, device, environment, observed, expected_ref='refs/heads/swiftui-first-native'):
     source = environment.get('GITHUB_SHA', '')
     if not re.fullmatch(r'[0-9a-f]{40}', source): raise ValueError('Exact source SHA is absent')
     if environment.get('GITHUB_REPOSITORY') != '100mango/Celluloid': raise ValueError('Wrong repository')
-    if environment.get('GITHUB_REF') != 'refs/heads/swiftui-first-native': raise ValueError('Wrong reviewed route')
+    if expected_ref not in ['refs/heads/swiftui-first-native', 'refs/heads/cell-ios-photos-host-final']:
+        raise ValueError('Unknown reviewed route')
+    if environment.get('GITHUB_REF') != expected_ref: raise ValueError('Wrong reviewed route')
     if environment.get('GITHUB_EVENT_NAME') != 'push': raise ValueError('Wrong event')
     if environment.get('GITHUB_WORKFLOW_SHA') != source: raise ValueError('Workflow source differs')
     if str(uuid.UUID(device)).upper() != device.upper(): raise ValueError('Invalid simulator identity')
@@ -129,7 +131,7 @@ def phase_budget(stage, receipt, now=None):
     return min(720 if stage == 'bootstrap' else 600, remaining)
 
 
-def admission(stage, device, derived, output, receipt_path):
+def admission(stage, device, derived, output, receipt_path, expected_ref='refs/heads/swiftui-first-native'):
     repository = Path.cwd().resolve()
     derived = Path(derived).resolve(); output = Path(output).resolve()
     derived.relative_to(repository / '.build'); output.relative_to(repository / 'build')
@@ -138,7 +140,9 @@ def admission(stage, device, derived, output, receipt_path):
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--'], check=True)
     observed = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], text=True, timeout=20))
     receipt = load(receipt_path)
-    binding = validate_owner(receipt, device, os.environ, observed)
+    if expected_ref == 'refs/heads/cell-ios-photos-host-final' and stage != 'bootstrap':
+        raise ValueError('Dedicated host route may only reuse the fixture bootstrap')
+    binding = validate_owner(receipt, device, os.environ, observed, expected_ref=expected_ref)
     phase_budget(stage, receipt)
     if stage == 'bootstrap' and (output / 'verified-library.json').exists(): raise ValueError('Bootstrap already succeeded; do not import twice')
     if stage in ['pristine', 'preservation']:
@@ -146,7 +150,7 @@ def admission(stage, device, derived, output, receipt_path):
         for key, value in binding.items():
             if manifest.get(key) != value: raise ValueError('Seeded manifest binding differs: ' + key)
         if manifest.get('authorization_read_write') != 'authorized': raise ValueError('Missing actual full Photos grant')
-    dump(output / f'{stage}-admission.json', {**binding, 'stage': stage, 'derived_data': str(derived),
+    dump(output / f'{stage}-admission.json', {**binding, 'stage': stage, 'source_ref': expected_ref, 'derived_data': str(derived),
          'only_owned_simulator': True, 'expected_methods': methods(stage) if stage in STAGES else []})
 
 

@@ -1,0 +1,67 @@
+name: Celluloid actual iOS Photos host diagnostic
+on:
+  push:
+    branches: [cell-ios-photos-host-final]
+    paths:
+      - .github/ios-photos-host-final.json
+      - .github/workflows/ios-photos-host-probe.yml
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-ios-photos-host-probe
+  cancel-in-progress: false
+jobs:
+  actual-photos-host:
+    # Root separately reviews source, permissions and capacity before opening all guards.
+    if: ${{ false && github.event_name == 'push' && github.ref == 'refs/heads/cell-ios-photos-host-final' }}
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      TZ: UTC
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 64
+      - name: Bind exact source and dedicated route
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 100mango/Celluloid
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REF" = refs/heads/cell-ios-photos-host-final
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          git diff --exit-code HEAD --
+          mkdir -p build
+          git rev-parse HEAD 'HEAD^{tree}' > build/ios-photos-host-source.txt
+          python3 -S Scripts/run_ios_photos_host.py --admit-only > build/final-photos-host-source-before.json
+      - name: One build and actual Photos host diagnostic
+        timeout-minutes: 40
+        run: python3 Scripts/run_ios_photos_host_diagnostic.py
+      - name: Verify source remained unchanged
+        timeout-minutes: 1
+        if: always()
+        run: |
+          set -euo pipefail
+          git diff --exit-code HEAD --
+          python3 -S Scripts/run_ios_photos_host.py --admit-only > build/final-photos-host-source-after.json
+          cmp build/final-photos-host-source-before.json build/final-photos-host-source-after.json
+      - name: Retain native host proof
+        timeout-minutes: 2
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: celluloid-ios-photos-host-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/ios-photos-host-source.txt
+            build/final-photos-host-source-before.json
+            build/final-photos-host-source-after.json
+            build/swiftui-acceptance/
+          retention-days: 1
+          if-no-files-found: error

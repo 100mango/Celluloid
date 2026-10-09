@@ -4,11 +4,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 test "$(uname -s)" = Darwin
-test "$#" -eq 5
+test "$#" -eq 5 || test "$#" -eq 6
 phase=$1; device=$2; derived=$3; out=$4; owner=$5
+source_ref=${6:-refs/heads/swiftui-first-native}
 case "$phase" in legacy|bootstrap|pristine|preservation) ;; *) exit 2 ;; esac
 test "${DEVELOPER_DIR:-}" = /Applications/Xcode_27.app/Contents/Developer
-python3 Scripts/swiftui_photos_gate.py admit "$phase" "$device" "$derived" "$out" "$owner"
+python3 Scripts/swiftui_photos_gate.py admit "$phase" "$device" "$derived" "$out" "$owner" "$source_ref"
 finish() {
   local status=$?
   trap - EXIT
