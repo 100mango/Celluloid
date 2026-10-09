@@ -12,6 +12,47 @@ from run_picker_acceptance import build_binding
 from run_ios_photos_host import check_product_control, PRODUCT_CONTROL_TREE, PRODUCT_CONTROL_SHA256, admit_probe
 
 class HostDiagnostic(Acceptance):
+    def command(self, name, command, seconds, simulator=False, allow_failure=False, nested_owned=False):
+        require(not self.uncertain, 'Uncertain Photos native state blocks further command dispatch')
+        dispatched=time.monotonic();result=None
+        # Reuse the existing group-owned adapter, but include interpreter/startup
+        # latency in the parent deadline. Nested bootstrap retains its own caps.
+        if not nested_owned:
+            command=[sys.executable,'Scripts/run_bounded.py','--seconds',str(seconds),'--label',name,
+                     '--deadline-monotonic',str(dispatched+seconds),*command]
+        try:
+            result=super().command(name,command,seconds,simulator=simulator,allow_failure=allow_failure,nested_owned=True)
+        finally:
+            elapsed=time.monotonic()-dispatched;late=elapsed>seconds
+            if late:
+                self.uncertain=True
+                if not any(item['phase']==name for item in self.failures):self.failures.append({'phase':name,'exit_code':124})
+            save(OUT/(name+'-dispatch-timing.json'),{'phase':name,'dispatch_started_monotonic':dispatched,
+                 'deadline_monotonic':dispatched+seconds,'elapsed_seconds':elapsed,'limit_seconds':seconds,
+                 'late_completion':late,'returned_exit_code':result[0] if result is not None else None,
+                 'prohibit_further_native':self.uncertain})
+        require(not late, name+': parent dispatch deadline exceeded, including late exit0')
+        return result
+
+    def cleanup(self):
+        if not self.device or self.uncertain:return
+        deadline=min(self.started+2370,time.monotonic()+90)
+        for action in ['shutdown','delete']:
+            if deadline-time.monotonic()<35:return
+            dispatched=time.monotonic();path=OUT/('cleanup-'+action+'.log')
+            command=[sys.executable,'Scripts/run_bounded.py','--seconds','30','--label','cleanup-'+action,
+                     '--deadline-monotonic',str(dispatched+30),'xcrun','simctl',action,self.device]
+            try:
+                with path.open('wb') as stream:code=subprocess.call(command,cwd=ROOT,stdout=stream,stderr=subprocess.STDOUT)
+            except BaseException:
+                self.uncertain=True
+                raise
+            elapsed=time.monotonic()-dispatched;late=elapsed>30
+            save(OUT/('cleanup-'+action+'-dispatch-timing.json'),{'phase':'cleanup-'+action,'elapsed_seconds':elapsed,
+                 'limit_seconds':30,'returned_exit_code':code,'late_completion':late})
+            if code or late:self.uncertain=True;return
+        self.device=None
+
     def bootstrap(self):
         command = ['/bin/bash', 'Scripts/run_swiftui_photos_gate.sh', 'bootstrap', self.device,
             str(DERIVED), str(OUT / 'photos'), str(OUT / 'owned-simulator.json'), 'refs/heads/cell-ios-photos-host-final']

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 import math
 import uuid
@@ -131,6 +132,33 @@ def phase_budget(stage, receipt, now=None):
     return min(720 if stage == 'bootstrap' else 600, remaining)
 
 
+def fresh_owned_device_observation(output):
+    """One fresh query; no cache, filtering guess, retry or expanded20s cap."""
+    output=Path(output);output.mkdir(parents=True,exist_ok=True)
+    log=output/'owned-device-observation.log';receipt=output/'owned-device-observation.json'
+    if log.exists() or receipt.exists():raise ValueError('Refuse stale owned-device observation')
+    started=time.monotonic();deadline=started+20
+    command=[sys.executable,'Scripts/run_bounded.py','--seconds','20','--label','photos-owned-device-observation',
+             '--deadline-monotonic',str(deadline),'xcrun','simctl','list','devices','available','-j']
+    with log.open('wb') as stream:
+        code=subprocess.call(command,stdout=stream,stderr=subprocess.STDOUT)
+    elapsed=time.monotonic()-started;raw=log.read_text(errors='replace')
+    late=elapsed>20;unsafe=(code!=0 or late or 'BOUNDED_COMMAND_TIMEOUT' in raw or 'CLEANUP_UNCONFIRMED' in raw)
+    dump(receipt,{'schema':'Celluloid.PhotosOwnedDeviceObservation.1','source_sha':os.environ.get('GITHUB_SHA'),
+         'run_id':os.environ.get('GITHUB_RUN_ID'),'run_attempt':os.environ.get('GITHUB_RUN_ATTEMPT'),
+         'started_monotonic':started,'deadline_monotonic':deadline,'elapsed_seconds':elapsed,'limit_seconds':20,
+         'exit_code':code,'late_completion':late,'prohibit_further_native':unsafe,
+         'log_sha256':hashlib.sha256(log.read_bytes()).hexdigest(),'fresh_query_count':1})
+    if unsafe:raise ValueError('Fresh owned-device query failed or exceeded its parent20s deadline; no further native work')
+    rows=[]
+    for match in re.finditer(r'^\s*\{',raw,re.M):
+        try:value,_=json.JSONDecoder().raw_decode(raw[match.start():].lstrip())
+        except json.JSONDecodeError:continue
+        if isinstance(value,dict) and 'devices' in value:rows.append(value)
+    if len(rows)!=1:raise ValueError('Missing/ambiguous fresh device observation')
+    return rows[0]
+
+
 def admission(stage, device, derived, output, receipt_path, expected_ref='refs/heads/swiftui-first-native'):
     repository = Path.cwd().resolve()
     derived = Path(derived).resolve(); output = Path(output).resolve()
@@ -138,8 +166,12 @@ def admission(stage, device, derived, output, receipt_path, expected_ref='refs/h
     source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     if source != os.environ.get('GITHUB_SHA'): raise ValueError('Checked-out source differs')
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--'], check=True)
-    observed = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], text=True, timeout=20))
     receipt = load(receipt_path)
+    phase_budget(stage, receipt)
+    if expected_ref == 'refs/heads/cell-ios-photos-host-final':
+        observed = fresh_owned_device_observation(output)
+    else:
+        observed = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], text=True, timeout=20))
     if expected_ref == 'refs/heads/cell-ios-photos-host-final' and stage != 'bootstrap':
         raise ValueError('Dedicated host route may only reuse the fixture bootstrap')
     binding = validate_owner(receipt, device, os.environ, observed, expected_ref=expected_ref)

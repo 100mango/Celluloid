@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import json
+import math
 import os
 import signal
 import subprocess
@@ -15,10 +16,18 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seconds', required=True, type=float)
 parser.add_argument('--label', required=True)
 parser.add_argument('--original-ios-first-summary', action='store_true')
+parser.add_argument('--deadline-monotonic', type=float, help='Exact reviewed Photos-host parent dispatch deadline')
 parser.add_argument('command', nargs=argparse.REMAINDER)
 args = parser.parse_args()
 if not args.command or args.seconds <= 0:
     parser.error('A positive time bound and command are required')
+absolute_deadline = args.deadline_monotonic is not None
+if absolute_deadline:
+    if (args.original_ios_first_summary or os.environ.get('GITHUB_REF') != 'refs/heads/cell-ios-photos-host-final'
+            or os.environ.get('GITHUB_REPOSITORY') != '100mango/Celluloid'
+            or not math.isfinite(args.seconds) or not math.isfinite(args.deadline_monotonic) or args.deadline_monotonic <= 0
+            or args.deadline_monotonic > time.monotonic() + args.seconds):
+        parser.error('Invalid reviewed Photos-host parent deadline')
 started = time.monotonic() if args.original_ios_first_summary else None
 first_summary = None
 if args.original_ios_first_summary:
@@ -28,8 +37,12 @@ if args.original_ios_first_summary:
 owner = OwnedCommand(args.command[0], args.label, args.seconds)
 if first_summary is None:
     started = time.monotonic()
-    deadline = started + args.seconds
+    deadline = min(started + args.seconds, args.deadline_monotonic) if absolute_deadline else started + args.seconds
 print('BOUNDED_COMMAND_BEGIN', json.dumps({'label': args.label, 'utc': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'seconds': args.seconds, 'command': args.command}), flush=True)
+if absolute_deadline and time.monotonic() >= deadline:
+    print('BOUNDED_COMMAND_TIMEOUT', args.label, 'parent deadline expired before child dispatch', flush=True)
+    print('BOUNDED_COMMAND_END', json.dumps({'label': args.label, 'exit_code': 124, 'elapsed_seconds': round(time.monotonic() - started, 3), 'child_started': False}), flush=True)
+    sys.exit(124)
 try:
     if first_summary is not None and time.monotonic() >= deadline:
         raise subprocess.TimeoutExpired(args.command, args.seconds)
@@ -39,7 +52,7 @@ except BaseException as original:
     owner.failed(original, timed_out=isinstance(original, subprocess.TimeoutExpired))
     raise
 try:
-    if owner.enabled:
+    if owner.enabled or absolute_deadline:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise subprocess.TimeoutExpired(args.command, args.seconds)
@@ -50,7 +63,7 @@ try:
         code = process.wait(timeout=args.seconds)
 except subprocess.TimeoutExpired as original:
     print('BOUNDED_COMMAND_TIMEOUT', args.label, flush=True)
-    if owner.enabled:
+    if owner.enabled or absolute_deadline:
         # Persist before cleanup. No diagnostics can consume cleanup allowance.
         owner.failed(original, timed_out=True)
         reaped = process.poll()

@@ -185,4 +185,103 @@ class IOSPhotosObservedNoticeSourceTests(unittest.TestCase):
         for changed in mutants:
             with self.assertRaises(ValueError): validate_observed_notice_source(changed)
 
+
+class PhotosParentDeadlineTests(unittest.TestCase):
+    def bounded(self, mode, expired=False, wrong_route=False):
+        import contextlib,io,os,runpy,subprocess,sys
+        from unittest.mock import MagicMock,patch
+        root=Path(__file__).resolve().parents[1];clock=[3.0 if expired else 1.0]
+        process=MagicMock(pid=12345,returncode=None if mode=='denied' else 0)
+        def create(*args,**kwargs):
+            if mode=='slow-start':clock[0]=3.0
+            return process
+        def wait(*args,**kwargs):
+            if mode=='denied':raise subprocess.TimeoutExpired('owned',1)
+            if mode=='late-zero':clock[0]=3.0
+            return 0
+        process.wait.side_effect=wait;process.poll.return_value=process.returncode
+        argv=['run_bounded.py','--seconds','20','--label','photos-unit','--deadline-monotonic','2','owned-fake-command']
+        env={'GITHUB_REF':'refs/heads/wrong' if wrong_route else 'refs/heads/cell-ios-photos-host-final','GITHUB_REPOSITORY':'100mango/Celluloid'}
+        out=io.StringIO()
+        with patch.dict(os.environ,env),patch.object(sys,'argv',argv),patch('time.monotonic',side_effect=lambda:clock[0]),patch('subprocess.Popen',side_effect=create) as opened,patch('os.killpg',side_effect=PermissionError('synthetic denial') if mode=='denied' else None) as killed,contextlib.redirect_stdout(out),contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:runpy.run_path(str(root/'Scripts/run_bounded.py'),run_name='__main__')
+        return caught.exception.code,out.getvalue(),opened,process,killed
+    def testTimelyOwnedChildSucceedsWithRemainingParentBudget(self):
+        code,log,opened,process,killed=self.bounded('timely')
+        self.assertEqual(code,0);self.assertEqual(process.wait.call_args.kwargs['timeout'],1)
+        self.assertTrue(opened.call_args.kwargs['start_new_session']);killed.assert_not_called()
+    def testExpiredParentNeverStartsChildAndWrongRouteCannotUseFlag(self):
+        for expired,wrong in [(True,False),(False,True)]:
+            code,log,opened,process,killed=self.bounded('timely',expired=expired,wrong_route=wrong)
+            self.assertEqual(code,2 if wrong else 124);opened.assert_not_called();killed.assert_not_called()
+    def testProcessCreationDelayAndLateExitZeroBothRemainTimeout(self):
+        for mode in ['slow-start','late-zero']:
+            code,log,opened,process,killed=self.bounded(mode)
+            self.assertEqual(code,124);self.assertIn('BOUNDED_COMMAND_TIMEOUT',log)
+            self.assertIn('"exit_code": 124',log);killed.assert_not_called()
+            if mode=='slow-start':process.wait.assert_not_called()
+    def testDeniedOwnedCleanupNeverEscalatesSignalsOrWaitsAgain(self):
+        import signal
+        code,log,opened,process,killed=self.bounded('denied')
+        self.assertEqual(code,124);killed.assert_called_once_with(12345,signal.SIGTERM)
+        self.assertEqual(process.wait.call_count,1);self.assertIn('CLEANUP_UNCONFIRMED',log)
+    def testFreshQueryKeepsExactCommandAndRejectsLateZeroWithoutRetry(self):
+        import os
+        from unittest.mock import patch
+        import swiftui_photos_gate as gate
+        for late in [False,True]:
+            with tempfile.TemporaryDirectory() as folder:
+                clock=[100.0];calls=[]
+                def invoke(command,stdout,stderr):
+                    calls.append(command);stdout.write(b'BOUNDED_COMMAND_BEGIN {}\n{"devices": {}}\nBOUNDED_COMMAND_END {}\n');clock[0]+=21 if late else 1;return 0
+                with patch.object(gate.time,'monotonic',side_effect=lambda:clock[0]),patch.object(gate.subprocess,'call',side_effect=invoke):
+                    if late:
+                        with self.assertRaises(ValueError):gate.fresh_owned_device_observation(Path(folder))
+                    else:self.assertEqual(gate.fresh_owned_device_observation(Path(folder)),{'devices':{}})
+                self.assertEqual(len(calls),1);self.assertEqual(calls[0][-6:],['xcrun','simctl','list','devices','available','-j'])
+                self.assertIn('--deadline-monotonic',calls[0]);self.assertEqual(calls[0][calls[0].index('--seconds')+1],'20')
+                receipt=json.loads((Path(folder)/'owned-device-observation.json').read_text());self.assertIs(receipt['late_completion'],late);self.assertIs(receipt['prohibit_further_native'],late)
+                with self.assertRaisesRegex(ValueError,'stale'):gate.fresh_owned_device_observation(Path(folder))
+    def testMissingDuplicateOrFailedFreshQueryCannotSupplyState(self):
+        from unittest.mock import patch
+        import swiftui_photos_gate as gate
+        for raw,code in [(b'{"wrong":{}}',0),(b'{"devices":{}}\n{"devices":{}}',0),(b'BOUNDED_COMMAND_TIMEOUT query',124),(b'BOUNDED_COMMAND_CLEANUP_UNCONFIRMED',0)]:
+            with tempfile.TemporaryDirectory() as folder:
+                def invoke(command,stdout,stderr):stdout.write(raw);return code
+                with patch.object(gate.subprocess,'call',side_effect=invoke) as called,self.assertRaises(ValueError):gate.fresh_owned_device_observation(Path(folder))
+                self.assertEqual(called.call_count,1)
+    def testLateParentPhaseBlocksEveryFollowingDispatch(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        with tempfile.TemporaryDirectory() as folder:
+            clock=[100.0];gate=object.__new__(diagnostic.HostDiagnostic);gate.uncertain=False;gate.failures=[];calls=[]
+            def invoke(self,*args,**kwargs):calls.append((args,kwargs));clock[0]=177.0164555;return 0,'inner exited0 after60.268 seconds'
+            with patch.object(diagnostic,'OUT',Path(folder)),patch.object(diagnostic.time,'monotonic',side_effect=lambda:clock[0]),patch.object(diagnostic.Acceptance,'command',invoke):
+                with self.assertRaisesRegex(ValueError,'deadline exceeded'):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],60,simulator=True)
+                self.assertTrue(gate.uncertain)
+                with self.assertRaisesRegex(ValueError,'blocks further'):gate.command('photos-bootstrap',['unsafe-following-command'],750,simulator=True)
+            self.assertEqual(len(calls),1);self.assertEqual(gate.failures,[{'phase':'install-owned-app','exit_code':124}])
+            wrapped=calls[0][0][1];self.assertEqual(wrapped[wrapped.index('--deadline-monotonic')+1],'160.0')
+            record=json.loads((Path(folder)/'install-owned-app-dispatch-timing.json').read_text());self.assertEqual(record['returned_exit_code'],0);self.assertTrue(record['late_completion']);self.assertTrue(record['prohibit_further_native'])
+    def testOriginalHostStagesAndBudgetsRemainWhileChildHasPreDispatchFence(self):
+        root=Path(__file__).resolve().parents[1];source=(root/'Scripts/run_ios_photos_host.py').read_text();driver=(root/'Scripts/run_ios_photos_host_diagnostic.py').read_text()
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45]);self.assertEqual(len(host.STEPS),5)
+        self.assertIn("'photos-bootstrap', command, 750",driver);self.assertIn("'work_budget_seconds': 2280",driver)
+        start=source.index('    def run(label, command, seconds, simulator=False):');end=source.index('    try:\n        for stage, selector, seconds in STEPS:',start);body=source[start:end]
+        self.assertLess(body.index('require(not uncertain'),body.index('subprocess.call('))
+        self.assertIn("'--deadline-monotonic', str(dispatched+seconds)",body);self.assertIn('if late:uncertain=True;code=124',body)
+        self.assertIn('observed = fresh_owned_device_observation(output)',source)
+        self.assertIn("validate_owner(owner, args.device, os.environ, observed, expected_ref='refs/heads/cell-ios-photos-host-final')",source)
+
+    def testLateCleanupZeroDoesNotDispatchDeleteOrClaimDeviceGone(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        with tempfile.TemporaryDirectory() as folder:
+            clock=[100.0];gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.device='owned-device';gate.uncertain=False
+            def invoke(command,**kwargs):clock[0]=131.0;return 0
+            with patch.object(diagnostic,'OUT',Path(folder)),patch.object(diagnostic.time,'monotonic',side_effect=lambda:clock[0]),patch.object(diagnostic.subprocess,'call',side_effect=invoke) as called:
+                gate.cleanup();self.assertEqual(called.call_count,1);self.assertTrue(gate.uncertain);self.assertEqual(gate.device,'owned-device')
+                gate.cleanup();self.assertEqual(called.call_count,1)
+
+
 if __name__ == '__main__': unittest.main()

@@ -12,7 +12,7 @@ import sys
 import time
 import uuid
 from run_picker_acceptance import check_build, qualify_summary
-from swiftui_photos_gate import validate_owner, phase_budget
+from swiftui_photos_gate import validate_owner, phase_budget, fresh_owned_device_observation
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCT_CONTROL_TREE = 'f2c6d0f38c026957b0b34f22b916eb80ed5b20a8'
@@ -32,7 +32,7 @@ PRODUCT_SHA = '13e9a1ed63c6e7744803419f27e429a759df1209'
 PROBE_BRANCH = 'cell-ios-photos-host-final'
 PROBE_CONFIG = '.github/ios-photos-host-final.json'
 PROBE_WORKFLOW = '.github/workflows/ios-photos-host-probe.yml'
-PROBE_PATHS = frozenset(['Scripts/test_final_ios_photos_host_admission.py', '.github/ios-photos-host-final.json', '.github/workflows/ios-photos-host-probe.yml', 'Celluloid.xcodeproj/project.pbxproj', 'CelluloidTests/IOSPhotosHostFixtureTests.swift', 'CelluloidUITests/IOSPhotosHostUITests.swift', 'Scripts/run_ios_photos_host.py', 'Scripts/run_ios_photos_host_diagnostic.py', 'Scripts/run_swiftui_photos_gate.sh', 'Scripts/swiftui_photos_gate.py', 'Scripts/test_ios_photos_host.py'])
+PROBE_PATHS = frozenset(['Scripts/run_bounded.py','Scripts/test_final_ios_photos_host_admission.py', '.github/ios-photos-host-final.json', '.github/workflows/ios-photos-host-probe.yml', 'Celluloid.xcodeproj/project.pbxproj', 'CelluloidTests/IOSPhotosHostFixtureTests.swift', 'CelluloidUITests/IOSPhotosHostUITests.swift', 'Scripts/run_ios_photos_host.py', 'Scripts/run_ios_photos_host_diagnostic.py', 'Scripts/run_swiftui_photos_gate.sh', 'Scripts/swiftui_photos_gate.py', 'Scripts/test_ios_photos_host.py'])
 PROBE_FIXED_FILES = {'Celluloid.xcodeproj/project.pbxproj': '34b764ed594db19cba375cf9e99a5f2e25d28c83718942cbf8b2bb9e21dfa6dc', 'CelluloidTests/IOSPhotosHostFixtureTests.swift': '1342f6435ea770cae23b6889e3ddd85ff1cec929c63b209d5623f13e387eb632', 'CelluloidUITests/IOSPhotosHostUITests.swift': '1bc8de8517c0e522f42322d98861e557c010b82531a46991f9242b13f92ce1c1'}
 
 def validate_probe_admission(config, context, facts):
@@ -174,7 +174,7 @@ def main():
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--'], check=True, timeout=15)
     check_product_control()
     require(phase_budget('pristine', owner) == 600, 'Full 600-second host diagnostic plus cleanup does not fit')
-    observed = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], text=True, timeout=20))
+    observed = fresh_owned_device_observation(output)
     validate_owner(owner, args.device, os.environ, observed, expected_ref='refs/heads/cell-ios-photos-host-final')
     context = make_context(manifest, owner)
     binary = derived / 'Build/Products/Debug-iphonesimulator/Celluloid.app/Celluloid'
@@ -195,6 +195,7 @@ def main():
 
     def run(label, command, seconds, simulator=False):
         nonlocal uncertain
+        require(not uncertain, 'Uncertain Photos host state blocks further native dispatch')
         require(time.monotonic() + seconds + 10 <= deadline, 'Shared host deadline cannot admit ' + label)
         environment = dict(os.environ, TZ='UTC', TEST_RUNNER_TZ='UTC',
             TEST_RUNNER_CELLULOID_IOS_PHOTOS_HOST='1', TEST_RUNNER_CELLULOID_EXPECTED_SOURCE_SHA=source,
@@ -203,10 +204,17 @@ def main():
         for key in ['TEST_RUNNER_CELLULOID_SYNTHETIC_PROBE', 'TEST_RUNNER_CELLULOID_PROBE_SOURCE_SHA']:
             environment.pop(key, None)
         path = output / (label + '.log')
+        dispatched=time.monotonic()
         with path.open('wb') as stream:
             code = subprocess.call([sys.executable, 'Scripts/run_bounded.py', '--seconds', str(seconds),
-                '--label', 'ios-photos-host-' + label, *command], env=environment, stdout=stream, stderr=subprocess.STDOUT)
-        log = path.read_text(errors='replace'); statuses[label] = code
+                '--label', 'ios-photos-host-' + label, '--deadline-monotonic', str(dispatched+seconds), *command], env=environment, stdout=stream, stderr=subprocess.STDOUT)
+        log = path.read_text(errors='replace');elapsed=time.monotonic()-dispatched
+        late=elapsed>seconds
+        save(output/(label+'-dispatch-timing.json'),{'phase':label,'dispatch_started_monotonic':dispatched,
+             'deadline_monotonic':dispatched+seconds,'elapsed_seconds':elapsed,'limit_seconds':seconds,
+             'returned_exit_code':code,'late_completion':late})
+        if late:uncertain=True;code=124
+        statuses[label] = code
         if simulator and native_uncertain(code, log): uncertain = True
         return code, log
 
