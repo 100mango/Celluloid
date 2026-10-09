@@ -568,7 +568,7 @@ def validate_observed_notification_navigation_source(source):
     if navigation.count('.tap()')!=1:raise ValueError('Only one observed Collections reselection is permitted')
     calls='        try declineObservedPhotosNotificationsIfPresent()\n        try selectObservedCollections()\n'
     if source.count(calls)!=1 or ('try dismissObservedWhatsNewIfPresent()\n'+calls+'        stage = "open-albums"') not in source:raise ValueError('Notification denial must precede observed reselection and original Albums route')
-    restored=(source[:start]+source[end:]).replace(calls,'')
+    restored=restore_observed_album_delta((source[:start]+source[end:]).replace(calls,''))
     if hashlib.sha256(restored.encode()).hexdigest()!='1bc8de8517c0e522f42322d98861e557c010b82531a46991f9242b13f92ce1c1':raise ValueError('Original host assertions, introduction, unknown-alert monitor or budgets changed')
 
 class ObservedNotificationNavigationTests(unittest.TestCase):
@@ -589,8 +589,61 @@ class ObservedNotificationNavigationTests(unittest.TestCase):
         calls='        try declineObservedPhotosNotificationsIfPresent()\n        try selectObservedCollections()\n'
         with self.assertRaises(ValueError):validate_observed_notification_navigation_source(self.source.replace(calls,'        try selectObservedCollections()\n        try declineObservedPhotosNotificationsIfPresent()\n'))
     def testOwnedAlbumFilenameAndFunctionalAssertionsCannotBeRelaxed(self):
-        for old,new in [('let titleNode = try unique(','let titleNode = '),('let cell = try unique(cells)','let cell = cells.firstMatch'),('try verifyPublicFilename()','try withinBudget()'),('"filter-Sepia"','"filter-None"'),('changed != original','changed == original'),('executionTimeAllowance = 120','executionTimeAllowance = 180'),('fatalError("IOS_PHOTOS_HOST_UNKNOWN_ALERT no action taken")','return true')]:
+        for old,new in [('let titleNode = try unique(','let titleNode = '),('let cell = try observedOwnedAlbumItem(title: title)','let cell = photos.images.firstMatch'),('try verifyPublicFilename()','try withinBudget()'),('"filter-Sepia"','"filter-None"'),('changed != original','changed == original'),('executionTimeAllowance = 120','executionTimeAllowance = 180'),('fatalError("IOS_PHOTOS_HOST_UNKNOWN_ALERT no action taken")','return true')]:
             with self.subTest(old=old),self.assertRaises(ValueError):validate_observed_notification_navigation_source(self.source.replace(old,new))
+
+
+ALBUM_PAGE = 'PhotosUICore.PhotosPageContainerView_AX'
+ALBUM_OLD_BLOCK = '        _ = try unique(photos.navigationBars.matching(identifier: title))\n        let cells = photos.collectionViews.cells\n        let cell = try unique(cells)\n'
+ALBUM_NEW_BLOCK = '        let cell = try observedOwnedAlbumItem(title: title)\n'
+
+def restore_observed_album_delta(source):
+    start=source.index('    private func observedOwnedAlbumItem(title: String) throws -> XCUIElement {')
+    end=source.index('    private func ',start+len('    private func '))
+    helper=source[start:end]
+    required=['try withinBudget()',
+        'let pages = photos.otherElements.matching(identifier: "'+ALBUM_PAGE+'")',
+        'pages.count == 1 && pages.element.exists',
+        'guard XCTWaiter.wait(for: [ready], timeout: 8) == .completed else {',
+        'let page = pages.element',
+        'let heading = page.staticTexts.matching(identifier: "collectionTitle")',
+        'let count = page.staticTexts.matching(identifier: "collectionAssetCount")',
+        'let items = page.images.matching(identifier: "PXGGridLayout-Info")',
+        'guard heading.count == 1, count.count == 1, items.count == 1,',
+        'heading.element.label == title, count.element.label == "1 Item" else {',
+        '_ = try unique(heading)', '_ = try unique(count)', 'return try unique(items)']
+    previous=-1
+    for fragment in required:
+        if helper.count(fragment)!=1 or helper.index(fragment)<=previous:raise ValueError('Missing/changed/out-of-order owned album guard: '+fragment)
+        previous=helper.index(fragment)
+    if any(token in helper for token in ['.firstMatch','.element(boundBy:','.tap()','PhotosGridAddButton','BEGINSWITH','CONTAINS','label IN','coordinate(']):raise ValueError('Unreviewed album selection fallback')
+    if source.count(ALBUM_NEW_BLOCK)!=1:raise ValueError('Missing/duplicate observed album selection')
+    sequence='        titleNode.tap()\n'+ALBUM_NEW_BLOCK+'        checkpoint("single-owned-album-item")\n        stage = "open-single-owned-photo"\n        cell.tap()\n        _ = try unique(photos.buttons.matching(identifier: "Edit"))\n        try verifyPublicFilename()'
+    if sequence not in source:raise ValueError('Owned album/photo identity or exact filename validation moved')
+    return (source[:start]+source[end:]).replace(ALBUM_NEW_BLOCK,ALBUM_OLD_BLOCK)
+
+class ObservedOwnedAlbumSourceTests(unittest.TestCase):
+    def setUp(self):self.source=(Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+    def testObservedContainerIdentityAndSingleGridPhotoRestoreExactPriorSource(self):
+        import hashlib
+        restored=restore_observed_album_delta(self.source)
+        self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'2ed6da31ecbf86d82d79167d04051c06ab4b6c585661272b7694601a7b9a5d50')
+        validate_observed_notification_navigation_source(self.source)
+    def testMissingDuplicateContainerHeadingCountOrPhotoCannotAuthorizeSelection(self):
+        for guard in ['pages.count == 1 && pages.element.exists','heading.count == 1','count.count == 1','items.count == 1']:
+            for changed in ['true',guard.replace('== 1','> 0')]:
+                with self.subTest(guard=guard,changed=changed),self.assertRaises(ValueError):restore_observed_album_delta(self.source.replace(guard,changed))
+        for identifier in [ALBUM_PAGE,'collectionTitle','collectionAssetCount','PXGGridLayout-Info']:
+            with self.subTest(identifier=identifier),self.assertRaises(ValueError):restore_observed_album_delta(self.source.replace('"'+identifier+'"','"Missing"'))
+    def testWrongOwnerCountOrAddTileAndIndexFallbackReject(self):
+        mutants=[self.source.replace('heading.element.label == title','heading.element.label.hasPrefix(title)'),
+            self.source.replace('heading.element.label == title','heading.element.label == "Other album"'),
+            self.source.replace('"1 Item"','"2 Items"'),self.source.replace('page.images.matching(identifier: "PXGGridLayout-Info")','page.buttons.matching(identifier: "PhotosGridAddButton")'),
+            self.source.replace('return try unique(items)','return items.firstMatch'),self.source.replace('return try unique(items)','return items.element(boundBy: 0)'),
+            self.source.replace('_ = try unique(heading)','_ = heading.element'),self.source.replace('_ = try unique(count)','_ = count.element'),
+            self.source.replace('try verifyPublicFilename()','try withinBudget()')]
+        for source in mutants:
+            with self.assertRaises(ValueError):restore_observed_album_delta(source)
 
 
 if __name__ == '__main__': unittest.main()

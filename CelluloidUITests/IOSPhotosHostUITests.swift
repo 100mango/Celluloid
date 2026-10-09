@@ -145,9 +145,7 @@ final class IOSPhotosHostUITests: XCTestCase {
         let title = try value("album_title")
         let titleNode = try unique(photos.staticTexts.matching(NSPredicate(format: "label == %@", title)))
         titleNode.tap()
-        _ = try unique(photos.navigationBars.matching(identifier: title))
-        let cells = photos.collectionViews.cells
-        let cell = try unique(cells)
+        let cell = try observedOwnedAlbumItem(title: title)
         checkpoint("single-owned-album-item")
         stage = "open-single-owned-photo"
         cell.tap()
@@ -199,6 +197,34 @@ final class IOSPhotosHostUITests: XCTestCase {
         checkpoint("owned-photo-info")
         try tap(photos.buttons.matching(identifier: "Info"))
         _ = try unique(photos.buttons.matching(identifier: "Edit"))
+    }
+    private func observedOwnedAlbumItem(title: String) throws -> XCUIElement {
+        // Run37915753706: the owned album has a collectionTitle heading and a
+        // single grid Image, not a title-named navigation bar or collection cell.
+        // Scope to the one observed page container; mirrored AX outside it is
+        // never deduplicated by position or used as an alternative selection.
+        try withinBudget()
+        let pages = photos.otherElements.matching(identifier: "PhotosUICore.PhotosPageContainerView_AX")
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            pages.count == 1 && pages.element.exists
+        }, object: nil)
+        guard XCTWaiter.wait(for: [ready], timeout: 8) == .completed else {
+            throw failure("Expected one observed owned album page")
+        }
+        let page = pages.element
+        let heading = page.staticTexts.matching(identifier: "collectionTitle")
+        let count = page.staticTexts.matching(identifier: "collectionAssetCount")
+        let items = page.images.matching(identifier: "PXGGridLayout-Info")
+        guard heading.count == 1, count.count == 1, items.count == 1,
+              heading.element.label == title, count.element.label == "1 Item" else {
+            throw failure("Owned album title, item count or unique photo differs")
+        }
+        _ = try unique(heading)
+        _ = try unique(count)
+        // Add Photo is a separate Button. Header artwork has no grid identifier.
+        // Only this album's sole grid Image may be tapped by the caller, which
+        // still verifies the exact public fixture filename before editing.
+        return try unique(items)
     }
     private func declineObservedPhotosNotificationsIfPresent() throws {
         // Run37912970403 screenshot after the introduction: only this exact
