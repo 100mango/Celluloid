@@ -7,7 +7,7 @@ BRANCH='celluloid-rendering-qualification'
 WORKFLOW='.github/workflows/corrected-rendering-qualification.yml'
 CONFIG='.github/corrected-rendering-qualification.json'
 DEPENDENCIES='Scripts/fixtures/corrected-rendering-dependencies.json'
-DEPENDENCY_SHA256='486229a865355aa312825aef1e36d5a2c2c030ffc2fcd79c37c297c3bd8a70c6'
+DEPENDENCY_SHA256='1b7a6a3b06eb0c5daa40587c78935aa88b9cf897bb4bd9e71ad99de7c31789e8'
 PRODUCT_SHA='13e9a1ed63c6e7744803419f27e429a759df1209'
 PRODUCT_TREE='f2c6d0f38c026957b0b34f22b916eb80ed5b20a8'
 CURRENT_UIKIT_FINGERPRINT='f3da35962bd29598de93dacf810bf7d521478d91839e3e1d9cd99e2808548970'
@@ -15,7 +15,11 @@ CONSUMER='CelluloidTests/MacPhotosManufacturedAdjustmentTests.swift'
 CONSUMER_SHA256='f4c7a7a16bf5414e6c2a2716bc146bdc216f7ea966a80207acce8a7667584890'
 CONTROL_SOURCE='52bf7a9c04e2d91880ca4e8fd3418cd94d32bb7e'
 UIKIT_ROOTS=('Celluloid','CelluloidKit','CelluloidPhotoExtension','Celluloid.xcodeproj')
-CONTROL_PATHS=frozenset((WORKFLOW,CONFIG,DEPENDENCIES,
+# This exact test-only override is a control input, never a product source edit.
+TEST_OVERLAY='CelluloidTests/PhotosOutputWriteTests.swift'
+TEST_OVERLAY_BASE_SHA256='01afee7d0dd4fbdfbc89f4d6017199309346f0042aa26fd12fd46605914e2c7e'
+TEST_OVERLAY_SHA256='21c7a6a7c009c3930d33510703105903f482047a2f4415f42d3bd59c693d8540'
+CONTROL_PATHS=frozenset((WORKFLOW,CONFIG,DEPENDENCIES,TEST_OVERLAY,
     'Scripts/corrected_rendering_admission.py','Scripts/run_corrected_rendering_qualification.py',
     'Scripts/test_corrected_rendering_qualification.py','Scripts/run_early_uikit_interop.py',
     'Scripts/verify_interop_continuation.py','Scripts/collect_native_evidence.py'))
@@ -59,12 +63,15 @@ def validate(config,context,facts):
             'source_sha':facts['head'],'source_tree':facts['tree'],'control_sha':facts['head'],'control_tree':facts['tree'],
             'current_uikit_fingerprint':CURRENT_UIKIT_FINGERPRINT,'frozen_control_source':CONTROL_SOURCE,
             'consumer_sha256':CONSUMER_SHA256,'dependency_manifest_sha256':DEPENDENCY_SHA256,
+            'test_control_overlay':{'path':TEST_OVERLAY,'base_product_sha256':TEST_OVERLAY_BASE_SHA256,'control_sha256':TEST_OVERLAY_SHA256},
             'run_id':context.get('run_id'),'run_attempt':'1',
             'scope':'Existing PlatformRendering.2 fixture qualification; current controller dependencies are explicitly pinned, not all historical bytes.',
             'layered_photos_guard_unchanged':True,'photos_host_qualified':False,'release_qualified':False}
 def check_dependencies(root=ROOT):
     path=root/DEPENDENCIES;raw=path.read_bytes();need(sha(raw)==DEPENDENCY_SHA256,'Dependency manifest identity changed')
     manifest=read_json(path);need(manifest['product_sha']==PRODUCT_SHA and manifest['product_tree']==PRODUCT_TREE,'Dependency product identity changed')
+    need(sha((root/TEST_OVERLAY).read_bytes())==TEST_OVERLAY_SHA256,'Unreviewed test-only pre-write pause override')
+    need(manifest['test_control_overlays'][0]['path']==TEST_OVERLAY and manifest['test_control_overlays'][0]['base_product_sha256']==TEST_OVERLAY_BASE_SHA256 and manifest['test_control_overlays'][0]['control_sha256']==TEST_OVERLAY_SHA256,'Test-only overlay provenance changed')
     rows=manifest['files'];need(isinstance(rows,list) and rows,'Missing dependency inventory')
     paths=[]
     for row in rows:

@@ -19,6 +19,15 @@ final class PhotosOutputWriteTests: XCTestCase {
         wait(for: [drained], timeout: 5)
     }
     private func url(_ name: String = "output.jpg") -> URL { directory.appendingPathComponent(name) }
+    // The production writer runs at User-initiated QoS. Give its test-only
+    // semaphore signal the same explicit QoS instead of inheriting XCTest's
+    // potentially Utility test-thread priority. Cancellation/replacement still
+    // happens on the test thread before this asynchronous release is submitted.
+    private func releasePrewriteBarrier(_ release: DispatchSemaphore) {
+        DispatchQueue.global(qos: .userInitiated).async(qos: .userInitiated, flags: .enforceQoS) {
+            release.signal()
+        }
+    }
     private func assertEmpty(_ destination: URL, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path), file: file, line: line)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path), [], file: file, line: line)
@@ -38,14 +47,17 @@ final class PhotosOutputWriteTests: XCTestCase {
         let operation = PhotosOutputWrite(destination: url())
         let entered = expectation(description: "Actually reached pre-write boundary")
         let release = DispatchSemaphore(value: 0)
-        operation.beforeWriteForTesting = { entered.fulfill(); _ = release.wait(timeout: .now() + 5) }
+        operation.beforeWriteForTesting = {
+            entered.fulfill()
+            XCTAssertEqual(release.wait(timeout: .now() + 5), .success, "Pre-write test barrier timed out")
+        }
         let done = expectation(description: "Canceled queued write completion"); done.assertForOverFulfill = true
         operation.start(jpeg: Data("old".utf8)) { _, result in
             if case .failure(.cancelled) = result {} else { XCTFail("Canceled queued write reached destination") }
             done.fulfill()
         }
         wait(for: [entered], timeout: 5)
-        operation.cancel(); release.signal()
+        operation.cancel(); releasePrewriteBarrier(release)
         wait(for: [done], timeout: 5); drainWrites(); assertEmpty(operation.destination)
     }
     func testNewWriteSucceedsAfterSupersedingPausedOldWrite() throws {
@@ -53,7 +65,10 @@ final class PhotosOutputWriteTests: XCTestCase {
         let newer = PhotosOutputWrite(destination: url())
         let entered = expectation(description: "Old queued operation entered")
         let release = DispatchSemaphore(value: 0)
-        old.beforeWriteForTesting = { entered.fulfill(); _ = release.wait(timeout: .now() + 5) }
+        old.beforeWriteForTesting = {
+            entered.fulfill()
+            XCTAssertEqual(release.wait(timeout: .now() + 5), .success, "Pre-write test barrier timed out")
+        }
         let oldDone = expectation(description: "Old write canceled"); oldDone.assertForOverFulfill = true
         old.start(jpeg: Data("old".utf8)) { _, result in
             if case .failure(.cancelled) = result {} else { XCTFail("Old result was committed") }; oldDone.fulfill()
@@ -65,7 +80,7 @@ final class PhotosOutputWriteTests: XCTestCase {
             if case .success = result {} else { XCTFail("Replacement failed: \(result)") }
             XCTAssertTrue(writer.claimForDelivery()); newDone.fulfill(); writer.completeDelivery()
         }
-        release.signal()
+        releasePrewriteBarrier(release)
         wait(for: [oldDone, newDone], timeout: 5)
         old.cancel(); drainWrites()
         XCTAssertEqual(try Data(contentsOf: newer.destination), Data("new".utf8))

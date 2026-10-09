@@ -177,4 +177,71 @@ class CorrectedRenderingTests(unittest.TestCase):
         self.assertEqual(matched,[admission.WORKFLOW])
 
 
+
+def validate_test_only_pause_source(source):
+    """Exact reversible edit: preserve all native method bodies except reviewed pauses."""
+    import hashlib
+    helper='''    // The production writer runs at User-initiated QoS. Give its test-only
+    // semaphore signal the same explicit QoS instead of inheriting XCTest's
+    // potentially Utility test-thread priority. Cancellation/replacement still
+    // happens on the test thread before this asynchronous release is submitted.
+    private func releasePrewriteBarrier(_ release: DispatchSemaphore) {
+        DispatchQueue.global(qos: .userInitiated).async(qos: .userInitiated, flags: .enforceQoS) {
+            release.signal()
+        }
+    }
+'''
+    paused='''{
+            entered.fulfill()
+            XCTAssertEqual(release.wait(timeout: .now() + 5), .success, "Pre-write test barrier timed out")
+        }'''
+    if source.count(helper)!=1 or source.count(paused)!=2:
+        raise ValueError('Changed matched-QoS helper or bounded asserted pause')
+    source=source.replace(helper,'',1).replace(paused,'{ entered.fulfill(); _ = release.wait(timeout: .now() + 5) }')
+    pairs=[('operation.cancel(); releasePrewriteBarrier(release)','operation.cancel(); release.signal()'),
+           ('        releasePrewriteBarrier(release)\n        wait(for: [oldDone, newDone]','        release.signal()\n        wait(for: [oldDone, newDone]')]
+    for current,original in pairs:
+        if source.count(current)!=1:raise ValueError('Changed release placement or race ordering')
+        source=source.replace(current,original,1)
+    if hashlib.sha256(source.encode()).hexdigest()!=admission.TEST_OVERLAY_BASE_SHA256:
+        raise ValueError('Unexpected native test change outside the two exact pauses')
+
+class TestOnlyPauseOverlayTests(unittest.TestCase):
+    def source(self):return (admission.ROOT/admission.TEST_OVERLAY).read_text()
+    def test_exact_reversible_overlay_preserves_nine_methods_and_all_race_assertions(self):
+        import re
+        validate_test_only_pause_source(self.source())
+        actual=re.findall(r'^    func (test[A-Za-z0-9_]+)\(',self.source(),re.M)
+        self.assertEqual(len(actual),9)
+        expected={x.split('.',1)[1] for x in MAC_REQUIRED_CASES if x.startswith('PhotosOutputWriteTests.')}
+        self.assertEqual(set(actual),expected)
+    def test_wrong_qos_unenforced_direct_or_ignored_timeout_mutations_fail(self):
+        source=self.source()
+        mutations=[source.replace('qos: .userInitiated','qos: .utility',1),
+                   source.replace(', flags: .enforceQoS','',1),
+                   source.replace('operation.cancel(); releasePrewriteBarrier(release)','operation.cancel(); release.signal()',1),
+                   source.replace('XCTAssertEqual(release.wait(timeout: .now() + 5), .success, "Pre-write test barrier timed out")','_ = release.wait(timeout: .now() + 5)',1),
+                   source.replace('timeout: .now() + 5','timeout: .now() + 50',1),
+                   source.replace('operation.cancel(); releasePrewriteBarrier(release)','releasePrewriteBarrier(release); operation.cancel()',1),
+                   source.replace('        old.cancel()\n','',1),
+                   source.replace('Data("new".utf8)','Data("old".utf8)',1)]
+        for changed in mutations:
+            with self.subTest(change=changed),self.assertRaises(ValueError):validate_test_only_pause_source(changed)
+    def test_native_dependency_rejects_unpinned_test_bytes_and_keeps_product_identity(self):
+        original=Path.read_bytes;target=admission.ROOT/admission.TEST_OVERLAY
+        def changed(path):return b'unreviewed test pause' if path==target else original(path)
+        with patch.object(Path,'read_bytes',changed),self.assertRaisesRegex(ValueError,'Unreviewed test-only'):
+            admission.check_dependencies()
+        self.assertEqual(admission.PRODUCT_SHA,'13e9a1ed63c6e7744803419f27e429a759df1209')
+        self.assertEqual(admission.CURRENT_UIKIT_FINGERPRINT,'f3da35962bd29598de93dacf810bf7d521478d91839e3e1d9cd99e2808548970')
+        self.assertEqual(len(admission.CONTROL_PATHS),10)
+        self.assertIn(admission.TEST_OVERLAY,admission.CONTROL_PATHS)
+        self.assertNotIn('CelluloidPhotoExtension/PhotosOutputWrite.swift',admission.CONTROL_PATHS)
+    def test_receipt_discloses_exact_test_override_and_requires_it_in_control_closure(self):
+        cfg,env,facts=CorrectedRenderingTests().facts()
+        result=admission.validate(cfg,env,facts)
+        self.assertEqual(result['test_control_overlay'],{'path':admission.TEST_OVERLAY,'base_product_sha256':admission.TEST_OVERLAY_BASE_SHA256,'control_sha256':admission.TEST_OVERLAY_SHA256})
+        facts['changed_paths'].remove(admission.TEST_OVERLAY)
+        with self.assertRaises(ValueError):admission.validate(cfg,env,facts)
+
 if __name__=='__main__':unittest.main()

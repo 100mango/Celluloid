@@ -13,7 +13,7 @@ concurrency:
 jobs:
   corrected-v2:
     # Root must review exact source/control and capacity, then open this and READY/sourceReady together.
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/celluloid-rendering-qualification' }}
+    if: ${{ false && github.event_name == 'push' && github.ref == 'refs/heads/celluloid-rendering-qualification' }}
     runs-on: xcode-27
     timeout-minutes: 45
     env:
