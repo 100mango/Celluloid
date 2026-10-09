@@ -1,0 +1,113 @@
+{
+  "schema": "Celluloid.OriginalUIKitTextBacking.1",
+  "provenance": {
+    "sourceSHA": "52bf7a9c04e2d91880ca4e8fd3418cd94d32bb7e",
+    "runID": 37220588828,
+    "jobID": 111491855676,
+    "jobURL": "https://github.com/100mango/Celluloid/actions/runs/37220588828/job/111491855676",
+    "logTimestampUTC": "2026-10-04T17:50:16.0665410Z",
+    "logRecord": "CELLULOID_TEXT_OBSERVATION",
+    "logRecordSHA256": "02de57587f26fbae9ff1b7a22635d8d21ab9cbc237146086df92f93eb461427b",
+    "logEvidenceFile": "historic-111491855676-text.log",
+    "independentRepeatJobID": 111510210718,
+    "independentRepeatJobURL": "https://github.com/100mango/Celluloid/actions/runs/37220588828/job/111510210718",
+    "independentRepeatTimestampUTC": "2026-10-04T19:22:58.0627460Z",
+    "independentRepeatRecordSHA256": "f494e1d587d24c071db17c973706d8d061699d29eb84147fa635b171b2f1050e",
+    "independentRepeatPNGIdentical": true,
+    "controlArtifactID": 11311410428,
+    "controlArtifactZIP_SHA256": "d66dc5a222b8ee794a1dd2bc9b6e3a8b8553bbf489271e630a38196f6c516a42",
+    "controlArtifactAvailability": "GitHub download returned 404 on 2026-10-09; PNG recovered from still-readable original job logs, not from archive download.",
+    "runtime": {
+      "version": "27.0",
+      "build": "24A434",
+      "architecture": "arm64",
+      "source": "Immutable platform-rendering-controls packet and original executed job."
+    },
+    "originalControlPacketSHA256": "7b03cc5efba3a4bfdf40f1be5e33ff67d94eb6166d9659f2f8acc114540cb7b1",
+    "originalFullControlPNG_SHA256": "022e2356f64946d66e0fb02c3a2a78b659c1d07f9fb0f0a5828bc20026a97aa3"
+  },
+  "archiveSHA256": "6bbbc00138b63bea61c55f6a0ebfb58a09328eeaa6fc1303ea5686a611e3c6de",
+  "image": {
+    "width": 56,
+    "height": 88,
+    "scale": 2,
+    "padding": 0,
+    "pngSHA256": "f867ce60c648fde2e504a0d7afd181ada660a2fcc3e4e3327b7cc9a5077d4958",
+    "pngBase64": "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"
+  },
+  "observation": {
+    "afterDiagnosticPublicBacking": {
+      "availableCGImage": false,
+      "bounds": "{{0, 0}, {27.874999999999996, 43.519999999999996}}",
+      "contentsGravity": "left",
+      "contentsRect": "{{0, 0}, {1, 1}}",
+      "contentsScale": 2,
+      "phase": "after explicitly labeled diagnostic rendering",
+      "position": "{75.168499999999995, 32}",
+      "reason": "Public contents does not expose a CGImage; dimensions unavailable",
+      "scope": "Public CALayer.contents of separate diagnostic BubbleLabel only"
+    },
+    "archiveSHA256": "6bbbc00138b63bea61c55f6a0ebfb58a09328eeaa6fc1303ea5686a611e3c6de",
+    "baselines": {
+      "availabilityNote": "Zero or unordered anchors are inconclusive; never substitute font-derived baseline estimates",
+      "first": 9.5,
+      "internalLineSpans": "unavailable from public UILabel API; not inferred from raster",
+      "last": 41,
+      "observedPositiveOrderedAnchors": true,
+      "space": "Diagnostic UILabel logical bounds; public Auto Layout baseline anchors"
+    },
+    "bounds": "{{0, 0}, {27.874999999999996, 43.519999999999996}}",
+    "clippingLimit": "The padded and unpadded observations use different public drawing methods; their difference alone cannot prove clipping",
+    "drawingMethod": "CALayer.render",
+    "font": ".SFUI-Regular",
+    "fontSize": 10,
+    "initialPublicBacking": {
+      "availableCGImage": false,
+      "bounds": "{{0, 0}, {27.874999999999996, 43.519999999999996}}",
+      "contentsGravity": "left",
+      "contentsRect": "{{0, 0}, {1, 1}}",
+      "contentsScale": 2,
+      "phase": "before any explicit diagnostic rendering",
+      "position": "{75.168499999999995, 32}",
+      "reason": "Public contents does not expose a CGImage; dimensions unavailable",
+      "scope": "Public CALayer.contents of separate diagnostic BubbleLabel only"
+    },
+    "kind": "separate-uikit-label-diagnostic",
+    "lineHeight": 11.93359375,
+    "padding": 0,
+    "scale": 2,
+    "schema": "Celluloid.TextObservation.1",
+    "scope": "New diagnostic raster; original shipping full compositor output and pixel assertions unchanged",
+    "text": "Hello, 世界 🎬",
+    "textRect": "{{0, 0}, {28, 36}}",
+    "utf16": [
+      72,
+      101,
+      108,
+      108,
+      111,
+      44,
+      32,
+      19990,
+      30028,
+      32,
+      55356,
+      57260
+    ]
+  },
+  "labelFontMetrics": {
+    "name": ".SFUI-Regular",
+    "pointSize": 10,
+    "lineHeight": 11.93359375,
+    "ascender": 9.521484375,
+    "descender": -2.412109375,
+    "leading": 0,
+    "source": "Same original job MAC_LAYER_UIKIT_COMPOSITOR_UIKIT_LAYOUT record at 2026-10-04T17:50:16.0598600Z"
+  },
+  "missingEvidence": [
+    "Actual shipping UILabel backing: public CALayer.contents returned no CGImage.",
+    "Actual UILabel internal line spans and drawn glyph positions.",
+    "Actual UIKit fallback color-font object, PostScript identity, glyph ID, font version/table hashes."
+  ],
+  "scope": "Frozen independently captured historical diagnostic only. Separate equivalently configured original UILabel CALayer.render; not a direct captured shipping backing and not standalone final-composite acceptance. No source/font/geometry/pixel fitting or control regeneration."
+}

@@ -105,12 +105,120 @@ final class MacPhotoAdjustmentTests: XCTestCase {
             "sourceSHA256": digest(sourceBytes), "sourceBase64": sourceBytes.base64EncodedString(),
             "renderedSHA256": digest(rendered), "renderedBase64": rendered.base64EncodedString(), "components": components]
         print("MAC_LAYER_ADJUSTMENT_FIXTURE " + String(decoding: try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]), as: UTF8.self))
+        try diagnoseProductionSmoothing(adjustment, source: source, sourceBytes: sourceBytes, archive: bytes, full: rendered)
         try compareCurrentMacWithOriginalUIKit2x(archive: bytes, source: sourceBytes, full: rendered, components: components)
         let decoded = try MacPhotoAdjustment.decode(bytes)
         XCTAssertEqual(decoded.bubbles[0].transform, bubble.transform); XCTAssertEqual(decoded.stickers[0].bounds, sticker.bounds)
         // This is NOT itself UIKit interoperability proof. The matching phone
         // test consumes these actual emitted bytes through its original reader.
     }
+    /// Probe only the two smoothing flags on the actual production glyph path.
+    /// The historical backing is a separate original UILabel diagnostic, never
+    /// a replacement for the independent final 2x compositor or AppKit oracle.
+    private func diagnoseProductionSmoothing(_ adjustment: MacPhotoAdjustment, source: SourceImage,
+                                             sourceBytes: Data, archive: Data, full: Data) throws {
+        func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+        func packet(_ name: String, expected: String) throws -> (Data, [String: Any]) {
+            let bytes = try Data(contentsOf: XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "json")))
+            XCTAssertEqual(digest(bytes), expected)
+            guard digest(bytes) == expected else { throw NSError(domain: "MacSmoothingProbe", code: 1) }
+            return (bytes, try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any]))
+        }
+        let (controlData, controls) = try packet("platform-rendering-controls", expected: "7b03cc5efba3a4bfdf40f1be5e33ff67d94eb6166d9659f2f8acc114540cb7b1")
+        let (backingData, backingControl) = try packet("original-uikit-2x-backing", expected: "e2f7b7c4fa0cee8d866c7a3475b052fa5ab6328c31b95465ae5c170a31fc0bdf")
+        let profiles = try XCTUnwrap(controls["profiles"] as? [String: Any])
+        let profile = try XCTUnwrap(profiles["2x"] as? [String: Any])
+        let fullImages = try XCTUnwrap(profile["images"] as? [String: Any])
+        let fullControl = try XCTUnwrap(fullImages["full"] as? [String: Any])
+        let originalFull = try XCTUnwrap(Data(base64Encoded: XCTUnwrap(fullControl["base64"] as? String)))
+        XCTAssertEqual(digest(originalFull), fullControl["sha256"] as? String)
+        let backingImage = try XCTUnwrap(backingControl["image"] as? [String: Any])
+        let originalBacking = try XCTUnwrap(Data(base64Encoded: XCTUnwrap(backingImage["pngBase64"] as? String)))
+        XCTAssertEqual(digest(originalBacking), "f867ce60c648fde2e504a0d7afd181ada660a2fcc3e4e3327b7cc9a5077d4958")
+        let bubble = try XCTUnwrap(adjustment.bubbles.first)
+        let asset = try NativeResources.legacyPhotosBubbleImage(named: bubble.asset)
+        let rect = try XCTUnwrap(MacPhotoRenderer.bubbleTextRect(bounds: bubble.bounds, imageWidth: asset.width,
+            imageHeight: asset.height, area: NativeResources.bubbleArea(named: bubble.asset)))
+        let layout = try MacPhotoTextLayout.make(bubble.text, rect: rect)
+        func rgba(_ bytes: Data, width: Int, height: Int) throws -> [UInt8] {
+            let input = try XCTUnwrap(CGImageSourceCreateWithData(bytes as CFData, nil))
+            let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(input, 0, nil))
+            XCTAssertEqual(image.width, width); XCTAssertEqual(image.height, height)
+            guard image.width == width, image.height == height else { throw NSError(domain: "MacSmoothingProbe", code: 2) }
+            let bitmap = try RasterCodec.bitmap(width: width, height: height)
+            bitmap.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            let storage = try XCTUnwrap(bitmap.data).assumingMemoryBound(to: UInt8.self)
+            return Array(UnsafeBufferPointer(start: storage, count: width * height * 4))
+        }
+        func compare(_ actual: Data, _ expected: Data, name: String, width: Int, height: Int, rows: Range<Int>) throws -> [String: Any] {
+            let a = try rgba(actual, width: width, height: height), b = try rgba(expected, width: width, height: height)
+            var maxima = [Int](repeating: 0, count: 4), count = 0
+            var minX = width, minY = height, maxX = -1, maxY = -1
+            for y in rows { for x in 0..<width {
+                var changed = false
+                for channel in 0..<4 {
+                    let index = (y * width + x) * 4 + channel
+                    let delta = abs(Int(a[index]) - Int(b[index]))
+                    maxima[channel] = max(maxima[channel], delta); changed = changed || delta > 2
+                }
+                if changed { count += 1; minX = min(minX, x); minY = min(minY, y); maxX = max(maxX, x); maxY = max(maxY, y) }
+            } }
+            return ["name": name, "rect": [0, rows.lowerBound, width, rows.count],
+                "maximumChannelDifference": maxima.max() ?? 0, "channelMaximumsRGBA": maxima,
+                "pixelsAboveTwo": count, "boundsAboveTwo": [minX, minY, maxX, maxY]]
+        }
+        XCTAssertFalse(MacPhotoTextRaster.diagnosticDisableFontSmoothing)
+        let defaultBacking = try RasterCodec.encode(MacPhotoTextRaster.make(layout, bounds: rect.size), as: .png)
+        let retainedBacking = try RasterCodec.encode(MacPhotoTextRaster.makeBacking(layout, bounds: rect.size).image, as: .png)
+        XCTAssertEqual(try rgba(defaultBacking, width: 56, height: 88), try rgba(retainedBacking, width: 56, height: 88),
+                       "This fixture's diagnostic surface must equal actual retained production backing")
+        let disabled: (Data, Data) = try MacPhotoTextRaster.$diagnosticDisableFontSmoothing.withValue(true) {
+            XCTAssertTrue(MacPhotoTextRaster.diagnosticDisableFontSmoothing)
+            let fullImage = try MacPhotoRenderer().render(adjustment, source: source, bytes: sourceBytes)
+            let backing = try MacPhotoTextRaster.make(layout, bounds: rect.size)
+            return (try RasterCodec.encode(fullImage, as: .png), try RasterCodec.encode(backing, as: .png))
+        }
+        XCTAssertFalse(MacPhotoTextRaster.diagnosticDisableFontSmoothing)
+        let restored = try RasterCodec.encode(MacPhotoRenderer().render(adjustment, source: source, bytes: sourceBytes), as: .png)
+        XCTAssertEqual(digest(restored), digest(full), "The scoped diagnostic must not change subsequent default output")
+        func imageRecord(_ bytes: Data) -> [String: String] { ["sha256": digest(bytes), "base64": bytes.base64EncodedString()] }
+        var variants: [[String: Any]] = []
+        for (name, rendered, backing) in [("default", full, defaultBacking), ("smoothing-disabled", disabled.0, disabled.1)] {
+            let comparisons = try [compare(rendered, originalFull, name: "full", width: 480, height: 640, rows: 0..<640),
+                compare(backing, originalBacking, name: "backing-all", width: 56, height: 88, rows: 0..<88),
+                compare(backing, originalBacking, name: "latin", width: 56, height: 88, rows: 0..<34),
+                compare(backing, originalBacking, name: "cjk", width: 56, height: 88, rows: 34..<55),
+                compare(backing, originalBacking, name: "emoji", width: 56, height: 88, rows: 55..<88)]
+            variants.append(["name": name, "full": imageRecord(rendered), "backing": imageRecord(backing), "comparisons": comparisons])
+        }
+        // Record real fallback metadata; never manufacture missing historical
+        // UIKit fallback/font-version evidence or change glyph positions.
+        let ctRuns = (CTFrameGetLines(layout.frame) as! [CTLine]).flatMap { CTLineGetGlyphRuns($0) as! [CTRun] }.filter { CTRunGetGlyphCount($0) > 0 }
+        let glyphRuns = try MacPhotoTextRaster.glyphRuns(layout, bounds: rect.size, padding: 0)
+        XCTAssertEqual(ctRuns.count, glyphRuns.count)
+        let fonts: [[String: Any]] = zip(ctRuns, glyphRuns).map { ctRun, run in
+            let font = (CTRunGetAttributes(ctRun) as NSDictionary)[kCTFontAttributeName] as! CTFont
+            let m = run.textMatrix
+            return ["font": CTFontCopyPostScriptName(font) as String, "size": CTFontGetSize(font),
+                "version": (CTFontCopyName(font, kCTFontVersionNameKey) as String?) ?? "unavailable",
+                "glyphs": run.glyphs.map(Int.init), "positions": run.positions.map { [$0.x, $0.y] },
+                "sourceRange": [run.sourceRange.location, run.sourceRange.length], "textMatrix": [m.a, m.b, m.c, m.d, m.tx, m.ty]]
+        }
+        let record: [String: Any] = ["schema": "Celluloid.MacSmoothingProbe.1", "scope": "synthetic-pre-host-only",
+            "archiveSHA256": digest(archive), "sourcePNG_SHA256": digest(sourceBytes),
+            "controlFileSHA256": digest(controlData), "originalBackingFixtureSHA256": digest(backingData),
+            "originalBackingPNG_SHA256": digest(originalBacking),
+            "layout": ["textRect": [rect.minX, rect.minY, rect.width, rect.height], "fontSize": layout.fontSize,
+                "lineHeight": layout.lineHeight, "naturalBlockHeight": layout.typographicHeight,
+                "frameAllocationHeight": layout.height, "backingScale": MacPhotoTextRaster.scale] as [String: Any],
+            "fonts": fonts, "variants": variants, "defaultRestoredPNG_SHA256": digest(restored),
+            "diagnosticScopeRestored": !MacPhotoTextRaster.diagnosticDisableFontSmoothing,
+            "layeredPhotosOutputQualified": false]
+        let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
+        XCTAssertLessThanOrEqual(data.count, 100_000)
+        print("MAC_SMOOTHING_PROBE " + String(decoding: data, as: UTF8.self))
+    }
+
     /// A strict current-render versus immutable original-UIKit 2x probe.
     /// This is pre-host evidence; the production layered Photos guard stays on.
     private func compareCurrentMacWithOriginalUIKit2x(archive: Data, source: Data, full: Data,

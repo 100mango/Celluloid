@@ -207,6 +207,12 @@ struct MacPhotoTextLayout {
 }
 
 enum MacPhotoTextRaster {
+    #if DEBUG
+    // Scoped native diagnostic only. No shared mutable renderer state; default
+    // behavior and Release code remain unchanged while the original UIKit
+    // raster is compared with the actual AppKit glyph path.
+    @TaskLocal static var diagnosticDisableFontSmoothing = false
+    #endif
     static let scale: CGFloat = 2
     struct Backing {
         let image: CGImage
@@ -331,6 +337,12 @@ enum MacPhotoTextRaster {
                 run.font.set(in: graphics)
                 bitmap.setFillColor(CGColor(gray: 0, alpha: 1))
                 bitmap.textMatrix = run.textMatrix
+                #if DEBUG
+                if diagnosticDisableFontSmoothing {
+                    bitmap.setAllowsFontSmoothing(false)
+                    bitmap.setShouldSmoothFonts(false)
+                }
+                #endif
                 let attributes: [NSAttributedString.Key: Any] = [.font: run.font, .foregroundColor: NSColor.black]
                 run.glyphs.withUnsafeBufferPointer { glyphs in
                     run.positions.withUnsafeBufferPointer { positions in
