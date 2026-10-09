@@ -15,6 +15,17 @@ class HostDiagnostic(Acceptance):
     def command(self, name, command, seconds, simulator=False, allow_failure=False, nested_owned=False):
         require(not self.uncertain, 'Uncertain Photos native state blocks further command dispatch')
         dispatched=time.monotonic();result=None
+        if name == 'photos-bootstrap' and nested_owned:
+            require(seconds == 750, 'Photos bootstrap parent cap differs')
+            parent_path=OUT/'photos-bootstrap-dispatch-timing.json'
+            require(not parent_path.exists(), 'Refuse stale Photos bootstrap parent deadline')
+            # This receipt is written at the same dispatch clock used below;
+            # shell/Python startup and the fresh query consume this original cap.
+            save(parent_path, {'phase':name,'dispatch_started_monotonic':dispatched,
+                 'deadline_monotonic':dispatched+seconds,'limit_seconds':seconds,
+                 'source_sha':self.source,'run_id':os.environ.get('GITHUB_RUN_ID'),
+                 'run_attempt':os.environ.get('GITHUB_RUN_ATTEMPT'),'device_id':self.device,
+                 'state':'dispatched'})
         # Reuse the existing group-owned adapter, but include interpreter/startup
         # latency in the parent deadline. Nested bootstrap retains its own caps.
         if not nested_owned:

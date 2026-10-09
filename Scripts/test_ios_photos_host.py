@@ -372,11 +372,149 @@ class PhotosParentDeadlineTests(unittest.TestCase):
                 self.assertEqual(node.elts[1].value,'-S');self.assertEqual(node.elts[2].value,'Scripts/run_bounded.py');self.assertTrue(any(isinstance(e,ast.Constant) and e.value=='--deadline-monotonic' for e in node.elts))
             count+=len(lists)
         self.assertEqual(count,4)
-        gate=(root/'Scripts/swiftui_photos_gate.py').read_text();self.assertIn("if expected_ref == 'refs/heads/cell-ios-photos-host-final':\n        observed = fresh_owned_device_observation(output)\n    else:\n        observed = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], text=True, timeout=20))",gate)
+        gate=(root/'Scripts/swiftui_photos_gate.py').read_text();self.assertIn("if expected_ref == 'refs/heads/cell-ios-photos-host-final':\n        if stage != 'bootstrap':raise ValueError('Dedicated host route may only reuse the fixture bootstrap')\n        observed = fresh_owned_device_observation(output, bootstrap_parent=photos_bootstrap_parent_deadline(receipt_path))\n    else:\n        observed = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], text=True, timeout=20))",gate)
         wrapper=(root/'Scripts/run_bounded.py').read_text();self.assertIn("import time\n_wrapper_entry_monotonic = time.monotonic()\n\nimport argparse",wrapper)
         self.assertLess(wrapper.index("parser.error('Invalid reviewed Photos-host parent deadline')"),wrapper.index("photos_timing('wrapper-ready')"))
         self.assertIn('            build/swiftui-acceptance/',(root/host.PROBE_WORKFLOW).read_text())
 
+
+
+class BootstrapQueryBudgetTests(unittest.TestCase):
+    def context(self, root):
+        source='a'*40
+        env={'GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_EVENT_NAME':'push','GITHUB_REF':'refs/heads/cell-ios-photos-host-final',
+             'GITHUB_WORKFLOW_REF':'100mango/Celluloid/.github/workflows/ios-photos-host-probe.yml@refs/heads/cell-ios-photos-host-final',
+             'GITHUB_SHA':source,'GITHUB_WORKFLOW_SHA':source,'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1'}
+        owner={'schema':'celluloid.swiftui.owned-simulator.v1','source_sha':source,'run_id':'123','run_attempt':'1',
+               'device_id':'12345678-1234-1234-1234-123456789AB0','device_name':'Celluloid iOS27 iPhone SE (3rd generation)',
+               'runtime_id':'com.apple.CoreSimulator.SimRuntime.iOS-27-0','created_by_this_job':True,'absent_before_create':True,
+               'job_started_monotonic':100.0,'work_deadline_monotonic':2380.0}
+        parent={'phase':'photos-bootstrap','dispatch_started_monotonic':100.0,'deadline_monotonic':850.0,'limit_seconds':750,
+                **{key:owner[key] for key in ['source_sha','run_id','run_attempt','device_id']},'state':'dispatched'}
+        path=root/'build/owned-simulator.json';path.parent.mkdir(parents=True);path.write_text(json.dumps(owner))
+        timing=path.parent/'photos-bootstrap-dispatch-timing.json';timing.write_text(json.dumps(parent))
+        return env,owner,parent,path,timing
+
+    def testOnlyAdmittedBootstrapGetsSixtyAndHostDefaultStaysTwenty(self):
+        import os
+        from unittest.mock import patch
+        import swiftui_photos_gate as gate
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);env,owner,parent,path,timing=self.context(root);calls=[];clock=[110.0]
+            observed={'devices':{owner['runtime_id']:[{'udid':owner['device_id'],'name':owner['device_name'],'state':'Booted','isAvailable':True}]}}
+            def invoke(command,stdout,stderr):calls.append(command);stdout.write(json.dumps(observed).encode());clock[0]+=1;return 0
+            with patch.dict(os.environ,env),patch.object(gate.Path,'cwd',return_value=root),patch.object(gate.time,'monotonic',side_effect=lambda:clock[0]),patch.object(gate.subprocess,'check_output',return_value=owner['source_sha']),patch.object(gate.subprocess,'run'),patch.object(gate.subprocess,'call',side_effect=invoke):
+                gate.admission('bootstrap',owner['device_id'],root/'.build/ios',root/'build/photos',path,env['GITHUB_REF'])
+                self.assertEqual(calls[-1][calls[-1].index('--seconds')+1],'60')
+                self.assertEqual(calls[-1][calls[-1].index('--deadline-monotonic')+1],'170.0')
+                for stage in ['legacy','pristine','preservation']:
+                    with self.subTest(stage=stage),self.assertRaisesRegex(ValueError,'only reuse'):gate.admission(stage,owner['device_id'],root/'.build/ios',root/'build/photos',path,env['GITHUB_REF'])
+                self.assertEqual(len(calls),1)
+                gate.fresh_owned_device_observation(root/'build/actual-host')
+                self.assertEqual(calls[-1][calls[-1].index('--seconds')+1],'20')
+                self.assertEqual(calls[-1][-6:],['xcrun','simctl','list','devices','available','-j'])
+            self.assertEqual(json.loads((root/'build/photos/owned-device-observation.json').read_text())['limit_seconds'],60)
+            self.assertEqual(json.loads((root/'build/actual-host/owned-device-observation.json').read_text())['limit_seconds'],20)
+
+    def testQueryAndInterpreterDelayConsumeOriginalParentWithoutExtending720(self):
+        import contextlib,io,os,sys
+        from unittest.mock import patch
+        import swiftui_photos_gate as gate
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);env,owner,parent,path,timing=self.context(root)
+            for now,expected in [(110.0,830.0),(170.0,850.0),(230.0,850.0)]:
+                with self.subTest(now=now),patch.dict(os.environ,env),patch.object(gate.time,'monotonic',return_value=now),patch.object(sys,'argv',['swiftui_photos_gate.py','budget','bootstrap',str(path),'deadline']),contextlib.redirect_stdout(io.StringIO()) as output:gate.main()
+                deadline=float(output.getvalue());self.assertEqual(deadline,expected);self.assertLessEqual(deadline-now,720);self.assertLessEqual(deadline,parent['deadline_monotonic'])
+            # The historical route still uses its original independently started720.
+            with patch.dict(os.environ,dict(env,GITHUB_REF='refs/heads/swiftui-first-native')),patch.object(gate.time,'monotonic',return_value=170.0),patch.object(sys,'argv',['swiftui_photos_gate.py','budget','bootstrap',str(path),'deadline']),contextlib.redirect_stdout(io.StringIO()) as output:gate.main()
+            self.assertEqual(float(output.getvalue()),890.0)
+
+    def testMissingForgedExpiredOrCompletedParentRejectsBeforeFreshQuery(self):
+        import os
+        from unittest.mock import patch
+        import swiftui_photos_gate as gate
+        changes=[None,{'source_sha':'b'*40},{'run_id':'124'},{'run_attempt':'2'},{'device_id':'other'},
+                 {'deadline_monotonic':851.0},{'limit_seconds':751},{'limit_seconds':True},{'dispatch_started_monotonic':111.0},
+                 {'deadline_monotonic':float('nan')},{'state':'completed'},{'extra':1}]
+        for changed in changes:
+            with self.subTest(changed=changed),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);env,owner,parent,path,timing=self.context(root)
+                if changed is None:timing.unlink()
+                else:timing.write_text(json.dumps(dict(parent,**changed)))
+                with patch.dict(os.environ,env),patch.object(gate.Path,'cwd',return_value=root),patch.object(gate.time,'monotonic',return_value=110.0),patch.object(gate.subprocess,'check_output',return_value=owner['source_sha']),patch.object(gate.subprocess,'run'),patch.object(gate.subprocess,'call') as native:
+                    with self.assertRaises(ValueError):gate.admission('bootstrap',owner['device_id'],root/'.build/ios',root/'build/photos',path,env['GITHUB_REF'])
+                    native.assert_not_called()
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);env,owner,parent,path,timing=self.context(root)
+            for now in [850.0,851.0]:
+                with patch.dict(os.environ,env),self.assertRaises(ValueError):gate.photos_bootstrap_parent_deadline(path,now=now)
+            for key,value in [('GITHUB_REF','refs/heads/swiftui-first-native'),('GITHUB_WORKFLOW_SHA','b'*40),('GITHUB_RUN_ATTEMPT','2')]:
+                with patch.dict(os.environ,dict(env,**{key:value})),self.assertRaises(ValueError):gate.photos_bootstrap_parent_deadline(path,now=110.0)
+            with patch.dict(os.environ,env),patch.object(gate.time,'monotonic',return_value=781.0),patch.object(gate.subprocess,'call') as native,self.assertRaisesRegex(ValueError,'cannot fit'):gate.fresh_owned_device_observation(root/'build/photos',bootstrap_parent=850.0)
+            native.assert_not_called()
+
+    def testSixtySecondLateZeroStillRejectsOneFreshQueryWithoutRetry(self):
+        from unittest.mock import patch
+        import swiftui_photos_gate as gate
+        for duration in [59.0,61.0]:
+            with self.subTest(duration=duration),tempfile.TemporaryDirectory() as folder:
+                clock=[100.0];calls=[]
+                def invoke(command,stdout,stderr):calls.append(command);stdout.write(b'{"devices":{}}');clock[0]+=duration;return 0
+                with patch.object(gate.time,'monotonic',side_effect=lambda:clock[0]),patch.object(gate.subprocess,'call',side_effect=invoke):
+                    if duration>60:
+                        with self.assertRaisesRegex(ValueError,'parent deadline'):gate.fresh_owned_device_observation(Path(folder),bootstrap_parent=850.0)
+                    else:self.assertEqual(gate.fresh_owned_device_observation(Path(folder),bootstrap_parent=850.0),{'devices':{}})
+                self.assertEqual(len(calls),1);receipt=json.loads((Path(folder)/'owned-device-observation.json').read_text());self.assertEqual(receipt['limit_seconds'],60);self.assertIs(receipt['prohibit_further_native'],duration>60)
+
+    def testDriverPublishesBoundParentBeforeNestedDispatchAtIdenticalClock(self):
+        import os
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as driver
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);env,owner,parent,path,timing=self.context(root);timing.unlink();clock=[100.0]
+            diagnostic=object.__new__(driver.HostDiagnostic);diagnostic.source=owner['source_sha'];diagnostic.device=owner['device_id'];diagnostic.uncertain=False;diagnostic.failures=[]
+            def invoke(self,*args,**kwargs):
+                receipt=json.loads(timing.read_text());self_test.assertEqual(receipt,parent);clock[0]=111.0;return 0,'ok'
+            self_test=self
+            with patch.dict(os.environ,env),patch.object(driver,'OUT',path.parent),patch.object(driver.time,'monotonic',side_effect=lambda:clock[0]),patch.object(driver.Acceptance,'command',invoke):
+                self.assertEqual(diagnostic.command('photos-bootstrap',['owned-nested-command'],750,simulator=True,nested_owned=True),(0,'ok'))
+                final=json.loads(timing.read_text());self.assertEqual(final['deadline_monotonic'],850.0);self.assertEqual(final['elapsed_seconds'],11.0)
+                with self.assertRaisesRegex(ValueError,'stale'):diagnostic.command('photos-bootstrap',['must-not-run'],750,simulator=True,nested_owned=True)
+
+
+    def testSetupCommandDeadlinesRemainInsideParentAndHistoricalArgvIsUnchanged(self):
+        import contextlib,io,re,sys,subprocess,time
+        from unittest.mock import patch
+        root=Path(__file__).resolve().parents[1];shell=(root/'Scripts/run_swiftui_photos_gate.sh').read_text()
+        code=re.search(r"command_deadline=\$\(python3 -S -c '(.*?)' \"\$seconds\" \"\$bootstrap_deadline\"\)",shell,re.S).group(1)
+        for seconds in [45,60]:
+            for now,ok in [(110.0,True),(850.0-seconds-10,True),(851.0-seconds-10,False),(851.0,False)]:
+                with self.subTest(seconds=seconds,now=now),patch.object(sys,'argv',['-c',str(seconds),'850.0']),patch.object(time,'monotonic',return_value=now),contextlib.redirect_stdout(io.StringIO()) as out:
+                    if ok:exec(compile(code,'exact-setup-deadline','exec'),{})
+                    else:
+                        with self.assertRaisesRegex(SystemExit,'no dispatch'):exec(compile(code,'exact-setup-deadline','exec'),{})
+                if ok:self.assertEqual(float(out.getvalue()),now+seconds);self.assertLessEqual(float(out.getvalue())+10,850.0)
+        calls=re.findall(r'^  bootstrap_setup (\d+) ([a-z-]+) \\$',shell,re.M)
+        self.assertEqual(calls,[('45','seeded-fixture-generation'),('45','seeded-owned-registration'),('60','seeded-owned-photos-grant')])
+        body=shell[shell.index('  bootstrap_setup() {'):shell.index('  bootstrap_setup 45 seeded-fixture-generation')]
+        for ref in ['refs/heads/swiftui-first-native','refs/heads/other']:
+            # Execute only the exact extracted shell function with a harmless
+            # python3 recorder; no native tool or real wrapper is dispatched.
+            script='set -euo pipefail\nsource_ref='+ref+'\nbootstrap_deadline=850\npython3() { printf "<%s>\\n" "$@"; }\n'+body+'\nbootstrap_setup 45 old-label owned-command arg\n'
+            result=subprocess.run(['/bin/bash','-c',script],text=True,capture_output=True,timeout=5)
+            self.assertEqual(result.returncode,0,result.stderr);self.assertEqual(result.stdout.splitlines(),['<Scripts/run_bounded.py>','<--seconds>','<45>','<--label>','<old-label>','<owned-command>','<arg>'])
+        self.assertIn('if [[ "$source_ref" = refs/heads/cell-ios-photos-host-final ]]; then',body)
+        self.assertIn('--deadline-monotonic "$command_deadline" "$@"',body)
+        self.assertIn('|| return $?',body)
+        for status in [0,9]:
+            # A refused/expired deadline calculation must not reach the wrapper.
+            fake='python3() { if [[ "$1" = -S ]]; then '
+            fake+=('printf "155.0\\n"; return 0;' if status==0 else 'return 9;')
+            fake+=' fi; printf "<%s>\\n" "$@"; }\n'
+            script='set -euo pipefail\nsource_ref=refs/heads/cell-ios-photos-host-final\nbootstrap_deadline=850\n'+fake+body+'\nbootstrap_setup 45 current-label owned-command arg\n'
+            result=subprocess.run(['/bin/bash','-c',script],text=True,capture_output=True,timeout=5)
+            self.assertEqual(result.returncode,status,result.stderr)
+            self.assertEqual(result.stdout.splitlines(),['<Scripts/run_bounded.py>','<--seconds>','<45>','<--label>','<current-label>','<--deadline-monotonic>','<155.0>','<owned-command>','<arg>'] if status==0 else [])
 
 
 if __name__ == '__main__': unittest.main()

@@ -132,24 +132,51 @@ def phase_budget(stage, receipt, now=None):
     return min(720 if stage == 'bootstrap' else 600, remaining)
 
 
-def fresh_owned_device_observation(output):
-    """One fresh query; no cache, filtering guess, retry or expanded20s cap."""
+def photos_bootstrap_parent_deadline(receipt_path, now=None):
+    """Read the current Photos parent's pre-dispatch receipt; never reset its clock."""
+    now=time.monotonic() if now is None else now
+    environment=os.environ
+    expected={'GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_EVENT_NAME':'push',
+              'GITHUB_REF':'refs/heads/cell-ios-photos-host-final',
+              'GITHUB_WORKFLOW_REF':'100mango/Celluloid/.github/workflows/ios-photos-host-probe.yml@refs/heads/cell-ios-photos-host-final',
+              'GITHUB_RUN_ATTEMPT':'1'}
+    if any(environment.get(key)!=value for key,value in expected.items()):raise ValueError('Wrong Photos bootstrap parent route')
+    owner=load(receipt_path);path=Path(receipt_path).parent/'photos-bootstrap-dispatch-timing.json'
+    if not path.is_file() or path.is_symlink() or path.stat().st_size>4096:raise ValueError('Missing bounded Photos bootstrap parent deadline')
+    parent=load(path)
+    fields={'phase','dispatch_started_monotonic','deadline_monotonic','limit_seconds','source_sha','run_id','run_attempt','device_id','state'}
+    if set(parent)!=fields or parent['phase']!='photos-bootstrap' or parent['state']!='dispatched' or type(parent['limit_seconds']) is not int or parent['limit_seconds']!=750:raise ValueError('Invalid Photos bootstrap parent receipt')
+    source=environment.get('GITHUB_SHA','');run=environment.get('GITHUB_RUN_ID','')
+    if not re.fullmatch('[0-9a-f]{40}',source) or environment.get('GITHUB_WORKFLOW_SHA')!=source or not re.fullmatch('[1-9][0-9]*',run):raise ValueError('Missing Photos bootstrap parent identity')
+    for key,value in {'source_sha':source,'run_id':run,'run_attempt':'1','device_id':owner.get('device_id')}.items():
+        if not value or parent[key]!=value or owner.get(key)!=value:raise ValueError('Mismatched Photos bootstrap parent '+key)
+    start=parent['dispatch_started_monotonic'];deadline=parent['deadline_monotonic']
+    job_start=owner.get('job_started_monotonic');work_deadline=owner.get('work_deadline_monotonic')
+    if not all(type(value) in [int,float] and math.isfinite(value) for value in [now,start,deadline,job_start,work_deadline]):raise ValueError('Invalid Photos bootstrap parent clock')
+    if not (0 <= job_start <= start <= now < deadline == start+750 and work_deadline==job_start+2280 and deadline+15 <= work_deadline):raise ValueError('Expired or expanded Photos bootstrap parent deadline')
+    return deadline
+
+
+def fresh_owned_device_observation(output, *, bootstrap_parent=None):
+    """One fresh query. Only admitted bootstrap preparation gets sixty seconds."""
     output=Path(output);output.mkdir(parents=True,exist_ok=True)
     log=output/'owned-device-observation.log';receipt=output/'owned-device-observation.json'
     if log.exists() or receipt.exists():raise ValueError('Refuse stale owned-device observation')
-    started=time.monotonic();deadline=started+20
-    command=[sys.executable,'-S','Scripts/run_bounded.py','--seconds','20','--label','photos-owned-device-observation',
+    started=time.monotonic();seconds=60 if bootstrap_parent is not None else 20
+    if bootstrap_parent is not None and (type(bootstrap_parent) not in [int,float] or not math.isfinite(bootstrap_parent) or started+seconds+10>bootstrap_parent):raise ValueError('Photos bootstrap parent cannot fit fresh query and cleanup; no dispatch')
+    deadline=started+seconds
+    command=[sys.executable,'-S','Scripts/run_bounded.py','--seconds',str(seconds),'--label','photos-owned-device-observation',
              '--deadline-monotonic',str(deadline),'xcrun','simctl','list','devices','available','-j']
     with log.open('wb') as stream:
         code=subprocess.call(command,stdout=stream,stderr=subprocess.STDOUT)
     elapsed=time.monotonic()-started;raw=log.read_text(errors='replace')
-    late=elapsed>20;unsafe=(code!=0 or late or 'BOUNDED_COMMAND_TIMEOUT' in raw or 'CLEANUP_UNCONFIRMED' in raw)
+    late=elapsed>seconds;unsafe=(code!=0 or late or 'BOUNDED_COMMAND_TIMEOUT' in raw or 'CLEANUP_UNCONFIRMED' in raw)
     dump(receipt,{'schema':'Celluloid.PhotosOwnedDeviceObservation.1','source_sha':os.environ.get('GITHUB_SHA'),
          'run_id':os.environ.get('GITHUB_RUN_ID'),'run_attempt':os.environ.get('GITHUB_RUN_ATTEMPT'),
-         'started_monotonic':started,'deadline_monotonic':deadline,'elapsed_seconds':elapsed,'limit_seconds':20,
+         'started_monotonic':started,'deadline_monotonic':deadline,'elapsed_seconds':elapsed,'limit_seconds':seconds,
          'exit_code':code,'late_completion':late,'prohibit_further_native':unsafe,
          'log_sha256':hashlib.sha256(log.read_bytes()).hexdigest(),'fresh_query_count':1})
-    if unsafe:raise ValueError('Fresh owned-device query failed or exceeded its parent20s deadline; no further native work')
+    if unsafe:raise ValueError('Fresh owned-device query failed or exceeded its parent deadline; no further native work')
     rows=[]
     for match in re.finditer(r'^\s*\{',raw,re.M):
         try:value,_=json.JSONDecoder().raw_decode(raw[match.start():].lstrip())
@@ -169,11 +196,10 @@ def admission(stage, device, derived, output, receipt_path, expected_ref='refs/h
     receipt = load(receipt_path)
     phase_budget(stage, receipt)
     if expected_ref == 'refs/heads/cell-ios-photos-host-final':
-        observed = fresh_owned_device_observation(output)
+        if stage != 'bootstrap':raise ValueError('Dedicated host route may only reuse the fixture bootstrap')
+        observed = fresh_owned_device_observation(output, bootstrap_parent=photos_bootstrap_parent_deadline(receipt_path))
     else:
         observed = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], text=True, timeout=20))
-    if expected_ref == 'refs/heads/cell-ios-photos-host-final' and stage != 'bootstrap':
-        raise ValueError('Dedicated host route may only reuse the fixture bootstrap')
     binding = validate_owner(receipt, device, os.environ, observed, expected_ref=expected_ref)
     phase_budget(stage, receipt)
     if stage == 'bootstrap' and (output / 'verified-library.json').exists(): raise ValueError('Bootstrap already succeeded; do not import twice')
@@ -270,6 +296,8 @@ def main():
     elif options.action == 'budget':
         stage, receipt_path, kind = args
         now = time.monotonic(); seconds = phase_budget(stage, load(receipt_path), now=now)
+        if stage == 'bootstrap' and os.environ.get('GITHUB_REF') == 'refs/heads/cell-ios-photos-host-final':
+            seconds = min(seconds, photos_bootstrap_parent_deadline(receipt_path, now=now)-now)
         print(now + seconds if kind == 'deadline' else seconds)
     elif options.action == 'selectors':
         for item in methods(args[0]): print('-only-testing:' + item)

@@ -21,14 +21,27 @@ trap finish EXIT
 
 if [[ "$phase" = bootstrap ]]; then
   bootstrap_deadline=$(python3 Scripts/swiftui_photos_gate.py budget bootstrap "$owner" deadline)
-  python3 Scripts/run_bounded.py --seconds 45 --label seeded-fixture-generation \
+  bootstrap_setup() {
+    local seconds=$1 label=$2; shift 2
+    if [[ "$source_ref" = refs/heads/cell-ios-photos-host-final ]]; then
+      local command_deadline
+      command_deadline=$(python3 -S -c 'import sys,time
+now=time.monotonic(); seconds=float(sys.argv[1]); parent=float(sys.argv[2])
+if now+seconds+10>parent: raise SystemExit("Shared Photos bootstrap cannot fit setup command and cleanup; no dispatch")
+print(min(now+seconds,parent-10))' "$seconds" "$bootstrap_deadline") || return $?
+      python3 Scripts/run_bounded.py --seconds "$seconds" --label "$label" --deadline-monotonic "$command_deadline" "$@"
+    else
+      python3 Scripts/run_bounded.py --seconds "$seconds" --label "$label" "$@"
+    fi
+  }
+  bootstrap_setup 45 seeded-fixture-generation \
     python3 Scripts/create_fixture.py > "$out/fixture-generation.log" 2>&1
   # Refuse unexpected leftover fixture files before any library mutation.
   python3 Scripts/swiftui_photos_gate.py fixture-files > "$out/fixture-files.json"
-  python3 Scripts/run_bounded.py --seconds 45 --label seeded-owned-registration \
+  bootstrap_setup 45 seeded-owned-registration \
     xcrun simctl get_app_container "$device" Mango.Celluloid app > "$out/registration.log" 2>&1
   # The admission above bound this exact freshly-created simulator to the job.
-  python3 Scripts/run_bounded.py --seconds 60 --label seeded-owned-photos-grant \
+  bootstrap_setup 60 seeded-owned-photos-grant \
     xcrun simctl privacy "$device" grant photos Mango.Celluloid > "$out/photos-grant.log" 2>&1
   # Existing bootstrap retains command ceilings, real authorization/readiness,
   # one addmedia per fixture and post-timeout reconciliation without reimport.
