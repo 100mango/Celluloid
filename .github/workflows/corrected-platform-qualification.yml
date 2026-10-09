@@ -1,0 +1,271 @@
+# Generated from the default-closed selected-platform config. No job is active until root sets READY and regenerates.
+name: Corrected Celluloid one-platform unsigned qualification
+'on':
+  push:
+    branches:
+    - celluloid-final-vision-qualification
+    paths:
+    - .github/corrected-native-qualification.json
+    - .github/workflows/corrected-platform-qualification.yml
+    - Scripts/qualify_corrected_platform_source.py
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-current-platform-qualification
+  cancel-in-progress: false
+jobs:
+  native-mac:
+    if: ${{ true && github.event_name == 'push' && github.ref == 'refs/heads/celluloid-final-vision-qualification' && 'vision' == 'mac' }}
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      TZ: UTC
+      QUALIFICATION_PLATFORM: vision
+      CELLULOID_EVIDENCE_PLATFORM: mac
+    steps:
+    - name: Reserve Mac job collection time
+      shell: bash
+      run: |
+        python3 - <<'PY'
+        import json, os, time
+        from pathlib import Path
+        # Four minutes remain outside this conservative first-step clock for
+        # runner/action setup; final proof/upload gets a separate five minutes.
+        Path(os.environ['RUNNER_TEMP'],'mac-job-clock.json').write_text(json.dumps({
+          'source_sha':os.environ['GITHUB_SHA'], 'started_monotonic':time.monotonic(),
+          'started_unix':time.time(), 'execution_budget_seconds':41*60}))
+        PY
+    - name: Check out exact reviewed control and corrected product
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      timeout-minutes: 3
+      with:
+        persist-credentials: false
+        ref: ${{ github.sha }}
+        fetch-depth: 64
+    - name: Admit exact corrected product root and control chain
+      id: admit
+      timeout-minutes: 2
+      run: python3 -B Scripts/qualify_corrected_platform_source.py --phase before
+    - name: Verify stable unsigned native prerequisites
+      id: native_setup
+      timeout-minutes: 5
+      if: ${{ steps.admit.outcome == 'success' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        sw_vers
+        xcodebuild -version > "$RUNNER_TEMP/native-qualification-xcode.txt"
+        cat "$RUNNER_TEMP/native-qualification-xcode.txt"
+        grep -Fx 'Xcode 27.0' "$RUNNER_TEMP/native-qualification-xcode.txt"
+        xcodebuild -showsdks
+        python3 Scripts/validate_native_sources.py
+        python3 Scripts/test_native_evidence.py
+        python3 Scripts/test_native_process.py
+        python3 Scripts/test_native_release.py
+        swift -swift-version 5 Scripts/materialize_native_icons.swift
+        python3 Scripts/verify_native_icon_inputs.py
+        python3 Scripts/validate_native_localization.py
+    - name: Portable domain tests
+      shell: bash
+      run: |
+        set -euo pipefail
+        swift test --package-path Packages/CelluloidCore --scratch-path "$RUNNER_TEMP/celluloid-core" 2>&1 | tee "$RUNNER_TEMP/domain.log"
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (success()) }}
+    - name: Renderer tests
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (success() || failure()) }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        swift test --package-path Packages/CelluloidRendering --scratch-path "$RUNNER_TEMP/celluloid-rendering" 2>&1 | tee "$RUNNER_TEMP/rendering.log"
+    - name: Native Mac document tests
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (success() || failure()) }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMac -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-native" -resultBundlePath "$RUNNER_TEMP/CelluloidMac.xcresult" CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/mac.log"
+      id: mac_units
+    - name: Require all Mac extension cases and exact manufactured fixtures
+      id: mac_producer
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (success() || failure()) }}
+      shell: bash
+      run: |
+        python3 Scripts/verify_required_interoperability.py mac --platform-contract --log "$RUNNER_TEMP/mac.log" --output "$RUNNER_TEMP/mac-required-tests.json"
+    - name: Native Mac UI launch and editing
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && steps.mac_units.outcome == 'success' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacUI -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-native" -resultBundlePath "$RUNNER_TEMP/CelluloidMacUI.xcresult" CODE_SIGNING_ALLOWED=NO test 2>&1 | tee "$RUNNER_TEMP/mac-ui.log"
+    - name: Isolated native Mac Photos extension build
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (success() || failure()) }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMacPhotosExtension -configuration Release -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-mac-photos" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$RUNNER_TEMP/mac-photos-build.log"
+    - name: Unsigned native Mac Release packaging
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (success() || failure()) }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidMac -configuration Release -destination 'generic/platform=macOS' -derivedDataPath "$RUNNER_TEMP/celluloid-release" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$RUNNER_TEMP/mac-release.log"
+        python3 Scripts/verify_native_release.py mac "$RUNNER_TEMP/celluloid-release/Build/Products/Release/CelluloidMac.app"
+    - name: Verify current source and control stayed unchanged
+      if: ${{ always() && steps.admit.outcome == 'success' }}
+      timeout-minutes: 2
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 -B Scripts/qualify_corrected_platform_source.py --phase after
+        python3 Scripts/verify_native_icon_inputs.py
+    - name: Export bounded synthetic evidence
+      id: bounded_evidence
+      if: ${{ always() && steps.admit.outcome == 'success' }}
+      shell: bash
+      run: |
+        python3 Scripts/collect_native_evidence.py
+    - name: Upload bounded synthetic evidence
+      if: ${{ always() && steps.bounded_evidence.outcome == 'success' && steps.admit.outcome == 'success' }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: celluloid-current-mac-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/celluloid-bounded-evidence/
+        retention-days: 1
+        if-no-files-found: error
+  native-simulator:
+    if: ${{ true && github.event_name == 'push' && github.ref == 'refs/heads/celluloid-final-vision-qualification' && contains(fromJSON('["tv","vision","watch"]'),
+      'vision') }}
+    runs-on: xcode-27
+    timeout-minutes: ${{ matrix.platform == 'watch' && 45 || 30 }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        platform:
+        - vision
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      TZ: UTC
+      QUALIFICATION_PLATFORM: vision
+      CELLULOID_EVIDENCE_PLATFORM: ${{ matrix.platform }}
+    steps:
+    - name: Check out exact reviewed control and corrected product
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      timeout-minutes: 3
+      with:
+        persist-credentials: false
+        ref: ${{ github.sha }}
+        fetch-depth: 64
+    - name: Admit exact corrected product root and control chain
+      id: admit
+      timeout-minutes: 2
+      run: python3 -B Scripts/qualify_corrected_platform_source.py --phase before
+    - name: Verify stable unsigned native prerequisites
+      id: native_setup
+      timeout-minutes: 5
+      if: ${{ steps.admit.outcome == 'success' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        sw_vers
+        xcodebuild -version > "$RUNNER_TEMP/native-qualification-xcode.txt"
+        cat "$RUNNER_TEMP/native-qualification-xcode.txt"
+        grep -Fx 'Xcode 27.0' "$RUNNER_TEMP/native-qualification-xcode.txt"
+        xcodebuild -showsdks
+        python3 Scripts/validate_native_sources.py
+        python3 Scripts/test_native_evidence.py
+        python3 Scripts/test_native_process.py
+        python3 Scripts/test_native_release.py
+        swift -swift-version 5 Scripts/materialize_native_icons.swift
+        python3 Scripts/verify_native_icon_inputs.py
+        python3 Scripts/validate_native_localization.py
+    - name: Native TV build
+      id: tv_build
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (matrix.platform == 'tv' && (success() || failure()))
+        }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 Scripts/probe_tv_text_input.py
+        conditions=DEBUG
+        if test -f "$RUNNER_TEMP/tv-typetext-supported"; then conditions="DEBUG CELLULOID_TV_TYPETEXT_SUPPORTED"; fi
+        xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidTV -destination 'generic/platform=tvOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-tv" CODE_SIGNING_ALLOWED=NO SWIFT_ACTIVE_COMPILATION_CONDITIONS="$conditions" build-for-testing 2>&1 | tee "$RUNNER_TEMP/tv-build.log"
+        cmp Platforms/tvOS/PrivacyInfo.xcprivacy "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/PrivacyInfo.xcprivacy"
+        plutil -p "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/PrivacyInfo.xcprivacy"
+        test -f "$RUNNER_TEMP/celluloid-tv/Build/Products/Debug-appletvsimulator/CelluloidTV.app/zh-Hans.lproj/InfoPlist.strings"
+    - name: Native TV focus and Photos runtime
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (matrix.platform == 'tv' && ((success() ||
+        failure()) && steps.tv_build.outcome == 'success')) }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 Scripts/run_native_tv.py 2>&1 | tee "$RUNNER_TEMP/tv-runtime.log"
+    - name: Native Watch build
+      id: watch_build
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (matrix.platform == 'watch' && (success() ||
+        failure())) }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidWatch -destination 'generic/platform=watchOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-watch" CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee "$RUNNER_TEMP/watch-build.log"
+    - name: Native Watch runtime
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (matrix.platform == 'watch' && ((success()
+        || failure()) && steps.watch_build.outcome == 'success')) }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 Scripts/run_native_watch.py 2>&1 | tee "$RUNNER_TEMP/watch-runtime.log"
+    - name: Native Vision build
+      id: vision_build
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (matrix.platform == 'vision' && (success()
+        || failure())) }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        xcodebuild -project CelluloidNative.xcodeproj -scheme CelluloidVision -destination 'generic/platform=visionOS Simulator' -derivedDataPath "$RUNNER_TEMP/celluloid-vision" CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee "$RUNNER_TEMP/vision-build.log"
+    - name: Native Vision install launch and tests
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (matrix.platform == 'vision' && ((success()
+        || failure()) && steps.vision_build.outcome == 'success')) }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 Scripts/run_native_vision.py 2>&1 | tee "$RUNNER_TEMP/vision-runtime.log"
+    - name: Unsigned native generic-device Release packaging
+      if: ${{ !cancelled() && steps.admit.outcome == 'success' && steps.native_setup.outcome == 'success' && (success() || failure()) }}
+      shell: bash
+      env:
+        NATIVE_PLATFORM: ${{ matrix.platform }}
+      run: |
+        set -euo pipefail
+        PROJECT=CelluloidNative.xcodeproj
+        case "$NATIVE_PLATFORM" in
+          tv) SCHEME=CelluloidTV; DESTINATION=tvOS; PRODUCT=Release-appletvos ;;
+          phone) PROJECT=Celluloid.xcodeproj; SCHEME=Celluloid; DESTINATION=iOS; PRODUCT=Release-iphoneos ;;
+          watch) SCHEME=CelluloidWatch; DESTINATION=watchOS; PRODUCT=Release-watchos ;;
+          vision) SCHEME=CelluloidVision; DESTINATION=visionOS; PRODUCT=Release-xros ;;
+          *) exit 2 ;;
+        esac
+        xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release -destination "generic/platform=$DESTINATION" -derivedDataPath "$RUNNER_TEMP/celluloid-release" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "$RUNNER_TEMP/$NATIVE_PLATFORM-release.log"
+        python3 Scripts/verify_native_release.py "$NATIVE_PLATFORM" "$RUNNER_TEMP/celluloid-release/Build/Products/$PRODUCT/$SCHEME.app"
+    - name: Verify current source and control stayed unchanged
+      if: ${{ always() && steps.admit.outcome == 'success' }}
+      timeout-minutes: 2
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 -B Scripts/qualify_corrected_platform_source.py --phase after
+        python3 Scripts/verify_native_icon_inputs.py
+    - name: Export bounded synthetic evidence
+      id: bounded_evidence
+      if: ${{ always() && steps.admit.outcome == 'success' }}
+      shell: bash
+      run: |
+        python3 Scripts/collect_native_evidence.py
+    - name: Upload bounded synthetic evidence
+      if: ${{ always() && steps.bounded_evidence.outcome == 'success' && steps.admit.outcome == 'success' }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: celluloid-current-${{ matrix.platform }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/celluloid-bounded-evidence/
+        retention-days: 1
+        if-no-files-found: error
