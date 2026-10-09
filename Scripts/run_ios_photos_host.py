@@ -33,7 +33,7 @@ PROBE_BRANCH = 'cell-ios-photos-host-final'
 PROBE_CONFIG = '.github/ios-photos-host-final.json'
 PROBE_WORKFLOW = '.github/workflows/ios-photos-host-probe.yml'
 PROBE_PATHS = frozenset(['Scripts/run_bounded.py','Scripts/test_final_ios_photos_host_admission.py', '.github/ios-photos-host-final.json', '.github/workflows/ios-photos-host-probe.yml', 'Celluloid.xcodeproj/project.pbxproj', 'CelluloidTests/IOSPhotosHostFixtureTests.swift', 'CelluloidUITests/IOSPhotosHostUITests.swift', 'Scripts/run_ios_photos_host.py', 'Scripts/run_ios_photos_host_diagnostic.py', 'Scripts/run_swiftui_photos_gate.sh', 'Scripts/swiftui_photos_gate.py', 'Scripts/test_ios_photos_host.py'])
-PROBE_FIXED_FILES = {'Celluloid.xcodeproj/project.pbxproj': '34b764ed594db19cba375cf9e99a5f2e25d28c83718942cbf8b2bb9e21dfa6dc', 'CelluloidTests/IOSPhotosHostFixtureTests.swift': '1342f6435ea770cae23b6889e3ddd85ff1cec929c63b209d5623f13e387eb632', 'CelluloidUITests/IOSPhotosHostUITests.swift': '5c5f20f750f311459bde4707b54012653c75542487ebf8ada2d8862b94c9ead2'}
+PROBE_FIXED_FILES = {'Celluloid.xcodeproj/project.pbxproj': '34b764ed594db19cba375cf9e99a5f2e25d28c83718942cbf8b2bb9e21dfa6dc', 'CelluloidTests/IOSPhotosHostFixtureTests.swift': '1342f6435ea770cae23b6889e3ddd85ff1cec929c63b209d5623f13e387eb632', 'CelluloidUITests/IOSPhotosHostUITests.swift': 'ca74c5e9df72228528bbdf3a27bbd0c0bcc9143ae30ee045b48a1435e7e6bc71'}
 
 def validate_probe_admission(config, context, facts):
     require(set(config) == {'schema','READY','sourceReady','nativeAuthorization','product_sha','product_tree','maximum_additional_spend_usd'}, 'Unknown final host admission fields')

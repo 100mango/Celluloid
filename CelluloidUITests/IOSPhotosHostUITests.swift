@@ -11,6 +11,7 @@ final class IOSPhotosHostUITests: XCTestCase {
     private var stage = "not-started"
     private var recordedFailure = false
     private var didLaunchOwnedPhotos = false
+    private var didAttemptObservedWhatsNew = false
 
     override func setUpWithError() throws {
         try super.setUpWithError(); continueAfterFailure = false
@@ -152,19 +153,31 @@ final class IOSPhotosHostUITests: XCTestCase {
         _ = try unique(photos.buttons.matching(identifier: "Edit"))
         try verifyPublicFilename()
     }
-    private func dismissObservedWhatsNewIfPresent() throws {
+    @discardableResult
+    private func dismissObservedWhatsNewIfPresent(recognitionDeadline: TimeInterval? = nil, wallDeadline: TimeInterval? = nil) throws -> TimeInterval {
         // Observed on run 37887244922 / iOS 27.0 (24A434): this informational
         // sheet appears after Collections opens. It contains no permission or
         // agreement. Accept only the exact observed page, never any Continue.
         let title = photos.staticTexts.matching(NSPredicate(format: "label == %@", "What’s New in Photos"))
-        guard title.count > 0 else { return }
+        guard title.count > 0 else { return 0 }
+        guard !didAttemptObservedWhatsNew else { throw failure("Repeated Photos introduction; no action taken") }
+        var activeDeadline = recognitionDeadline ?? (started + 120)
+        func remaining() throws -> TimeInterval {
+            try withinBudget()
+            guard didLaunchOwnedPhotos, photos.state == .runningForeground else {
+                throw failure("Owned Photos introduction lost foreground")
+            }
+            let available = min(activeDeadline, started + 120) - ProcessInfo.processInfo.systemUptime
+            guard available > 0 else { throw failure("Photos introduction exhausted its absolute deadline") }
+            return min(8, available)
+        }
         stage = "dismiss-observed-photos-whats-new"
         try withinBudget()
         guard photos.alerts.count == 0,
               XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {
             throw failure("Unexpected alert over Photos introduction; no action taken")
         }
-        _ = try unique(title)
+        _ = try unique(title, timeout: remaining())
         let observedSections = [
             "Improved Shared Albums, Share photos and videos in their original resolution with all of your friends and family, even if they don’t have an Apple device.",
             "New Ways to Organize, Quickly locate photos with Captured by Me and Identity Documents in Utilities. Use star ratings and keywords to mark your best shots.",
@@ -176,15 +189,59 @@ final class IOSPhotosHostUITests: XCTestCase {
                 throw failure("Photos introduction differs from observed page; no action taken")
             }
         }
-        let proceed = try unique(photos.buttons.matching(NSPredicate(format: "label == %@", "Continue")))
+        let actions = photos.buttons.matching(NSPredicate(format: "label == %@", "Continue"))
+        let proceed = try unique(actions, timeout: remaining())
+        guard title.count == 1, title.element.label == "What’s New in Photos", title.element.isHittable,
+              actions.count == 1, proceed.label == "Continue", proceed.isHittable, proceed.isEnabled,
+              photos.alerts.count == 0,
+              XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {
+            throw failure("Exact Photos introduction recognition failed; no action taken")
+        }
+        // Recognition, including the three exact sections above, consumes the
+        // original Collections wait. Only a recognized page may use one 24-second
+        // handling allocation, with a caller-supplied 32-second whole-window bound.
+        _ = try remaining()
+        let handlingStarted = ProcessInfo.processInfo.systemUptime
+        if let recognitionDeadline = recognitionDeadline {
+            guard let wallDeadline = wallDeadline, handlingStarted < recognitionDeadline,
+                  recognitionDeadline <= wallDeadline else {
+                throw failure("Late or invalid Photos introduction recognition")
+            }
+            activeDeadline = min(min(handlingStarted + 24, wallDeadline), started + 120)
+            print("IOS_PHOTOS_HOST_INTRO_TIMING phase=recognized started=\(handlingStarted) recognitionDeadline=\(recognitionDeadline) handlingDeadline=\(activeDeadline) wallDeadline=\(wallDeadline)")
+        }
         checkpoint("observed-photos-whats-new")
         print("IOS_PHOTOS_HOST_ACTION stage=\(stage) label=\(proceed.label) identifier=\(proceed.identifier)")
+        // Evidence and AX calls spend the same handling allocation. Resolve
+        // all observed identities again before the one permitted tap.
+        for label in observedSections {
+            let section = photos.otherElements.matching(NSPredicate(format: "label == %@", label))
+            guard section.count == 1, section.element.isHittable else {
+                throw failure("Photos introduction changed before tap; no action taken")
+            }
+        }
+        guard title.count == 1, title.element.label == "What’s New in Photos", title.element.isHittable,
+              actions.count == 1, proceed.label == "Continue", proceed.isHittable, proceed.isEnabled,
+              photos.alerts.count == 0,
+              XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0,
+              !didAttemptObservedWhatsNew else {
+            throw failure("Photos introduction owner or public controls changed; no action taken")
+        }
+        _ = try remaining()
+        didAttemptObservedWhatsNew = true
         proceed.tap()
         guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
-                    object: title.element)], timeout: 8) == .completed else {
+                    object: title.element)], timeout: try remaining()) == .completed else {
             throw failure("Observed Photos introduction did not close")
         }
+        _ = try remaining()
         checkpoint("observed-photos-whats-new-dismissed")
+        _ = try remaining()
+        if recognitionDeadline != nil {
+            print("IOS_PHOTOS_HOST_INTRO_TIMING phase=handled elapsed=\(ProcessInfo.processInfo.systemUptime - handlingStarted) handlingDeadline=\(activeDeadline)")
+        }
+        _ = try remaining()
+        return ProcessInfo.processInfo.systemUptime - handlingStarted
     }
     private func verifyPublicFilename() throws {
         stage = "verify-public-photo-filename"
@@ -280,6 +337,49 @@ final class IOSPhotosHostUITests: XCTestCase {
         }
         print("IOS_PHOTOS_HOST_CHECKPOINT observed-photos-notifications-declined stage=\(stage)")
     }
+    private func observedCollectionsWithinOriginalWait(_ query: XCUIElementQuery) throws -> XCUIElement {
+        // Run37959948655: the exact introduction appeared after the first
+        // title check and occluded an already-selected Collections tab.
+        let waitingStarted = ProcessInfo.processInfo.systemUptime
+        let wallDeadline = min(waitingStarted + 32, started + 120)
+        var deadline = min(waitingStarted + 8, wallDeadline)
+        var handlingElapsed: TimeInterval = 0
+        while ProcessInfo.processInfo.systemUptime < deadline {
+            try withinBudget()
+            let handled = try dismissObservedWhatsNewIfPresent(recognitionDeadline: deadline, wallDeadline: wallDeadline)
+            guard handled.isFinite, handled >= 0, handled <= 24 else {
+                throw failure("Photos introduction handling allocation exceeded")
+            }
+            if handled > 0 {
+                guard handlingElapsed == 0, didAttemptObservedWhatsNew else {
+                    throw failure("Repeated Photos introduction handling allocation")
+                }
+                handlingElapsed = handled
+                // Restore only the time actually spent handling the known
+                // page; recognition and all other observations spend the 8 seconds.
+                deadline = min(deadline + handled, wallDeadline)
+                print("IOS_PHOTOS_HOST_INTRO_TIMING phase=resume readinessElapsed=\(ProcessInfo.processInfo.systemUptime - waitingStarted - handlingElapsed) handlingElapsed=\(handlingElapsed) readinessDeadline=\(deadline) wallDeadline=\(wallDeadline)")
+            }
+            stage = "select-observed-collections"
+            guard didLaunchOwnedPhotos, photos.state == .runningForeground,
+                  photos.alerts.count == 0,
+                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {
+                throw failure("Unexpected Photos interruption during Collections wait; no action taken")
+            }
+            guard query.count == 1 else { throw failure("Observed Collections identity changed during wait") }
+            let element = query.element
+            if element.isHittable, element.isEnabled {
+                guard ProcessInfo.processInfo.systemUptime < deadline else {
+                    throw failure("Original Collections wait deadline reached")
+                }
+                return element
+            }
+            let remaining = deadline - ProcessInfo.processInfo.systemUptime
+            guard remaining > 0 else { throw failure("Original Collections wait deadline reached") }
+            Thread.sleep(forTimeInterval: min(0.1, remaining))
+        }
+        throw failure("Expected one visible enabled public control at " + stage)
+    }
     private func selectObservedCollections() throws {
         // The same run showed LibraryTab still selected after the introductory
         // overlay consumed the first tap. Resolve the observed tabs afresh.
@@ -292,7 +392,7 @@ final class IOSPhotosHostUITests: XCTestCase {
         let query = photos.buttons.matching(identifier: "CollectionsTab").matching(NSPredicate(format: "label == %@", "Collections"))
         let library = photos.buttons.matching(identifier: "LibraryTab").matching(NSPredicate(format: "label == %@", "Library"))
         guard query.count == 1, library.count == 1 else { throw failure("Observed Photos tab identity changed") }
-        let collections = try unique(query)
+        let collections = try observedCollectionsWithinOriginalWait(query)
         if !collections.isSelected {
             guard try unique(library).isSelected else { throw failure("Expected observed Library selection before Collections") }
             print("IOS_PHOTOS_HOST_ACTION stage=\(stage) label=\(collections.label) identifier=\(collections.identifier)")
