@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "READY": false,
-  "sourceReady": false,
+  "READY": true,
+  "sourceReady": true,
   "product_sha": "13e9a1ed63c6e7744803419f27e429a759df1209",
   "product_tree": "f2c6d0f38c026957b0b34f22b916eb80ed5b20a8",
   "maximum_additional_spend_usd": 0,
