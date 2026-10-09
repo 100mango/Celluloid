@@ -67,12 +67,13 @@ jobs:
       if: ${{ always() && steps.admit.outcome == 'success' }}
       timeout-minutes: 1
       run: python3 -B -S Scripts/qualify_final_vision_wave_source.py --phase after
-    - name: Retain failure-only source and command receipts without checkout execution
+    - name: Retain failure-only preflight, source, and command receipts without checkout execution
       id: failure_receipts
-      if: ${{ always() && steps.admit.outcome == 'success' && steps.wave.outcome != 'skipped' && steps.source_after.outcome != 'success' }}
+      if: ${{ always() && steps.admit.outcome == 'success' && ((steps.wave.outcome != 'skipped' && steps.source_after.outcome != 'success') || (steps.wave.outcome == 'skipped' && (steps.control_tests.outcome == 'failure' || steps.control_tests.outcome == 'cancelled'))) }}
       timeout-minutes: 1
       env:
         VISION_ADMISSION_OUTCOME: ${{ steps.admit.outcome }}
+        VISION_CONTROL_TESTS_OUTCOME: ${{ steps.control_tests.outcome }}
         VISION_WAVE_OUTCOME: ${{ steps.wave.outcome }}
         VISION_SOURCE_AFTER_OUTCOME: ${{ steps.source_after.outcome }}
         VISION_TRUSTED_START: ${{ steps.wave_clock.outputs.started_monotonic }}
@@ -112,11 +113,12 @@ jobs:
         exceptions={'OSError','PermissionError','ProcessLookupError','FileNotFoundError','FileExistsError','NotADirectoryError','IsADirectoryError','BlockingIOError','InterruptedError','TimeoutError','BrokenPipeError','ValueError','TypeError','KeyError','RuntimeError','ImportError','ModuleNotFoundError','OverflowError','RecursionError','MemoryError','KeyboardInterrupt','SystemExit','TimeoutExpired','SubprocessError','CalledProcessError'}
         m=e['VISION_WAVE_METHOD'];sha=e['GITHUB_SHA'];run=e['GITHUB_RUN_ID'];attempt=e['GITHUB_RUN_ATTEMPT']
         need(m in methods and re.fullmatch('[0-9a-f]{40}',sha) and re.fullmatch('[0-9]+',run) and attempt=='1','identity')
-        need(e['VISION_ADMISSION_OUTCOME']=='success' and e['VISION_WAVE_OUTCOME'] in {'success','failure','cancelled'} and e['VISION_SOURCE_AFTER_OUTCOME'] in {'failure','cancelled','skipped'},'failure-only-route')
+        control_outcome=e.get('VISION_CONTROL_TESTS_OUTCOME','unknown');preflight_failed=control_outcome in {'failure','cancelled'} and e['VISION_WAVE_OUTCOME']=='skipped'
+        need(e['VISION_ADMISSION_OUTCOME']=='success' and ((preflight_failed and e['VISION_SOURCE_AFTER_OUTCOME'] in {'success','failure','cancelled','skipped'}) or (e['VISION_WAVE_OUTCOME'] in {'success','failure','cancelled'} and e['VISION_SOURCE_AFTER_OUTCOME'] in {'failure','cancelled','skipped'})),'failure-only-route')
         start=float(e['VISION_TRUSTED_START']);unix=float(e['VISION_TRUSTED_UNIX']);now=time.monotonic()
         need(number(start) and number(unix) and 0<start<=now and unix>0 and now+60<=start+1740,'original-upload-reserve')
         fixed={'control_sha':sha,'product_sha':'13e9a1ed63c6e7744803419f27e429a759df1209','product_tree':'f2c6d0f38c026957b0b34f22b916eb80ed5b20a8','run_id':run,'run_attempt':attempt,'selected_method':m}
-        report={'schema':'Celluloid.VisionFailureReceipts.1',**fixed,'source_after_verified':False,'selected_method_passed':False,'wave_qualified':False,'all_eight_qualified':False,'archive_qualified':False,'full_platform_release_qualification':False,'source_after_outcome':e['VISION_SOURCE_AFTER_OUTCOME'],'wave_outcome':e['VISION_WAVE_OUTCOME'],'omitted_ui_methods':[x for x in methods if x!=m],'trusted_workflow_clock':{'started_monotonic':start,'started_unix':unix,'native_seconds':1560,'final_seconds':1740},'receipt_trust':'Diagnostic observations only; checkout source after execution is unverified. No case, screenshot, cleanup or product-mutation claim.','receipts':{}}
+        report={'schema':'Celluloid.VisionFailureReceipts.1',**fixed,'source_after_verified':False,'selected_method_passed':False,'wave_qualified':False,'all_eight_qualified':False,'archive_qualified':False,'full_platform_release_qualification':False,'source_after_outcome':e['VISION_SOURCE_AFTER_OUTCOME'],'wave_outcome':e['VISION_WAVE_OUTCOME'],'control_tests_outcome':control_outcome,'preflight_failed_native_not_started':preflight_failed,'omitted_ui_methods':[x for x in methods if x!=m],'trusted_workflow_clock':{'started_monotonic':start,'started_unix':unix,'native_seconds':1560,'final_seconds':1740},'receipt_trust':'Diagnostic observations only; this collector does not establish source-after verification. No case, screenshot, cleanup or product-mutation claim.','receipts':{}}
         for phase in ['before','after']:
          name='combined-source-'+phase+'.json'
          try:
@@ -151,6 +153,42 @@ jobs:
           need('finalized' in r and len(packed(r))<=1024,'command-receipt');receipts.append(r)
          report['receipts']['commands']={'state':'valid-shaped-unverified-receipts','input_sha256':hashlib.sha256(raw).hexdigest(),'items':receipts}
         except (OSError,ValueError,TypeError,KeyError,RecursionError):report['receipts']['commands']={'state':'missing-or-invalid','items':[],'qualification':False}
+        # Four fixed optional control receipts. They are observations, never qualification.
+        for mode in ('normal','optimized'):
+         for scenario,cap in (('success',8192),('output-cap',1024)):
+          name='vision-wave-selftest-'+mode+'-'+scenario+'.json'
+          try:
+           raw=read(t/name,4096);v=decode(raw)
+           keys={'schema','mode','scenario','python_version','started_monotonic','command_deadline_monotonic','cleanup_deadline_monotonic','cap','phase','finished_monotonic','result','exception','operations','control_sha','run_id','run_attempt'}
+           need(type(v) is dict and set(v)==keys,'selftest-fields')
+           expected={'schema':'Celluloid.VisionControlProcessReceipt.1','mode':mode,'scenario':scenario,'phase':'END','cap':cap,'control_sha':sha,'run_id':run,'run_attempt':attempt}
+           need(all(type(v[k]) is type(x) and v[k]==x for k,x in expected.items()),'selftest-identity')
+           need(type(v['python_version']) is list and len(v['python_version'])==3 and all(type(x) is int and 0<=x<=1000 for x in v['python_version']),'python-version')
+           for k in ('started_monotonic','command_deadline_monotonic','cleanup_deadline_monotonic','finished_monotonic'):need(number(v[k]) and v[k]>0,'selftest-clock')
+           began=v['started_monotonic'];need(start<=began<=v['finished_monotonic']<=now and v['command_deadline_monotonic']==began+3 and v['cleanup_deadline_monotonic']==began+4,'selftest-fixed-deadlines')
+           need(v['exception'] is None or v['exception'] in exceptions,'selftest-exception')
+           result=v['result']
+           if result is not None:
+            fields={'return_code','bytes_read','pipe_eof','child_reaped','timed_out','overflow','cleanup_error','finalized','elapsed_seconds','command_deadline_monotonic','cleanup_deadline_monotonic'}
+            need(type(result) is dict and set(result)==fields and v['exception'] is None,'selftest-result')
+            for k in ('pipe_eof','child_reaped','timed_out','overflow','finalized'):need(type(result[k]) is bool,'selftest-result-bool')
+            need(result['return_code'] is None or type(result['return_code']) is int and -255<=result['return_code']<=255,'selftest-return')
+            need(type(result['bytes_read']) is int and 0<=result['bytes_read']<=cap,'selftest-bytes')
+            need(number(result['elapsed_seconds']) and result['elapsed_seconds']>=0,'selftest-elapsed')
+            need(result['cleanup_error'] in {None,'direct child unreaped at absolute deadline','completion observed after absolute cleanup deadline','PermissionError','ProcessLookupError','OSError','ValueError'},'selftest-cleanup')
+            need(result['command_deadline_monotonic']==v['command_deadline_monotonic'] and result['cleanup_deadline_monotonic']==v['cleanup_deadline_monotonic'],'selftest-result-deadline')
+           else:need(v['exception'] is not None,'selftest-missing-outcome')
+           need(type(v['operations']) is list and len(v['operations'])<=8,'selftest-operation-count')
+           for op in v['operations']:
+            need(type(op) is dict and op.get('operation') in {'Popen','wait','killpg'},'selftest-operation')
+            extra={'timeout'} if op['operation']=='wait' else {'signal','errno'} if op['operation']=='killpg' else set()
+            need(set(op)=={'operation','started_monotonic','finished_monotonic','exception'}|extra,'selftest-operation-fields')
+            need(all(number(op[k]) for k in ('started_monotonic','finished_monotonic')) and began<=op['started_monotonic']<=op['finished_monotonic']<=v['finished_monotonic'],'selftest-operation-clock')
+            need(op['exception'] is None or op['exception'] in exceptions,'selftest-operation-exception')
+            if op['operation']=='wait':need(op['timeout'] is None or number(op['timeout']) and 0<=op['timeout']<=4,'selftest-wait')
+            if op['operation']=='killpg':need(op['signal'] in {'SIGTERM','SIGKILL'} and (op['errno'] is None or type(op['errno']) is int and 0<=op['errno']<=4096),'selftest-signal')
+           report['receipts'][name]={'state':'valid-shaped-unverified-control-observation','input_sha256':hashlib.sha256(raw).hexdigest(),'qualification':False,'projection':v}
+          except (OSError,ValueError,TypeError,KeyError,RecursionError):report['receipts'][name]={'state':'missing-or-invalid','qualification':False}
         raw=packed(report);need(len(raw)<=65536,'failure-receipt-cap');out=t/'vision-wave-failure-evidence';out.mkdir(mode=0o700)
         (out/'failure-receipts.json').write_bytes(raw)
         manifest={'schema':'Celluloid.VisionFailureManifest.1','qualification':False,'source_after_verified':False,'limit_bytes':70000,'files':[{'name':'failure-receipts.json','bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}]}

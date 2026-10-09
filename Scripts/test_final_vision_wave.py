@@ -17,6 +17,62 @@ def summary():return {'totalTestCount':1,'passedTests':1,'failedTests':0,'skippe
 def caselog(method,status='passed',kind='ui'):
  owner='CelluloidVisionUITests.NativeVisionUITests' if kind=='ui' else 'CelluloidVisionTests.NativeVisionTests'
  return f"Test Case '-[{owner} {method}]' started.\nTest Case '-[{owner} {method}]' {status} (1.000 seconds).\n"
+# Observe only this fixed real process self-test. No output, arguments or env
+# are copied; the actual helper, signals, exceptions and deadlines are unchanged.
+PROCESS_RESULT_FIELDS=('return_code','bytes_read','pipe_eof','child_reaped','timed_out','overflow','cleanup_error','finalized','elapsed_seconds','command_deadline_monotonic','cleanup_deadline_monotonic')
+def selftest_outcome_projection(result):
+ w.need(type(result) is dict and set(result)==set(PROCESS_RESULT_FIELDS)|{'output'},'selftest result schema')
+ return {k:result[k] for k in PROCESS_RESULT_FIELDS}
+
+def observed_selftest_process(scenario,cap):
+ need=w.need;need(scenario in ('success','output-cap'),'selftest scenario')
+ start=time.monotonic();operations=[];result=None;exception=None
+ mode='optimized' if sys.flags.optimize else 'normal'
+ identity={'schema':'Celluloid.VisionControlProcessReceipt.1','mode':mode,'scenario':scenario,'python_version':list(sys.version_info[:3]),'started_monotonic':start,'command_deadline_monotonic':start+3,'cleanup_deadline_monotonic':start+4,'cap':cap}
+ # BEGIN is invocation intent, not proof that Popen returned or its child started.
+ print('VISION_WAVE_CONTROL_PROCESS '+json.dumps({**identity,'phase':'BEGIN'},sort_keys=True),flush=True)
+ original_popen=w.subprocess.Popen;original_signal=w.os.killpg
+ with contextlib.ExitStack() as stack:
+  def observed_wait(wait,timeout):
+   began=time.monotonic();error=None
+   try:return wait(timeout=timeout)
+   except BaseException as e:error=type(e).__name__;raise
+   finally:operations.append({'operation':'wait','started_monotonic':began,'finished_monotonic':time.monotonic(),'timeout':timeout,'exception':error})
+  def popen(*args,**kwargs):
+   began=time.monotonic();error=None
+   try:
+    process=original_popen(*args,**kwargs);wait=process.wait
+    stack.enter_context(patch.object(process,'wait',side_effect=lambda timeout=None:observed_wait(wait,timeout)))
+    return process
+   except BaseException as e:error=type(e).__name__;raise
+   finally:operations.append({'operation':'Popen','started_monotonic':began,'finished_monotonic':time.monotonic(),'exception':error})
+  def signal_group(pid,sig):
+   began=time.monotonic();error=None;errno=None
+   try:return original_signal(pid,sig)
+   except BaseException as e:error=type(e).__name__;errno=getattr(e,'errno',None);raise
+   finally:operations.append({'operation':'killpg','signal':'SIGTERM' if sig==w.signal.SIGTERM else 'SIGKILL' if sig==w.signal.SIGKILL else 'unexpected','started_monotonic':began,'finished_monotonic':time.monotonic(),'exception':error,'errno':errno})
+  stack.enter_context(patch.object(w.subprocess,'Popen',side_effect=popen));stack.enter_context(patch.object(w.os,'killpg',side_effect=signal_group))
+  try:
+   code='print("owned")' if scenario=='success' else 'print("x"*16384)'
+   result=w.bounded_optional_process([sys.executable,'-B','-S','-c',code],start+3,start+4,cap=cap,stop_on_signal_error=True)
+   return result
+  except BaseException as e:exception=type(e).__name__;raise
+  finally:
+   safe=None if result is None else selftest_outcome_projection(result)
+   receipt={**identity,'phase':'END','finished_monotonic':time.monotonic(),'result':safe,'exception':exception,'operations':operations}
+   raw=json.dumps(receipt,sort_keys=True,allow_nan=False);need(len(raw.encode())<=4096,'selftest receipt cap')
+   print('VISION_WAVE_CONTROL_PROCESS '+raw,flush=True)
+   # A fixed, exclusive, small receipt only on the actual workflow runner.
+   if os.environ.get('RUNNER_TEMP') and os.environ.get('GITHUB_RUN_ID'):
+    receipt.update(control_sha=os.environ['GITHUB_SHA'],run_id=os.environ['GITHUB_RUN_ID'],run_attempt=os.environ['GITHUB_RUN_ATTEMPT'])
+    raw=(json.dumps(receipt,sort_keys=True,allow_nan=False)+'\n').encode();need(len(raw)<=4096,'selftest retained receipt cap')
+    destination=Path(os.environ['RUNNER_TEMP']).resolve(strict=True)/('vision-wave-selftest-'+mode+'-'+scenario+'.json')
+    fd=os.open(destination,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    with os.fdopen(fd,'wb') as output:output.write(raw)
+
+def safe_selftest_result(result):
+ return json.dumps(selftest_outcome_projection(result),sort_keys=True,allow_nan=False)
+
 class WaveTests(unittest.TestCase):
  def test_exact_single_method_config_and_closed_default(self):
   for m in w.UI_METHODS:self.assertEqual(w.validate_config(config(m),env(m))['selected_method'],m)
@@ -120,8 +176,8 @@ class WaveTests(unittest.TestCase):
   actual=Path(w.__file__).read_text();actual=actual[actual.index('def bounded_optional_process('):actual.index('\n# All time')]
   self.assertEqual(ast.dump(ast.parse(actual)),ast.dump(ast.parse(original.replace('0<cap<=8192','0<cap<=1048576'))))
  def test_real_owned_process_success_and_output_cap(self):
-  start=time.monotonic();r=w.bounded_optional_process([sys.executable,'-B','-S','-c','print("owned")'],start+3,start+4,cap=8192,stop_on_signal_error=True);self.assertTrue(r['finalized']);self.assertEqual(r['output'],b'owned\n')
-  start=time.monotonic();r=w.bounded_optional_process([sys.executable,'-B','-S','-c','print("x"*16384)'],start+3,start+4,cap=1024,stop_on_signal_error=True);self.assertTrue(r['overflow']);self.assertLessEqual(r['bytes_read'],1024);self.assertTrue(r['child_reaped'])
+  r=observed_selftest_process('success',8192);details=safe_selftest_result(r);self.assertTrue(r['finalized'],details);self.assertEqual(r['output'],b'owned\n',details)
+  r=observed_selftest_process('output-cap',1024);details=safe_selftest_result(r);self.assertTrue(r['overflow'],details);self.assertLessEqual(r['bytes_read'],1024,details);self.assertTrue(r['child_reaped'],details);self.assertIsNone(r['cleanup_error'],details)
  def test_uncertain_or_timedout_process_blocks_every_later_native_dispatch(self):
   for result in [{'output':b'partial','finalized':False,'timed_out':True,'overflow':False,'return_code':None},{'output':b'partial','finalized':True,'timed_out':True,'overflow':False,'return_code':-15}]:
    with tempfile.TemporaryDirectory() as t:
