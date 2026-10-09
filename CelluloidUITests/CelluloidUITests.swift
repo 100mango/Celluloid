@@ -120,8 +120,8 @@ final class CelluloidUITests: XCTestCase {
         print("ACCESSIBILITY_AUDIT_END screen=\(screen)")
     }
 
-    /// Product timing is validated from actual app-action and genuine native
-    /// PHPicker lifecycle events after xcresult export. Whole-XCTest duration
+    /// Product timing begins at the genuine runner input-synthesis event and
+    /// retains app input-queue delay before PHPicker appears. Whole-XCTest duration
     /// remains a separate diagnostic, including its historical 3-second misses.
     func testBeautifyOpensSystemPickerAndCancelsRepeatedly() {
         observeSystemPicker(phase: "stock", selectLast: false)
@@ -165,23 +165,34 @@ final class CelluloidUITests: XCTestCase {
             var firstHittableElapsed: TimeInterval?
             func measured(_ property: String, _ read: () -> Bool) -> Bool {
                 let begin = ProcessInfo.processInfo.systemUptime
+                let beginWall = Date().timeIntervalSince1970
                 let value = read()
                 let end = ProcessInfo.processInfo.systemUptime
                 let wall = Date().timeIntervalSince1970
-                NSLog("%@", "PICKER_AX_QUERY run=\(run) iteration=\(iteration) property=\(property) value=\(value) duration_seconds=\(end - begin) end_uptime_seconds=\(end) wall_seconds=\(wall)")
+                NSLog("%@", "PICKER_AX_QUERY run=\(run) iteration=\(iteration) property=\(property) value=\(value) duration_seconds=\(end - begin) start_uptime_seconds=\(begin) start_wall_seconds=\(beginWall) end_uptime_seconds=\(end) wall_seconds=\(wall)")
                 return value
             }
-            let usablePicker = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            func observeUsablePicker() -> Bool {
                 guard measured("exists", { cancel.exists }) else { return false }
                 if firstExistsElapsed == nil { firstExistsElapsed = ProcessInfo.processInfo.systemUptime - started }
                 guard measured("isEnabled", { cancel.isEnabled }) else { return false }
                 guard measured("isHittable", { cancel.isHittable }) else { return false }
                 firstHittableElapsed = ProcessInfo.processInfo.systemUptime - started
                 return true
-            }, object: nil)
-            // Preserve the same real queries, predicate and 3-second waiter.
-            // Receipt acceptance separately starts at the actual app action.
-            let outcome = XCTWaiter.wait(for: [usablePicker], timeout: 3)
+            }
+            // Start the same real control queries immediately. XCTest's predicate
+            // waiter delays the first sample by about a second, hiding the time
+            // when the control was already usable. The observation window remains
+            // three seconds; the receipt's stricter input-to-usable bound also
+            // includes event delivery, app queueing, and this query overhead.
+            let observationDeadline = ProcessInfo.processInfo.systemUptime + 3
+            var usable = false
+            repeat {
+                if observeUsablePicker() { usable = true; break }
+                let remaining = observationDeadline - ProcessInfo.processInfo.systemUptime
+                if remaining > 0 { RunLoop.current.run(until: Date(timeIntervalSinceNow: min(0.05, remaining))) }
+            } while ProcessInfo.processInfo.systemUptime < observationDeadline
+            let outcome: XCTWaiter.Result = usable && ProcessInfo.processInfo.systemUptime <= observationDeadline ? .completed : .timedOut
             let elapsed = ProcessInfo.processInfo.systemUptime - started
             print("PICKER_AUTOMATION_DIAGNOSTIC run=\(run) iteration=\(iteration) elapsed_seconds=\(elapsed) historical_budget_seconds=3 historical_within_budget=\(elapsed <= 3) result=\(outcome.rawValue) acceptance_source=native-receipt")
             print("PICKER_OBSERVATION run=\(run) iteration=\(iteration) first_exists_seconds=\(String(describing: firstExistsElapsed)) first_hittable_seconds=\(String(describing: firstHittableElapsed)) library_ready=unmeasured")

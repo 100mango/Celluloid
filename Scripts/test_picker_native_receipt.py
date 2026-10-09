@@ -39,14 +39,19 @@ def native(event, delta, pid=44733):
     return f"{stamp(delta)} CelluloidUITests-Runner[44681:113999] Received kAXUserTestingNotification from AX element pid: {pid}, elementOrHash.elementID: 0.1: {{\n    controllerClass = PHPickerViewController;\n    controllerTitle = Photos;\n    event = {event};\n}}"
 
 
+def synthesis(delta):
+    date = datetime.fromtimestamp(WALL + delta, timezone.utc).strftime("%Y-%m-%d %H:%M:%S +0000")
+    return f"{stamp(delta)} CelluloidUITests-Runner[44681:113934] <XCTContext: 0x104e9d360> started activity <XCActivityRecord: 0x107f98d90> {date}: Synthesize event"
+
+
 def identities(values):
     return "selection_base64=" + base64.b64encode(json.dumps(values).encode()).decode()
 
 
-def example(selected=False, native_delay=0, ax_delay=0):
+def example(selected=False, native_delay=0, ax_delay=0, queue_delay=0):
     # Synthetic clocks mirror the exact native event syntax in historical logs.
-    command_time = max(3, 2.4 + ax_delay, 2 + native_delay)
-    app_lines = [app("app-beautify-tap", 1.1), app("picker-construction-returned", 1.2, "0x123abc"),
+    command_time = max(3, 2.4 + ax_delay, 2 + native_delay) + queue_delay
+    app_lines = [app("app-beautify-tap", 1.1+queue_delay), app("picker-construction-returned", 1.2+queue_delay, "0x123abc"),
                  app("picker-selection-delegate" if selected else "picker-cancel-delegate", command_time+.1, "0x123abc")]
     if selected:
         app_lines += [app("picker-selected-identities", command_time+.11, details=identities(["synthetic-fixture-1"])),
@@ -54,9 +59,9 @@ def example(selected=False, native_delay=0, ax_delay=0):
     app_lines += [app("picker-representable-dismantle", command_time+.4, "0x123abc"),
                   app("picker-coordinator-released", command_time+.5),
                   app("root-cover-dismissal-completed", command_time+.9)]
-    runner_lines = [ui("run-begin", 0, 0), ui("tap-command-start", 1),
-                    native("ViewDidAppear", 1.9+native_delay), ui("tap-command-returned", 2+ax_delay),
-                    ax("exists", 2.1+ax_delay), ax("isEnabled", 2.2+ax_delay), ax("isHittable", 2.3+ax_delay),
+    runner_lines = [ui("run-begin", 0, 0), ui("tap-command-start", 1), synthesis(1.05),
+                    native("ViewDidAppear", 1.9+native_delay+queue_delay), ui("tap-command-returned", 2+ax_delay+queue_delay),
+                    ax("exists", 2.1+ax_delay+queue_delay), ax("isEnabled", 2.2+ax_delay+queue_delay), ax("isHittable", 2.3+ax_delay+queue_delay),
                     ui("selection-command-start" if selected else "cancel-command-start", command_time),
                     native("ViewDidDisappear", command_time+.3)]
     if selected:
@@ -95,6 +100,58 @@ class ReceiptTests(unittest.TestCase):
         proof = result["presentations"][0]["selected_original_proof"]
         self.assertTrue(proof["synthetic_fixture_membership"])
         self.assertNotIn("synthetic-fixture-1", json.dumps(result))
+
+    def test_input_delivery_queue_delay_is_never_removed_from_acceptance(self):
+        result = self.validate(example(queue_delay=2.5))
+        self.assertEqual(result['status'], 'not_accepted')
+        presentation = result['presentations'][0]
+        self.assertEqual(presentation['native_appearance_budget'], 'passed')
+        self.assertEqual(presentation['input_synthesis_to_native_appearance_budget'], 'over_budget_observation')
+        self.assertAlmostEqual(presentation['tap_command_to_input_synthesis_seconds'], .05, places=5)
+        self.assertAlmostEqual(presentation['input_synthesis_to_app_action_seconds'], 2.55, places=5)
+        self.assertAlmostEqual(presentation['input_synthesis_to_native_appearance_seconds'], 3.35, places=5)
+        self.assertAlmostEqual(presentation['app_action_to_native_appearance_seconds'], .8, places=5)
+
+    def test_missing_duplicate_foreign_or_completed_synthesis_fails(self):
+        for replacement in ('', synthesis(1.05)+'\n'+synthesis(1.06),
+                            synthesis(1.05).replace('[44681:', '[99999:'),
+                            synthesis(1.05).replace('started activity', 'finished activity')):
+            logs = example(); logs['runner.log'] = logs['runner.log'].replace(synthesis(1.05), replacement)
+            self.rejects(logs, 'native input synthesis')
+
+    def test_synthesis_after_app_action_cannot_hide_input_delay(self):
+        logs = example(); logs['runner.log'] = logs['runner.log'].replace(synthesis(1.05), synthesis(1.15))
+        self.rejects(logs, 'App action precedes')
+
+    def test_app_or_xcodebuild_mirror_cannot_impersonate_synthesis_start(self):
+        for process in ('Celluloid', 'xcodebuild'):
+            logs = example(); logs['runner.log'] = logs['runner.log'].replace(synthesis(1.05), synthesis(1.05).replace('CelluloidUITests-Runner', process))
+            self.rejects(logs, 'did not originate')
+
+    def test_orphan_instance_remains_rejected(self):
+        logs = example(); logs['app-stdout.log'] += '\n' + app('picker-coordinator-created', 1.15, instance=RUN)
+        self.rejects(logs, 'Orphan app presentation instance')
+
+    def test_input_native_budget_boundary_keeps_uncertainty(self):
+        result = self.validate(example(native_delay=2.15, ax_delay=2.3))
+        self.assertEqual(result['status'], 'not_accepted')
+        self.assertEqual(result['presentations'][0]['input_synthesis_to_native_appearance_budget'], 'inconclusive_clock_budget')
+
+    def test_recorded_query_start_end_and_duration_must_agree(self):
+        logs = example()
+        start_fields = f'start_uptime_seconds={UPTIME+2.08:.6f} start_wall_seconds={WALL+2.08:.6f}'
+        old = ax('exists', 2.1)
+        logs['runner.log'] = logs['runner.log'].replace(old, old+' '+start_fields)
+        self.assertEqual(self.validate(logs)['status'], 'passed')
+        logs['runner.log'] = logs['runner.log'].replace(f'start_uptime_seconds={UPTIME+2.08:.6f}', f'start_uptime_seconds={UPTIME+2:.6f}')
+        self.rejects(logs, 'AX start/end/duration')
+
+    def test_missing_or_disagreeing_query_start_wall_is_invalid(self):
+        for start_fields in (f'start_uptime_seconds={UPTIME+2.08:.6f}',
+                             f'start_uptime_seconds={UPTIME+2.08:.6f} start_wall_seconds={WALL+2.4:.6f}'):
+            logs=example(); old=ax('exists', 2.1)
+            logs['runner.log']=logs['runner.log'].replace(old,old+' '+start_fields)
+            self.rejects(logs)
 
     def test_true_ax_over_budget_is_inconclusive_not_freeze(self):
         result = self.validate(example(ax_delay=2))
@@ -313,10 +370,44 @@ class IdentityExportTests(unittest.TestCase):
         path = self.root/"identity.json"; path.write_text(json.dumps(self.identity))
         out = self.root/"receipt.json"
         args = ["--xcresult", str(self.bundle), "--identity", str(path), "--app-binary", str(self.binary),
-                "--expected-source-sha", SHA, "--expected-source-tree", TREE, "--expected-run", f"{RUN}:1:0", "--runner-log-timezone", "UTC", "--output", str(out)]
+                "--expected-source-sha", SHA, "--expected-source-tree", TREE, "--expected-run", f"{RUN}:1:0", "--runner-log-timezone", "UTC", "--output", str(out),
+                "--diagnostics-output", str(self.root/'retained')]
         with patch.object(receipt, "export_diagnostics", side_effect=receipt.EvidenceError("missing native exporter")):
             self.assertEqual(receipt.main(args), 1)
         self.assertEqual(json.loads(out.read_text())["status"], "invalid_evidence")
+
+    def test_validation_failure_retains_exact_official_logs_before_error(self):
+        path = self.root/'identity.json'; path.write_text(json.dumps(self.identity))
+        out = self.root/'receipt.json'; retained = self.root/'retained'
+        logs = example(); logs['app-stdout.log'] += '\n' + app('picker-coordinator-created', 1.15, instance=RUN)
+        def official_export(bundle, destination):
+            destination.mkdir()
+            for filename, content in logs.items(): (destination/filename).write_text(content)
+            return {'method': 'mocked official exporter, unit test only'}
+        args = ['--xcresult', str(self.bundle), '--identity', str(path), '--app-binary', str(self.binary),
+                '--expected-source-sha', SHA, '--expected-source-tree', TREE, '--expected-run', f'{RUN}:1:0',
+                '--runner-log-timezone', 'UTC', '--output', str(out), '--diagnostics-output', str(retained)]
+        with patch.object(receipt, 'export_diagnostics', side_effect=official_export):
+            self.assertEqual(receipt.main(args), 1)
+        result = json.loads(out.read_text())
+        self.assertIn('Orphan', result['error'])
+        manifest = json.loads((retained/'retained-manifest.json').read_text())
+        self.assertEqual(manifest['identity'], self.identity)
+        self.assertEqual(len(manifest['logs']), len(logs))
+        for item in manifest['logs']:
+            self.assertEqual((retained/item['path']).read_text(), logs[item['path']])
+            self.assertEqual(receipt.sha256_file(retained/item['path']), item['sha256'])
+
+    def test_retention_rejects_stale_unsafe_or_oversized_output(self):
+        destination = self.root/'retained'
+        receipt.retain_diagnostics(example(), destination, {}, self.identity)
+        with self.assertRaisesRegex(receipt.EvidenceError, 'fresh'):
+            receipt.retain_diagnostics(example(), destination, {}, self.identity)
+        with self.assertRaisesRegex(receipt.EvidenceError, 'Unsafe'):
+            receipt.retain_diagnostics({'../escape': 'bad'}, self.root/'unsafe', {}, self.identity)
+        with patch.object(receipt, 'MAX_LOG_BYTES', 10):
+            with self.assertRaisesRegex(receipt.EvidenceError, 'bound'):
+                receipt.retain_diagnostics(example(), self.root/'oversized', {}, self.identity)
 
 
 class ActualHistoricalFixtureTests(unittest.TestCase):
@@ -343,6 +434,63 @@ class ActualHistoricalFixtureTests(unittest.TestCase):
         # No retroactive pass: original logs lack required identity/anchors.
         with self.assertRaises(receipt.EvidenceError):
             receipt.validate_logs({"historical": text}, {RUN: (3, 0)})
+
+
+class ActualFailedRunFiveTests(unittest.TestCase):
+    """Derived official failure samples; generated Photos identities sanitized."""
+    def logs(self, phase):
+        root = Path(__file__).parent / 'tests/fixtures'
+        return {kind: (root/f'run5-{phase}-{kind}-diagnostic.log').read_text() for kind in ('app', 'runner')}
+
+    def test_derived_stock_and_seeded_cold_identity_mismatch_stays_rejected(self):
+        for phase in ('stock', 'seeded'):
+            logs = self.logs(phase); traces, native_events, _ = receipt.parse_logs(logs)
+            run = traces[0]['run']
+            with self.assertRaisesRegex(receipt.EvidenceError, 'Orphan app presentation instance'):
+                receipt.validate_logs(logs, {run: (3, 0) if phase == 'stock' else (2, 1)})
+            self.assertEqual(len(native_events), 6)
+            app_records = [x for x in traces if x['kind'] == 'PICKER_APP_TRACE']
+            taps = [x['instance'] for x in app_records if x['event'] == 'app-beautify-tap']
+            constructions = [x['instance'] for x in app_records if x['event'] == 'picker-construction-returned']
+            self.assertNotEqual(taps[0], constructions[0])
+            self.assertEqual(taps[1:], constructions[1:])
+            selected = [x for x in app_records if x['event'] in ('picker-selected-identities', 'resolved-original-identities')]
+            self.assertEqual(len(selected), 2 if phase == 'seeded' else 0)
+            for record in selected:
+                self.assertEqual(receipt.selected_identity(record), ['synthetic-fixture-composition-3'])
+
+    def test_real_stock_third_input_to_hittable_overrun_stays_visible(self):
+        logs = self.logs('stock'); traces, native_events, _ = receipt.parse_logs(logs)
+        starts = [x for x in traces if x.get('event') == 'tap-command-start' and x['iteration'] == 3]
+        start = receipt.one(starts, 'third action'); end = receipt.event(
+            [x for x in traces if x.get('iteration') == 3], 'tap-command-returned')
+        inputs = [(x, receipt.prefix_wall(x['prefix'], start['wall'], timezone.utc)) for x in receipt.extract_synthesis_events(logs)]
+        _, input_wall = receipt.one([(x, w) for x, w in inputs if start['wall'] <= w <= end['wall']], 'third input')
+        hit = receipt.one([x for x in traces if x['kind'] == 'PICKER_AX_QUERY' and x['iteration'] == 3 and x['property'] == 'isHittable'], 'third hit')
+        self.assertAlmostEqual(hit['wall']-input_wall, 3.030480146, places=6)
+        self.assertGreater(hit['wall']-input_wall, receipt.BUDGET_SECONDS)
+
+
+class SourceIdentityAndPollingTests(unittest.TestCase):
+    def test_presented_item_contains_immutable_action_id(self):
+        source = (Path(__file__).resolve().parents[1]/'Celluloid/SwiftUI/PhoneRootView.swift').read_text()
+        self.assertIn('case beautify(String), collage(String), privacy', source)
+        self.assertIn('destination = .beautify(instance)', source)
+        self.assertIn('case .beautify(let instance): PhotoSelectionFlowView(maximumSelection: 1, traceID: instance)', source)
+        self.assertIn('case .collage(let instance): PhotoSelectionFlowView(maximumSelection: 4, traceID: instance)', source)
+        self.assertNotIn('traceID: pickerPresentationID', source)
+
+    def test_same_real_checks_start_immediately_with_unchanged_bound(self):
+        source = (Path(__file__).resolve().parents[1]/'CelluloidUITests/CelluloidUITests.swift').read_text()
+        fragment = source.split('private func observeSystemPicker',1)[1].split('func testAccessibilityHomeAndDeniedPicker',1)[0]
+        for prop in ('exists','isEnabled','isHittable'):
+            self.assertIn(f'measured("{prop}", {{ cancel.{prop} }})', fragment)
+        self.assertIn('observationDeadline = ProcessInfo.processInfo.systemUptime + 3', fragment)
+        self.assertLess(fragment.index('if observeUsablePicker()'),fragment.index('RunLoop.current.run'))
+        self.assertNotIn('XCTWaiter.wait(for: [usablePicker]',fragment)
+        self.assertIn('XCTAssertEqual(outcome, .completed',fragment)
+        self.assertIn('start_uptime_seconds=',fragment)
+        self.assertIn('start_wall_seconds=',fragment)
 
 
 class FixtureManifestTests(unittest.TestCase):

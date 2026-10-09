@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 import SwiftUI
 import UIKit
 @testable import CelluloidKit
@@ -238,5 +239,127 @@ final class SwiftUIOriginalDesignTests: XCTestCase {
                 XCTAssertEqual(actualImage.pngData(), expectedImage.pngData())
             }
         }
+    }
+
+    func testNoticeBindingDefersDismissalPublication() {
+        let session = CelluloidEditingSession()
+        session.notice = "Read-only photo"
+        let binding = CelluloidEditorPresentation.noticeBinding(for: session)
+        var publications = 0
+        let subscription = session.objectWillChange.sink { publications += 1 }
+        defer { subscription.cancel() }
+        XCTAssertTrue(binding.wrappedValue)
+        binding.wrappedValue = false
+        XCTAssertEqual(session.notice, "Read-only photo", "The alert setter must not mutate during a view update")
+        XCTAssertEqual(publications, 0, "No synchronous objectWillChange is allowed from the alert setter")
+        drainNoticeDismissals()
+        XCTAssertNil(session.notice)
+        XCTAssertFalse(binding.wrappedValue)
+        XCTAssertEqual(publications, 1)
+    }
+
+    func testNoticeBindingIgnoresPresentationAndEmptyDismissal() {
+        let session = CelluloidEditingSession()
+        session.notice = "Keep this notice"
+        let binding = CelluloidEditorPresentation.noticeBinding(for: session)
+        var publications = 0
+        let subscription = session.objectWillChange.sink { publications += 1 }
+        defer { subscription.cancel() }
+        binding.wrappedValue = true
+        drainNoticeDismissals()
+        XCTAssertEqual(session.notice, "Keep this notice")
+        XCTAssertEqual(publications, 0)
+        session.notice = nil
+        publications = 0
+        let empty = CelluloidEditorPresentation.noticeBinding(for: session)
+        empty.wrappedValue = false
+        empty.wrappedValue = true
+        drainNoticeDismissals()
+        XCTAssertNil(session.notice)
+        XCTAssertFalse(empty.wrappedValue)
+        XCTAssertEqual(publications, 0, "An already-dismissed alert must not republish nil")
+    }
+
+    func testNoticeBindingRepeatedDismissalPublishesOnlyOnce() {
+        let session = CelluloidEditingSession()
+        session.notice = "Dismiss once"
+        let binding = CelluloidEditorPresentation.noticeBinding(for: session)
+        var publications = 0
+        let subscription = session.objectWillChange.sink { publications += 1 }
+        defer { subscription.cancel() }
+        binding.wrappedValue = false
+        binding.wrappedValue = false
+        drainNoticeDismissals()
+        XCTAssertNil(session.notice)
+        XCTAssertEqual(publications, 1)
+        binding.wrappedValue = false
+        drainNoticeDismissals()
+        XCTAssertEqual(publications, 1)
+    }
+
+    func testNoticeBindingOldDismissalCannotClearNewerNotice() {
+        let session = CelluloidEditingSession()
+        session.notice = "First notice"
+        let old = CelluloidEditorPresentation.noticeBinding(for: session)
+        old.wrappedValue = false
+        session.notice = "Newer notice"
+        XCTAssertFalse(old.wrappedValue)
+        drainNoticeDismissals()
+        XCTAssertEqual(session.notice, "Newer notice", "A queued dismissal must not consume a newer notice")
+        old.wrappedValue = false
+        drainNoticeDismissals()
+        XCTAssertEqual(session.notice, "Newer notice", "A stale binding must not consume a newer notice")
+        let current = CelluloidEditorPresentation.noticeBinding(for: session)
+        XCTAssertTrue(current.wrappedValue)
+        current.wrappedValue = false
+        drainNoticeDismissals()
+        XCTAssertNil(session.notice)
+    }
+
+    func testNoticeBindingDismissalCannotClearReplacementOrCancelledSession() {
+        let session = CelluloidEditingSession()
+        session.notice = "Same notice text"
+        let old = CelluloidEditorPresentation.noticeBinding(for: session)
+        old.wrappedValue = false
+        session.startCopy(image: image())
+        session.notice = "Same notice text"
+        drainNoticeDismissals()
+        XCTAssertEqual(session.notice, "Same notice text", "A replacement input is protected even with identical notice text")
+        XCTAssertFalse(old.wrappedValue)
+        let replacement = CelluloidEditorPresentation.noticeBinding(for: session)
+        replacement.wrappedValue = false
+        session.cancel()
+        session.notice = "Same notice text"
+        drainNoticeDismissals()
+        XCTAssertEqual(session.notice, "Same notice text", "Cancellation invalidates outstanding alert callbacks")
+        XCTAssertFalse(replacement.wrappedValue)
+    }
+
+    func testNoticeBindingAndQueuedDismissalDoNotRetainSession() {
+        weak var weakSession: CelluloidEditingSession?
+        var binding: Binding<Bool>?
+        autoreleasepool {
+            var session: CelluloidEditingSession? = CelluloidEditingSession()
+            weakSession = session
+            session?.notice = "Dismiss after teardown"
+            if let session = session {
+                binding = CelluloidEditorPresentation.noticeBinding(for: session)
+            }
+            binding?.wrappedValue = false
+            session = nil
+        }
+        XCTAssertNil(weakSession, "Neither binding closure nor queued dismissal may retain the editor session")
+        XCTAssertFalse(binding?.wrappedValue ?? true)
+        drainNoticeDismissals()
+        XCTAssertNil(weakSession)
+        binding?.wrappedValue = false
+        drainNoticeDismissals()
+        XCTAssertNil(weakSession)
+    }
+
+    private func drainNoticeDismissals(file: StaticString = #filePath, line: UInt = #line) {
+        let drained = expectation(description: "Drain earlier main-queue alert dismissals")
+        DispatchQueue.main.async { drained.fulfill() }
+        XCTAssertEqual(XCTWaiter.wait(for: [drained], timeout: 2), .completed, file: file, line: line)
     }
 }

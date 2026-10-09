@@ -13,7 +13,7 @@ ENV = {'GITHUB_RUN_ID': '1', 'GITHUB_RUN_ATTEMPT': '1'}
 class AcceptanceTests(unittest.TestCase):
     def summary(self):
         return dict(totalTestCount=4, passedTests=4, failedTests=0, skippedTests=0, expectedFailures=0,
-                    result='Passed', testFailures=[], devicesAndConfigurations=[{'device': {'deviceId': DEVICE}}])
+                    result='Passed', testFailures=[], runtimeWarnings=[], devicesAndConfigurations=[{'device': {'deviceId': DEVICE}}])
     def after(self):
         return {'devices': {RUNTIME: [{'udid': DEVICE, 'name': 'Celluloid iOS27 iPhone SE (3rd generation)', 'isAvailable': True, 'state': 'Shutdown'}]}}
     def test_unique_run_requires_three_iterations(self):
@@ -32,6 +32,23 @@ class AcceptanceTests(unittest.TestCase):
             result = self.summary(); result[key] = value
             with self.assertRaises(ValueError): picker.qualify_summary(result, 4, DEVICE)
         with self.assertRaises(ValueError): picker.qualify_summary(self.summary(), 4, 'foreign')
+    def test_runtime_warnings_or_missing_warning_evidence_reject_green_counts(self):
+        for warnings in [None, False, {}, [{'sourceURL': 'file:///fixture/CelluloidKit/SwiftUI/CelluloidEditorContent.swift', 'message': 'Publishing changes from within view updates is not allowed'}]]:
+            with self.assertRaises(ValueError): picker.qualify_summary({**self.summary(), 'runtimeWarnings': warnings}, 4, DEVICE)
+        summary = self.summary(); del summary['runtimeWarnings']
+        with self.assertRaises(ValueError): picker.qualify_summary(summary, 4, DEVICE)
+    def test_system_and_unresolved_warnings_are_classified_and_retained(self):
+        warnings = [
+            {'sourceURL': 'file:///Applications/Xcode_27.app/Frameworks/XCTest.framework/XCTest.m', 'message': 'Known runner diagnostic'},
+            {'sourceURL': '', 'message': 'Needs source review'}]
+        summary = {**self.summary(), 'runtimeWarnings': warnings}
+        picker.qualify_summary(summary, 4, DEVICE)
+        report = picker.runtime_warning_report(summary)
+        self.assertEqual(report['total'], 2)
+        self.assertEqual(report['blocking_notice_warning_count'], 0)
+        self.assertEqual(report['other_warning_review_count'], 2)
+        self.assertEqual([r['origin'] for r in report['warnings']], ['xcode_or_system_source', 'unresolved_source'])
+        self.assertEqual([r['message'] for r in report['warnings']], [r['message'] for r in warnings])
     def test_json_extraction_ignores_command_markers(self):
         source = 'bounded {"meta":1}\n' + json.dumps({'devices': {}}) + '\nEND'
         self.assertEqual(main.extract_json(source, 'devices'), {'devices': {}})

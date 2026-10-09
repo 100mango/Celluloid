@@ -2,7 +2,7 @@
 """One build, one owned simulator, one bounded unsigned acceptance sequence."""
 from pathlib import Path
 import json, os, re, signal, subprocess, sys, time, uuid
-from run_picker_acceptance import build_binding, qualify_summary
+from run_picker_acceptance import build_binding, qualify_summary, runtime_warning_report
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'build/swiftui-acceptance'
@@ -160,7 +160,8 @@ class Acceptance:
                                         '--path', str(OUT / 'units.xcresult')], 30, allow_failure=True)
         if summary_code == 0:
             summary = extract_json(raw, 'totalTestCount'); save(OUT / 'units-summary.json', summary)
-            if code == 0: qualify_summary(summary, 57, device)
+            save(OUT / 'units-runtime-warnings.json', runtime_warning_report(summary))
+            if code == 0: qualify_summary(summary, 65, device)
         # A completed failed assertion stays failed, while independent evidence may continue.
         # A timeout/uncertain simulator state blocks all subsequent native work.
         self.picker('stock')
@@ -193,7 +194,14 @@ def main():
     finally:
         gate.cleanup()
         accepted = error is None and not gate.failures and not gate.device and not gate.uncertain
-        save(OUT / 'acceptance.json', {'all_required_phases_accepted': accepted, 'error': error,
+        warning_paths = ['units-runtime-warnings.json', 'picker-stock-runtime-warnings.json', 'picker-seeded-runtime-warnings.json']
+        warning_paths += ['photos/' + phase + '-runtime-warnings.json' for phase in ['legacy', 'pristine', 'preservation']]
+        warning_reports = {path: json.loads((OUT / path).read_text()) for path in warning_paths if (OUT / path).is_file()}
+        review_count = sum(report['other_warning_review_count'] for report in warning_reports.values())
+        status = 'failed' if not accepted else ('review_required' if review_count else 'passed')
+        save(OUT / 'acceptance.json', {'status': status, 'all_required_phases_accepted': accepted, 'error': error,
+             'runtime_warning_review_required': review_count > 0, 'runtime_warning_review_count': review_count,
+             'runtime_warning_reports': warning_reports,
              'failed_phases': gate.failures, 'source_sha': gate.source, 'source_tree': gate.source_tree,
              'pending_owned_device': gate.device, 'simulator_uncertain': gate.uncertain,
              'work_budget_seconds': 2280, 'elapsed_seconds': time.monotonic() - gate.started,

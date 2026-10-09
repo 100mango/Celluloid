@@ -186,12 +186,15 @@ def reconcile_library(before, after, hashes, binding):
             'scope': 'Real PhotoKit library in one owned simulator; not Photos application extension-host UI.'}
 
 
+from run_picker_acceptance import qualify_runtime_warnings, runtime_warning_report
+
 def verify_summary(stage, summary, log):
     expected = methods(stage)
     for key, value in {'totalTestCount': len(expected), 'passedTests': len(expected), 'failedTests': 0,
                        'skippedTests': 0, 'expectedFailures': 0}.items():
         if type(summary.get(key)) is not int or summary[key] != value: raise ValueError('Terminal XCTest count differs: ' + key)
     if summary.get('result') != 'Passed' or summary.get('testFailures'): raise ValueError('Terminal XCTest result is not clean')
+    qualify_runtime_warnings(summary)
     passed = re.findall(r"Test Case '-\[(CelluloidTests)\.([A-Za-z0-9_]+) ([A-Za-z0-9_]+)\]' passed", log)
     actual = ['/'.join(item) for item in passed]
     if len(actual) != len(expected) or set(actual) != set(expected): raise ValueError('Actual passed test identities differ')
@@ -246,7 +249,9 @@ def main():
         print(json.dumps({'source_sha': manifest['source_sha'], 'fixtures': manifest['fixtures']}, separators=(',', ':')))
     elif options.action == 'verify':
         stage, folder = args; output = Path(folder); log = (output / f'{stage}.log').read_text()
-        verify_summary(stage, load(output / f'{stage}-summary.json'), log)
+        summary = load(output / f'{stage}-summary.json')
+        dump(output / f'{stage}-runtime-warnings.json', runtime_warning_report(summary))
+        verify_summary(stage, summary, log)
         if stage == 'pristine':
             rows = readiness_rows(log)
             if len(rows) != 1: raise ValueError('Pristine reconciliation is missing')

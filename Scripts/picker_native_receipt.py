@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed receipt for real PHPicker XCTest appearance and app-action clocks.
+"""Fail-closed receipt for real PHPicker input, appearance and app-action clocks.
 
 No PHPicker subclass, swizzle, synthetic lifecycle event, or private hierarchy API.
 The native evidence is an unmodified XCTest runner diagnostic notification. Its
@@ -26,6 +26,14 @@ Return state must contain home_exists/home_hittable/picker_exists or
   only auxiliary evidence; genuine native ViewDidDisappear proves teardown.
 At least run-begin and run-end MUST be NSLog records with runner timestamp/PID
   prefixes, so wall clocks can be checked against the native log's clock domain.
+Each tap window MUST contain exactly one genuine runner "started activity"
+  Synthesize event. Acceptance starts there, retaining event delivery and app
+  input-queue delay. App-action-to-appearance is a secondary decomposition only.
+New AX observations also retain start_uptime_seconds/start_wall_seconds, checked
+  against the existing end and duration fields. Original failed observations
+  remain failed; missing or ambiguous clocks and identity are never repaired.
+Official relevant raw diagnostics and their source/hash manifest are retained
+  before parsing, so failed validation cannot destroy the underlying evidence.
 
 Runner identity JSON v1 (generated from the checked checkout/build/artifact):
   schema_version: 1, source_sha: 40 lowercase hex, source_tree: 40 lowercase hex,
@@ -68,6 +76,7 @@ MAX_FILES = 10000
 MARKER = re.compile(r"\b(PICKER_APP_TRACE|PICKER_UI_TRACE|PICKER_AX_QUERY) (?P<fields>.*)$")
 PREFIX = re.compile(r"^(?:(?P<day>\d{4}-\d{2}-\d{2}) )?(?P<clock>\d{2}:\d{2}:\d{2}\.\d{3,6})(?P<zone>[+-]\d{4})? (?P<process>[\w.-]+)\[(?P<pid>\d+):\d+\](?: \[[^\]]*\])? ")
 NATIVE = re.compile(r"^(?P<prefix>.*)Received kAXUserTestingNotification from AX element pid: (?P<app_pid>\d+), elementOrHash\.elementID: (?P<ax_id>[\d.]+): \{\n(?P<body>(?:[^\n]*\n){1,12}?)\}", re.MULTILINE)
+SYNTHESIS = re.compile(r"^(?P<prefix>.*?)<XCTContext: 0x[0-9a-fA-F]+> started activity <XCActivityRecord: (?P<activity>0x[0-9a-fA-F]+)> \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4}: Synthesize event\s*$", re.MULTILINE)
 HISTORICAL = re.compile(r"(?:SWIFTUI_PICKER_ENTRY|PICKER_AUTOMATION_DIAGNOSTIC) .*?elapsed_seconds=([0-9.]+)")
 
 
@@ -294,6 +303,13 @@ def parse_logs(logs):
                 require(values.get("value") in ("true", "false"), "Invalid AX boolean")
                 values["duration"] = number(values.get("duration_seconds"), "query duration")
                 require(values["duration"] <= values["uptime"], "AX duration exceeds clock")
+                if "start_uptime_seconds" in values or "start_wall_seconds" in values:
+                    began = number(values.get("start_uptime_seconds"), "query start uptime")
+                    began_wall = number(values.get("start_wall_seconds"), "query start wall")
+                    require(abs(values["uptime"] - values["duration"] - began) <= 0.000001,
+                            "AX start/end/duration clocks disagree")
+                    require(began_wall <= values["wall"] and abs((values["wall"]-began_wall)-values["duration"]) <= CLOCK_TOLERANCE,
+                            "AX start/end wall clocks disagree")
             traces.append(values)
         historical += [number(value, "historical elapsed") for value in HISTORICAL.findall(content)]
     # Exported console and runner streams can contain the same original NSLog.
@@ -321,6 +337,49 @@ def parse_logs(logs):
         seen_native[key] = record
         native_unique.append(record)
     return unique, native_unique, historical
+
+
+def extract_synthesis_events(logs):
+    """Genuine runner activity start, before event delivery and app queue delay.
+
+    Do not use the delayed xcodebuild activity mirror, an elapsed stdout label,
+    an app marker, or completion of synthesis as the input start.
+    """
+    events, seen = [], {}
+    for path, content in logs.items():
+        for match in SYNTHESIS.finditer(content):
+            prefix = prefix_info(match.group("prefix"))
+            require(prefix and prefix["process"].endswith("UITests-Runner"), "Input synthesis did not originate in XCTest runner log")
+            key = (prefix["pid"], prefix["day"], prefix["clock"], match.group("activity"))
+            prior = seen.get(key)
+            if prior is not None and prior["path"] != path:
+                continue
+            record = {"prefix": prefix, "activity": match.group("activity"), "path": path,
+                      "line": content.count("\n", 0, match.start()) + 1}
+            seen[key] = record
+            events.append(record)
+    return events
+
+
+def retain_diagnostics(logs, destination, export, identity):
+    """Retain bounded official text before validation, including failed runs."""
+    require(not destination.exists(), "Diagnostics evidence destination must be fresh")
+    destination.mkdir(parents=True)
+    manifest, total = [], 0
+    for original, content in sorted(logs.items()):
+        path = Path(original)
+        require(not path.is_absolute() and ".." not in path.parts, "Unsafe diagnostic path")
+        data = content.encode("utf-8"); total += len(data)
+        require(total <= MAX_LOG_BYTES, "Relevant diagnostic text exceeds retained bound")
+        target = destination / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        manifest.append({"path": original, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+    require(manifest, "No diagnostic text to retain")
+    record = {"identity": identity, "export": export, "logs": manifest,
+              "receipt_acceptance": "not implied by retention"}
+    (destination / "retained-manifest.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    return str(destination)
 
 
 def one(items, description):
@@ -393,6 +452,7 @@ def selected_identity(record):
 
 def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identifiers=None):
     traces, native, historical = parse_logs(logs)
+    synthesis = extract_synthesis_events(logs)
     require({t["run"] for t in traces} == set(expected_runs), "Missing/unexpected trace run identity")
     receipts, used_native = [], set()
     for run, expected_counts in expected_runs.items():
@@ -429,6 +489,11 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
             tap_return = event(local, "tap-command-returned")
             require(previous_return <= start["uptime"] <= tap_return["uptime"], "Overlapping/out-of-order iterations")
             action = one([r for r in taps if start["uptime"] <= r["uptime"] <= tap_return["uptime"]], "app action in tap-command window")
+            inputs = [(s, prefix_wall(s["prefix"], start["wall"], log_timezone)) for s in synthesis
+                      if s["prefix"]["pid"] == runner_pid]
+            input_event, input_wall = one([(s, wall) for s, wall in inputs
+                        if start["wall"] <= wall <= tap_return["wall"]], "native input synthesis in tap-command window")
+            require(input_wall <= action["wall"], "App action precedes native input synthesis")
             instance_records = [r for r in app if r["instance"] == action["instance"]]
             require(len({r["pid"] for r in instance_records}) == 1, "App PID changed within presentation")
             require(all(r["uptime"] >= action["uptime"] for r in instance_records), "App lifecycle precedes its action")
@@ -496,9 +561,25 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
             native_status = ("passed" if native_upper <= BUDGET_SECONDS else
                              "over_budget_observation" if native_lower > BUDGET_SECONDS else "inconclusive_clock_budget")
             ax_status = "passed" if ax_upper <= BUDGET_SECONDS else "inconclusive_interactivity_budget"
+            input_elapsed = appeared[2] - input_wall
+            input_upper = input_elapsed + uncertainty
+            input_lower = max(0, input_elapsed - uncertainty)
+            input_ax_upper = success[-1]["wall"] - input_wall + uncertainty
+            input_status = ("passed" if input_upper <= BUDGET_SECONDS else
+                            "over_budget_observation" if input_lower > BUDGET_SECONDS else "inconclusive_clock_budget")
+            input_ax_status = "passed" if input_ax_upper <= BUDGET_SECONDS else "inconclusive_interactivity_budget"
             receipts.append({"run_id": run, "iteration": iteration, "presentation_id": action["instance"], "app_pid": int(action["pid"]),
                              "picker_pointer": construction["picker"], "native_instance_binding": "same PID and unique serialized presentation window; native notification has no object pointer",
                              "return": "selected_editor" if selected else "cancel_home", "return_verified": True, "selected_original_proof": selection_proof,
+                             "input_synthesis_evidence": {"file": input_event["path"], "line": input_event["line"], "activity": input_event["activity"]},
+                             "tap_command_to_input_synthesis_seconds": input_wall - start["wall"],
+                             "input_synthesis_to_app_action_seconds": action["wall"] - input_wall,
+                             "input_synthesis_to_native_appearance_seconds": input_elapsed,
+                             "input_synthesis_to_native_appearance_upper_seconds": input_upper,
+                             "input_synthesis_to_native_appearance_lower_seconds": input_lower,
+                             "input_synthesis_to_native_appearance_budget": input_status,
+                             "input_synthesis_to_successful_hittable_upper_seconds": input_ax_upper,
+                             "input_synthesis_ax_observability_budget": input_ax_status,
                              "app_action_evidence": action["source_locations"], "successful_hittable_evidence": success[-1]["source_locations"],
                              "root_dismissal_evidence": dismissed["source_locations"],
                              "app_action_to_native_appearance_seconds": native_elapsed,
@@ -520,11 +601,13 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
                 if begin["wall"] <= wall <= end["wall"]:
                     require(index in used_native, "Unmatched native PHPicker event in run")
     require(receipts, "No validated presentations")
-    passed = all(r["native_appearance_budget"] == r["ax_observability_budget"] == "passed" for r in receipts)
+    passed = all(r["input_synthesis_to_native_appearance_budget"] == r["input_synthesis_ax_observability_budget"] == "passed" for r in receipts)
     return {"schema_version": SCHEMA_VERSION, "status": "passed" if passed else "not_accepted", "budget_seconds": BUDGET_SECONDS,
             "presentations": receipts, "historical_whole_xctest_seconds": sorted(set(historical)),
             "historical_metric_is_acceptance_gate": False,
-            "scope": "Native appearance + actual control queries + delegate/return; not photo-library readiness, frame time, or a freeze diagnosis"}
+            "acceptance_start": "XCTest runner input synthesis start; includes delivery and app input-queue delay",
+            "app_action_metrics_are_secondary": True,
+            "scope": "Input synthesis + native appearance + actual control queries + delegate/return; not photo-library readiness, frame time, or a freeze diagnosis"}
 
 
 def parse_expected_run(value):
@@ -548,6 +631,7 @@ def main(argv=None):
     parser.add_argument("--runner-log-timezone", required=True, choices=["UTC"], help="CI must run native test logging in UTC")
     parser.add_argument("--fixture-manifest", type=Path, help="Verified synthetic fixture manifest, required for selected returns")
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--diagnostics-output", required=True, type=Path)
     args = parser.parse_args(argv)
     result = {"schema_version": SCHEMA_VERSION, "status": "invalid_evidence", "budget_seconds": BUDGET_SECONDS}
     try:
@@ -564,6 +648,7 @@ def main(argv=None):
             directory = Path(temporary) / "diagnostics"
             export = export_diagnostics(args.xcresult, directory)
             logs = read_diagnostics(directory)
+            retain_diagnostics(logs, args.diagnostics_output, export, identity)
             result = validate_logs(logs, runs, fixture_identifiers=fixture_ids)
             result.update({"identity": identity, "export": export, "log_sha256": {path: hashlib.sha256(value.encode()).hexdigest() for path, value in logs.items()}})
         require(identity["xcresult_sha256"] == bundle_digest(args.xcresult), "xcresult changed during validation")
@@ -572,6 +657,9 @@ def main(argv=None):
             require(identity["fixture_manifest_sha256"] == sha256_file(args.fixture_manifest), "Fixture manifest changed during validation")
     except (EvidenceError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         result = {"schema_version": SCHEMA_VERSION, "status": "invalid_evidence", "budget_seconds": BUDGET_SECONDS, "error": str(exc)}
+    if args.diagnostics_output.exists():
+        result["retained_diagnostics"] = str(args.diagnostics_output)
+        result["diagnostics_retention_complete"] = (args.diagnostics_output / "retained-manifest.json").is_file()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps({"status": result["status"], "receipt": str(args.output), "error": result.get("error")}))

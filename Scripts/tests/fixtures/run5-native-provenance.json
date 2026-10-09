@@ -1,0 +1,44 @@
+{
+  "original_source": "9c85361da5fd26ac63a43c12813171c185928e1f",
+  "original_run": 37880596540,
+  "official_export_run": 37882648206,
+  "official_export_artifact": 11594773574,
+  "acceptance": "Sanitized regression fixture set derived from official failed diagnostics; both original receipts still fail presentation identity validation. Not a native acceptance receipt.",
+  "files": [
+    {
+      "fixture": "run5-stock-runner-diagnostic.log",
+      "original_sha256": "a32633142ca745fefd2b2cf3fc5daf6f5bb3c3484c7588bb5098d0ed8ca4120d",
+      "original_exported_relative_path": "0_Test_Celluloid iOS27 iPhone SE (3rd generation)_Diagnostics/CelluloidUITests-93934A4E-4749-4E32-AEB6-C031D9DA345C-Configuration-Test Scheme Action-Iteration-1/CelluloidUITests-3732ADA2-7908-42AF-98F0-45E89CF57A03/Session-CelluloidUITests-2026-10-09_035344-Pb3bYr.log",
+      "fixture_sha256": "dcd1331e4af91d5310903ef533baa84939bb1f34aba3e1d4ae1af8ca05459e21",
+      "sample_kind": "verbatim diagnostic excerpt"
+    },
+    {
+      "fixture": "run5-stock-app-diagnostic.log",
+      "original_sha256": "28cfb33073f2ac2756e062d7b260b84467427b5b1dddbdb81d04fe746b0f8a0b",
+      "original_exported_relative_path": "0_Test_Celluloid iOS27 iPhone SE (3rd generation)_Diagnostics/CelluloidUITests-93934A4E-4749-4E32-AEB6-C031D9DA345C-Configuration-Test Scheme Action-Iteration-1/CelluloidUITests-3732ADA2-7908-42AF-98F0-45E89CF57A03/StandardOutputAndStandardError-Mango.Celluloid.txt",
+      "fixture_sha256": "89fd7c90ec93899b304ab763a9c63db0d6fe11c272a4dadb7a827e15ad9b824e",
+      "sample_kind": "verbatim diagnostic excerpt"
+    },
+    {
+      "fixture": "run5-seeded-runner-diagnostic.log",
+      "original_sha256": "13e10e2596eddfe4bc8c4e53705165c3b1280e34462581acb0380a8d3e2f4fd3",
+      "original_exported_relative_path": "0_Test_Celluloid iOS27 iPhone SE (3rd generation)_Diagnostics/CelluloidUITests-AE2D91B7-24D9-4A1A-987A-D73D00BCA253-Configuration-Test Scheme Action-Iteration-1/CelluloidUITests-A09DF11A-5C16-47A9-A4A7-AC17551F2F9D/Session-CelluloidUITests-2026-10-09_040057-1eXiss.log",
+      "fixture_sha256": "b1769dfdaad457472c783936a1354c94b350e66cfe0a6e88740078d07d7b0712",
+      "sample_kind": "verbatim diagnostic excerpt"
+    },
+    {
+      "fixture": "run5-seeded-app-diagnostic.log",
+      "original_sha256": "9a20bf2611cdae4e58424ebb220084260b13d7b67c238558160698852fda6f5a",
+      "original_exported_relative_path": "0_Test_Celluloid iOS27 iPhone SE (3rd generation)_Diagnostics/CelluloidUITests-AE2D91B7-24D9-4A1A-987A-D73D00BCA253-Configuration-Test Scheme Action-Iteration-1/CelluloidUITests-A09DF11A-5C16-47A9-A4A7-AC17551F2F9D/StandardOutputAndStandardError-Mango.Celluloid.txt",
+      "fixture_sha256": "7a3e563e264dc2b40a1f08d985b661bbb890d560be032c54b2837d8974f5d572",
+      "sample_kind": "sanitized excerpt"
+    }
+  ],
+  "sanitization": {
+    "scope": "run5-seeded-app-diagnostic.log selection_base64 arrays only",
+    "replacement_identifier": "synthetic-fixture-composition-3",
+    "reason": "Do not publish PhotoKit local identifiers, including identifiers of generated CI fixtures.",
+    "preserved": "All timestamps, PID/presentation correlation, lifecycle observations, and matching selected/resolved equality are unchanged.",
+    "original_evidence": "Original diagnostic artifacts are retained separately and are not modified by this fixture sanitization."
+  }
+}

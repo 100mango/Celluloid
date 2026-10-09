@@ -47,11 +47,22 @@ class ContractTests(unittest.TestCase):
         for stage in gate.STAGES:
             expected = gate.methods(stage)
             summary = {'totalTestCount': len(expected), 'passedTests': len(expected), 'failedTests': 0,
-                       'skippedTests': 0, 'expectedFailures': 0, 'result': 'Passed', 'testFailures': []}
+                       'skippedTests': 0, 'expectedFailures': 0, 'result': 'Passed', 'testFailures': [], 'runtimeWarnings': []}
             log = '\n'.join("Test Case '-[{}.{} {}]' passed (0.001 seconds).".format(*item.split('/')) for item in expected)
             gate.verify_summary(stage, summary, log)
             with self.assertRaises(ValueError): gate.verify_summary(stage, {**summary, 'skippedTests': 1}, log)
             with self.assertRaises(ValueError): gate.verify_summary(stage, summary, log.replace(expected[0].split('/')[-1], 'testWrongMethod', 1))
+
+    def test_runtime_warnings_or_missing_warning_evidence_reject_green_counts(self):
+        stage = 'pristine'; expected = gate.methods(stage)
+        summary = {'totalTestCount': len(expected), 'passedTests': len(expected), 'failedTests': 0,
+                   'skippedTests': 0, 'expectedFailures': 0, 'result': 'Passed', 'testFailures': [], 'runtimeWarnings': []}
+        log = '\n'.join("Test Case '-[{}.{} {}]' passed (0.001 seconds).".format(*item.split('/')) for item in expected)
+        gate.verify_summary(stage, summary, log)
+        for warnings in [None, False, {}, [{'sourceURL': 'file:///fixture/CelluloidKit/SwiftUI/CelluloidEditorContent.swift', 'message': 'Publishing changes from within view updates is not allowed'}]]:
+            with self.assertRaises(ValueError): gate.verify_summary(stage, {**summary, 'runtimeWarnings': warnings}, log)
+        del summary['runtimeWarnings']
+        with self.assertRaises(ValueError): gate.verify_summary(stage, summary, log)
 
     def test_pristine_recheck_preserves_controlled_bytes_and_stock_ids(self):
         manifest = gate.reconcile_library(self.before, self.after, self.hashes, self.binding)

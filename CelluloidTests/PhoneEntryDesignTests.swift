@@ -3,6 +3,32 @@ import SwiftUI
 @testable import Celluloid
 
 final class PhoneEntryDesignTests: XCTestCase {
+    @MainActor
+    func testPhotoPresentationItemCarriesTheExactActionIdentity() {
+        let actionIdentity = UUID().uuidString
+        let first = PhoneRootView.Destination.beautify(actionIdentity)
+        let collage = PhoneRootView.Destination.collage(actionIdentity)
+        XCTAssertEqual(first.id, actionIdentity)
+        XCTAssertEqual(collage.id, actionIdentity)
+        if case .beautify(let presentedIdentity) = first {
+            XCTAssertEqual(presentedIdentity, actionIdentity)
+        } else { XCTFail("Wrong first presentation route") }
+        if case .collage(let presentedIdentity) = collage {
+            XCTAssertEqual(presentedIdentity, actionIdentity)
+        } else { XCTFail("Wrong collage presentation route") }
+    }
+
+    @MainActor
+    func testRepeatedPhotoPresentationKeepsImmutableDistinctIdentities() {
+        let firstIdentity = UUID().uuidString, secondIdentity = UUID().uuidString
+        let first = PhoneRootView.Destination.beautify(firstIdentity)
+        let reopened = PhoneRootView.Destination.beautify(secondIdentity)
+        XCTAssertNotEqual(first.id, reopened.id)
+        XCTAssertEqual(first.id, firstIdentity)
+        XCTAssertEqual(reopened.id, secondIdentity)
+        XCTAssertEqual(PhoneRootView.Destination.privacy.id, "privacy")
+    }
+
     func testOriginalUIKitStyleMeasurementsAreRetained() {
         XCTAssertEqual(PhoneEntryStyle.iconSide, 62.5)
         XCTAssertEqual(PhoneEntryStyle.iconTitleSpacing, 35)

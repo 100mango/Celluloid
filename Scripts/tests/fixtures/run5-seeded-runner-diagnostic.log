@@ -1,0 +1,438 @@
+# Verbatim scalar/native excerpts from official xcresulttool export; original failing identity is unchanged.
+04:01:14.772 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    controllerClass = SBDeviceApplicationSceneViewController;
+    event = ViewDidAppear;
+}
+04:01:14.779 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    controllerClass = SBSwitcherViewController;
+    event = ViewDidAppear;
+}
+04:01:14.781 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    controllerClass = SBDeckSwitcherViewController;
+    event = ViewDidAppear;
+}
+04:01:22.040 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    controllerClass = SBRootFolderController;
+    event = ViewDidDisappear;
+}
+04:01:22.040 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_TtGC7SwiftUI19UIHostingControllerV9Celluloid13PhoneRootView_";
+    event = ViewDidAppear;
+}
+2026-10-09 04:01:26.298879+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=0 event=run-begin uptime_seconds=1632.9043189583335 wall_seconds=1791518486.298753 
+2026-10-09 04:01:26.475006+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=1 event=tap-command-start uptime_seconds=1633.0805360416668 wall_seconds=1791518486.474969 
+04:01:26.654 CelluloidUITests-Runner[38226:111405] <XCTContext: 0x10529c550> started activity <XCActivityRecord: 0x1083a6220> 2026-10-09 04:01:26 +0000: Synthesize event
+04:01:26.837 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+2026-10-09 04:01:27.631082+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=1 event=tap-command-returned uptime_seconds=1634.2365825000002 wall_seconds=1791518487.6310148 
+04:01:27.592 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+04:01:28.155 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_TtGC7SwiftUI29PresentationHostingControllerVS_7AnyView_";
+    event = ViewDidAppear;
+}
+04:01:28.155 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PHPickerViewController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+}
+04:01:28.156 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UISplitViewController;
+    event = ViewDidAppear;
+}
+04:01:28.156 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UINavigationController;
+    event = ViewDidAppear;
+}
+04:01:28.156 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerUnavailableViewController;
+    event = ViewDidAppear;
+}
+2026-10-09 04:01:28.764213+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=1 property=exists value=true duration_seconds=0.11259354166645608 end_uptime_seconds=1635.3697356666667 wall_seconds=1791518488.764169
+2026-10-09 04:01:29.075074+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=1 property=isEnabled value=true duration_seconds=0.3106982499998594 end_uptime_seconds=1635.6806131666667 wall_seconds=1791518489.075046
+2026-10-09 04:01:29.276165+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=1 property=isHittable value=true duration_seconds=0.2009054999998625 end_uptime_seconds=1635.8817029583333 wall_seconds=1791518489.276136
+2026-10-09 04:01:30.103025+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=1 event=cancel-command-start uptime_seconds=1636.7085564166669 wall_seconds=1791518490.102989 
+04:01:30.254 CelluloidUITests-Runner[38226:111405] <XCTContext: 0x10529c550> started activity <XCActivityRecord: 0x1083a6220> 2026-10-09 04:01:30 +0000: Synthesize event
+04:01:30.386 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+04:01:30.454 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+04:01:30.940 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_TtGC7SwiftUI29PresentationHostingControllerVS_7AnyView_";
+    event = ViewDidDisappear;
+}
+04:01:30.940 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PHPickerViewController;
+    controllerTitle = Photos;
+    event = ViewDidDisappear;
+}
+04:01:30.943 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UISplitViewController;
+    event = ViewDidDisappear;
+}
+04:01:30.943 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UINavigationController;
+    event = ViewDidDisappear;
+}
+04:01:30.943 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerUnavailableViewController;
+    event = ViewDidDisappear;
+}
+2026-10-09 04:01:32.337905+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=1 event=home-interactive-after-dismiss uptime_seconds=1638.9426932916667 wall_seconds=1791518492.337126 via=cancel home_exists=true home_hittable=true picker_exists=false
+2026-10-09 04:01:32.882991+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=2 event=tap-command-start uptime_seconds=1639.4884396666669 wall_seconds=1791518492.882873 
+04:01:33.499 CelluloidUITests-Runner[38226:111405] <XCTContext: 0x10529c550> started activity <XCActivityRecord: 0x1083a6f40> 2026-10-09 04:01:33 +0000: Synthesize event
+04:01:33.665 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+04:01:33.844 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+2026-10-09 04:01:34.364704+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=2 event=tap-command-returned uptime_seconds=1640.9701582083335 wall_seconds=1791518494.3645911 
+04:01:34.356 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_TtGC7SwiftUI29PresentationHostingControllerVS_7AnyView_";
+    event = ViewDidAppear;
+}
+04:01:34.359 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PHPickerViewController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+}
+04:01:34.360 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UISplitViewController;
+    event = ViewDidAppear;
+}
+04:01:34.361 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UINavigationController;
+    event = ViewDidAppear;
+}
+04:01:34.361 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerUnavailableViewController;
+    event = ViewDidAppear;
+}
+04:01:34.390 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = "_UIViewServiceRootViewController";
+    event = ViewDidAppear;
+}
+04:01:34.451 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = "_UIViewServiceRootViewController";
+    event = ViewDidAppear;
+}
+2026-10-09 04:01:35.489817+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=2 property=exists value=true duration_seconds=0.06744899999989684 end_uptime_seconds=1642.0952814583334 wall_seconds=1791518495.489715
+2026-10-09 04:01:35.588981+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=2 property=isEnabled value=true duration_seconds=0.09897629166653132 end_uptime_seconds=1642.19451475 wall_seconds=1791518495.588948
+2026-10-09 04:01:35.840892+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=2 property=isHittable value=true duration_seconds=0.251741999999922 end_uptime_seconds=1642.4464122916668 wall_seconds=1791518495.840846
+04:01:36.548 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerManagedViewController;
+    event = ViewDidAppear;
+}
+04:01:36.548 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PXSplitViewController;
+    event = ViewDidAppear;
+}
+04:01:36.549 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUNavigationController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+}
+04:01:36.549 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerContainerController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+    navigationItemTitle = Photos;
+}
+04:01:36.549 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PXPhotosUIViewController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+    navigationItemTitle = Photos;
+}
+04:01:36.549 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = "_UIViewServiceRootViewController";
+    event = ViewDidDisappear;
+}
+04:01:36.832 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerPrincipalUIViewController;
+    event = ViewDidAppear;
+}
+04:01:36.832 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerManagedViewController;
+    event = ViewDidAppear;
+}
+04:01:36.832 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PXSplitViewController;
+    event = ViewDidAppear;
+}
+04:01:36.834 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUNavigationController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+}
+04:01:36.834 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerContainerController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+    navigationItemTitle = Photos;
+}
+04:01:36.834 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PXPhotosUIViewController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+    navigationItemTitle = Photos;
+}
+04:01:37.059 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UISplitViewController;
+    event = ViewDidDisappear;
+}
+04:01:37.060 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UINavigationController;
+    event = ViewDidDisappear;
+}
+04:01:37.060 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerUnavailableViewController;
+    event = ViewDidDisappear;
+}
+04:01:37.060 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerRemoteViewController;
+    event = ViewDidAppear;
+}
+04:01:37.060 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_UISceneHostingViewController";
+    event = ViewDidAppear;
+}
+2026-10-09 04:01:37.806723+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=2 event=cancel-command-start uptime_seconds=1644.4122337916667 wall_seconds=1791518497.8066669 
+04:01:37.991 CelluloidUITests-Runner[38226:111405] <XCTContext: 0x10529c550> started activity <XCActivityRecord: 0x1083a7090> 2026-10-09 04:01:37 +0000: Synthesize event
+04:01:38.123 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+04:01:38.236 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+04:01:38.308 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UITrackingElementWindowController;
+    event = ViewDidAppear;
+}
+04:01:38.781 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_TtGC7SwiftUI29PresentationHostingControllerVS_7AnyView_";
+    event = ViewDidDisappear;
+}
+04:01:38.781 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PHPickerViewController;
+    controllerTitle = Photos;
+    event = ViewDidDisappear;
+}
+04:01:38.781 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerRemoteViewController;
+    event = ViewDidDisappear;
+}
+04:01:38.783 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_UISceneHostingViewController";
+    event = ViewDidDisappear;
+}
+2026-10-09 04:01:40.057779+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=2 event=home-interactive-after-dismiss uptime_seconds=1646.66330175 wall_seconds=1791518500.057735 via=cancel home_exists=true home_hittable=true picker_exists=false
+2026-10-09 04:01:40.153049+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=3 event=tap-command-start uptime_seconds=1646.7585847500002 wall_seconds=1791518500.153017 
+04:01:40.276 CelluloidUITests-Runner[38226:111405] <XCTContext: 0x10529c550> started activity <XCActivityRecord: 0x1083a7560> 2026-10-09 04:01:40 +0000: Synthesize event
+04:01:40.503 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+04:01:40.617 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+04:01:40.799 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = "_UIViewServiceRootViewController";
+    event = ViewDidAppear;
+}
+2026-10-09 04:01:41.257270+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=3 event=tap-command-returned uptime_seconds=1647.8628022916669 wall_seconds=1791518501.257235 
+04:01:41.234 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_TtGC7SwiftUI29PresentationHostingControllerVS_7AnyView_";
+    event = ViewDidAppear;
+}
+04:01:41.236 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PHPickerViewController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+}
+04:01:41.252 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UISplitViewController;
+    event = ViewDidAppear;
+}
+04:01:41.256 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UINavigationController;
+    event = ViewDidAppear;
+}
+04:01:41.267 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerUnavailableViewController;
+    event = ViewDidAppear;
+}
+04:01:41.563 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerManagedViewController;
+    event = ViewDidAppear;
+}
+04:01:41.563 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PXSplitViewController;
+    event = ViewDidAppear;
+}
+04:01:41.564 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUNavigationController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+}
+04:01:41.564 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerContainerController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+    navigationItemTitle = Photos;
+}
+04:01:41.564 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PXPhotosUIViewController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+    navigationItemTitle = Photos;
+}
+04:01:41.569 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UISplitViewController;
+    event = ViewDidDisappear;
+}
+04:01:41.589 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = UINavigationController;
+    event = ViewDidDisappear;
+}
+04:01:41.590 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerUnavailableViewController;
+    event = ViewDidDisappear;
+}
+04:01:41.595 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerRemoteViewController;
+    event = ViewDidAppear;
+}
+04:01:41.599 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_UISceneHostingViewController";
+    event = ViewDidAppear;
+}
+04:01:41.599 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerPrincipalUIViewController;
+    event = ViewDidAppear;
+}
+04:01:41.600 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerManagedViewController;
+    event = ViewDidAppear;
+}
+04:01:41.602 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PXSplitViewController;
+    event = ViewDidAppear;
+}
+04:01:41.602 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUNavigationController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+}
+04:01:41.605 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerContainerController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+    navigationItemTitle = Photos;
+}
+04:01:41.605 CelluloidUITests-Runner[38226:112876] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    controllerClass = PXPhotosUIViewController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+    navigationItemTitle = Photos;
+}
+2026-10-09 04:01:42.504230+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=3 property=exists value=true duration_seconds=0.17445245833346235 end_uptime_seconds=1649.1097373750001 wall_seconds=1791518502.50417
+2026-10-09 04:01:42.639750+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=3 property=isEnabled value=true duration_seconds=0.134874416666662 end_uptime_seconds=1649.2452815416668 wall_seconds=1791518502.639715
+2026-10-09 04:01:42.756109+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=3 property=isHittable value=true duration_seconds=0.11601391666681593 end_uptime_seconds=1649.3616296250002 wall_seconds=1791518502.756063
+2026-10-09 04:01:43.355017+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=3 event=selection-command-start uptime_seconds=1649.9605477083335 wall_seconds=1791518503.354981 
+04:01:47.995 CelluloidUITests-Runner[38226:111405] <XCTContext: 0x10529c550> started activity <XCActivityRecord: 0x1083a73a0> 2026-10-09 04:01:47 +0000: Synthesize event
+04:01:48.122 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+04:01:48.299 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 39090, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+04:01:49.153 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PHPickerViewController;
+    controllerTitle = Photos;
+    event = ViewDidDisappear;
+}
+04:01:49.164 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = PUPickerRemoteViewController;
+    event = ViewDidDisappear;
+}
+04:01:49.165 CelluloidUITests-Runner[38226:111513] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_UISceneHostingViewController";
+    event = ViewDidDisappear;
+}
+04:01:49.741 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "SwiftUI.UIKitNavigationController";
+    event = ViewDidAppear;
+}
+04:01:49.741 CelluloidUITests-Runner[38226:111506] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_TtGC7SwiftUI19UIHostingControllerVVS_P10$1ca68024821BridgedNavigationView8RootView_";
+    event = ViewDidAppear;
+    navigationItemTitle = Beautify;
+}
+2026-10-09 04:01:51.144417+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=3 event=editor-interactive-after-selection uptime_seconds=1657.7499533333335 wall_seconds=1791518511.144386 editor_exists=true editor_enabled=true editor_hittable=true picker_candidates_exist=false
+04:01:51.365 CelluloidUITests-Runner[38226:111405] <XCTContext: 0x10529c550> started activity <XCActivityRecord: 0x1083a7c60> 2026-10-09 04:01:51 +0000: Synthesize event
+04:01:51.498 CelluloidUITests-Runner[38226:112908] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+04:01:51.523 CelluloidUITests-Runner[38226:112908] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    event = TouchEventsCompleted;
+}
+04:01:52.079 CelluloidUITests-Runner[38226:112908] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_TtGC7SwiftUI29PresentationHostingControllerVS_7AnyView_";
+    event = ViewDidDisappear;
+}
+04:01:52.083 CelluloidUITests-Runner[38226:112908] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "SwiftUI.UIKitNavigationController";
+    event = ViewDidDisappear;
+}
+04:01:52.084 CelluloidUITests-Runner[38226:112908] Received kAXUserTestingNotification from AX element pid: 38987, elementOrHash.elementID: 0.1: {
+    controllerClass = "_TtGC7SwiftUI19UIHostingControllerVVS_P10$1ca68024821BridgedNavigationView8RootView_";
+    event = ViewDidDisappear;
+    navigationItemTitle = Beautify;
+}
+2026-10-09 04:01:53.258366+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=3 event=home-interactive-after-dismiss uptime_seconds=1659.8638811666667 wall_seconds=1791518513.2583141 via=editor home_exists=true home_hittable=true picker_exists=false
+2026-10-09 04:01:53.258645+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=0 event=run-end uptime_seconds=1659.8642043333334 wall_seconds=1791518513.258637 
+04:01:53.592 CelluloidUITests-Runner[38226:112908] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    controllerClass = SBRootFolderController;
+    event = ViewDidAppear;
+}
+04:01:53.593 CelluloidUITests-Runner[38226:112908] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    controllerClass = SBSwitcherViewController;
+    event = ViewDidDisappear;
+}
+04:01:53.593 CelluloidUITests-Runner[38226:112908] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    controllerClass = SBDeckSwitcherViewController;
+    event = ViewDidDisappear;
+}
+04:01:53.596 CelluloidUITests-Runner[38226:112889] Received kAXUserTestingNotification from AX element pid: 21555, elementOrHash.elementID: 0.1: {
+    controllerClass = SBDeviceApplicationSceneViewController;
+    event = ViewDidDisappear;
+}
+2026-10-09 04:01:26.298879+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=0 event=run-begin uptime_seconds=1632.9043189583335 wall_seconds=1791518486.298753 
+2026-10-09 04:01:26.475006+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=1 event=tap-command-start uptime_seconds=1633.0805360416668 wall_seconds=1791518486.474969 
+2026-10-09 04:01:27.631082+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=1 event=tap-command-returned uptime_seconds=1634.2365825000002 wall_seconds=1791518487.6310148 
+2026-10-09 04:01:28.764213+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=1 property=exists value=true duration_seconds=0.11259354166645608 end_uptime_seconds=1635.3697356666667 wall_seconds=1791518488.764169
+2026-10-09 04:01:29.075074+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=1 property=isEnabled value=true duration_seconds=0.3106982499998594 end_uptime_seconds=1635.6806131666667 wall_seconds=1791518489.075046
+2026-10-09 04:01:29.276165+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=1 property=isHittable value=true duration_seconds=0.2009054999998625 end_uptime_seconds=1635.8817029583333 wall_seconds=1791518489.276136
+2026-10-09 04:01:30.103025+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=1 event=cancel-command-start uptime_seconds=1636.7085564166669 wall_seconds=1791518490.102989 
+2026-10-09 04:01:32.337905+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=1 event=home-interactive-after-dismiss uptime_seconds=1638.9426932916667 wall_seconds=1791518492.337126 via=cancel home_exists=true home_hittable=true picker_exists=false
+2026-10-09 04:01:32.882991+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=2 event=tap-command-start uptime_seconds=1639.4884396666669 wall_seconds=1791518492.882873 
+2026-10-09 04:01:34.364704+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=2 event=tap-command-returned uptime_seconds=1640.9701582083335 wall_seconds=1791518494.3645911 
+2026-10-09 04:01:35.489817+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=2 property=exists value=true duration_seconds=0.06744899999989684 end_uptime_seconds=1642.0952814583334 wall_seconds=1791518495.489715
+2026-10-09 04:01:35.588981+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=2 property=isEnabled value=true duration_seconds=0.09897629166653132 end_uptime_seconds=1642.19451475 wall_seconds=1791518495.588948
+2026-10-09 04:01:35.840892+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=2 property=isHittable value=true duration_seconds=0.251741999999922 end_uptime_seconds=1642.4464122916668 wall_seconds=1791518495.840846
+2026-10-09 04:01:37.806723+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=2 event=cancel-command-start uptime_seconds=1644.4122337916667 wall_seconds=1791518497.8066669 
+2026-10-09 04:01:40.057779+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=2 event=home-interactive-after-dismiss uptime_seconds=1646.66330175 wall_seconds=1791518500.057735 via=cancel home_exists=true home_hittable=true picker_exists=false
+2026-10-09 04:01:40.153049+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=3 event=tap-command-start uptime_seconds=1646.7585847500002 wall_seconds=1791518500.153017 
+2026-10-09 04:01:41.257270+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=3 event=tap-command-returned uptime_seconds=1647.8628022916669 wall_seconds=1791518501.257235 
+2026-10-09 04:01:42.504230+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=3 property=exists value=true duration_seconds=0.17445245833346235 end_uptime_seconds=1649.1097373750001 wall_seconds=1791518502.50417
+2026-10-09 04:01:42.639750+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=3 property=isEnabled value=true duration_seconds=0.134874416666662 end_uptime_seconds=1649.2452815416668 wall_seconds=1791518502.639715
+2026-10-09 04:01:42.756109+0000 CelluloidUITests-Runner[38226:111405] PICKER_AX_QUERY run=3ECD6948-D1AB-442B-8347-90906EC900CB iteration=3 property=isHittable value=true duration_seconds=0.11601391666681593 end_uptime_seconds=1649.3616296250002 wall_seconds=1791518502.756063
+2026-10-09 04:01:43.355017+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=3 event=selection-command-start uptime_seconds=1649.9605477083335 wall_seconds=1791518503.354981 
+2026-10-09 04:01:51.144417+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=3 event=editor-interactive-after-selection uptime_seconds=1657.7499533333335 wall_seconds=1791518511.144386 editor_exists=true editor_enabled=true editor_hittable=true picker_candidates_exist=false
+2026-10-09 04:01:53.258366+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=3 event=home-interactive-after-dismiss uptime_seconds=1659.8638811666667 wall_seconds=1791518513.2583141 via=editor home_exists=true home_hittable=true picker_exists=false
+2026-10-09 04:01:53.258645+0000 CelluloidUITests-Runner[38226:111405] PICKER_UI_TRACE run=3ECD6948-D1AB-442B-8347-90906EC900CB phase=seeded iteration=0 event=run-end uptime_seconds=1659.8642043333334 wall_seconds=1791518513.258637 

@@ -43,8 +43,8 @@ public struct CelluloidEditorContent: View {
         .onChange(of: session.sessionIdentity) { _ in
             presentation.sheet = nil; presentation.fullScreenSheet = nil; presentation.selectedTool = nil
         }
-        .alert(session.isReadOnly ? tr(.unreadableEditsTitle) : NSLocalizedString("Photo Editor", comment: ""), isPresented: Binding(
-            get: { session.notice != nil }, set: { if !$0 { session.notice = nil } })) {
+        .alert(session.isReadOnly ? tr(.unreadableEditsTitle) : NSLocalizedString("Photo Editor", comment: ""),
+               isPresented: CelluloidEditorPresentation.noticeBinding(for: session)) {
                 Button(tr(.done), role: .cancel) { session.notice = nil }
             } message: { Text(session.notice ?? "") }
     }
@@ -77,6 +77,25 @@ final class CelluloidEditorPresentation: ObservableObject {
     @Published var sheet: EditorSheet?
     @Published var fullScreenSheet: EditorSheet?
     @Published var selectedTool: String?
+
+    static func noticeBinding(for session: CelluloidEditingSession) -> Binding<Bool> {
+        let token = session.sessionIdentity, notice = session.notice
+        return Binding(
+            get: { [weak session] in
+                notice != nil && session?.sessionIdentity == token && session?.notice == notice
+            },
+            set: { [weak session] isPresented in
+                guard !isPresented, let notice = notice else { return }
+                // SwiftUI can dismiss the alert while updating its view tree.
+                // Do not publish from that transaction or clear a newer notice
+                // or replacement input when this queued dismissal arrives.
+                DispatchQueue.main.async { [weak session] in
+                    guard let session = session, session.sessionIdentity == token,
+                          session.notice == notice else { return }
+                    session.notice = nil
+                }
+            })
+    }
 }
 
 /// Reproduces the shipped toolbar's three equal-width items, template assets,

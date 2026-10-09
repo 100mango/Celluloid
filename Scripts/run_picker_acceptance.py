@@ -34,11 +34,47 @@ def unique_run(log):
     require(len(runs) == 1 and sorted(int(i) for _, i in rows) == [1, 2, 3], 'Ambiguous picker run identity')
     return next(iter(runs))
 
+def runtime_warning_report(summary):
+    warnings = summary.get('runtimeWarnings')
+    require(isinstance(warnings, list), 'Missing official runtime-warning evidence')
+    roots = ['Celluloid', 'CelluloidKit', 'CelluloidPhotoExtension', 'CelluloidTests', 'CelluloidUITests', 'Packages', 'Platforms']
+    sources = [p.relative_to(ROOT).as_posix() for folder in roots for p in (ROOT / folder).rglob('*')
+               if p.is_file() and p.suffix in ['.swift', '.m', '.mm', '.h']]
+    records = []
+    for item in warnings:
+        require(isinstance(item, dict) and isinstance(item.get('message'), str), 'Malformed official runtime warning')
+        raw_source = item.get('sourceURL', '')
+        require(isinstance(raw_source, str), 'Malformed runtime-warning source URL')
+        from urllib.parse import urlparse, unquote
+        path = unquote(urlparse(raw_source).path)
+        matches = [source for source in sources if path.endswith('/' + source)]
+        require(len(matches) <= 1, 'Ambiguous runtime-warning source')
+        if matches:
+            origin = 'repository_source'
+        elif path.startswith(('/Applications/Xcode', '/System/Library/', '/Library/Developer/CoreSimulator/')):
+            origin = 'xcode_or_system_source'
+        else:
+            origin = 'unresolved_source'
+        publishing = 'Publishing changes from within view updates is not allowed' in item['message']
+        records.append({'sourceURL': raw_source, 'repository_path': matches[0] if matches else None,
+                        'message': item['message'], 'issueType': item.get('issueType'), 'origin': origin,
+                        'blocks_notice_fix': bool(matches and publishing),
+                        'review_required': not bool(matches and publishing)})
+    return {'total': len(records), 'blocking_notice_warning_count': sum(r['blocks_notice_fix'] for r in records),
+            'other_warning_review_count': sum(r['review_required'] for r in records), 'warnings': records}
+
+def qualify_runtime_warnings(summary):
+    report = runtime_warning_report(summary)
+    require(report['blocking_notice_warning_count'] == 0,
+            'App-owned publication during view update: ' + json.dumps(report, sort_keys=True))
+    return report
+
 def qualify_summary(value, count, device):
     for key, expected in {'totalTestCount': count, 'passedTests': count, 'failedTests': 0,
                           'skippedTests': 0, 'expectedFailures': 0}.items():
         require(type(value.get(key)) is int and value[key] == expected, 'Unexpected UI summary: ' + key)
     require(value.get('result') == 'Passed' and not value.get('testFailures'), 'UI XCTest failed')
+    qualify_runtime_warnings(value)
     rows = value.get('devicesAndConfigurations', [])
     require(len(rows) == 1 and rows[0].get('device', {}).get('deviceId') == device,
             'UI result belongs to a different simulator')
@@ -101,6 +137,7 @@ def main():
             text = summary_log.read_text(); start = text.index('{\n'); decoder = json.JSONDecoder()
             summary, _ = decoder.raw_decode(text[start:])
             write(args.out / (label + '-summary.json'), summary)
+            write(args.out / (label + '-runtime-warnings.json'), runtime_warning_report(summary))
         except (ValueError, json.JSONDecodeError): pass
         native_output = args.out / (label + '-native-receipt.json')
         try:
@@ -117,7 +154,8 @@ def main():
             validator = [sys.executable, 'Scripts/picker_native_receipt.py', '--xcresult', str(result),
                          '--identity', str(identity_path), '--app-binary', str(binary), '--expected-source-sha', source,
                          '--expected-source-tree', source_tree, '--expected-run', f'{run_id}:{cancel_count}:{selected_count}',
-                         '--runner-log-timezone', 'UTC', '--output', str(native_output)]
+                         '--runner-log-timezone', 'UTC', '--output', str(native_output),
+                         '--diagnostics-output', str(args.out / (label + '-native-diagnostics'))]
             if args.fixture_manifest: validator += ['--fixture-manifest', str(args.fixture_manifest)]
             native_status, _ = run('native-receipt', validator, 60)
         except (ValueError, OSError, receipt.EvidenceError) as failure:

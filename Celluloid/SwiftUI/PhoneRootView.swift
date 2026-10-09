@@ -7,9 +7,14 @@ import CelluloidKit
     @State private var destination: Destination?
     @State private var pickerPresentationID = UUID().uuidString
 
-    enum Destination: String, Identifiable {
-        case beautify, collage, privacy
-        var id: String { rawValue }
+    enum Destination: Identifiable {
+        case beautify(String), collage(String), privacy
+        var id: String {
+            switch self {
+            case .beautify(let instance), .collage(let instance): return instance
+            case .privacy: return "privacy"
+            }
+        }
     }
 
     var body: some View {
@@ -30,22 +35,26 @@ import CelluloidKit
         .background(Color.black.ignoresSafeArea())
         .fullScreenCover(item: $destination, onDismiss: presentationDismissed) { route in
             switch route {
-            case .beautify: PhotoSelectionFlowView(maximumSelection: 1, traceID: pickerPresentationID)
-            case .collage: PhotoSelectionFlowView(maximumSelection: 4, traceID: pickerPresentationID)
+            // Use the actual presented item. A separate State value captured
+            // only by this content closure can still be stale on the first open.
+            case .beautify(let instance): PhotoSelectionFlowView(maximumSelection: 1, traceID: instance)
+            case .collage(let instance): PhotoSelectionFlowView(maximumSelection: 4, traceID: instance)
             case .privacy: LegacyPrivacyScreen()
             }
         }
     }
 
     private func showBeautify() {
-        pickerPresentationID = UUID().uuidString
-        PickerEntryDiagnostics.record("app-beautify-tap", instance: pickerPresentationID)
-        destination = .beautify
+        let instance = UUID().uuidString
+        pickerPresentationID = instance
+        PickerEntryDiagnostics.record("app-beautify-tap", instance: instance)
+        destination = .beautify(instance)
     }
     private func showCollage() {
-        pickerPresentationID = UUID().uuidString
-        PickerEntryDiagnostics.record("app-collage-tap", instance: pickerPresentationID)
-        destination = .collage
+        let instance = UUID().uuidString
+        pickerPresentationID = instance
+        PickerEntryDiagnostics.record("app-collage-tap", instance: instance)
+        destination = .collage(instance)
     }
     private func showPrivacy() { destination = .privacy }
     private func presentationDismissed() {
