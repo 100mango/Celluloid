@@ -654,6 +654,7 @@ FILENAME_OLD_BLOCK = '        _ = try unique(photos.staticTexts.matching(NSPredi
 FILENAME_NEW_BLOCK = '        // Run37918693951: Photos exposes the public filename as this field\'s\n        // String value. Its label is "Filename", never the filename itself.\n        let fields = photos.staticTexts.matching(identifier: "com.apple.photos.infoPanel.filename")\n        let field = try unique(fields)\n        guard fields.count == 1, field.label == "Filename",\n              let publicFilename = field.value as? String,\n              [filename, basename].contains(publicFilename) else {\n            throw failure("Observed public filename differs from the exact owned fixture")\n        }\n'
 
 def restore_observed_filename_delta(source):
+    source=restore_observed_extensions_delta(source)
     if source.count(FILENAME_NEW_BLOCK)!=1:raise ValueError('Missing/changed/duplicate observed filename value contract')
     return source.replace(FILENAME_NEW_BLOCK,FILENAME_OLD_BLOCK)
 
@@ -994,5 +995,47 @@ class ManagedHostedDeploymentTests(unittest.TestCase):
         self.assertEqual(len(deployment),1);self.assertEqual(len(bootstrap),1);self.assertLess(deployment[0].lineno,bootstrap[0].lineno)
         self.assertNotIn("'simctl', 'install'",source);self.assertNotIn("'install-owned-app'",source)
         self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45]);self.assertIn("self.command('actual-photos-host', command, 630",source);self.assertIn("command, 750, simulator=True",source);self.assertIn("'work_budget_seconds': 2280",source)
+
+
+# Exact observed More→Extensions level; removing this literal must recover the
+# entire published parent, including all five assertions and public filename.
+EXTENSIONS_MENU_BLOCK = '        // Run37954719871: More presents a public Extensions submenu first.\n        // Keep direct extension selection when already exposed; never guess\n        // another extension, tap a coordinate or dismiss the keyboard tutorial.\n        if photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0 {\n            stage = "open-observed-extensions-menu"\n            try withinBudget()\n            guard photos.alerts.count == 0,\n                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {\n                throw failure("Unknown alert before Extensions; no action taken")\n            }\n            let entry = photos.buttons.matching(NSPredicate(format: "label == %@", "Extensions"))\n            guard entry.count == 1 else { throw failure("Expected one observed Extensions entry") }\n            let button = try unique(entry)\n            guard entry.count == 1, button.label == "Extensions",\n                  button.isHittable, button.isEnabled,\n                  photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0 else {\n                throw failure("Observed Extensions entry changed; no action taken")\n            }\n            print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(button.label) identifier=\\(button.identifier)")\n            try withinBudget()\n            guard photos.alerts.count == 0,\n                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0,\n                  entry.count == 1, button.label == "Extensions",\n                  button.isHittable, button.isEnabled,\n                  photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0 else {\n                throw failure("Observed Extensions state changed before tap; no action taken")\n            }\n            button.tap()\n            checkpoint("observed-extensions-opened")\n        }\n'
+
+def restore_observed_extensions_delta(source):
+    if source.count(EXTENSIONS_MENU_BLOCK)!=1:raise ValueError('Missing/changed/duplicate observed Extensions branch')
+    restored=source.replace(EXTENSIONS_MENU_BLOCK,'')
+    if restored.count('        stage = "invoke-celluloid-extension"\n        try tap(photos.buttons.matching(identifier: "CelluloidPhotoExtension"))')!=1:raise ValueError('Original exact extension selection changed')
+    return restored
+
+class ObservedExtensionsMenuTests(unittest.TestCase):
+    def setUp(self):self.source=(Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+    def testSingleObservedBranchRestoresEveryPublishedParentByte(self):
+        import hashlib
+        self.assertEqual(hashlib.sha256(restore_observed_extensions_delta(self.source).encode()).hexdigest(), 'a60ced7ebf2460013d7686fd326efe392e2e9426f688e7e7866b2fddadd1fc23')
+        validate_observed_notification_navigation_source(self.source)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45])
+        self.assertEqual(EXTENSIONS_MENU_BLOCK.count('button.tap()'),1)
+    def testPresentOrAmbiguousExtensionCannotTriggerAnAlternativeSelection(self):
+        for old,new in [(').count == 0 {',').count > 0 {'),(').count == 0 else {',').count >= 0 else {'),('"CelluloidPhotoExtension"','"Celluloid"'),('"label == %@"','"label CONTAINS %@"')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_observed_extensions_delta(self.source.replace(old,new))
+        for old,new in [('entry.count == 1','entry.count > 0'),('entry.count == 1','true'),('button.label == "Extensions"','true'),('"Extensions"','"More"')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_observed_extensions_delta(self.source.replace(old,new))
+    def testMissingDisabledOccludedOrUnknownAlertEntryCannotBeTapped(self):
+        for old,new in [('button.isHittable','true'),('button.isEnabled','true'),('photos.alerts.count == 0','true'),('XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0','true'),('let button = try unique(entry)','let button = entry.firstMatch'),('try withinBudget()','try withinBudgetBypass()')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_observed_extensions_delta(self.source.replace(old,new))
+    def testFreshFencesAfterWaitAndReceiptBeforeOnlyTap(self):
+        block=EXTENSIONS_MENU_BLOCK
+        positions=[block.index(token) for token in ['let button = try unique(entry)', 'print("IOS_PHOTOS_HOST_ACTION', '            try withinBudget()', '            button.tap()'] if token != '            try withinBudget()']
+        self.assertEqual(positions,sorted(positions))
+        after_receipt=block.split('print("IOS_PHOTOS_HOST_ACTION',1)[1]
+        before_tap=after_receipt.split('            button.tap()',1)[0]
+        required=['try withinBudget()', 'photos.alerts.count == 0', 'XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0', 'entry.count == 1', 'button.label == "Extensions"', 'button.isHittable', 'button.isEnabled', 'photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0']
+        for token in required:
+            self.assertEqual(before_tap.count(token),1)
+            changed=block.replace(before_tap,before_tap.replace(token,'true',1),1)
+            with self.subTest(token=token),self.assertRaises(ValueError):restore_observed_extensions_delta(self.source.replace(block,changed))
+    def testExtraClickCoordinatesKeyboardActionOrExactTargetChangeRejects(self):
+        for old,new in [('button.tap()','button.tap()\n            button.tap()'),('button.tap()','button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()'),('button.tap()','photos.buttons["Continue"].tap()'),('checkpoint("observed-extensions-opened")','checkpoint("observed-extensions-opened")\n            try tap(photos.buttons.matching(identifier: "Other"))'),('try tap(photos.buttons.matching(identifier: "CelluloidPhotoExtension"))','try tap(photos.buttons.matching(identifier: "Other"))')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_observed_extensions_delta(self.source.replace(old,new))
 
 if __name__ == '__main__': unittest.main()

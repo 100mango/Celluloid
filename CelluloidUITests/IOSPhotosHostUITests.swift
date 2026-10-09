@@ -310,6 +310,36 @@ final class IOSPhotosHostUITests: XCTestCase {
         stage = "photos-more"
         try tap(photos.buttons.matching(identifier: "More"))
         checkpoint("editing-extensions-menu")
+        // Run37954719871: More presents a public Extensions submenu first.
+        // Keep direct extension selection when already exposed; never guess
+        // another extension, tap a coordinate or dismiss the keyboard tutorial.
+        if photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0 {
+            stage = "open-observed-extensions-menu"
+            try withinBudget()
+            guard photos.alerts.count == 0,
+                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {
+                throw failure("Unknown alert before Extensions; no action taken")
+            }
+            let entry = photos.buttons.matching(NSPredicate(format: "label == %@", "Extensions"))
+            guard entry.count == 1 else { throw failure("Expected one observed Extensions entry") }
+            let button = try unique(entry)
+            guard entry.count == 1, button.label == "Extensions",
+                  button.isHittable, button.isEnabled,
+                  photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0 else {
+                throw failure("Observed Extensions entry changed; no action taken")
+            }
+            print("IOS_PHOTOS_HOST_ACTION stage=\(stage) label=\(button.label) identifier=\(button.identifier)")
+            try withinBudget()
+            guard photos.alerts.count == 0,
+                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0,
+                  entry.count == 1, button.label == "Extensions",
+                  button.isHittable, button.isEnabled,
+                  photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0 else {
+                throw failure("Observed Extensions state changed before tap; no action taken")
+            }
+            button.tap()
+            checkpoint("observed-extensions-opened")
+        }
         stage = "invoke-celluloid-extension"
         try tap(photos.buttons.matching(identifier: "CelluloidPhotoExtension"))
         _ = try unique(photos.buttons.matching(identifier: "tool-filter"), timeout: 15)
