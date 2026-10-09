@@ -3,10 +3,17 @@ import SwiftUI
 @MainActor
 public struct CelluloidEditorContent: View {
     @ObservedObject private var session: CelluloidEditingSession
-    @State private var sheet: EditorSheet?
-    @State private var fullScreenSheet: EditorSheet?
-    @State private var selectedTool: String?
-    public init(session: CelluloidEditingSession) { self.session = session }
+    @StateObject private var presentation: CelluloidEditorPresentation
+    public init(session: CelluloidEditingSession) {
+        self.session = session
+        _presentation = StateObject(wrappedValue: CelluloidEditorPresentation())
+    }
+    #if DEBUG
+    init(session: CelluloidEditingSession, presentation: CelluloidEditorPresentation) {
+        self.session = session
+        _presentation = StateObject(wrappedValue: presentation)
+    }
+    #endif
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -22,19 +29,19 @@ public struct CelluloidEditorContent: View {
                     .background(Color(uiColor: .systemBackground))
                     .accessibilityIdentifier("read-only-adjustment")
             } else {
-                CelluloidOriginalToolBar(selected: selectedTool, select: presentTool)
+                CelluloidOriginalToolBar(selected: presentation.selectedTool, select: presentTool)
                     .disabled(!session.canEdit)
             }
         }
         .background(Color(uiColor: .blackBackgroundColor))
-        .sheet(item: $sheet, onDismiss: { session.isPresentingTool = false }) { selected in
+        .sheet(item: $presentation.sheet, onDismiss: { session.isPresentingTool = false }) { selected in
             CelluloidEditorSheet(sheet: selected, session: session)
         }
-        .fullScreenCover(item: $fullScreenSheet, onDismiss: { session.isPresentingTool = false }) { selected in
+        .fullScreenCover(item: $presentation.fullScreenSheet, onDismiss: { session.isPresentingTool = false }) { selected in
             CelluloidEditorSheet(sheet: selected, session: session)
         }
         .onChange(of: session.sessionIdentity) { _ in
-            sheet = nil; fullScreenSheet = nil; selectedTool = nil
+            presentation.sheet = nil; presentation.fullScreenSheet = nil; presentation.selectedTool = nil
         }
         .alert(session.isReadOnly ? tr(.unreadableEditsTitle) : NSLocalizedString("Photo Editor", comment: ""), isPresented: Binding(
             get: { session.notice != nil }, set: { if !$0 { session.notice = nil } })) {
@@ -43,23 +50,33 @@ public struct CelluloidEditorContent: View {
     }
     private func presentTool(_ selected: EditorSheet) {
         guard session.canEdit else { return }
-        selectedTool = selected.id
+        presentation.selectedTool = selected.id
         session.isPresentingTool = true
         // Original filter, sticker and bubble style pickers are form sheets.
         // Editing an existing bubble retains the original full-screen focus task.
-        sheet = selected
+        presentation.sheet = selected
     }
     private var textEditorAction: (CelluloidEditingSession.Layer, String, UUID) -> Void {
-        let route = $fullScreenSheet
-        // The session retains its canvas, so the canvas callback must not retain
-        // this entire View/ObservedObject back through a bound instance method.
-        return { [weak session] layer, text, token in
-            guard let session = session, session.canEdit, session.sessionIdentity == token else { return }
+        // The session owns its low-level canvas. Do not store a SwiftUI Binding
+        // in that canvas: a Binding can retain the presentation graph that owns
+        // the observed session even when a separate session capture is weak.
+        return { [weak session, weak presentation] layer, text, token in
+            guard let session = session, let presentation = presentation,
+                  session.canEdit, session.sessionIdentity == token else { return }
             session.selectedLayer = layer
             session.isPresentingTool = true
-            route.wrappedValue = .text(layer, text, token)
+            presentation.fullScreenSheet = .text(layer, text, token)
         }
     }
+}
+
+/// Independently owned by SwiftUI. It contains only route values, never the
+/// session or canvas, and native callbacks hold this target weakly.
+@MainActor
+final class CelluloidEditorPresentation: ObservableObject {
+    @Published var sheet: EditorSheet?
+    @Published var fullScreenSheet: EditorSheet?
+    @Published var selectedTool: String?
 }
 
 /// Reproduces the shipped toolbar's three equal-width items, template assets,
