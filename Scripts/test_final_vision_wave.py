@@ -24,6 +24,10 @@ def selftest_outcome_projection(result):
  w.need(type(result) is dict and set(result)==set(PROCESS_RESULT_FIELDS)|{'output'},'selftest result schema')
  return {k:result[k] for k in PROCESS_RESULT_FIELDS}
 
+# Fixed owned child stays live through TERM under healthy timing; late/denied cleanup still fails.
+# The alarm is armed before writing (which may block); it does not renew parent deadlines.
+OUTPUT_CAP_CHILD='import signal,time\nsignal.signal(signal.SIGTERM,signal.SIG_IGN)\nsignal.signal(signal.SIGALRM,signal.SIG_DFL)\nsignal.pthread_sigmask(signal.SIG_UNBLOCK,{signal.SIGALRM})\nsignal.setitimer(signal.ITIMER_REAL,10.0)\nprint("x"*16384,flush=True)\ntime.sleep(10.0)\n'
+
 def observed_selftest_process(scenario,cap):
  need=w.need;need(scenario in ('success','output-cap'),'selftest scenario')
  start=time.monotonic();operations=[];result=None;exception=None
@@ -53,7 +57,7 @@ def observed_selftest_process(scenario,cap):
    finally:operations.append({'operation':'killpg','signal':'SIGTERM' if sig==w.signal.SIGTERM else 'SIGKILL' if sig==w.signal.SIGKILL else 'unexpected','started_monotonic':began,'finished_monotonic':time.monotonic(),'exception':error,'errno':errno})
   stack.enter_context(patch.object(w.subprocess,'Popen',side_effect=popen));stack.enter_context(patch.object(w.os,'killpg',side_effect=signal_group))
   try:
-   code='print("owned")' if scenario=='success' else 'print("x"*16384)'
+   code='print("owned")' if scenario=='success' else OUTPUT_CAP_CHILD
    result=w.bounded_optional_process([sys.executable,'-B','-S','-c',code],start+3,start+4,cap=cap,stop_on_signal_error=True)
    return result
   except BaseException as e:exception=type(e).__name__;raise
@@ -177,7 +181,7 @@ class WaveTests(unittest.TestCase):
   self.assertEqual(ast.dump(ast.parse(actual)),ast.dump(ast.parse(original.replace('0<cap<=8192','0<cap<=1048576'))))
  def test_real_owned_process_success_and_output_cap(self):
   r=observed_selftest_process('success',8192);details=safe_selftest_result(r);self.assertTrue(r['finalized'],details);self.assertEqual(r['output'],b'owned\n',details)
-  r=observed_selftest_process('output-cap',1024);details=safe_selftest_result(r);self.assertTrue(r['overflow'],details);self.assertLessEqual(r['bytes_read'],1024,details);self.assertTrue(r['child_reaped'],details);self.assertIsNone(r['cleanup_error'],details)
+  r=observed_selftest_process('output-cap',1024);details=safe_selftest_result(r);self.assertTrue(r['overflow'],details);self.assertLessEqual(r['bytes_read'],1024,details);self.assertTrue(r['output']==b'x'*1024,details);self.assertTrue(r['child_reaped'],details);self.assertIsNone(r['cleanup_error'],details);self.assertEqual(r['return_code'],-w.signal.SIGKILL,details);self.assertFalse(r['finalized'],details)
  def test_uncertain_or_timedout_process_blocks_every_later_native_dispatch(self):
   for result in [{'output':b'partial','finalized':False,'timed_out':True,'overflow':False,'return_code':None},{'output':b'partial','finalized':True,'timed_out':True,'overflow':False,'return_code':-15}]:
    with tempfile.TemporaryDirectory() as t:
