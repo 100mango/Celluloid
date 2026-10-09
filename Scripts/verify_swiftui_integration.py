@@ -36,9 +36,10 @@ def main():
     ios = project('generate_project.py', 'Celluloid.xcodeproj')
     native = project('generate_native_project.py', 'CelluloidNative.xcodeproj')
     required = {
-        'Celluloid': ['Celluloid/SwiftUI/PhoneRootView.swift', 'Celluloid/SwiftUI/SystemPhotoPicker.swift', 'Celluloid/SwiftUI/PhotoSelectionSession.swift', 'Celluloid/SwiftUI/CelluloidEditorView.swift', 'Celluloid/SwiftUI/CelluloidCollageEditorView.swift'],
+        'Celluloid': ['Celluloid/SwiftUI/PhoneRootView.swift', 'Celluloid/SwiftUI/SystemPhotoPicker.swift', 'Celluloid/SwiftUI/PickerEntryDiagnostics.swift', 'Celluloid/SwiftUI/PhotoSelectionSession.swift', 'Celluloid/SwiftUI/CelluloidEditorView.swift', 'Celluloid/SwiftUI/CelluloidCollageEditorView.swift', 'Celluloid/SwiftUI/CelluloidSavedPhotoView.swift'],
         'CelluloidKit': ['CelluloidKit/SwiftUI/CelluloidEditingSession.swift', 'CelluloidKit/SwiftUI/CelluloidEditorContent.swift', 'CelluloidKit/SwiftUI/CelluloidEditorCanvas.swift', 'CelluloidKit/SwiftUI/CelluloidEditorSheets.swift'],
-        'CelluloidTests': ['CelluloidTests/PhotoSelectionIdentityTests.swift', 'CelluloidTests/PhotoSelectionSessionTests.swift', 'CelluloidTests/SwiftUIEditorTestSupport.swift', 'CelluloidPhotoExtension/PhotoEditingViewController.swift', 'CelluloidPhotoExtension/PhotosOutputWrite.swift'],
+        'CelluloidTests': ['CelluloidTests/PhotoSelectionIdentityTests.swift', 'CelluloidTests/PhotoSelectionSessionTests.swift', 'CelluloidTests/SwiftUIEditorTestSupport.swift', 'CelluloidTests/PhoneEntryDesignTests.swift', 'CelluloidTests/SwiftUIOriginalDesignTests.swift', 'CelluloidPhotoExtension/PhotoEditingViewController.swift', 'CelluloidPhotoExtension/PhotosOutputWrite.swift'],
+        'CelluloidUITests': ['CelluloidUITests/PhoneEntryDesignUITests.swift'],
         'CelluloidPhotoExtension': ['CelluloidPhotoExtension/PhotoEditingViewController.swift', 'CelluloidPhotoExtension/PhotosOutputWrite.swift'],
     }
     for name, expected in required.items():

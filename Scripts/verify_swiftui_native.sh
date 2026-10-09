@@ -39,12 +39,16 @@ python3 Scripts/run_bounded.py --seconds 60 --label swiftui-ios-boot xcrun simct
 python3 Scripts/run_bounded.py --seconds 300 --label swiftui-ios-bootstatus xcrun simctl bootstatus "$device" -b
 
 # New state/cancellation tests and original exact pixel/write oracles are retained.
+# Capture a failure status before exporting its genuine summary, then restore it.
+set +e
 python3 Scripts/run_bounded.py --seconds 420 --label swiftui-ios-units xcodebuild "${base[@]}" \
   -resultBundlePath "$out/units.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never \
   -only-testing:CelluloidTests/PhotoSelectionIdentityTests \
   -only-testing:CelluloidTests/PhotoSelectionSessionTests \
   -skip-testing:CelluloidTests/PhotoSelectionSessionTests/testRealSelectedLookupPreservesOrderAndIdentity \
   -only-testing:CelluloidTests/SwiftUIEditorSessionTests \
+  -only-testing:CelluloidTests/PhoneEntryDesignTests \
+  -only-testing:CelluloidTests/SwiftUIOriginalDesignTests \
   -only-testing:CelluloidTests/AsyncImagePipelineTests \
   -only-testing:CelluloidTests/FilterTests \
   -only-testing:CelluloidTests/PhotosOutputWriteTests \
@@ -52,18 +56,44 @@ python3 Scripts/run_bounded.py --seconds 420 --label swiftui-ios-units xcodebuil
   -only-testing:CelluloidTests/AdjustmentDataTests/testResourceBoundariesPreserveEveryLegacyLayerAndTextUnit \
   -only-testing:CelluloidTests/AdjustmentDataTests/testMalformedArchivesAndUnexpectedClassesAreRejected \
   test-without-building 2>&1 | tee "$out/units.log"
-xcrun xcresulttool get test-results summary --path "$out/units.xcresult" > "$out/units-summary.json"
+units_pipeline_status=("${PIPESTATUS[@]}")
+units_status=0
+for status in "${units_pipeline_status[@]}"; do
+  if [[ "$status" -ne 0 ]]; then units_status=$status; fi
+done
+set -e
+summary_status=0
+xcrun xcresulttool get test-results summary --path "$out/units.xcresult" > "$out/units-summary.json" || summary_status=$?
+if [[ "$units_status" -ne 0 ]]; then exit "$units_status"; fi
+if [[ "$summary_status" -ne 0 ]]; then exit "$summary_status"; fi
 
-# No library fixture, PhotoKit grant or fake picker is necessary for the reported freeze.
+# Fresh simulator, no seeded photos: this gate does not establish library readiness.
+# Keep both the original 3-second interaction failure and post-budget diagnostics.
+set +e
 python3 Scripts/run_bounded.py --seconds 240 --label swiftui-picker-entry-ui xcodebuild "${base[@]}" \
   -resultBundlePath "$out/picker-entry.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never \
   -only-testing:CelluloidUITests/CelluloidUITests/testBeautifyOpensSystemPickerAndCancelsRepeatedly \
   -only-testing:CelluloidUITests/CelluloidUITests/testPrivacyPolicyEntryRemainsAccessibleAndCanClose \
+  -only-testing:CelluloidUITests/PhoneEntryDesignUITests \
   test-without-building 2>&1 | tee "$out/picker-entry.log"
-xcrun xcresulttool get test-results summary --path "$out/picker-entry.xcresult" > "$out/picker-entry-summary.json"
+ui_pipeline_status=("${PIPESTATUS[@]}")
+ui_status=0
+for status in "${ui_pipeline_status[@]}"; do
+  if [[ "$status" -ne 0 ]]; then ui_status=$status; fi
+done
+set -e
+summary_status=0
+xcrun xcresulttool get test-results summary --path "$out/picker-entry.xcresult" > "$out/picker-entry-summary.json" || summary_status=$?
+# Export after all measured UI work; this cannot contaminate a tap measurement.
+# No private Photos hierarchy, library enumeration, fixture or prewarming is added.
+python3 Scripts/run_bounded.py --seconds 45 --label swiftui-picker-attachments \
+  xcrun xcresulttool export attachments --path "$out/picker-entry.xcresult" \
+  --output-path "$out/picker-attachments" > "$out/picker-attachments-export.log" 2>&1 || true
+if [[ "$ui_status" -ne 0 ]]; then exit "$ui_status"; fi
+if [[ "$summary_status" -ne 0 ]]; then exit "$summary_status"; fi
 python3 - "$out/units-summary.json" "$out/picker-entry-summary.json" <<'PYCOUNT'
 import json, sys
-for path, expected in zip(sys.argv[1:], [44, 2]):
+for path, expected in zip(sys.argv[1:], [57, 4]):
     data = json.load(open(path))
     for key, value in {'totalTestCount': expected, 'passedTests': expected, 'failedTests': 0, 'skippedTests': 0, 'expectedFailures': 0}.items():
         assert type(data.get(key)) is int and data[key] == value, (path, key, data.get(key), value)

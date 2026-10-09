@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum EditorSheet: Identifiable {
     case filter, bubble, sticker, text(CelluloidEditingSession.Layer, String, UUID)
@@ -19,113 +20,178 @@ struct CelluloidEditorSheet: View {
     let sheet: EditorSheet
     @ObservedObject var session: CelluloidEditingSession
     @Environment(\.dismiss) private var dismiss
-    @State private var caption = ""
-    @State private var newBubbleIndex: Int?
-    private let columns = [GridItem(.adaptive(minimum: 88))]
-    // Exactly the five shipped choices; all historical raw values still decode.
+    @State private var sessionToken: UUID
+    private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
     private let filters = [
         EditorFilterOption(filter: .Original, title: "Original", asset: "OriginalFilter"),
         EditorFilterOption(filter: .Sepia, title: "Sepia", asset: "OldPictureFilter"),
         EditorFilterOption(filter: .Posterize, title: "Posterize", asset: "PosterizeFilter"),
         EditorFilterOption(filter: .Crystal, title: "Crystal", asset: "CrystalFilter"),
         EditorFilterOption(filter: .PixellateFace, title: "Pixelate Faces", asset: "PixellateFaceFilter")]
-
+    init(sheet: EditorSheet, session: CelluloidEditingSession) {
+        self.sheet = sheet; self.session = session
+        _sessionToken = State(initialValue: session.sessionIdentity)
+    }
     var body: some View {
         NavigationView {
-            GeometryReader { geometry in
-                ScrollView {
-                    switch sheet {
-                    case .filter:
-                        filterGrid
-                    case .bubble:
-                        if newBubbleIndex != nil { captionEditor(height: geometry.size.height) }
-                        else { bubbleGrid }
-                    case .sticker:
-                        stickerGrid
-                    case .text(_, let initial, _):
-                        captionEditor(height: geometry.size.height).onAppear { caption = initial }
+            Group {
+                if case .text(let layer, let text, let token) = sheet {
+                    CelluloidCaptionEditor(initialText: text, cancel: { dismiss() }) { caption in
+                        session.updateText(caption, layer: layer, session: token); dismiss()
                     }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(tr(.cancel)) { dismiss() }
-                        .accessibilityIdentifier(isCaptionEditor ? "bubble-text-cancel" : "editor-picker-cancel")
-                }
-                if case .text(let layer, _, let token) = sheet {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(tr(.done)) {
-                            session.updateText(caption, layer: layer, session: token); dismiss()
-                        }.accessibilityIdentifier("bubble-text-done")
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 10) {
+                            pickerItems
+                        }.padding(10)
                     }
-                }
-                if case .bubble = sheet, let index = newBubbleIndex {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(tr(.done)) {
-                            var bubble = BubbleModel.bubbles[index]
-                            bubble.content = caption; session.addBubble(bubble); dismiss()
-                        }.accessibilityIdentifier("bubble-text-done")
+                    .background(Color.white)
+                    .navigationTitle(title)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(tr(.cancel)) { dismiss() }.accessibilityIdentifier("editor-picker-cancel")
+                        }
                     }
+                    .background(CelluloidSheetChrome())
                 }
             }
         }.navigationViewStyle(.stack)
     }
-    private var filterGrid: some View {
-        LazyVGrid(columns: columns, spacing: 16) {
+    @ViewBuilder private var pickerItems: some View {
+        switch sheet {
+        case .filter:
             ForEach(filters) { option in
-                Button { session.selectFilter(option.filter); dismiss() } label: {
-                    VStack {
-                        Image(option.asset, bundle: extensionBundle).resizable().scaledToFit().frame(height: 72)
-                        Text(NSLocalizedString(option.title, bundle: extensionBundle, comment: ""))
-                        if session.adjustment.filterType == option.filter { Image(systemName: "checkmark.circle.fill") }
-                    }.frame(minHeight: 100)
-                }.accessibilityIdentifier("filter-\(option.id)")
+                Button {
+                    guard session.sessionIdentity == sessionToken else { return }
+                    session.selectFilter(option.filter); dismiss()
+                } label: {
+                    Image(option.asset, bundle: extensionBundle).resizable().aspectRatio(1, contentMode: .fit)
+                        .background(Color(uiColor: .cellLightPurple))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(NSLocalizedString(option.title, bundle: extensionBundle, comment: ""))
+                .accessibilityIdentifier("filter-\(option.id)")
             }
-        }.padding()
-    }
-    private var bubbleGrid: some View {
-        LazyVGrid(columns: columns, spacing: 16) {
+        case .bubble:
             ForEach(BubbleModel.bubbles.indices, id: \.self) { index in
-                Button { caption = ""; newBubbleIndex = index } label: {
-                    Image(uiImage: BubbleModel.bubbles[index].bubbleImage).resizable().scaledToFit().frame(height: 88)
-                }.accessibilityLabel("\(tr(.bubble)) \(index + 1)")
-                    .accessibilityIdentifier("bubble-option-\(index)")
+                NavigationLink {
+                    // Original picker pushed caption editing, so Back returns to
+                    // the style grid without committing an unfinished bubble.
+                    CelluloidCaptionEditor(initialText: "", cancel: nil) { caption in
+                        guard session.sessionIdentity == sessionToken else { return }
+                        var model = BubbleModel.bubbles[index]; model.content = caption
+                        session.addBubble(model); dismiss()
+                    }
+                } label: {
+                    pickerImage(BubbleModel.bubbles[index].bubbleImage)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(format: NSLocalizedString("Bubble %d", bundle: extensionBundle, comment: "Picker item"), index + 1))
+                .accessibilityIdentifier("bubble-option-\(index)")
             }
-        }.padding()
-    }
-    private var stickerGrid: some View {
-        LazyVGrid(columns: columns, spacing: 16) {
+        case .sticker:
             ForEach(StickerModel.stickers.indices, id: \.self) { index in
-                Button { session.addSticker(StickerModel.stickers[index]); dismiss() } label: {
-                    Image(uiImage: StickerModel.stickers[index].stickerImage).resizable().scaledToFit().frame(height: 88)
-                }.accessibilityLabel("\(tr(.sticker)) \(index + 1)")
-                    .accessibilityIdentifier("sticker-option-\(index)")
+                Button {
+                    guard session.sessionIdentity == sessionToken else { return }
+                    session.addSticker(StickerModel.stickers[index]); dismiss()
+                } label: { pickerImage(StickerModel.stickers[index].stickerImage) }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(format: NSLocalizedString("Sticker %d", bundle: extensionBundle, comment: "Picker item"), index + 1))
+                .accessibilityIdentifier("sticker-option-\(index)")
             }
-        }.padding()
+        case .text: EmptyView()
+        }
     }
-    private func captionEditor(height: CGFloat) -> some View {
-        TextEditor(text: $caption)
-            .frame(maxWidth: 720)
-            .frame(height: max(120, height - 20))
-            .padding(10)
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel(NSLocalizedString("Bubble Text", bundle: extensionBundle, comment: "Editable bubble caption"))
-            .accessibilityIdentifier("bubble-text")
-    }
-    private var isCaptionEditor: Bool {
-        if case .text = sheet { return true }
-        return newBubbleIndex != nil
+    private func pickerImage(_ image: UIImage) -> some View {
+        Color(uiColor: .cellLightPurple).aspectRatio(1, contentMode: .fit)
+            .overlay(Image(uiImage: image).resizable().scaledToFit())
     }
     private var title: String {
-        if isCaptionEditor { return NSLocalizedString("Edit Bubble Text", comment: "") }
         switch sheet {
         case .filter: return tr(.filter)
         case .bubble: return tr(.bubble)
         case .sticker: return tr(.sticker)
-        case .text: return NSLocalizedString("Edit Bubble Text", comment: "")
+        case .text: return tr(.edit)
+        }
+    }
+}
+
+private struct CelluloidCaptionEditor: View {
+    let cancel: (() -> Void)?
+    let commit: (String) -> Void
+    @State private var text: String
+    init(initialText: String, cancel: (() -> Void)?, commit: @escaping (String) -> Void) {
+        self.cancel = cancel; self.commit = commit; _text = State(initialValue: initialText)
+    }
+    var body: some View {
+        CelluloidCaptionTextView(text: $text)
+            .frame(maxWidth: 720, maxHeight: .infinity)
+            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.white)
+            .navigationTitle(tr(.edit))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if let cancel = cancel {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(tr(.cancel), action: cancel).accessibilityIdentifier("bubble-text-cancel")
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(tr(.done)) { commit(text) }.accessibilityIdentifier("bubble-text-done")
+                }
+            }
+    }
+}
+
+/// A text-input primitive, not a controller: preserves iOS 15 background, center
+/// alignment, Dynamic Type, black caret and the original text accessibility node.
+private struct CelluloidCaptionTextView: UIViewRepresentable {
+    @Binding var text: String
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.delegate = context.coordinator
+        view.text = text
+        view.textAlignment = .center
+        view.backgroundColor = .bubbleBackgroundColor
+        view.textColor = .black; view.tintColor = .black
+        view.font = .preferredFont(forTextStyle: .body)
+        view.adjustsFontForContentSizeCategory = true
+        view.accessibilityIdentifier = "bubble-text"
+        view.accessibilityLabel = NSLocalizedString("Bubble Text", bundle: extensionBundle, comment: "Editable bubble caption")
+        return view
+    }
+    func updateUIView(_ view: UITextView, context: Context) {
+        context.coordinator.text = $text
+        if view.text != text { view.text = text }
+    }
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var text: Binding<String>
+        init(text: Binding<String>) { self.text = text }
+        func textViewDidChange(_ textView: UITextView) { text.wrappedValue = textView.text }
+    }
+}
+
+/// Configures only the system sheet chrome on iOS 15; the picker remains SwiftUI.
+private struct CelluloidSheetChrome: UIViewRepresentable {
+    func makeUIView(context: Context) -> SheetChromeView { SheetChromeView() }
+    func updateUIView(_ view: SheetChromeView, context: Context) { view.configure() }
+}
+private final class SheetChromeView: UIView {
+    override func didMoveToWindow() { super.didMoveToWindow(); configure() }
+    func configure() {
+        DispatchQueue.main.async { [weak self] in
+            var controller = self?.parentViewController
+            while let current = controller {
+                if current.presentingViewController != nil, let sheet = current.sheetPresentationController {
+                    sheet.detents = [.medium(), .large()]
+                    sheet.prefersGrabberVisible = true
+                    break
+                }
+                controller = current.parent
+            }
         }
     }
 }

@@ -13,8 +13,14 @@ final class CelluloidUITests: XCTestCase {
             recordedFailure = true
             attachScreenshot("celluloid-failure-" + name)
             print("UI_FAILURE_STATE name=\(name) orientation=\(XCUIDevice.shared.orientation.rawValue) state=\(app.state.rawValue)")
-            print("UI_FAILURE_APP_BEGIN " + String(app.debugDescription.prefix(24000)))
-            print("UI_FAILURE_APP_END")
+            if !app.launchArguments.contains("--picker-entry-observation") {
+                print("UI_FAILURE_APP_BEGIN " + String(app.debugDescription.prefix(24000)))
+                print("UI_FAILURE_APP_END")
+            } else {
+                // Avoid a full AX-tree request in the timing observation flow.
+                // The original xcresult still retains the native runner events.
+                print("PICKER_UI_FAILURE_TREE_OMITTED observation_only=true")
+            }
         }
         super.record(issue)
     }
@@ -118,28 +124,74 @@ final class CelluloidUITests: XCTestCase {
     /// seeded-image prerequisite. Timing is observed UI automation latency,
     /// not a device frame-time or Instruments measurement.
     func testBeautifyOpensSystemPickerAndCancelsRepeatedly() {
-        launch(diagnostics: false)
+        launch(["--picker-entry-observation"], diagnostics: false)
+        let previousContinueAfterFailure = continueAfterFailure
+        continueAfterFailure = true
+        defer { continueAfterFailure = previousContinueAfterFailure }
         for iteration in 1...3 {
             let edit = app.buttons["edit-photo"]
             XCTAssertTrue(edit.isHittable)
             XCTAssertFalse(app.buttons["Cancel"].exists)
             let started = ProcessInfo.processInfo.systemUptime
+            print("PICKER_UI_TRACE iteration=\(iteration) event=tap-command-start uptime_seconds=\(started)")
             edit.tap()
+            print("PICKER_UI_TRACE iteration=\(iteration) event=tap-command-returned uptime_seconds=\(ProcessInfo.processInfo.systemUptime)")
             let cancel = app.buttons["Cancel"]
+            var firstExistsElapsed: TimeInterval?
+            var firstHittableElapsed: TimeInterval?
+            func measured(_ property: String, _ read: () -> Bool) -> Bool {
+                let begin = ProcessInfo.processInfo.systemUptime
+                let value = read()
+                let end = ProcessInfo.processInfo.systemUptime
+                print("PICKER_AX_QUERY iteration=\(iteration) property=\(property) value=\(value) duration_seconds=\(end - begin) end_uptime_seconds=\(end)")
+                return value
+            }
             let usablePicker = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-                cancel.exists && cancel.isEnabled && cancel.isHittable
+                guard measured("exists", { cancel.exists }) else { return false }
+                if firstExistsElapsed == nil { firstExistsElapsed = ProcessInfo.processInfo.systemUptime - started }
+                guard measured("isEnabled", { cancel.isEnabled }) else { return false }
+                guard measured("isHittable", { cancel.isHittable }) else { return false }
+                firstHittableElapsed = ProcessInfo.processInfo.systemUptime - started
+                return true
             }, object: nil)
+            // Keep the original waiter and total observed 3-second budget.
+            // A visible close icon never substitutes for the isHittable result.
             let outcome = XCTWaiter.wait(for: [usablePicker], timeout: 3)
             let elapsed = ProcessInfo.processInfo.systemUptime - started
             print("SWIFTUI_PICKER_ENTRY iteration=\(iteration) elapsed_seconds=\(elapsed) budget_seconds=3 result=\(outcome.rawValue)")
+            print("PICKER_OBSERVATION iteration=\(iteration) first_exists_seconds=\(String(describing: firstExistsElapsed)) first_hittable_seconds=\(String(describing: firstHittableElapsed)) library_ready=unmeasured")
+            XCTAssertNotNil(firstExistsElapsed, "Observable system control presentation was not established")
+            if let existsElapsed = firstExistsElapsed {
+                XCTAssertLessThanOrEqual(existsElapsed, 3, "Observable system-control presentation budget")
+            }
             XCTAssertEqual(outcome, .completed, "The real PHPicker Cancel action must become usable")
             XCTAssertLessThanOrEqual(elapsed, 3, "Home-to-system-picker observed latency budget")
+            XCTAssertNotNil(firstHittableElapsed, "Control visibility cannot establish interactivity")
+            // All screenshots and recovery below are outside the measured budget.
+            // continueAfterFailure retains failed assertions while gathering the
+            // remaining repetitions; it never changes a failed gate to a pass.
+            let evidence = XCTAttachment(screenshot: app.screenshot())
+            evidence.name = "celluloid-picker-observation-\(iteration)"
+            evidence.lifetime = .keepAlways
+            add(evidence)
+            if outcome != .completed {
+                let recoveryStarted = ProcessInfo.processInfo.systemUptime
+                let recovered = cancel.waitForExistence(timeout: 10) && cancel.isEnabled && cancel.isHittable
+                print("PICKER_POST_BUDGET_RECOVERY iteration=\(iteration) recovered=\(recovered) elapsed_seconds=\(ProcessInfo.processInfo.systemUptime - recoveryStarted) gate_remains_failed=true")
+                guard recovered else {
+                    XCTFail("Cannot safely cancel the real picker after the failed timing gate")
+                    return
+                }
+            }
             XCTAssertFalse(app.buttons["photos-allow-originals"].exists)
             XCTAssertFalse(app.buttons["editor-done"].exists)
             XCTAssertFalse(app.alerts.firstMatch.exists, "Opening the system picker must not request PhotoKit access")
+            print("PICKER_UI_TRACE iteration=\(iteration) event=cancel-command-start uptime_seconds=\(ProcessInfo.processInfo.systemUptime)")
             cancel.tap()
             XCTAssertTrue(edit.waitForExistence(timeout: 5))
             XCTAssertTrue(edit.isHittable)
+            XCTAssertFalse(cancel.exists)
+            print("PICKER_UI_TRACE iteration=\(iteration) event=home-interactive-after-dismiss uptime_seconds=\(ProcessInfo.processInfo.systemUptime)")
         }
     }
 

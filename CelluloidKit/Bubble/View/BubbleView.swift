@@ -9,6 +9,9 @@
 import UIKit
 
 open class BubbleView: AttachView {
+    // SwiftUI owns the caption route when this view belongs to its canvas.
+    // The legacy editor continues using its existing controller when unset.
+    var requestTextEditing: ((BubbleView) -> Void)?
     //MARK: Property
     lazy var editTextBubbton: UIButton = {
         let button = DecorationControlButton(type: .custom)
@@ -84,6 +87,7 @@ open class BubbleView: AttachView {
 extension BubbleView {
     @objc func accessibleEditText() -> Bool { editText(); return true }
     @objc func editText() {
+        if let requestTextEditing = requestTextEditing { requestTextEditing(self); return }
         let editBubbleVC = EditBubbleViewController(bubbleModel: self.bubbleModel)
         editBubbleVC.delegate = self
         let navigationVC = UINavigationController(rootViewController: editBubbleVC)

@@ -45,6 +45,9 @@ class ImageArrangedPanel: UIView {
     }()
     
     weak var delegate: ImageArrangedPanelDelegate?
+
+    /// SwiftUI hosts can own the minimum-photo alert; UIKit callers keep the original fallback.
+    var onMinimumPhotoCountReached: (() -> Void)?
     
     //MARK: init
     init(models: [PhotoModel]) {
@@ -106,6 +109,10 @@ extension ImageArrangedPanel: ArrangedCollectionViewCellDelegate {
                 collectionView.deleteItems(at: [indexPath])
                 self.delegate?.imageArrangedPanel(self, didEditModels: photoModels)
             } else {
+                if let onMinimumPhotoCountReached = onMinimumPhotoCountReached {
+                    onMinimumPhotoCountReached()
+                    return
+                }
                 let alert = UIAlertController(title: nil, message: NSLocalizedString("A collage needs at least two photos.", comment: "Minimum collage selection"), preferredStyle: .alert)
                 self.parentViewController?.present(alert, animated: true, completion: nil)
                 alert.addAction(UIAlertAction(title: tr(.done), style: .cancel, handler: { action in

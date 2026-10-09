@@ -20,6 +20,7 @@ public final class CelluloidEditingSession: ObservableObject {
     @Published public var notice: String?
     @Published public private(set) var revision = UUID()
     public var isPresentingTool = false
+    private(set) var canvasIdentity = UUID()
     public private(set) var input: PHContentEditingInput?
     public private(set) var preservedAdjustmentData: PHAdjustmentData?
     public private(set) var sourceImage: UIImage?
@@ -91,6 +92,7 @@ public final class CelluloidEditingSession: ObservableObject {
     }
     public func restore(_ recipe: AdjustmentData) {
         guard canEdit else { return }
+        canvasIdentity = UUID()
         adjustment = recipe; revision = UUID(); selectedLayer = nil; renderPreview()
     }
     public func selectFilter(_ filter: FilterType) {
@@ -104,14 +106,12 @@ public final class CelluloidEditingSession: ObservableObject {
         self.revision = UUID()
     }
     public func addBubble(_ model: BubbleModel) {
-        guard canEdit, let size = adjustment.referenceCanvasSize else { return }
-        var bubble = model; bubble.center = CGPoint(x: size.width / 2, y: size.height / 2)
-        adjustment.bubbles.append(bubble); selectedLayer = .bubble(adjustment.bubbles.count - 1); revision = UUID()
+        guard canEdit, adjustment.referenceCanvasSize != nil else { return }
+        adjustment.bubbles.append(model); selectedLayer = .bubble(adjustment.bubbles.count - 1); revision = UUID()
     }
     public func addSticker(_ model: StickerModel) {
-        guard canEdit, let size = adjustment.referenceCanvasSize else { return }
-        var sticker = model; sticker.center = CGPoint(x: size.width / 2, y: size.height / 2)
-        adjustment.stickers.append(sticker); selectedLayer = .sticker(adjustment.stickers.count - 1); revision = UUID()
+        guard canEdit, adjustment.referenceCanvasSize != nil else { return }
+        adjustment.stickers.append(model); selectedLayer = .sticker(adjustment.stickers.count - 1); revision = UUID()
     }
     public func text(for layer: Layer) -> String? {
         guard case .bubble(let index) = layer, adjustment.bubbles.indices.contains(index) else { return nil }
@@ -179,6 +179,7 @@ public final class CelluloidEditingSession: ObservableObject {
         }
     }
     public func export(completion: @escaping (Result<PhotoExport, PhotoExportError>) -> Void) {
+        captureCanvasIfCurrent()
         cancelExport()
         guard phase == .ready else { completion(.failure(.invalidState)); return }
         let token = generation, request = UUID()
@@ -191,10 +192,25 @@ public final class CelluloidEditingSession: ObservableObject {
             completion(result)
         }
     }
+    /// Native hit testing/gestures change only the low-level canvas. Its current
+    /// immutable geometry is committed back to the SwiftUI-owned recipe.
+    func acceptCanvasSnapshot(_ recipe: AdjustmentData, selected: Layer?, session: UUID, revision: UUID) {
+        guard canEdit, generation == session, self.revision == revision else { return }
+        var snapshot = recipe
+        snapshot.filterType = adjustment.filterType
+        adjustment = snapshot
+        selectedLayer = selected
+        // Do not create a new command revision: rebuilding the touched UIView
+        // during a pan would discard its recognizer/selection state.
+    }
+    private func captureCanvasIfCurrent() {
+        guard canEdit, let snapshot = canvas.snapshot(session: generation, revision: revision) else { return }
+        acceptCanvasSnapshot(snapshot.recipe, selected: snapshot.selected, session: generation, revision: revision)
+    }
     public func cancelExport() { exportGeneration = UUID(); activeExport?.cancel(); activeExport = nil; exporter.cancel(); isExporting = false }
     public func cancel() { reset() }
     private func reset() {
-        generation = UUID(); previewGeneration = UUID(); cancelExport(); previewPipeline.cancel()
+        generation = UUID(); canvasIdentity = UUID(); previewGeneration = UUID(); cancelExport(); previewPipeline.cancel()
         input = nil; pendingReadOnlyPreview = nil; sourceImage = nil; previewImage = nil; preservedAdjustmentData = nil
         adjustment = AdjustmentData(); selectedLayer = nil; notice = nil
         revision = UUID(); phase = .empty; previewIsLoading = false; isPresentingTool = false

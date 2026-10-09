@@ -37,19 +37,22 @@ private struct CelluloidOriginalPhotoEditor: View {
         NavigationView {
             VStack(spacing: 0) {
                 if let image = savedImage {
-                    CelluloidSavedPhotoView(image: image)
+                    CelluloidSavedPhotoView(image: image, onDone: cancelAndDismiss)
                 } else {
                     CelluloidEditorContent(session: session)
                         .disabled(saving)
                 }
             }
-            .navigationTitle(tr(.beautify))
+            .navigationTitle(savedImage == nil ? tr(.beautify) : "")
+            .navigationBarBackButtonHidden(savedImage != nil)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(savedImage == nil ? tr(.cancel) : tr(.done)) { cancelAndDismiss() }
-                        .disabled(committing)
-                        .accessibilityIdentifier(savedImage == nil ? "editor-cancel" : "share-done")
+                    if savedImage == nil {
+                        Button(tr(.cancel), action: cancelAndDismiss)
+                            .disabled(committing)
+                            .accessibilityIdentifier("editor-cancel")
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if savedImage == nil {
@@ -160,25 +163,3 @@ private struct CelluloidOriginalPhotoEditor: View {
     private func cancelAndDismiss() { guard !committing else { return }; abandon(); dismiss() }
 }
 
-struct CelluloidSavedPhotoView: View {
-    let image: UIImage
-    @State private var sharing = false
-    var body: some View {
-        VStack(spacing: 20) {
-            Image(uiImage: image).resizable().scaledToFit()
-            Text(NSLocalizedString("Saved to Photos", comment: "")).font(.headline).accessibilityIdentifier("photo-saved")
-            Button(NSLocalizedString("Share", comment: "")) { sharing = true }
-                .frame(minHeight: 44).accessibilityIdentifier("share-photo")
-        }.padding()
-        .sheet(isPresented: $sharing) { CelluloidSystemShareSheet(image: image) }
-    }
-}
-
-/// The system activity UI is the only share interoperability shell.
-private struct CelluloidSystemShareSheet: UIViewControllerRepresentable {
-    let image: UIImage
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [image], applicationActivities: nil)
-    }
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}

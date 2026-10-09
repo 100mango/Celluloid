@@ -46,10 +46,16 @@ final class PhotoEditingViewController: UIViewController, PHContentEditingContro
     private var sessionGeneration: UInt64 = 0
     private var pendingOutputWrite: PhotosOutputWrite?
     private var pendingPreparation: AnyCancellable?
+    private var pendingPreparationTimeout: DispatchWorkItem?
     #if DEBUG
     var outputWriterPreparedForTesting: ((PhotosOutputWrite) -> Void)?
+    var preparationTimeoutForTesting: TimeInterval?
     #endif
-    deinit { pendingOutputWrite?.cancel() }
+    deinit { pendingOutputWrite?.cancel(); pendingPreparationTimeout?.cancel() }
+    private func cancelPendingPreparation() {
+        pendingPreparation = nil
+        pendingPreparationTimeout?.cancel(); pendingPreparationTimeout = nil
+    }
     private func cancelPendingOutputWrite() {
         pendingOutputWrite?.cancel(); pendingOutputWrite = nil
     }
@@ -57,7 +63,7 @@ final class PhotoEditingViewController: UIViewController, PHContentEditingContro
         AdjustmentData.supportIdentifier(adjustmentData.formatIdentifier, version: adjustmentData.formatVersion)
     }
     func startContentEditing(with input: PHContentEditingInput, placeholderImage: UIImage) {
-        cancelled = false; pendingPreparation = nil; cancelPendingOutputWrite(); sessionGeneration &+= 1
+        cancelled = false; cancelPendingPreparation(); cancelPendingOutputWrite(); sessionGeneration &+= 1
         loadViewIfNeeded(); view.isUserInteractionEnabled = true
         session.start(input: input, placeholder: placeholderImage)
     }
@@ -66,21 +72,45 @@ final class PhotoEditingViewController: UIViewController, PHContentEditingContro
             guard let self = self, !self.cancelled else { return }
             guard let input = self.session.input else { completionHandler(nil); return }
             self.sessionGeneration &+= 1
-            self.pendingPreparation = nil
+            self.cancelPendingPreparation()
             self.cancelPendingOutputWrite()
-            if self.session.phase == .loading {
+            if self.session.phase == .loading || self.needsLegacyCanvas {
                 let generation = self.sessionGeneration
                 self.view.isUserInteractionEnabled = false
-                self.pendingPreparation = self.session.$phase
-                    .filter { $0 != .loading && $0 != .empty }
-                    .first()
-                    .receive(on: DispatchQueue.main)
-                    .sink { [weak self] _ in
-                        guard let self = self, !self.cancelled,
-                              self.sessionGeneration == generation, self.session.input === input else { return }
-                        self.pendingPreparation = nil
-                        self.finishContentEditing(completionHandler: completionHandler)
+                var preparationCompleted = false
+                let finishPreparation: (Bool) -> Void = { [weak self] ready in
+                    guard let self = self, !preparationCompleted, !self.cancelled,
+                          self.sessionGeneration == generation, self.session.input === input else { return }
+                    preparationCompleted = true
+                    self.cancelPendingPreparation()
+                    if ready { self.finishContentEditing(completionHandler: completionHandler) }
+                    else {
+                        self.view.isUserInteractionEnabled = true
+                        completionHandler(nil)
                     }
+                }
+                self.pendingPreparation = Publishers.CombineLatest(self.session.$phase, self.session.$adjustment)
+                    .receive(on: DispatchQueue.main)
+                    .filter { [weak self] _ in
+                        guard let self = self, !self.cancelled,
+                              self.sessionGeneration == generation, self.session.input === input else { return false }
+                        // A legacy archive has absolute preview points. Decode
+                        // readiness alone does not establish that coordinate space.
+                        self.view.setNeedsLayout(); self.view.layoutIfNeeded()
+                        return self.session.phase != .loading && self.session.phase != .empty && !self.needsLegacyCanvas
+                    }
+                    .first()
+                    .sink { _ in finishPreparation(true) }
+                // The active host must receive a result even if its view never
+                // mounts or has no drawable size. Failure never writes a raster.
+                let timeout = DispatchWorkItem { finishPreparation(false) }
+                self.pendingPreparationTimeout = timeout
+                #if DEBUG
+                let interval = self.preparationTimeoutForTesting ?? 10
+                #else
+                let interval: TimeInterval = 10
+                #endif
+                DispatchQueue.main.asyncAfter(deadline: .now() + interval, execute: timeout)
                 return
             }
             if self.session.isReadOnly {
@@ -124,9 +154,13 @@ final class PhotoEditingViewController: UIViewController, PHContentEditingContro
         }
         if Thread.isMainThread { finish() } else { DispatchQueue.main.async(execute: finish) }
     }
+    private var needsLegacyCanvas: Bool {
+        session.phase == .ready && session.adjustment.referenceCanvasSize == nil
+            && (!session.adjustment.bubbles.isEmpty || !session.adjustment.stickers.isEmpty)
+    }
     var shouldShowCancelConfirmation: Bool { !session.isReadOnly }
     func cancelContentEditing() {
-        cancelled = true; pendingPreparation = nil; sessionGeneration &+= 1
+        cancelled = true; cancelPendingPreparation(); sessionGeneration &+= 1
         cancelPendingOutputWrite(); session.cancel()
         viewIfLoaded?.isUserInteractionEnabled = true
     }

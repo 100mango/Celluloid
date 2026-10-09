@@ -9,6 +9,9 @@
 import UIKit
 
 open class AttachView: UIView {
+    // Optional canvas-owner hooks. Legacy UIKit callers keep their existing behavior.
+    var removalDidBegin: (() -> Void)?
+    var selectionDidChange: (() -> Void)?
     //MARK: Property
     let buttonWidth = CGFloat(32)
     let halfButtonWidth = CGFloat(16)
@@ -54,6 +57,7 @@ open class AttachView: UIView {
                     }
                 }
             })
+            selectionDidChange?()
         }
     }
     
@@ -142,6 +146,7 @@ private extension Selector {
 extension AttachView{
     
     @objc func removeSelf() {
+        removalDidBegin?()
         UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 1, initialSpringVelocity: 0.3, options: [],
             animations: {
                 self.transform = CGAffineTransform(scaleX: 0.5, y: 0.5)

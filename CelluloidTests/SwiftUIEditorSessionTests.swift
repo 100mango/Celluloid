@@ -51,7 +51,7 @@ final class SwiftUIEditorSessionTests: XCTestCase {
         let decoded = try AdjustmentData.decode(session.adjustment.encode())
         XCTAssertEqual(decoded.bubbles[0].content, caption)
         XCTAssertEqual(decoded.bubbles[0].transform, originalTransform)
-        XCTAssertEqual(decoded.bubbles[0].center, CGPoint(x: 159, y: 93))
+        XCTAssertEqual(decoded.bubbles[0].center, CGPoint(x: 109, y: 93))
         XCTAssertEqual(decoded.referenceCanvasSize, CGSize(width: 300, height: 200))
     }
     func testStaleCaptionCannotAttachToReplacementSession() {

@@ -271,6 +271,108 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         XCTAssertEqual(try integrity(asset, stage: "loading-valid-after-export"), validBefore)
     }
 
+    func testDoneBeforeLegacyCanvasLayoutWaitsForOriginalGeometry() throws {
+        try requireAuthorizedSyntheticProbe()
+        let original = fixture(left: .red, right: .blue)
+        let asset = try createOwnedAsset(original, label: "legacy-canvas-early-done")
+        let initial = try input(asset, handles: { _ in true })
+        var legacy = AdjustmentData()
+        var bubble = BubbleModel.bubbles[4]; bubble.content = "Early legacy 世界"
+        bubble.center = CGPoint(x: 75, y: 50)
+        bubble.transform = CGAffineTransform(a: 0.8, b: 0.2, c: -0.2, d: 0.8, tx: 3, ty: -2)
+        legacy.bubbles = [bubble]
+        XCTAssertNil(legacy.referenceCanvasSize)
+        let data = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier,
+            formatVersion: AdjustmentData.formatVersion, data: try legacy.encode())
+        try install(data, image: original, asset: asset, input: initial)
+        let bound = try input(asset, handles: { _ in true })
+        let before = try integrity(asset, stage: "legacy-canvas-early-done-before")
+        let oracle = BaseEditPhotoController(); oracle.loadViewIfNeeded()
+        oracle.view.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+        oracle.sourceImage = original; oracle.restoreFromData(legacy); oracle.view.layoutIfNeeded()
+        let expected = try XCTUnwrap(oracle.outputImage)
+        let expectedJPEG = try XCTUnwrap(UIImage(data: XCTUnwrap(expected.jpegData(compressionQuality: 1))))
+        let editor = PhotoEditingViewController(); editor.loadViewIfNeeded()
+        editor.view.frame = oracle.view.frame
+        editor.startContentEditing(with: bound, placeholderImage: original)
+        XCTAssertEqual(editor.session.phase, .loading)
+        let done = expectation(description: "Early Done waits for original legacy canvas")
+        editor.finishContentEditing { output in
+            do {
+                let output = try XCTUnwrap(output)
+                let saved = try AdjustmentData.decode(XCTUnwrap(output.adjustmentData?.data))
+                XCTAssertEqual(saved.referenceCanvasSize, self.expectedCanvas)
+                XCTAssertEqual(saved.bubbles.count, 1)
+                XCTAssertEqual(saved.bubbles.first?.center, bubble.center)
+                XCTAssertEqual(saved.bubbles.first?.transform, bubble.transform)
+                let rendered = try XCTUnwrap(UIImage(contentsOfFile: output.renderedContentURL.path))
+                XCTAssertEqual(try self.rgba(rendered), try self.rgba(expectedJPEG))
+            } catch { XCTFail("Legacy early-Done oracle failed: \(error)") }
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 15)
+        XCTAssertEqual(try integrity(asset, stage: "legacy-canvas-early-done-after"), before)
+    }
+
+    func testUnmountedLegacyCanvasTimesOutOnceAndAbandonedHostsStaySilent() throws {
+        try requireAuthorizedSyntheticProbe()
+        let original = fixture(left: .red, right: .blue)
+        let asset = try createOwnedAsset(original, label: "legacy-canvas-timeout")
+        let initial = try input(asset, handles: { _ in true })
+        var recipe = AdjustmentData(); recipe.bubbles = [BubbleModel.bubbles[4]]
+        XCTAssertNil(recipe.referenceCanvasSize)
+        let metadata = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier,
+            formatVersion: AdjustmentData.formatVersion, data: try recipe.encode())
+        try install(metadata, image: original, asset: asset, input: initial)
+        let bound = try input(asset, handles: { _ in true })
+        let before = try integrity(asset, stage: "legacy-unmounted-before")
+        func makeUnmounted() -> PhotoEditingViewController {
+            let value = PhotoEditingViewController(); value.loadViewIfNeeded()
+            value.view.frame = .zero
+            value.preparationTimeoutForTesting = 0.03
+            return value
+        }
+        let editor = makeUnmounted()
+        editor.startContentEditing(with: bound, placeholderImage: original)
+        let timedOut = expectation(description: "A live zero-sized host receives exactly one failure")
+        timedOut.assertForOverFulfill = true
+        var callbacks = 0
+        editor.finishContentEditing { output in callbacks += 1; XCTAssertNil(output); timedOut.fulfill() }
+        wait(for: [timedOut], timeout: 5)
+        XCTAssertEqual(callbacks, 1)
+        XCTAssertTrue(editor.view.isUserInteractionEnabled)
+
+        editor.startContentEditing(with: bound, placeholderImage: original)
+        let older = expectation(description: "Superseded zero-sized finish is silent"); older.isInverted = true
+        editor.finishContentEditing { _ in older.fulfill() }
+        let newest = expectation(description: "Newest zero-sized finish times out once"); newest.assertForOverFulfill = true
+        editor.finishContentEditing { output in XCTAssertNil(output); newest.fulfill() }
+        wait(for: [newest], timeout: 5)
+        wait(for: [older], timeout: 0.1)
+
+        editor.startContentEditing(with: bound, placeholderImage: original)
+        let cancelled = expectation(description: "Canceled zero-sized host is silent"); cancelled.isInverted = true
+        editor.finishContentEditing { _ in cancelled.fulfill() }
+        editor.cancelContentEditing()
+        wait(for: [cancelled], timeout: 0.1)
+
+        editor.startContentEditing(with: bound, placeholderImage: original)
+        let replaced = expectation(description: "Replaced input cannot receive the old timeout"); replaced.isInverted = true
+        editor.finishContentEditing { _ in replaced.fulfill() }
+        editor.startContentEditing(with: bound, placeholderImage: original)
+        wait(for: [replaced], timeout: 0.1)
+
+        let ended = expectation(description: "Deallocated Photos host receives no callback"); ended.isInverted = true
+        var temporary: PhotoEditingViewController? = makeUnmounted()
+        weak var weakHost = temporary
+        temporary?.startContentEditing(with: bound, placeholderImage: original)
+        temporary?.finishContentEditing { _ in ended.fulfill() }
+        temporary = nil
+        XCTAssertNil(weakHost)
+        wait(for: [ended], timeout: 0.1)
+        XCTAssertEqual(try integrity(asset, stage: "legacy-unmounted-after"), before)
+    }
+
     func testActualPhotosOutputDestinationsIsolateLateWrites() throws {
         try requireAuthorizedSyntheticProbe()
         let original = fixture(left: .red, right: .blue)
