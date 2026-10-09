@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "mode": "install-only",
+  "READY": true,
+  "sourceReady": true,
+  "nativeAuthorization": true,
+  "base_sha": "5163f1c3632e3f78bb549065a31f3417efd7f94a",
+  "base_tree": "550a42c24cb9a1644a952c1917b2e44db73387da",
+  "maximum_additional_spend_usd": 0
+}

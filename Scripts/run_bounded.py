@@ -24,8 +24,22 @@ args = parser.parse_args()
 if not args.command or args.seconds <= 0:
     parser.error('A positive time bound and command are required')
 absolute_deadline = args.deadline_monotonic is not None
+install_diagnostic_route = absolute_deadline and os.environ.get('GITHUB_REF') == 'refs/heads/cell-ios-install-diagnostic'
+install_observer_context = None
+install_observer_wait = None
+install_observation = None
+install_cancelled = [None]
+if install_diagnostic_route:
+    # Only this exact new route defers cancellation while it owns children.
+    import atexit
+    from run_ios_install_diagnostic import bounded_admission, OBSERVATIONS, InstallObservation, defer_cancellation
+    install_cancelled = defer_cancellation()
+    install_observer_context = bounded_admission(args.label, args.command, args.seconds)
+    if args.label == 'install-owned-app':
+        from ios_install_observer import wait_with_one_sample
+        install_observer_wait = wait_with_one_sample
 if absolute_deadline:
-    if (args.original_ios_first_summary or os.environ.get('GITHUB_REF') != 'refs/heads/cell-ios-photos-host-final'
+    if (args.original_ios_first_summary or (os.environ.get('GITHUB_REF') != 'refs/heads/cell-ios-photos-host-final' and not install_diagnostic_route)
             or os.environ.get('GITHUB_REPOSITORY') != '100mango/Celluloid'
             or not math.isfinite(args.seconds) or not math.isfinite(args.deadline_monotonic) or args.deadline_monotonic <= 0
             or args.deadline_monotonic > time.monotonic() + args.seconds):
@@ -85,7 +99,15 @@ refuse_expired_parent()
 try:
     if first_summary is not None and time.monotonic() >= deadline:
         raise subprocess.TimeoutExpired(args.command, args.seconds)
-    process = subprocess.Popen(args.command, start_new_session=True)
+    if install_diagnostic_route and install_cancelled[0] is not None:
+        raise RuntimeError('Cancelled before native dispatch')
+    if install_observer_wait is None:
+        process = subprocess.Popen(args.command, start_new_session=True)
+    else:
+        install_observation = InstallObservation(install_observer_context,args.command,deadline,lambda: install_cancelled[0] is not None)
+        atexit.register(install_observation.finish)
+        install_observation.start()
+        process = install_observation.spawn(lambda: subprocess.Popen(args.command, start_new_session=True))
     owner.started(process)
     photos_timing('spawn-return', child_pid=process.pid, child_pgid=process.pid, start_new_session=True)
 except BaseException as original:
@@ -104,7 +126,23 @@ try:
             if remaining <= 0:
                 raise subprocess.TimeoutExpired(args.command, args.seconds)
         wait_budget_seconds = remaining
-        code = process.wait(timeout=remaining)
+        if install_observer_wait is None:
+            code = process.wait(timeout=remaining)
+        else:
+            try:
+                code = install_observer_wait(process, deadline, args.command, OBSERVATIONS, install_observer_context)
+            except subprocess.TimeoutExpired:
+                raise
+            except BaseException as observation_error:
+                # Keep the same owned native waiter and original deadline. An
+                # observer failure is not evidence that install itself timed out.
+                install_observation.control_errors.append({'phase':'sample','error':type(observation_error).__name__})
+                print('BOUNDED_COMMAND_CLEANUP_UNCONFIRMED', json.dumps(error_record(observation_error)), flush=True)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(args.command, args.seconds) from observation_error
+                code = process.wait(timeout=remaining)
+            install_observation.observed(code)
         photos_timing('wait-return', child_pid=process.pid, child_returncode=code, wait_budget_seconds=remaining)
         if time.monotonic() > deadline:
             raise subprocess.TimeoutExpired(args.command, args.seconds)
@@ -215,6 +253,12 @@ else:
     owner.completed(code)
 if first_summary is not None:
     record(first_summary, code, time.monotonic())
+if install_observation is not None:
+    install_observation.finish()
+    atexit.unregister(install_observation.finish)
+if install_diagnostic_route and install_cancelled[0] is not None:
+    print('BOUNDED_COMMAND_CLEANUP_UNCONFIRMED deferred cancellation', flush=True)
+    code = 128 + install_cancelled[0]
 photos_timing('wrapper-end', exit_code=code)
 print('BOUNDED_COMMAND_END', json.dumps({'label': args.label, 'exit_code': code, 'elapsed_seconds': round(time.monotonic() - started, 3)}), flush=True)
 sys.exit(code if code >= 0 else 128 - code)

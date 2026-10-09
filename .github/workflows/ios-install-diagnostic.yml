@@ -1,0 +1,92 @@
+name: Celluloid one-install observation (diagnostic only)
+on:
+  push:
+    branches: [cell-ios-install-diagnostic]
+    paths:
+      - .github/ios-install-diagnostic.json
+      - .github/workflows/ios-install-diagnostic.yml
+      - Scripts/run_ios_install_diagnostic.py
+      - Scripts/test_ios_install_diagnostic.py
+      - Scripts/ios_install_observer.py
+      - Scripts/test_ios_install_observer.py
+      - Scripts/run_bounded.py
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-ios-photos-host-probe
+  cancel-in-progress: false
+jobs:
+  install-only:
+    # Root separately reviews source, permissions and capacity before opening all guards.
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/cell-ios-install-diagnostic' }}
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      TZ: UTC
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 64
+      - name: Bind exact source and dedicated route
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 100mango/Celluloid
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REF" = refs/heads/cell-ios-install-diagnostic
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          git diff --exit-code HEAD --
+          mkdir -p build
+          git rev-parse HEAD 'HEAD^{tree}' > build/install-diagnostic-source.txt
+          python3 -S Scripts/run_ios_install_diagnostic.py --admit-only > build/install-diagnostic-source-before.json
+      - name: One build and one observed install; no Photos tests
+        timeout-minutes: 40
+        run: python3 -S Scripts/run_ios_install_diagnostic.py
+      - name: Verify source remained unchanged
+        timeout-minutes: 1
+        if: always()
+        run: |
+          set -euo pipefail
+          git diff --exit-code HEAD --
+          python3 -S Scripts/run_ios_install_diagnostic.py --admit-only > build/install-diagnostic-source-after.json
+          cmp build/install-diagnostic-source-before.json build/install-diagnostic-source-after.json
+      - name: Retain install and observation outcomes
+        timeout-minutes: 2
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: celluloid-ios-install-only-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/install-diagnostic-source.txt
+            build/install-diagnostic-source-before.json
+            build/install-diagnostic-source-after.json
+            build/swiftui-acceptance/owned-simulator.json
+            build/swiftui-acceptance/owned-inventory-projection.json
+            build/swiftui-acceptance/owned-runtime.json
+            build/swiftui-acceptance/build-binding.json
+            build/swiftui-acceptance/phases.json
+            build/swiftui-acceptance/install-only-result.json
+            build/swiftui-acceptance/install-result.json
+            build/swiftui-acceptance/install-pressure-before.json
+            build/swiftui-acceptance/install-pressure-after.json
+            build/swiftui-acceptance/*-dispatch-timing.json
+            build/swiftui-acceptance/toolchain.log
+            build/swiftui-acceptance/host-memory.log
+            build/swiftui-acceptance/bootstatus.log
+            build/swiftui-acceptance/install-owned-app.log
+            build/swiftui-acceptance/install-observation/install-device-log.json
+            build/swiftui-acceptance/install-observation/install-device-log.stdout.log
+            build/swiftui-acceptance/install-observation/install-device-log.stderr.log
+            build/swiftui-acceptance/install-observation/install-sample.json
+            build/swiftui-acceptance/install-observation/install-sample.stdout.log
+            build/swiftui-acceptance/install-observation/install-sample.stderr.log
+            build/swiftui-acceptance/install-observation/install-wrapper-observation.json
+          retention-days: 1
+          if-no-files-found: error
