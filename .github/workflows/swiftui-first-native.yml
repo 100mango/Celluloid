@@ -15,12 +15,15 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
       EXPECTED_COMMIT: ${{ github.sha }}
+      TZ: UTC
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 3
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
       - name: Verify exact source and unchanged generated memberships
+        timeout-minutes: 1
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = 100mango/Celluloid
@@ -33,12 +36,15 @@ jobs:
           git diff --exit-code HEAD --
           mkdir -p build
           git rev-parse HEAD 'HEAD^{tree}' > build/swiftui-source.txt
-      - name: Compile and test the first complete iOS slice
+      - name: Same-build picker and legacy PhotoKit acceptance
+        timeout-minutes: 40
         run: /bin/bash Scripts/verify_swiftui_native.sh
       - name: Verify source remained unchanged
+        timeout-minutes: 1
         if: always()
         run: git diff --exit-code HEAD --
       - name: Retain native proof without signing material
+        timeout-minutes: 2
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:

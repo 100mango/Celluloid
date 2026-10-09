@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Read-only PhotoKit readiness then reconciled synthetic import; never retry imports."""
-import argparse, datetime, hashlib, json, os, pathlib, re, subprocess, sys
+import argparse, datetime, hashlib, json, os, pathlib, re, subprocess, sys, time
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('device')
 parser.add_argument('--already-prepared', action='store_true')
+parser.add_argument('--derived-data-path', default='.build', help='Reuse the caller-owned build; legacy default is unchanged')
+parser.add_argument('--deadline-monotonic', type=float, help='Optional shared-job preparation deadline; never extends original command ceilings')
 options = parser.parse_args()
 device = options.device
+bootstrap_deadline = options.deadline_monotonic
 errors = []
 evidence_root = pathlib.Path(os.environ.get('RUNNER_TEMP', '.build/bootstrap-evidence'))
 evidence_root.mkdir(parents=True, exist_ok=True)
@@ -28,6 +31,9 @@ def row_clock():
     return clock,context,clock_status(clock,context)
 
 def require_inner_allowance(seconds):
+    deadline = globals().get('bootstrap_deadline')
+    if deadline is not None and time.monotonic() + seconds + 15 > deadline:
+        raise TimeoutError('Shared Photos bootstrap deadline cannot fit command and cleanup; no dispatch')
     from original_ios_process_guard import ensure_native_dispatch
     ensure_native_dispatch()
     if not full_row:return
@@ -41,6 +47,11 @@ def check_inner_completion():
     clock,context,_=row_clock();check_completion(clock,context,'bootstrap')
 
 def run(label, seconds, *args):
+    deadline = globals().get('bootstrap_deadline')
+    if deadline is not None:
+        remaining = deadline - time.monotonic() - 15
+        if remaining <= 0: raise TimeoutError('Shared Photos bootstrap preparation deadline expired; no dispatch')
+        seconds = min(seconds, remaining)
     if full_row:
         # Direct owned group: do not kill an outer helper while its actual
         # xcodebuild/simctl command lives in a separate inner process group.
@@ -73,6 +84,9 @@ def host_command(command):
     return subprocess.run(command,capture_output=True,text=True,timeout=15)
 
 def host(label):
+    deadline = globals().get('bootstrap_deadline')
+    if deadline is not None and deadline - time.monotonic() < 180:
+        print('BOOTSTRAP_OPTIONAL_HOST_WITHHELD preserving shared job preparation and cleanup allowance',flush=True);return
     if full_row and row_clock()[2]['work_remaining_seconds'] < 630:
         print('BOOTSTRAP_OPTIONAL_HOST_WITHHELD preserving next command and cleanup allowance',flush=True);return
     print('BOOTSTRAP_HOST_BEGIN', label, datetime.datetime.now(datetime.timezone.utc).isoformat(), flush=True)
@@ -98,9 +112,9 @@ def host(label):
     except subprocess.TimeoutExpired: print('BOOTSTRAP_HOST_TIMEOUT ps', flush=True)
     print('BOOTSTRAP_HOST_END', label, flush=True)
 
-def test(label, method):
+def test(label, method, derived_data_path='.build'):
     code, output = run(label, 360, 'xcodebuild', '-project', 'Celluloid.xcodeproj', '-scheme', 'Celluloid',
-        '-configuration', 'Debug', '-destination', 'platform=iOS Simulator,id=' + device, '-derivedDataPath', '.build',
+        '-configuration', 'Debug', '-destination', 'platform=iOS Simulator,id=' + device, '-derivedDataPath', derived_data_path,
         '-resultBundlePath', str(evidence_root / ('Bootstrap-' + label + '.xcresult')), '-parallel-testing-enabled', 'NO', '-collect-test-diagnostics', 'never',
         '-only-testing:CelluloidTests/EditorRegressionTests/' + method, 'test-without-building', 'CODE_SIGNING_ALLOWED=NO')
     if code: raise RuntimeError('PhotoKit probe failed: ' + label)
@@ -117,7 +131,7 @@ else:
     for label, seconds, command in [
         ('boot', 60, ['xcrun', 'simctl', 'boot', device]),
         ('bootstatus', 600, ['xcrun', 'simctl', 'bootstatus', device, '-b']),
-        ('install-before-import', 120, ['xcrun', 'simctl', 'install', device, '.build/Build/Products/Debug-iphonesimulator/Celluloid.app']),
+        ('install-before-import', 120, ['xcrun', 'simctl', 'install', device, str(pathlib.Path(options.derived_data_path) / 'Build/Products/Debug-iphonesimulator/Celluloid.app')]),
         ('grant-before-import', 60, ['xcrun', 'simctl', 'privacy', device, 'grant', 'photos', 'Mango.Celluloid'])]:
         code, _ = run(label, seconds, *command)
         if label == 'bootstatus': host('after-bootstatus')
@@ -133,8 +147,10 @@ else:
                     continue
             raise RuntimeError('Bootstrap prerequisite failed: ' + label)
 host('before-PhotoKit-readiness')
-initial = test('readiness-before-import', 'testPhotosLibraryBootstrapReadiness')
+initial = test('readiness-before-import', 'testPhotosLibraryBootstrapReadiness', options.derived_data_path)
 assert initial['synthetic'] == [], initial
+if bootstrap_deadline is not None and initial.get('asset_count', 65) > 58:
+    raise RuntimeError('Observed stock inventory cannot fit six additions within the bounded gate; no import')
 host('before-import')
 paths = [pathlib.Path('/tmp/celluloid-fixture.png'), pathlib.Path('/tmp/celluloid-fixture-2.png')] + sorted(pathlib.Path('/tmp').glob('celluloid-composition-*.png'))
 expected = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
@@ -148,14 +164,16 @@ for index, path in enumerate(paths):
     if code:
         errors.append({'file': path.name, 'code': code})
         host('import-timeout')
-        reconciled = test('reconcile-timeout-' + str(index), 'testReconcileSyntheticPhotosAfterImport')
+        reconciled = test('reconcile-timeout-' + str(index), 'testReconcileSyntheticPhotosAfterImport', options.derived_data_path)
         matches = [r for r in reconciled['synthetic'] if r['filename'] == path.name]
         print('BOOTSTRAP_TIMEOUT_RECONCILIATION', json.dumps({'file': path.name, 'matches': matches, 'retry': False}), flush=True)
         # Never blindly re-import an operation that may have committed after timeout.
         if len(matches) != 1 or matches[0].get('sha256') != expected[path.name]:
             raise RuntimeError('Import outcome is absent, duplicated or wrong; preserve state and do not retry')
         print('BOOTSTRAP_RECOVERED_ASSET_OBSERVED original command still counts as diagnostic failure', flush=True)
-final = test('reconcile-all', 'testReconcileSyntheticPhotosAfterImport')
+        if bootstrap_deadline is not None:
+            raise RuntimeError('Shared-job bootstrap stops after a failed import; no later simctl mutation is authorized')
+final = test('reconcile-all', 'testReconcileSyntheticPhotosAfterImport', options.derived_data_path)
 assert len(final['synthetic']) == len(expected), final
 for name, digest in expected.items():
     matches = [r for r in final['synthetic'] if r['filename'] == name]

@@ -6,10 +6,12 @@ import CelluloidKit
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     private let maximumSelection: Int
+    private let traceID: String
     @StateObject private var session: PhotoSelectionSession
     @State private var managingAccess = false
 
-    init(maximumSelection: Int) {
+    init(maximumSelection: Int, traceID: String = UUID().uuidString) {
+        self.traceID = traceID
         self.maximumSelection = maximumSelection
         _session = StateObject(wrappedValue: PhotoSelectionSession(maximumSelection: maximumSelection))
     }
@@ -19,7 +21,7 @@ import CelluloidKit
             Color(UIColor.systemBackground).ignoresSafeArea()
             switch session.phase {
             case .picking:
-                SystemPhotoPicker(maximumSelection: maximumSelection, didFinish: picked)
+                SystemPhotoPicker(maximumSelection: maximumSelection, traceID: traceID, didFinish: picked)
                     .ignoresSafeArea()
             case .resolving:
                 VStack(spacing: 24) {
@@ -33,6 +35,11 @@ import CelluloidKit
                     retry: session.resolveOriginals, chooseAgain: session.chooseAgain, cancel: cancel)
             case .editing(let assets):
                 CelluloidEditorView(assets: assets).ignoresSafeArea()
+                    .onAppear {
+                        PickerEntryDiagnostics.selected("resolved-original-identities", instance: traceID,
+                            identifiers: assets.map { $0.localIdentifier })
+                        PickerEntryDiagnostics.record("editor-opened", instance: traceID)
+                    }
             }
         }
         .interactiveDismissDisabled()

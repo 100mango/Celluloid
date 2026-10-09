@@ -65,6 +65,8 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         XCTAssertEqual(try rgba(current), try rgba(expectedRenderedJPEG), "The supplied current placeholder is the actual seeded edited rendering")
         let editor = PhotoEditingViewController(); editor.loadViewIfNeeded()
         editor.view.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+        let testWindow = try mountControllerTestWindow(editor, size: editor.view.bounds.size)
+        defer { testWindow.rootViewController = nil; testWindow.isHidden = true }
         // Independently authored historical dictionary: no optional canvas key,
         // nontrivial filter, text, geometry and affine sticker state.
         let legacy: [String: Any] = ["filterType": "Sepia", "bubbles": [[
@@ -224,6 +226,8 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         let before = try integrity(asset, stage: "loading-finish-before")
         let editor = PhotoEditingViewController(); editor.loadViewIfNeeded()
         editor.view.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+        let testWindow = try mountControllerTestWindow(editor, size: editor.view.bounds.size)
+        defer { testWindow.rootViewController = nil; testWindow.isHidden = true }
         editor.startContentEditing(with: bound, placeholderImage: rendered)
         XCTAssertEqual(editor.session.phase, .loading)
         let opaqueDone = expectation(description: "Done waits for opaque recipe and returns no-change")
@@ -294,6 +298,8 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         let expectedJPEG = try XCTUnwrap(UIImage(data: XCTUnwrap(expected.jpegData(compressionQuality: 1))))
         let editor = PhotoEditingViewController(); editor.loadViewIfNeeded()
         editor.view.frame = oracle.view.frame
+        let testWindow = try mountControllerTestWindow(editor, size: editor.view.bounds.size)
+        defer { testWindow.rootViewController = nil; testWindow.isHidden = true }
         editor.startContentEditing(with: bound, placeholderImage: original)
         XCTAssertEqual(editor.session.phase, .loading)
         let done = expectation(description: "Early Done waits for original legacy canvas")
@@ -363,11 +369,14 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         wait(for: [replaced], timeout: 0.1)
 
         let ended = expectation(description: "Deallocated Photos host receives no callback"); ended.isInverted = true
-        var temporary: PhotoEditingViewController? = makeUnmounted()
-        weak var weakHost = temporary
-        temporary?.startContentEditing(with: bound, placeholderImage: original)
-        temporary?.finishContentEditing { _ in ended.fulfill() }
-        temporary = nil
+        weak var weakHost: PhotoEditingViewController?
+        autoreleasepool {
+            var temporary: PhotoEditingViewController? = makeUnmounted()
+            weakHost = temporary
+            temporary?.startContentEditing(with: bound, placeholderImage: original)
+            temporary?.finishContentEditing { _ in ended.fulfill() }
+            temporary = nil
+        }
         XCTAssertNil(weakHost)
         wait(for: [ended], timeout: 0.1)
         XCTAssertEqual(try integrity(asset, stage: "legacy-unmounted-after"), before)

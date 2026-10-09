@@ -21,6 +21,12 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertEqual(authorization, .authorized, "Real simulator Photos grant must be effective before readiness is claimed")
         guard authorization == .authorized else { return }
         let assets = PHAsset.fetchAssets(with: .image, options: nil)
+        // The gate owns a newly created simulator, but iOS may supply stock
+        // photos. Preserve their identities; never assume a fresh library is empty.
+        guard assets.count <= 64 else {
+            XCTFail("Disposable fixture inventory exceeded its bounded gate limit"); return
+        }
+        let assetIdentifiers = (0..<assets.count).map { assets.object(at: $0).localIdentifier }.sorted()
         var rows: [[String: Any]] = []
         for index in 0..<min(assets.count, 64) {
             let asset = assets.object(at: index)
@@ -29,6 +35,9 @@ final class EditorRegressionTests: XCTestCase {
             }) else { continue }
             var row: [String: Any] = ["identifier": asset.localIdentifier, "filename": resource.originalFilename,
                 "width": asset.pixelWidth, "height": asset.pixelHeight]
+            if let created = asset.creationDate {
+                row["creation_date_utc"] = ISO8601DateFormatter().string(from: created)
+            }
             if hashResources {
                 let done = expectation(description: "Read only generated synthetic resource")
                 var data = Data()
@@ -46,6 +55,7 @@ final class EditorRegressionTests: XCTestCase {
             rows.append(row)
         }
         let result: [String: Any] = ["authorization": authorization.rawValue, "asset_count": assets.count,
+            "asset_identifiers": assetIdentifiers,
             "synthetic": rows, "hash_resources": hashResources,
             "elapsed_seconds": ProcessInfo.processInfo.systemUptime - started,
             "library_mutation": false]
@@ -402,6 +412,8 @@ final class EditorRegressionTests: XCTestCase {
         let editor = PhotoEditingViewController()
         editor.loadViewIfNeeded()
         editor.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let testWindow = try mountControllerTestWindow(editor, size: editor.view.bounds.size)
+        defer { testWindow.rootViewController = nil; testWindow.isHidden = true }
         editor.startContentEditing(with: input, placeholderImage: placeholder)
         waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation)

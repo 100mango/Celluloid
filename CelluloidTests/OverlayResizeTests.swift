@@ -296,6 +296,8 @@ final class OverlayResizeTests: XCTestCase {
         let placeholder = try XCTUnwrap(input.displaySizeImage)
         let editor = PhotoEditingViewController()
         layout(editor, CGSize(width: 390, height: 844))
+        let testWindow = try mountControllerTestWindow(editor, size: editor.view.bounds.size)
+        defer { testWindow.rootViewController = nil; testWindow.isHidden = true }
         editor.startContentEditing(with: input, placeholderImage: placeholder)
         waitForSwiftUIEditor(editor)
         let undecorated = try XCTUnwrap(editor.outputImage)

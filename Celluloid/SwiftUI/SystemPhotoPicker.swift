@@ -5,7 +5,14 @@ import PhotosUI
 /// iCloud browsing stay in Photos' process, outside the app's main-thread work.
 @MainActor struct SystemPhotoPicker: UIViewControllerRepresentable {
     let maximumSelection: Int
+    let traceID: String
     let didFinish: ([PHPickerResult]) -> Void
+
+    init(maximumSelection: Int, traceID: String = UUID().uuidString, didFinish: @escaping ([PHPickerResult]) -> Void) {
+        self.maximumSelection = maximumSelection
+        self.traceID = traceID
+        self.didFinish = didFinish
+    }
 
     static func configuration(maximumSelection: Int) -> PHPickerConfiguration {
         precondition((1...4).contains(maximumSelection))
@@ -23,12 +30,13 @@ import PhotosUI
         context.coordinator.record("picker-construction-begin")
         let picker = PHPickerViewController(configuration: Self.configuration(maximumSelection: maximumSelection))
         picker.delegate = context.coordinator
+        context.coordinator.bind(picker)
         context.coordinator.record("picker-construction-returned")
         return picker
     }
 
     func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
-    func makeCoordinator() -> Coordinator { Coordinator(didFinish: didFinish) }
+    func makeCoordinator() -> Coordinator { Coordinator(traceID: traceID, didFinish: didFinish) }
 
     static func dismantleUIViewController(_ uiViewController: PHPickerViewController, coordinator: Coordinator) {
         // Observation only: SwiftUI still owns presentation, teardown and layout.
@@ -38,18 +46,24 @@ import PhotosUI
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
         private let didFinish: ([PHPickerResult]) -> Void
         private var finished = false
-        private nonisolated let traceID = UUID().uuidString
+        private nonisolated let traceID: String
+        private var pickerAddress = "none"
 
-        init(didFinish: @escaping ([PHPickerResult]) -> Void) {
+        init(traceID: String = UUID().uuidString, didFinish: @escaping ([PHPickerResult]) -> Void) {
+            self.traceID = traceID
             self.didFinish = didFinish
             super.init()
             record("picker-coordinator-created")
         }
 
-        deinit { record("picker-coordinator-released") }
+        deinit { PickerEntryDiagnostics.record("picker-coordinator-released", instance: traceID) }
 
-        nonisolated func record(_ event: String) {
-            PickerEntryDiagnostics.record(event, instance: traceID)
+        func bind(_ picker: PHPickerViewController) {
+            pickerAddress = String(describing: Unmanaged.passUnretained(picker).toOpaque())
+        }
+
+        func record(_ event: String) {
+            PickerEntryDiagnostics.record(event, instance: traceID, picker: pickerAddress)
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
@@ -61,6 +75,10 @@ import PhotosUI
             }
             finished = true
             record(results.isEmpty ? "picker-cancel-delegate" : "picker-selection-delegate")
+            if !results.isEmpty {
+                PickerEntryDiagnostics.selected("picker-selected-identities", instance: traceID,
+                    identifiers: results.map(\.assetIdentifier))
+            }
             didFinish(results)
         }
     }

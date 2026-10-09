@@ -1,0 +1,66 @@
+# Verbatim excerpts from exact historical CI aac7a3a0b081c687fecfd2bfbff948c2f25aab71.
+# Diagnostic only: missing run identity and runner clock anchors cannot pass v1.
+# Original runner SHA256 f785efca1f725d0acf4a942508e453f5dfca759685f042eb80d9f432f19f04f6
+# Original app stdout SHA256 5d1fda73566267da8077494d26e53ba48c508776d9ecbe95b79674c397dbf7ca
+02:42:48.842 CelluloidUITests-Runner[44681:113999] Received kAXUserTestingNotification from AX element pid: 44733, elementOrHash.elementID: 0.1: {
+    controllerClass = PHPickerViewController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+}
+02:42:51.783 CelluloidUITests-Runner[44681:113997] Received kAXUserTestingNotification from AX element pid: 44733, elementOrHash.elementID: 0.1: {
+    controllerClass = PHPickerViewController;
+    controllerTitle = Photos;
+    event = ViewDidDisappear;
+}
+02:42:59.128 CelluloidUITests-Runner[44681:113998] Received kAXUserTestingNotification from AX element pid: 44733, elementOrHash.elementID: 0.1: {
+    controllerClass = PHPickerViewController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+}
+02:43:04.154 CelluloidUITests-Runner[44681:114000] Received kAXUserTestingNotification from AX element pid: 44733, elementOrHash.elementID: 0.1: {
+    controllerClass = PHPickerViewController;
+    controllerTitle = Photos;
+    event = ViewDidDisappear;
+}
+02:43:06.049 CelluloidUITests-Runner[44681:113999] Received kAXUserTestingNotification from AX element pid: 44733, elementOrHash.elementID: 0.1: {
+    controllerClass = PHPickerViewController;
+    controllerTitle = Photos;
+    event = ViewDidAppear;
+}
+02:43:08.741 CelluloidUITests-Runner[44681:114000] Received kAXUserTestingNotification from AX element pid: 44733, elementOrHash.elementID: 0.1: {
+    controllerClass = PHPickerViewController;
+    controllerTitle = Photos;
+    event = ViewDidDisappear;
+}
+PICKER_APP_TRACE event=app-beautify-tap instance=root uptime_seconds=1742.3052755833335 wall_seconds=1791513767.957621
+PICKER_APP_TRACE event=picker-coordinator-created instance=5E9A3498-5B5D-4C32-8162-193050D819D3 uptime_seconds=1742.40476575 wall_seconds=1791513768.057107
+PICKER_APP_TRACE event=picker-construction-begin instance=5E9A3498-5B5D-4C32-8162-193050D819D3 uptime_seconds=1742.40487275 wall_seconds=1791513768.0572128
+PICKER_APP_TRACE event=picker-construction-returned instance=5E9A3498-5B5D-4C32-8162-193050D819D3 uptime_seconds=1742.4392299583335 wall_seconds=1791513768.0915709
+PICKER_APP_TRACE event=picker-cancel-delegate instance=5E9A3498-5B5D-4C32-8162-193050D819D3 uptime_seconds=1745.586517875 wall_seconds=1791513771.2388601
+PICKER_APP_TRACE event=root-cover-dismissal-completed instance=root uptime_seconds=1746.12323175 wall_seconds=1791513771.775574
+PICKER_APP_TRACE event=picker-representable-dismantle instance=5E9A3498-5B5D-4C32-8162-193050D819D3 uptime_seconds=1746.1248082500001 wall_seconds=1791513771.777149
+PICKER_APP_TRACE event=picker-coordinator-released instance=5E9A3498-5B5D-4C32-8162-193050D819D3 uptime_seconds=1746.128014625 wall_seconds=1791513771.780355
+PICKER_APP_TRACE event=app-beautify-tap instance=root uptime_seconds=1752.7677537083334 wall_seconds=1791513778.420096
+PICKER_APP_TRACE event=picker-coordinator-created instance=8F94DC6B-0EDD-4B57-ADB6-28BEFFB175AA uptime_seconds=1752.93815375 wall_seconds=1791513778.590495
+PICKER_APP_TRACE event=picker-construction-begin instance=8F94DC6B-0EDD-4B57-ADB6-28BEFFB175AA uptime_seconds=1752.9381879583334 wall_seconds=1791513778.590528
+PICKER_APP_TRACE event=picker-construction-returned instance=8F94DC6B-0EDD-4B57-ADB6-28BEFFB175AA uptime_seconds=1752.94231525 wall_seconds=1791513778.594656
+PICKER_APP_TRACE event=picker-cancel-delegate instance=8F94DC6B-0EDD-4B57-ADB6-28BEFFB175AA uptime_seconds=1757.8989314583334 wall_seconds=1791513783.5512729
+PICKER_APP_TRACE event=root-cover-dismissal-completed instance=root uptime_seconds=1758.4508605416668 wall_seconds=1791513784.103205
+PICKER_APP_TRACE event=picker-representable-dismantle instance=8F94DC6B-0EDD-4B57-ADB6-28BEFFB175AA uptime_seconds=1758.4562566666668 wall_seconds=1791513784.1086001
+PICKER_APP_TRACE event=picker-coordinator-released instance=8F94DC6B-0EDD-4B57-ADB6-28BEFFB175AA uptime_seconds=1758.4602103333334 wall_seconds=1791513784.1125522
+PICKER_APP_TRACE event=app-beautify-tap instance=root uptime_seconds=1759.8009663750001 wall_seconds=1791513785.453308
+PICKER_APP_TRACE event=picker-coordinator-created instance=CDBB4B5C-A414-4B87-9CD7-8F94E3F94BE6 uptime_seconds=1759.8185669583333 wall_seconds=1791513785.4709082
+PICKER_APP_TRACE event=picker-construction-begin instance=CDBB4B5C-A414-4B87-9CD7-8F94E3F94BE6 uptime_seconds=1759.8186105000002 wall_seconds=1791513785.4709501
+PICKER_APP_TRACE event=picker-construction-returned instance=CDBB4B5C-A414-4B87-9CD7-8F94E3F94BE6 uptime_seconds=1759.8229503333334 wall_seconds=1791513785.475291
+PICKER_APP_TRACE event=picker-cancel-delegate instance=CDBB4B5C-A414-4B87-9CD7-8F94E3F94BE6 uptime_seconds=1762.4917725 wall_seconds=1791513788.1441212
+PICKER_APP_TRACE event=root-cover-dismissal-completed instance=root uptime_seconds=1763.0460409583334 wall_seconds=1791513788.698382
+PICKER_APP_TRACE event=picker-representable-dismantle instance=CDBB4B5C-A414-4B87-9CD7-8F94E3F94BE6 uptime_seconds=1763.0488775000001 wall_seconds=1791513788.7012181
+PICKER_APP_TRACE event=picker-coordinator-released instance=CDBB4B5C-A414-4B87-9CD7-8F94E3F94BE6 uptime_seconds=1763.0519866250002 wall_seconds=1791513788.704328
+PICKER_UI_TRACE iteration=2 event=tap-command-start uptime_seconds=1750.6643717083334
+PICKER_UI_TRACE iteration=2 event=tap-command-returned uptime_seconds=1753.4765497916667
+PICKER_AX_QUERY iteration=2 property=exists value=true duration_seconds=1.1157655833333138 end_uptime_seconds=1755.65343
+PICKER_AX_QUERY iteration=2 property=isEnabled value=true duration_seconds=0.13702887499994176 end_uptime_seconds=1755.790501375
+PICKER_AX_QUERY iteration=2 property=isHittable value=true duration_seconds=0.13855354166662437 end_uptime_seconds=1755.9290972916667
+SWIFTUI_PICKER_ENTRY iteration=2 elapsed_seconds=5.265158833333317 budget_seconds=3 result=1
+PICKER_UI_TRACE iteration=2 event=cancel-command-start uptime_seconds=1757.4407851666667
+PICKER_UI_TRACE iteration=2 event=home-interactive-after-dismiss uptime_seconds=1759.6045348333334

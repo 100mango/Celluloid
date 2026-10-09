@@ -5,6 +5,7 @@ import CelluloidKit
 /// Photo selection and image work start only after an explicit action.
 @MainActor struct PhoneRootView: View {
     @State private var destination: Destination?
+    @State private var pickerPresentationID = UUID().uuidString
 
     enum Destination: String, Identifiable {
         case beautify, collage, privacy
@@ -24,28 +25,50 @@ import CelluloidKit
             .frame(width: geometry.size.width, height: geometry.size.height)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("phone-entry-safe-area")
+            .modifier(PhoneEntrySafeAreaObservation(frame: geometry.frame(in: .global)))
         }
         .background(Color.black.ignoresSafeArea())
         .fullScreenCover(item: $destination, onDismiss: presentationDismissed) { route in
             switch route {
-            case .beautify: PhotoSelectionFlowView(maximumSelection: 1)
-            case .collage: PhotoSelectionFlowView(maximumSelection: 4)
+            case .beautify: PhotoSelectionFlowView(maximumSelection: 1, traceID: pickerPresentationID)
+            case .collage: PhotoSelectionFlowView(maximumSelection: 4, traceID: pickerPresentationID)
             case .privacy: LegacyPrivacyScreen()
             }
         }
     }
 
     private func showBeautify() {
-        PickerEntryDiagnostics.record("app-beautify-tap")
+        pickerPresentationID = UUID().uuidString
+        PickerEntryDiagnostics.record("app-beautify-tap", instance: pickerPresentationID)
         destination = .beautify
     }
     private func showCollage() {
-        PickerEntryDiagnostics.record("app-collage-tap")
+        pickerPresentationID = UUID().uuidString
+        PickerEntryDiagnostics.record("app-collage-tap", instance: pickerPresentationID)
         destination = .collage
     }
     private func showPrivacy() { destination = .privacy }
     private func presentationDismissed() {
-        PickerEntryDiagnostics.record("root-cover-dismissal-completed")
+        PickerEntryDiagnostics.record("root-cover-dismissal-completed", instance: pickerPresentationID)
+    }
+}
+
+/// XCTest's .contain accessibility frame tightly wraps its children and omits
+/// empty bottom padding. Report the actual existing GeometryReader bounds only
+/// for DEBUG design tests; never substitute a computed expected footer position.
+private struct PhoneEntrySafeAreaObservation: ViewModifier {
+    let frame: CGRect
+
+    @ViewBuilder func body(content: Content) -> some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--entry-design-geometry") {
+            content.accessibilityValue("safeCGRect:\(frame.minX),\(frame.minY),\(frame.width),\(frame.height)")
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
     }
 }
 
