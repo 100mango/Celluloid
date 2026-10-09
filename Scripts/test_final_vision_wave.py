@@ -102,9 +102,27 @@ class WaveTests(unittest.TestCase):
    changed={**c,k:'wrong'}
    with self.subTest(k=k),self.assertRaises((ValueError,TypeError)):w.validate_clock(changed,env())
  def test_full_ui_window_admission_reserves_cleanup_and_tail(self):
-  c=clock();s=c['started_monotonic'];last=s+1560-120-w.FIXTURE_READ_SECONDS-915
+  c=clock();s=c['started_monotonic'];last=s+1560-120-w.FIXTURE_READ_SECONDS-735
   self.assertEqual(w.admit_ui(c,last),s+1440-w.FIXTURE_READ_SECONDS)
   with self.assertRaisesRegex(ValueError,'does-not-fit'):w.admit_ui(c,last+.001)
+ def test_admission_receipt_rechecks_after_slow_output_without_renewing_deadline(self):
+  c={'started_monotonic':1000};now=[1694.0];report={}
+  with tempfile.TemporaryDirectory() as t:
+   commands=w.VisionCommands(Path(t))
+   def slow(*args,**kwargs):now[0]=1696.0
+   with patch.object(w.time,'monotonic',side_effect=lambda:now[0]),patch('builtins.print',side_effect=slow):
+    with self.assertRaisesRegex(ValueError,'full-720-second'):w.record_ui_admission(report,c,commands)
+   self.assertTrue(report['ui_admission']['sampled_admissible']);self.assertFalse(report['ui_admission_recheck']['sampled_admissible']);self.assertFalse(report['ui_admission']['dispatch_proven']);self.assertEqual(report['ui_admission_recheck']['latest_setup_seconds'],695);self.assertFalse(commands.blocked);self.assertEqual(commands.events,[])
+ def test_admission_receipt_io_and_cancel_fail_closed_before_any_later_dispatch(self):
+  for error in (OSError('controlled receipt I/O'),KeyboardInterrupt(),SystemExit()):
+   with self.subTest(error=type(error).__name__),tempfile.TemporaryDirectory() as t:
+    commands=w.VisionCommands(Path(t));report={};c={'started_monotonic':time.monotonic()}
+    with patch('builtins.print',side_effect=error):
+     with self.assertRaises(type(error)):w.record_ui_admission(report,c,commands)
+    self.assertTrue(commands.blocked);self.assertFalse(report['ui_admission']['dispatch_proven'])
+    with patch.object(w,'bounded_optional_process') as run:
+     with self.assertRaises(ValueError):commands.run(['fake'],'later',deadline=time.monotonic()+30,seconds=20)
+     run.assert_not_called()
  def test_case_exact_once_pass_and_no_skip(self):
   m=w.UI_METHODS[2];self.assertTrue(w.inspect_case(caselog(m),m,summary())['passed'])
   for text in [caselog(m,'failed'),caselog(m,'skipped'),caselog(m)*2,caselog(m).splitlines()[0],caselog(w.UI_METHODS[0])]:
@@ -252,7 +270,7 @@ class WaveTests(unittest.TestCase):
     finally:os.chdir(original_cwd)
     self.assertTrue(report['wave_qualified'],report['errors']);self.assertFalse(report['all_eight_qualified']);self.assertEqual(report['omitted_ui_methods'],[m for m in w.UI_METHODS if m!=method])
     tests=[(a,k) for a,k in called if 'test-without-building' in a];self.assertEqual(len(tests),2 if method==w.UI_METHODS[2] else 1)
-    ui=[(a,k) for a,k in tests if w.selectors_for(method)['ui'][0] in a];self.assertEqual(len(ui),1);self.assertEqual(ui[0][1]['seconds'],915);self.assertTrue(ui[0][1]['full'])
+    ui=[(a,k) for a,k in tests if w.selectors_for(method)['ui'][0] in a];self.assertEqual(len(ui),1);self.assertEqual(ui[0][1]['seconds'],735);self.assertTrue(ui[0][1]['full'])
     self.assertEqual((container/'Documents/VisionSynthetic.png').exists(),method==w.UI_METHODS[1]);self.assertEqual('producer_fixture' in report,method==w.UI_METHODS[2])
     self.assertFalse(any('archive' in a for a,k in called))
     binding={'source_sha':e['GITHUB_SHA'],'product_parent_sha':w.SOURCE,'selected_method':method,'file_count':961}
@@ -287,7 +305,7 @@ class WaveTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t:
    temp=Path(t).resolve();method=w.UI_METHODS[0];e={**env(method),'RUNNER_TEMP':str(temp),'GITHUB_OUTPUT':str(temp/'output')};c=clock();c['selected_method']=method
    folder=temp/'vision-wave-1-123-1-attachments';folder.mkdir();image=folder/'big.png';raw=b'\x89PNG\r\n\x1a\n'+b'x'*2400000;image.write_bytes(raw)
-   report={'schema':'Celluloid.FinalVisionSingleMethodWave.1','test_diagnostics':{'path':w.DIAGNOSTIC_TEST,'sha256':w.DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':w.ORIGINAL_TEST_SHA256,'unchanged_original_files':961,'product_compiled_inputs_unchanged':True},'control_sha':e['GITHUB_SHA'],'product_sha':w.SOURCE,'product_tree':w.TREE,'run_id':'123','run_attempt':'1','selected_method':method,'omitted_ui_methods':[m for m in w.UI_METHODS if m!=method],'original_hosted_inventory':list(w.HOSTED),'original_ui_inventory':list(w.UI_METHODS),'ui_limit_seconds':900,'all_eight_qualified':False,'archive_qualified':False,'clock':c,'screenshots':{'native-vision-launch':{'source':str(image),'bytes':len(raw),'sha256':w.digest(raw),'extension':'.png'}},'commands':[],'selected_method_passed':False,'wave_qualified':False,'errors':['synthetic failed method']}
+   report={'schema':'Celluloid.FinalVisionSingleMethodWave.1','test_diagnostics':{'path':w.DIAGNOSTIC_TEST,'sha256':w.DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':w.ORIGINAL_TEST_SHA256,'unchanged_original_files':961,'product_compiled_inputs_unchanged':True},'control_sha':e['GITHUB_SHA'],'product_sha':w.SOURCE,'product_tree':w.TREE,'run_id':'123','run_attempt':'1','selected_method':method,'omitted_ui_methods':[m for m in w.UI_METHODS if m!=method],'original_hosted_inventory':list(w.HOSTED),'original_ui_inventory':list(w.UI_METHODS),'ui_limit_seconds':720,'all_eight_qualified':False,'archive_qualified':False,'clock':c,'screenshots':{'native-vision-launch':{'source':str(image),'bytes':len(raw),'sha256':w.digest(raw),'extension':'.png'}},'commands':[],'selected_method_passed':False,'wave_qualified':False,'errors':['synthetic failed method']}
    (temp/'vision-wave-report.json').write_text(json.dumps(report));binding={'source_sha':e['GITHUB_SHA'],'product_parent_sha':w.SOURCE,'selected_method':method}
    for phase in ['before','after']:(temp/('combined-source-'+phase+'.json')).write_text(json.dumps({**binding,'phase':phase}))
    result=w.collect(e);self.assertFalse(result['wave_qualified']);self.assertTrue(any('byte cap' in x for x in result['errors']));self.assertTrue((temp/'vision-wave-evidence/report.json').is_file());self.assertIn('evidence_ready=true',(temp/'output').read_text())

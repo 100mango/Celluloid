@@ -5,7 +5,7 @@ import argparse,hashlib,json,math,os,re,selectors,signal,stat,struct,subprocess,
 from qualify_final_vision_wave_source import CONFIG,SOURCE,TREE,UI_METHODS,CONTROL_PATHS,DIAGNOSTIC_TEST,DIAGNOSTIC_TEST_SHA256,ORIGINAL_TEST_SHA256
 ROOT=Path(__file__).resolve().parents[1]
 CLOCK='final-vision-wave-clock.json'
-UI_SECONDS=900
+UI_SECONDS=720
 MAX_OUTPUT=1048576
 from combined_evidence_budget import BUDGETS
 MAX_EVIDENCE=BUDGETS['vision']
@@ -156,11 +156,29 @@ def selectors_for(method):
  return {'ui':['-only-testing:CelluloidVisionUITests/NativeVisionUITests/'+method],
          'producer':['-only-testing:CelluloidVisionTests/NativeVisionTests/'+PRODUCER] if DEPENDENCIES[method]=='hosted-producer-package' else []}
 
-def admit_ui(clock,now=None):
+def sample_ui_admission(clock,now=None):
  now=time.monotonic() if now is None else now
- deadline=clock['started_monotonic']+NATIVE_SECONDS-CLEANUP_RESERVE-FIXTURE_READ_SECONDS
- need(now+UI_SECONDS+15<=deadline,'full-900-second-ui-plus-cleanup-does-not-fit')
- return deadline
+ start=clock['started_monotonic'];deadline=start+NATIVE_SECONDS-CLEANUP_RESERVE-FIXTURE_READ_SECONDS;latest=deadline-UI_SECONDS-15
+ return {'schema':'Celluloid.VisionUIAdmissionObservation.1','observed_monotonic':now,'elapsed_from_wave_start_seconds':now-start,'wave_started_monotonic':start,'ui_seconds':UI_SECONDS,'ui_subprocess_cleanup_seconds':15,'fixture_read_reserve_seconds':FIXTURE_READ_SECONDS,'native_cleanup_reserve_seconds':CLEANUP_RESERVE,'native_end_monotonic':start+NATIVE_SECONDS,'ui_cleanup_deadline_monotonic':deadline,'latest_start_monotonic':latest,'latest_setup_seconds':latest-start,'full_window_margin_seconds':latest-now,'sampled_admissible':now+UI_SECONDS+15<=deadline,'dispatch_proven':False}
+
+def admit_ui(clock,now=None):
+ observation=sample_ui_admission(clock,now)
+ need(observation['sampled_admissible'],'full-'+str(UI_SECONDS)+'-second-ui-plus-cleanup-does-not-fit')
+ return observation['ui_cleanup_deadline_monotonic']
+
+def record_ui_admission(report,clock,commands):
+ # A bounded sampled observation, never proof of Popen or testcase dispatch.
+ try:
+  observation=sample_ui_admission(clock);report['ui_admission']=observation
+  raw=json.dumps(observation,sort_keys=True,allow_nan=False);need(len(raw.encode())<=2048,'ui-admission-receipt-cap')
+  print('VISION_WAVE_UI_ADMISSION '+raw,flush=True)
+ except BaseException:
+  commands.blocked=True
+  raise
+ # Output can be slow. Recheck the same absolute window after all receipt I/O;
+ # VisionCommands.run(full=True) independently rechecks again before BEGIN.
+ recheck=sample_ui_admission(clock);report['ui_admission_recheck']=recheck
+ return admit_ui(clock,recheck['observed_monotonic'])
 
 def inspect_case(log,method,summary,kind='ui',udid=None,runtime_version=None):
  owner='CelluloidVisionUITests.NativeVisionUITests' if kind=='ui' else 'CelluloidVisionTests.NativeVisionTests'
@@ -763,9 +781,11 @@ def execute(env):
      # erase execution of the original UI method under its unchanged admission.
      report['errors'].append('initial owned fixture diagnostic unavailable: '+type(e).__name__+': '+str(e))
      report['fixture_initial_diagnostic']={'status':'unavailable','save_completion_proven':False,'qualification_proven':False}
-  deadline=admit_ui(clock)
+  deadline=record_ui_admission(report,clock,commands)
   ui_log,ui_result=call(xctest_command(temp,udid,bundle,selection['ui']),'ui-tests',UI_SECONDS+15,deadline=deadline,full=True,check_code=False)
- except BaseException as e:report['errors'].append(type(e).__name__+': '+str(e))
+ except BaseException as e:
+  if isinstance(e,(KeyboardInterrupt,SystemExit)):commands.blocked=True
+  report['errors'].append(type(e).__name__+': '+str(e))
  finally:
   # Pure bounded reads of the one initially-owned fixture, after known UI process
   # completion and before deletion. No read or new native action follows uncertainty.
