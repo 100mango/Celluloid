@@ -9,8 +9,8 @@ sys.path.insert(0,str(SOURCE_ROOT/'Scripts'));sys.path.insert(0,str(HERE))
 import final_vision_wave as w
 import qualify_final_vision_wave_source as g
 
-def env(method=None):return {'GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1','VISION_WAVE_METHOD':method or w.UI_METHODS[2],'QUALIFICATION_PLATFORM':'vision'}
-def config(method=None):return {'schema':1,'READY':True,'platform':'vision','product_parent_sha':w.SOURCE,'product_parent_tree':w.TREE,'maximum_additional_spend_usd':0,'confirmation':'RUN_ONE_UNSIGNED_PLATFORM_ZERO_USD','selected_method':method or w.UI_METHODS[2]}
+def env(method=None):return {'GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1','VISION_WAVE_METHOD':method or w.UI_METHODS[1],'QUALIFICATION_PLATFORM':'vision'}
+def config(method=None):return {'schema':1,'READY':True,'platform':'vision','product_parent_sha':w.SOURCE,'product_parent_tree':w.TREE,'maximum_additional_spend_usd':0,'confirmation':'RUN_ONE_UNSIGNED_PLATFORM_ZERO_USD','selected_method':method or w.UI_METHODS[1]}
 def clock():
  e=env();return {'schema':'Celluloid.FinalVisionWaveClock.1','control_sha':e['GITHUB_SHA'],'run_id':'123','run_attempt':'1','selected_method':e['VISION_WAVE_METHOD'],'started_monotonic':time.monotonic(),'started_unix':time.time(),'native_seconds':1560,'final_seconds':1740}
 def summary():return {'totalTestCount':1,'passedTests':1,'failedTests':0,'skippedTests':0,'testFailures':[],'expectedFailures':0}
@@ -42,8 +42,8 @@ class WaveTests(unittest.TestCase):
    changed={**c,k:'wrong'}
    with self.subTest(k=k),self.assertRaises((ValueError,TypeError)):w.validate_clock(changed,env())
  def test_full_ui_window_admission_reserves_cleanup_and_tail(self):
-  c=clock();s=c['started_monotonic'];last=s+1560-120-915
-  self.assertEqual(w.admit_ui(c,last),s+1440)
+  c=clock();s=c['started_monotonic'];last=s+1560-120-w.FIXTURE_READ_SECONDS-915
+  self.assertEqual(w.admit_ui(c,last),s+1440-w.FIXTURE_READ_SECONDS)
   with self.assertRaisesRegex(ValueError,'does-not-fit'):w.admit_ui(c,last+.001)
  def test_case_exact_once_pass_and_no_skip(self):
   m=w.UI_METHODS[2];self.assertTrue(w.inspect_case(caselog(m),m,summary())['passed'])
@@ -139,11 +139,11 @@ class WaveTests(unittest.TestCase):
     self.assertEqual(run.call_count,1)
  def test_source_gate_identity_selection_and_history(self):
   c={**config(),'repository':'100mango/Celluloid','event':'push','ref':'refs/heads/'+g.BRANCH,'workflow_ref':'100mango/Celluloid/'+g.WORKFLOW+'@refs/heads/'+g.BRANCH,'workflow_platform':'vision','workflow_selected_method':config()['selected_method'],'run_attempt':'1','github_sha':'a'*40,'workflow_sha':'a'*40}
-  f={'head':'a'*40,'tree':'b'*40,'chain':[{'sha':'a'*40,'parents':[g.SOURCE],'changed_paths':sorted(g.CONTROL_PATHS)}],'parent_tree':g.TREE,'changed_paths':sorted(g.CONTROL_PATHS),'dirty':''}
+  f={'head':'a'*40,'tree':'b'*40,'chain':[{'sha':'a'*40,'parents':[g.SOURCE],'changed_paths':sorted(g.QUALIFICATION_PATHS)}],'parent_tree':g.TREE,'changed_paths':sorted(g.QUALIFICATION_PATHS),'dirty':''}
   self.assertEqual(g.validate(c,f,enabled=True)['selected_method'],c['selected_method'])
   for key in ['product_parent_sha','product_parent_tree','selected_method','workflow_selected_method','ref','workflow_sha','run_attempt']:
    with self.subTest(key=key),self.assertRaises(ValueError):g.validate({**c,key:'wrong'},f,enabled=True)
-  f['chain'][0]['changed_paths'].append('Platforms/VisionUITests/NativeVisionUITests.swift')
+  f['chain'][0]['changed_paths'].append('Platforms/Shared/EditorView.swift')
   with self.assertRaisesRegex(ValueError,'Product mutation'):g.validate(c,f,enabled=True)
  def test_strict_json_duplicate_and_nonfinite_rejected(self):
   for raw in ['{"a":1,"a":2}','{"v":NaN}']:
@@ -172,7 +172,12 @@ class WaveTests(unittest.TestCase):
        Path(argv[argv.index('-resultBundlePath')+1]).mkdir()
        if 'producer-tests' in label:
         fixture=owner.fixture(container);out=caselog(w.PRODUCER,kind='producer')+'VISION_REMAINING_FIXTURE_JSON '+json.dumps(fixture)+'\n'
-       else:out=caselog(method)
+       else:
+        out=caselog(method)
+        if method==w.FILES_METHOD:
+         fixture_marker={'schema':'Celluloid.VisionFilesFixture.1','document_name':'Untitled','layer_identifier':'layer.00000000-0000-0000-0000-000000000001'}
+         model_marker={**fixture_marker,'schema':'Celluloid.VisionFilesModel.1','stage':'post-redo','expected_text':'Vision 世界','matched':True,'actual_label':'Select layer: Vision 世界'}
+         out+='VISION_FILES_FIXTURE_JSON '+json.dumps(fixture_marker)+'\nVISION_FILES_MODEL_JSON '+json.dumps(model_marker)+'\n'
       elif argv[:5]==['xcrun','xcresulttool','get','test-results','summary']:
        ss=summary();ss['devicesAndConfigurations']=[{'device':{'deviceId':uid,'osVersion':'27.0','architecture':'arm64','platform':'visionOS Simulator'},'passedTests':1,'failedTests':0,'skippedTests':0}];out=json.dumps(ss)
       elif argv[:4]==['xcrun','xcresulttool','export','attachments']:
@@ -183,14 +188,14 @@ class WaveTests(unittest.TestCase):
       raw=out.encode();path=self.temp/(label+'.log');path.write_bytes(raw);self.events.append({'label':label,'log':path.name,'log_bytes':len(raw),'log_sha256':w.digest(raw),**result})
       return out,result
     try:
-     with contextlib.redirect_stdout(io.StringIO()),patch.object(w,'ROOT',repo),patch.object(w,'VisionCommands',FakeCommands),patch.object(w,'validate_inventory',return_value={'synthetic':'source'}),patch.object(w.time,'sleep'):report=w.execute(e)
+     with contextlib.redirect_stdout(io.StringIO()),patch.object(w,'ROOT',repo),patch.object(w,'VisionCommands',FakeCommands),patch.object(w,'validate_inventory',return_value={'synthetic':'source'}),patch.object(w.time,'sleep'),patch.object(w,'capture_initial_fixture',return_value={'synthetic':True}),patch.object(w,'read_fixture',return_value={'status':'captured','expected_layer_present':True,'expected_text_matches':True,'save_completion_proven':False}):report=w.execute(e)
     finally:os.chdir(original_cwd)
     self.assertTrue(report['wave_qualified'],report['errors']);self.assertFalse(report['all_eight_qualified']);self.assertEqual(report['omitted_ui_methods'],[m for m in w.UI_METHODS if m!=method])
     tests=[(a,k) for a,k in called if 'test-without-building' in a];self.assertEqual(len(tests),2 if method==w.UI_METHODS[2] else 1)
     ui=[(a,k) for a,k in tests if w.selectors_for(method)['ui'][0] in a];self.assertEqual(len(ui),1);self.assertEqual(ui[0][1]['seconds'],915);self.assertTrue(ui[0][1]['full'])
     self.assertEqual((container/'Documents/VisionSynthetic.png').exists(),method==w.UI_METHODS[1]);self.assertEqual('producer_fixture' in report,method==w.UI_METHODS[2])
     self.assertFalse(any('archive' in a for a,k in called))
-    binding={'source_sha':e['GITHUB_SHA'],'product_parent_sha':w.SOURCE,'selected_method':method,'file_count':962}
+    binding={'source_sha':e['GITHUB_SHA'],'product_parent_sha':w.SOURCE,'selected_method':method,'file_count':961}
     for phase in ['before','after']:(temp/('combined-source-'+phase+'.json')).write_text(json.dumps({**binding,'phase':phase}))
     e['GITHUB_OUTPUT']=str(temp/'github-output')
     with patch.dict(os.environ,e):retained=w.collect(e)
@@ -199,13 +204,13 @@ class WaveTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t:
    root=Path(t).resolve();origin=root/'origin';origin.mkdir()
    def git(where,*args,input=None):return subprocess.check_output(['git',*args],cwd=where,input=input,text=True,stderr=subprocess.STDOUT).strip()
-   git(origin,'init','-q');git(origin,'config','user.name','Synthetic test');git(origin,'config','user.email','synthetic@invalid');(origin/'product.txt').write_text('fixed fixture product');git(origin,'add','.');tree=git(origin,'write-tree');parent=None
+   git(origin,'init','-q');git(origin,'config','user.name','Synthetic test');git(origin,'config','user.email','synthetic@invalid');(origin/'product.txt').write_text('fixed fixture product');original_test=origin/g.DIAGNOSTIC_TEST;original_test.parent.mkdir(parents=True);original_test.write_bytes(g.verify_diagnostic_test((HERE.parent/g.DIAGNOSTIC_TEST).read_bytes()));git(origin,'add','.');tree=git(origin,'write-tree');parent=None
    for n in range(66):
     args=['commit-tree',tree]+(['-p',parent] if parent else []);parent=git(origin,*args,input='synthetic ancestor '+str(n)+'\n')
    product=parent;git(origin,'update-ref','refs/heads/'+g.BRANCH,product);git(origin,'symbolic-ref','HEAD','refs/heads/'+g.BRANCH)
-   for rel in g.CONTROL_PATHS:
+   for rel in g.QUALIFICATION_PATHS:
     dest=origin/rel;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(HERE.parent/rel,dest)
-   gatepath=origin/'Scripts/qualify_final_vision_wave_source.py';gatepath.write_text(gatepath.read_text().replace(g.SOURCE,product).replace(g.TREE,tree))
+   gatepath=origin/'Scripts/qualify_final_vision_wave_source.py';gatepath.write_text(gatepath.read_text().replace(g.SOURCE,product).replace(g.TREE,tree).replace('UNCHANGED_ORIGINAL_FILE_COUNT = 961','UNCHANGED_ORIGINAL_FILE_COUNT = 1'))
    fixture_config={**config(),'product_parent_sha':product,'product_parent_tree':tree};(origin/g.CONFIG).write_text(json.dumps(fixture_config));git(origin,'add','.');git(origin,'commit','-qm','synthetic control');head=git(origin,'rev-parse','HEAD')
    for depth,expect in [(64,True),(2,True),(1,False)]:
     clone=root/('depth'+str(depth));git(root,'clone','-q','--depth',str(depth),'--branch',g.BRANCH,origin.as_uri(),str(clone));self.assertEqual(git(clone,'rev-parse','--is-shallow-repository'),'true')
@@ -222,13 +227,13 @@ class WaveTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t:
    temp=Path(t).resolve();method=w.UI_METHODS[0];e={**env(method),'RUNNER_TEMP':str(temp),'GITHUB_OUTPUT':str(temp/'output')};c=clock();c['selected_method']=method
    folder=temp/'vision-wave-1-123-1-attachments';folder.mkdir();image=folder/'big.png';raw=b'\x89PNG\r\n\x1a\n'+b'x'*2400000;image.write_bytes(raw)
-   report={'schema':'Celluloid.FinalVisionSingleMethodWave.1','control_sha':e['GITHUB_SHA'],'product_sha':w.SOURCE,'product_tree':w.TREE,'run_id':'123','run_attempt':'1','selected_method':method,'omitted_ui_methods':[m for m in w.UI_METHODS if m!=method],'original_hosted_inventory':list(w.HOSTED),'original_ui_inventory':list(w.UI_METHODS),'ui_limit_seconds':900,'all_eight_qualified':False,'archive_qualified':False,'clock':c,'screenshots':{'native-vision-launch':{'source':str(image),'bytes':len(raw),'sha256':w.digest(raw),'extension':'.png'}},'commands':[],'selected_method_passed':False,'wave_qualified':False,'errors':['synthetic failed method']}
+   report={'schema':'Celluloid.FinalVisionSingleMethodWave.1','test_diagnostics':{'path':w.DIAGNOSTIC_TEST,'sha256':w.DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':w.ORIGINAL_TEST_SHA256,'unchanged_original_files':961,'product_compiled_inputs_unchanged':True},'control_sha':e['GITHUB_SHA'],'product_sha':w.SOURCE,'product_tree':w.TREE,'run_id':'123','run_attempt':'1','selected_method':method,'omitted_ui_methods':[m for m in w.UI_METHODS if m!=method],'original_hosted_inventory':list(w.HOSTED),'original_ui_inventory':list(w.UI_METHODS),'ui_limit_seconds':900,'all_eight_qualified':False,'archive_qualified':False,'clock':c,'screenshots':{'native-vision-launch':{'source':str(image),'bytes':len(raw),'sha256':w.digest(raw),'extension':'.png'}},'commands':[],'selected_method_passed':False,'wave_qualified':False,'errors':['synthetic failed method']}
    (temp/'vision-wave-report.json').write_text(json.dumps(report));binding={'source_sha':e['GITHUB_SHA'],'product_parent_sha':w.SOURCE,'selected_method':method}
    for phase in ['before','after']:(temp/('combined-source-'+phase+'.json')).write_text(json.dumps({**binding,'phase':phase}))
    result=w.collect(e);self.assertFalse(result['wave_qualified']);self.assertTrue(any('byte cap' in x for x in result['errors']));self.assertTrue((temp/'vision-wave-evidence/report.json').is_file());self.assertIn('evidence_ready=true',(temp/'output').read_text())
    self.assertLessEqual(sum(p.stat().st_size for p in (temp/'vision-wave-evidence').iterdir()),w.MAX_EVIDENCE)
  def test_report_identity_and_unsupported_success_fail_closed(self):
-  e=env();r={'schema':'Celluloid.FinalVisionSingleMethodWave.1','control_sha':'wrong'}
+  e=env();r={'schema':'Celluloid.FinalVisionSingleMethodWave.1','test_diagnostics':{'path':w.DIAGNOSTIC_TEST,'sha256':w.DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':w.ORIGINAL_TEST_SHA256,'unchanged_original_files':961,'product_compiled_inputs_unchanged':True},'control_sha':'wrong'}
   with self.assertRaises(ValueError):w.validate_report_identity(r,e)
  def test_command_stdout_begin_end_names_executable_without_environment_or_arguments(self):
   with tempfile.TemporaryDirectory() as t:
@@ -244,4 +249,22 @@ class WaveTests(unittest.TestCase):
     with self.assertRaises(PermissionError):commands.run(['xcrun'],'vision-wave-2-123-1-boot',deadline=time.monotonic()+30,seconds=20)
     with self.assertRaises(ValueError):commands.run(['xcrun'],'vision-wave-2-123-1-delete',deadline=time.monotonic()+30,seconds=20)
    self.assertEqual(run.call_count,1);self.assertIn('PermissionError',capture.getvalue());self.assertNotIn('secret-detail',capture.getvalue());self.assertEqual(len(capture.getvalue().splitlines()),2)
+ def test_uncertainty_latches_before_log_or_end_receipt_failure(self):
+  scenarios=[{'finalized':False,'timed_out':False,'overflow':False},{'finalized':True,'timed_out':True,'overflow':False},{'finalized':True,'timed_out':False,'overflow':True}]
+  for result in scenarios:
+   for fault in ('log-write','end-output'):
+    with self.subTest(result=result,fault=fault),tempfile.TemporaryDirectory() as t:
+     commands=w.VisionCommands(Path(t));receipt=w.print_command_receipt
+     def output(phase,*args,**kwargs):
+      if phase=='END':raise OSError('synthetic stdout failure')
+      return receipt(phase,*args,**kwargs)
+     returned={'output':b'bounded diagnostic','return_code':None,'child_reaped':False,'pipe_eof':False,'cleanup_error':'unconfirmed',**result}
+     with patch.object(w,'bounded_optional_process',return_value=returned) as dispatch,contextlib.redirect_stdout(io.StringIO()),contextlib.ExitStack() as stack:
+      if fault=='log-write':stack.enter_context(patch.object(Path,'write_bytes',side_effect=OSError('synthetic log failure')))
+      else:stack.enter_context(patch.object(w,'print_command_receipt',side_effect=output))
+      with self.assertRaises(OSError):commands.run(['xcodebuild'],'vision-wave-2-123-1-ui-tests',deadline=time.monotonic()+30,seconds=20)
+      self.assertTrue(commands.blocked)
+      for later in ('shutdown','delete','ui-summary','attachments'):
+       with self.assertRaisesRegex(ValueError,'earlier-process-uncertain-or-timeout'):commands.run(['xcrun'],'vision-wave-2-123-1-'+later,deadline=time.monotonic()+30,seconds=20)
+      self.assertEqual(dispatch.call_count,1)
 if __name__=='__main__':unittest.main()

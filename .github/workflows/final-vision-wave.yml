@@ -1,4 +1,4 @@
-name: Final Celluloid one whole Vision UI method
+name: Final Celluloid Files test-only diagnostics
 'on':
   push:
     branches:
@@ -9,6 +9,7 @@ name: Final Celluloid one whole Vision UI method
     - Scripts/final_vision_wave.py
     - Scripts/qualify_final_vision_wave_source.py
     - Scripts/test_final_vision_wave.py
+    - Platforms/VisionUITests/NativeVisionUITests.swift
 permissions:
   contents: read
 concurrency:
@@ -40,7 +41,7 @@ jobs:
          f.write('started_monotonic='+str(c['started_monotonic'])+'\nstarted_unix='+str(c['started_unix'])+'\n')
         PY
       id: wave_clock
-    - name: Checkout exact immutable product and five controls
+    - name: Checkout fixed product, reviewed UI diagnostic, and five controls
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       timeout-minutes: 2
       with:
@@ -61,7 +62,7 @@ jobs:
       id: wave
       timeout-minutes: 28
       run: python3 -B -S Scripts/final_vision_wave.py run
-    - name: Verify exact unchanged product and control after wave
+    - name: Verify fixed product, exact UI diagnostic, and control after wave
       id: source_after
       if: ${{ always() && steps.admit.outcome == 'success' }}
       timeout-minutes: 1
@@ -120,7 +121,7 @@ jobs:
          name='combined-source-'+phase+'.json'
          try:
           v=decode(read(t/name,16384));need(type(v) is dict,'source-schema')
-          expected={'phase':phase,'source_sha':sha,'control_sha':sha,'product_parent_sha':fixed['product_sha'],'product_parent_tree':fixed['product_tree'],'run_id':run,'run_attempt':attempt,'selected_method':m,'file_count':962,'product_fingerprint':'947a3db3d8caeb34680fb6c068cad1c9f785667448162264a6b31ce427a004b5'}
+          expected={'phase':phase,'source_sha':sha,'control_sha':sha,'product_parent_sha':fixed['product_sha'],'product_parent_tree':fixed['product_tree'],'run_id':run,'run_attempt':attempt,'selected_method':m,'file_count':961,'diagnostic_test_sha256':'7d0e9c3174e36ab34644d8e08cb7612578a6370974cd8c8ec6b7eb476e0b4c6e','diagnostic_test_inverse_sha256':'ad973878bf33ae77d634679d76af545d2d0c1206fe3d1dfebff55c172746677d','product_fingerprint':'e43b7f3e623cb7dc709900365fcb8cf0d6fc8316cd1fd4ee23c8d389e22638ca'}
           need(all(type(v.get(k)) is type(x) and v.get(k)==x for k,x in expected.items()),'source-identity')
           report['receipts'][name]={'state':'valid-shaped-unverified-receipt','projection':expected}
          except (OSError,ValueError,TypeError,KeyError,RecursionError):report['receipts'][name]={'state':'missing-or-invalid','qualification':False}

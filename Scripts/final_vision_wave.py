@@ -2,7 +2,7 @@
 """One immutable-product Vision UI method; no matrix, retry, archive or signing."""
 from pathlib import Path
 import argparse,hashlib,json,math,os,re,selectors,signal,stat,struct,subprocess,sys,time,zlib
-from qualify_final_vision_wave_source import CONFIG,SOURCE,TREE,UI_METHODS,CONTROL_PATHS
+from qualify_final_vision_wave_source import CONFIG,SOURCE,TREE,UI_METHODS,CONTROL_PATHS,DIAGNOSTIC_TEST,DIAGNOSTIC_TEST_SHA256,ORIGINAL_TEST_SHA256
 ROOT=Path(__file__).resolve().parents[1]
 CLOCK='final-vision-wave-clock.json'
 UI_SECONDS=900
@@ -158,7 +158,7 @@ def selectors_for(method):
 
 def admit_ui(clock,now=None):
  now=time.monotonic() if now is None else now
- deadline=clock['started_monotonic']+NATIVE_SECONDS-CLEANUP_RESERVE
+ deadline=clock['started_monotonic']+NATIVE_SECONDS-CLEANUP_RESERVE-FIXTURE_READ_SECONDS
  need(now+UI_SECONDS+15<=deadline,'full-900-second-ui-plus-cleanup-does-not-fit')
  return deadline
 
@@ -219,6 +219,438 @@ def print_command_receipt(phase,label,argv,started,result=None):
  raw=json.dumps(receipt,sort_keys=True,allow_nan=False);need(len(raw.encode())<=1024,'command-receipt-cap')
  print('VISION_WAVE_COMMAND '+raw,flush=True)
 
+# BEGIN_OWNED_FIXTURE_READER
+"""Read one newly-created package in a disposable, controller-owned simulator.
+
+Diagnostic only. No native commands, writes, directory recursion, save request,
+retry, sleep, or qualification decision. The controller must establish ownership
+of devices_root/owned_udid/container_path; path shape is not proof of ownership.
+Keep the initial receipt in trusted controller memory, not app-controlled JSON.
+"""
+from contextlib import contextmanager
+import hashlib
+import json
+import math
+import os
+from pathlib import PurePosixPath
+import re
+import stat
+import struct
+import time
+import uuid
+
+
+SCHEMA = "Celluloid.OwnedVisionFixtureDiagnostic.1"
+RECEIPT_SCHEMA = "Celluloid.OwnedVisionFixtureInitial.1"
+PNG_NAME = "VisionSynthetic.png"
+EXPORT_NAME = "Celluloid.png"
+MAX_PNG = 1_000_000
+MAX_RECIPE = 262_144
+MAX_REPORT = 65_536
+MAX_READ_SECONDS = 5
+UUID_RE = re.compile(r"[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}\Z")
+
+
+class FixtureReadError(ValueError):
+    pass
+
+
+def _need(condition, code):
+    if not condition:
+        raise FixtureReadError(code)
+
+
+def _uuid(value):
+    _need(type(value) is str and UUID_RE.fullmatch(value), "invalid-uuid")
+    return str(uuid.UUID(value)).upper()
+
+
+def _hash(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def _identity(st):
+    return {"device": st.st_dev, "inode": st.st_ino}
+
+
+def _fingerprint(st):
+    return {**_identity(st), "mode": st.st_mode, "links": st.st_nlink,
+            "bytes": st.st_size, "mtime_ns": st.st_mtime_ns,
+            "ctime_ns": st.st_ctime_ns}
+
+
+def _deadline(end):
+    _need(time.monotonic() <= end, "read-budget-exhausted")
+
+
+def _absolute(path):
+    _need(type(path) is str and 0 < len(path) <= 4096 and "\x00" not in path,
+          "invalid-path")
+    p = PurePosixPath(path)
+    _need(p.is_absolute() and str(p) == path and ".." not in p.parts,
+          "noncanonical-path")
+    return p
+
+
+@contextmanager
+def _directory(path, end, *, identities=None, expected_identities=None):
+    """Hold every ancestor open; reject symlinks and replaced path components."""
+    p = _absolute(path)
+    _need(len(p.parts) <= 32, "path-component-cap")
+    _need(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+          "no-safe-open-support")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+    fds = [os.open("/", flags)]
+    links = []
+    observed_identities = {"/": _identity(os.fstat(fds[0]))}
+    try:
+        for component in p.parts[1:]:
+            _deadline(end)
+            parent = fds[-1]
+            before = os.stat(component, dir_fd=parent, follow_symlinks=False)
+            _need(stat.S_ISDIR(before.st_mode), "path-component-not-directory")
+            child = os.open(component, flags, dir_fd=parent)
+            fds.append(child)
+            current = os.fstat(child)
+            _need(_identity(before) == _identity(current), "directory-replaced")
+            links.append((parent, component, child, _identity(current)))
+            observed_identities[str(PurePosixPath(*p.parts[:len(fds)]))] = _identity(current)
+        if expected_identities is not None:
+            _need(observed_identities == expected_identities, "path-ancestry-changed")
+        if identities is not None:
+            identities.update(observed_identities)
+        yield fds[-1]
+        for parent, name, child, expected in links:
+            _deadline(end)
+            observed = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            _need(stat.S_ISDIR(observed.st_mode) and _identity(observed) == expected
+                  and _identity(os.fstat(child)) == expected, "directory-replaced")
+    finally:
+        for fd in reversed(fds):
+            os.close(fd)
+
+
+def _inventory(fd, cap, end):
+    """One-level name inventory only, bounded before opening any child."""
+    result = []
+    with os.scandir(fd) as entries:
+        for entry in entries:
+            _deadline(end)
+            result.append(entry.name)
+            _need(len(result) <= cap, "directory-entry-cap")
+    return sorted(result)
+
+
+def _read(fd, name, cap, end):
+    _deadline(end)
+    before = os.stat(name, dir_fd=fd, follow_symlinks=False)
+    _need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1,
+          "file-not-single-link-regular")
+    _need(0 < before.st_size <= cap, "file-size-cap")
+    handle = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+    try:
+        _need(_fingerprint(os.fstat(handle)) == _fingerprint(before), "file-replaced")
+        chunks, size = [], 0
+        while True:
+            _deadline(end)
+            part = os.read(handle, min(65_536, cap + 1 - size))
+            if not part:
+                break
+            chunks.append(part)
+            size += len(part)
+            _need(size <= cap, "file-size-cap")
+        data = b"".join(chunks)
+        after = os.fstat(handle)
+        linked = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        _need(len(data) == before.st_size and _fingerprint(after) == _fingerprint(before)
+              and _fingerprint(linked) == _fingerprint(before), "file-changed-during-read")
+        return data, _fingerprint(before)
+    finally:
+        os.close(handle)
+
+
+def _json(data):
+    def pairs(items):
+        out = {}
+        for key, value in items:
+            _need(key not in out, "duplicate-json-key")
+            out[key] = value
+        return out
+    def constant(_):
+        raise FixtureReadError("nonfinite-json")
+    try:
+        return json.loads(data.decode("utf-8"), object_pairs_hook=pairs,
+                          parse_constant=constant)
+    except (UnicodeError, json.JSONDecodeError, RecursionError, OverflowError):
+        raise FixtureReadError("malformed-json") from None
+
+
+def _keys(obj, required, optional=()):
+    _need(type(obj) is dict and set(required) <= set(obj)
+          and set(obj) <= set(required) | set(optional), "unexpected-json-fields")
+
+
+def _number(value, low, high):
+    return type(value) in (int, float) and math.isfinite(value) and low <= value <= high
+
+
+def _recipe(data):
+    r = _json(data)
+    _keys(r, ("format", "version", "sources", "filter", "overlays", "canvasWidth", "canvasHeight"), ("collageTemplate",))
+    _need(r["format"] == "Celluloid.Document" and type(r["version"]) is int
+          and r["version"] == 1 and r.get("collageTemplate") is None,
+          "unexpected-recipe-format")
+    _need(type(r["canvasWidth"]) is int and 1 <= r["canvasWidth"] <= 16_384
+          and type(r["canvasHeight"]) is int and 1 <= r["canvasHeight"] <= 16_384
+          and r["canvasWidth"] * r["canvasHeight"] <= 50_000_000
+          and r["filter"] in ("Original", "Sepia", "Chrome", "Fade", "Invert", "Posterize", "Sketch", "Comic", "Crystal", "PixellateFace"), "unexpected-recipe-canvas")
+    _need(type(r["sources"]) is list and len(r["sources"]) == 1, "source-count")
+    source = r["sources"][0]
+    _keys(source, ("id", "displayName", "pixelWidth", "pixelHeight", "crop"))
+    source_id = _uuid(source["id"])
+    _need(source["displayName"] == PNG_NAME and type(source["pixelWidth"]) is int
+          and source["pixelWidth"] == 1200 and type(source["pixelHeight"]) is int
+          and source["pixelHeight"] == 800, "unexpected-source-metadata")
+    crop = source["crop"]
+    _keys(crop, ("centerX", "centerY", "zoom"))
+    _need(_number(crop["centerX"], 0, 1) and _number(crop["centerY"], 0, 1)
+          and _number(crop["zoom"], 1, 5), "invalid-source-crop")
+    # Preserve valid unexpected or missing layers; expectations are not a read gate.
+    _need(type(r["overlays"]) is list and len(r["overlays"]) <= 100, "overlay-count")
+    overlays = []
+    ids = set()
+    for overlay in r["overlays"]:
+        _keys(overlay, ("id", "kind", "asset", "text", "centerX", "centerY", "width", "height", "rotation", "mirrored", "fontSize"))
+        overlay_id = _uuid(overlay["id"])
+        _need(overlay_id not in ids, "duplicate-overlay-id")
+        ids.add(overlay_id)
+        asset_valid = ((overlay["kind"] == "bubble" and overlay["asset"] in ("aside1", "call1", "call2", "call3", "say1", "say2", "say3", "think1", "think2", "think3"))
+                       or (overlay["kind"] == "sticker" and overlay["asset"] in tuple(str(x) for x in range(32, 55))))
+        _need(asset_valid and type(overlay["text"]) is str and len(overlay["text"].encode("utf-8")) <= 16_384
+              and type(overlay["mirrored"]) is bool, "unexpected-overlay")
+        for key, low, high in (("centerX", -2, 3), ("centerY", -2, 3),
+                               ("width", .005, 4), ("height", .005, 4),
+                               ("rotation", -3600, 3600), ("fontSize", .001, .5)):
+            _need(_number(overlay[key], low, high), "invalid-overlay-geometry")
+        overlays.append({"id": overlay_id, "kind": overlay["kind"], "asset": overlay["asset"], "text": overlay["text"]})
+    return source_id, overlays, {"width": r["canvasWidth"], "height": r["canvasHeight"]}, r["filter"]
+
+
+def prepare_fixture_receipt(*, devices_root, owned_udid, container_path, png_fixture, deadline):
+    """Call after seed_png and before XCTest. Raises on any scope mismatch.
+
+    png_fixture must be the controller's own seed_png result. devices_root must
+    be the trusted CoreSimulator Devices root, not a value supplied by the app.
+    """
+    _need(type(deadline) in (int, float) and math.isfinite(deadline), "invalid-read-deadline")
+    end = min(deadline, time.monotonic() + MAX_READ_SECONDS)
+    _deadline(end)
+    root = _absolute(devices_root)
+    device = _uuid(owned_udid)
+    container = _absolute(container_path)
+    prefix = root / owned_udid / "data/Containers/Data/Application"
+    _need(container.parent == prefix, "container-outside-owned-device")
+    app_id = _uuid(container.name)
+    docs = str(container / "Documents")
+    _keys(png_fixture, ("path", "bytes", "sha256", "width", "height", "original_runner_algorithm_unchanged"))
+    _need(png_fixture["path"] == str(container / "Documents" / PNG_NAME)
+          and type(png_fixture["bytes"]) is int and 0 < png_fixture["bytes"] <= MAX_PNG
+          and type(png_fixture["sha256"]) is str and re.fullmatch(r"[0-9a-f]{64}", png_fixture["sha256"])
+          and type(png_fixture["width"]) is int and png_fixture["width"] == 1200
+          and type(png_fixture["height"]) is int and png_fixture["height"] == 800
+          and png_fixture["original_runner_algorithm_unchanged"] is True, "invalid-png-receipt")
+    path_identity = {}
+    with _directory(docs, end, identities=path_identity) as fd:
+        _need(_inventory(fd, 1, end) == [PNG_NAME], "initial-documents-not-pristine")
+        before = _fingerprint(os.fstat(fd))
+        data, identity = _read(fd, PNG_NAME, MAX_PNG, end)
+        _need(len(data) == png_fixture["bytes"] and _hash(data) == png_fixture["sha256"], "initial-png-mismatch")
+        _need(data[:16] == b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+              and len(data) >= 24 and struct.unpack(">II", data[16:24]) == (1200, 800), "initial-png-dimensions")
+        _need(_fingerprint(os.fstat(fd)) == before and _inventory(fd, 1, end) == [PNG_NAME], "initial-documents-changed")
+        receipt = {"schema": RECEIPT_SCHEMA, "devices_root": str(root),
+                   "owned_udid": owned_udid, "normalized_udid": device,
+                   "container_path": str(container), "container_id": app_id,
+                   "documents_path": docs, "documents_identity": _identity(os.fstat(fd)),
+                   "path_identity": path_identity,
+                   "initial_names": [PNG_NAME], "png": {"bytes": len(data), "sha256": _hash(data), "identity": identity}}
+    return receipt
+
+
+def _capture(receipt, package_name, ui_process, process_blocked, deadline):
+    _need(process_blocked is False and type(ui_process) is dict
+          and all(ui_process.get(k) is True for k in ("finalized", "child_reaped", "pipe_eof"))
+          and all(ui_process.get(k) is False for k in ("timed_out", "overflow"))
+          and "cleanup_error" in ui_process and ui_process["cleanup_error"] is None
+          and type(ui_process.get("return_code")) is int, "ui-process-not-finalized")
+    _keys(receipt, ("schema", "devices_root", "owned_udid", "normalized_udid", "container_path", "container_id", "documents_path", "documents_identity", "path_identity", "initial_names", "png"))
+    _need(receipt["schema"] == RECEIPT_SCHEMA and receipt["initial_names"] == [PNG_NAME], "invalid-initial-receipt")
+    root = _absolute(receipt["devices_root"])
+    _need(_uuid(receipt["owned_udid"]) == receipt["normalized_udid"], "receipt-device-mismatch")
+    container = _absolute(receipt["container_path"])
+    _need(container.parent == root / receipt["owned_udid"] / "data/Containers/Data/Application"
+          and _uuid(container.name) == receipt["container_id"]
+          and receipt["documents_path"] == str(container / "Documents"), "receipt-path-mismatch")
+    _need(type(package_name) is str and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _-]{0,79}\.celluloid", package_name), "invalid-exact-package-name")
+    png = receipt["png"]
+    _keys(png, ("bytes", "sha256", "identity"))
+    _need(type(png["bytes"]) is int and 0 < png["bytes"] <= MAX_PNG
+          and type(png["sha256"]) is str and re.fullmatch(r"[0-9a-f]{64}", png["sha256"]), "invalid-initial-png")
+    _need(type(deadline) in (int, float) and math.isfinite(deadline), "invalid-read-deadline")
+    end = min(deadline, time.monotonic() + MAX_READ_SECONDS)
+    _deadline(end)
+    docs = receipt["documents_path"]
+    with _directory(docs, end, expected_identities=receipt["path_identity"]) as fd:
+        _need(_identity(os.fstat(fd)) == receipt["documents_identity"], "documents-identity-changed")
+        before = _fingerprint(os.fstat(fd))
+        names = _inventory(fd, 3, end)
+        _need(set(names) in ({PNG_NAME, package_name}, {PNG_NAME, package_name, EXPORT_NAME}), "unexpected-documents-inventory")
+        if EXPORT_NAME in names:
+            export = os.stat(EXPORT_NAME, dir_fd=fd, follow_symlinks=False)
+            _need(stat.S_ISREG(export.st_mode) and export.st_nlink == 1 and 0 < export.st_size <= MAX_PNG, "unexpected-export-entry")
+        generated, generated_identity = _read(fd, PNG_NAME, MAX_PNG, end)
+        _need(generated_identity == png["identity"] and len(generated) == png["bytes"]
+              and _hash(generated) == png["sha256"], "generated-png-changed")
+        package_path = str(PurePosixPath(docs) / package_name)
+        with _directory(package_path, end) as pfd:
+            package_before = _fingerprint(os.fstat(pfd))
+            package_names = _inventory(pfd, 2, end)
+            _need(len(package_names) == 2 and "recipe.json" in package_names, "unexpected-package-inventory")
+            recipe, recipe_identity = _read(pfd, "recipe.json", MAX_RECIPE, end)
+            source_id, overlays, canvas, filter_name = _recipe(recipe)
+            source_name = source_id + ".image"
+            _need(set(package_names) == {"recipe.json", source_name}, "unexpected-package-inventory")
+            source, source_identity = _read(pfd, source_name, MAX_PNG, end)
+            _need(len(source) == png["bytes"] and _hash(source) == png["sha256"], "package-source-not-generated-png")
+            # Re-read both members so a mutation between their first reads fails.
+            for name, original, identity, cap in (("recipe.json", recipe, recipe_identity, MAX_RECIPE), (source_name, source, source_identity, MAX_PNG)):
+                repeated, observed = _read(pfd, name, cap, end)
+                _need(repeated == original and observed == identity, "package-changed-between-reads")
+            for name, expected in (("recipe.json", recipe_identity), (source_name, source_identity)):
+                _need(_fingerprint(os.stat(name, dir_fd=pfd, follow_symlinks=False)) == expected, "package-member-changed-before-return")
+            _need(_fingerprint(os.fstat(pfd)) == package_before and _inventory(pfd, 2, end) == package_names, "package-directory-changed")
+            result = {"status": "captured", "package_path": package_path,
+                      "documents_identity": receipt["documents_identity"],
+                      "package_identity": package_before, "owned_udid": receipt["normalized_udid"],
+                      "container_id": receipt["container_id"], "canvas": canvas, "filter": filter_name,
+                      "recipe": {"bytes": len(recipe), "sha256": _hash(recipe), "identity": recipe_identity},
+                      "sources": [{"id": source_id, "filename": source_name, "bytes": len(source), "sha256": _hash(source), "identity": source_identity}],
+                      "overlays": overlays}
+        final_png, final_identity = _read(fd, PNG_NAME, MAX_PNG, end)
+        _need(final_png == generated and final_identity == generated_identity
+              and _fingerprint(os.fstat(fd)) == before and _inventory(fd, 3, end) == names, "documents-changed-during-capture")
+    return result
+
+
+def capture_owned_fixture(receipt, package_name, *, ui_process, process_blocked, deadline):
+    """After finalized XCTest, before simulator shutdown/delete; pure reads only.
+
+    package_name is the single exact name emitted by the selected UI method.
+    A failure returns only a fixed reason, without leaked names or file content.
+    No result is a save-completion receipt or a qualification pass.
+    """
+    base = {"schema": SCHEMA, "diagnostic_only": True,
+            "save_completion_proven": False, "qualification_proven": False}
+    try:
+        out = {**base, **_capture(receipt, package_name, ui_process, process_blocked, deadline)}
+        _need(len(json.dumps(out, ensure_ascii=False, allow_nan=False).encode("utf-8")) <= MAX_REPORT, "report-size-cap")
+        return out
+    except FixtureReadError as error:
+        return {**base, "status": "unavailable", "reason": str(error)}
+    except (OSError, ValueError, TypeError, KeyError, OverflowError, RecursionError):
+        return {**base, "status": "unavailable", "reason": "unreadable-or-malformed-fixture"}
+
+
+def capture_initial_fixture(container, udid, png_fixture, *, deadline):
+    """Convenience entry point; container is the exact owned simctl receipt.
+
+    Does not invoke simctl. Raises if the initial directory is not pristine.
+    Caller records that bounded failure and never substitutes a new receipt.
+    """
+    path = _absolute(container)
+    _need(len(path.parents) >= 6, "invalid-container-path")
+    devices_root = path.parents[5]
+    _need(devices_root.parts[-3:] == ("Developer", "CoreSimulator", "Devices"), "invalid-devices-root")
+    return prepare_fixture_receipt(devices_root=str(devices_root), owned_udid=udid,
+                                   container_path=container, png_fixture=png_fixture, deadline=deadline)
+
+
+def read_fixture(initial, fixture_marker, *, deadline, ui_process, process_blocked):
+    """Read only the exact marked package after a finalized UI command.
+
+    Both markers and the initial receipt come from trusted controller parsing.
+    The model marker is deliberately not a prerequisite: mismatches need proof.
+    """
+    base = {"schema": SCHEMA, "diagnostic_only": True,
+            "save_completion_proven": False, "qualification_proven": False}
+    try:
+        _keys(fixture_marker, ("schema", "document_name", "layer_identifier"))
+        _need(fixture_marker["schema"] == "Celluloid.VisionFilesFixture.1"
+              and type(fixture_marker["document_name"]) is str
+              and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _-]{0,79}", fixture_marker["document_name"]), "invalid-fixture-marker")
+        layer = fixture_marker["layer_identifier"]
+        _need(type(layer) is str and layer.startswith("layer."), "invalid-fixture-layer")
+        expected_id = _uuid(layer[6:])
+        out = capture_owned_fixture(initial, fixture_marker["document_name"] + ".celluloid",
+                                    ui_process=ui_process, process_blocked=process_blocked,
+                                    deadline=deadline)
+        if out["status"] == "captured":
+            matching = [v for v in out["overlays"] if v["id"] == expected_id]
+            out["expected_layer_identifier"] = "layer." + expected_id
+            out["expected_text"] = "Vision 世界"
+            out["expected_layer_present"] = bool(matching)
+            out["expected_text_matches"] = bool(matching and matching[0]["text"] == "Vision 世界")
+            _need(len(json.dumps(out, ensure_ascii=False, allow_nan=False).encode("utf-8")) <= MAX_REPORT, "report-size-cap")
+        return out
+    except FixtureReadError as error:
+        return {**base, "status": "unavailable", "reason": str(error)}
+    except (OSError, ValueError, TypeError, KeyError, OverflowError, RecursionError):
+        return {**base, "status": "unavailable", "reason": "unreadable-or-malformed-fixture"}
+
+# END_OWNED_FIXTURE_READER
+
+# Fixed Files-method receipt/attachment projections, inserted into the reviewed driver.
+FILES_METHOD='testRealFilesImportBubbleAndPNGExport'
+FILES_DIAG_STAGES=('identity','post-redo','reopen-layer','reopen-identity')
+FIXTURE_READ_SECONDS=10
+
+def files_marker_receipts(log):
+ def marker(prefix,schema,keys,required):
+  lines=[line[len(prefix):] for line in log.splitlines() if line.startswith(prefix)]
+  need(len(lines)==1 if required else len(lines)<=1,'files-diagnostic-marker-count-'+prefix)
+  if not lines:return None
+  need(len(lines[0].encode())<=4096,'files-marker-cap');v=strict_json(lines[0]);need(type(v) is dict and set(v)==keys and v['schema']==schema,'files-marker-schema')
+  name=v['document_name'];identity=v['layer_identifier']
+  need(type(name) is str and 0<len(name.encode())<=120 and name==Path(name).name and name not in {'.','..'} and not any(c in name for c in ['/', '\\', '\0']) and not name.endswith('.celluloid'),'files-document-name')
+  need(type(identity) is str and re.fullmatch(r'layer\.[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}',identity),'files-layer-identity')
+  return v
+ fixture=marker('VISION_FILES_FIXTURE_JSON ','Celluloid.VisionFilesFixture.1',{'schema','document_name','layer_identifier'},True)
+ model=marker('VISION_FILES_MODEL_JSON ','Celluloid.VisionFilesModel.1',{'schema','stage','document_name','layer_identifier','expected_text','matched','actual_label'},False)
+ if model is not None:
+  need(model['stage']=='post-redo' and model['expected_text']=='Vision 世界' and type(model['matched']) is bool and type(model['actual_label']) is str and len(model['actual_label'].encode())<=1024,'files-model-fields')
+  need(model['document_name']==fixture['document_name'] and model['layer_identifier']==fixture['layer_identifier'],'files-model-fixture-mismatch')
+ return {'fixture':fixture,'post_redo_model':model,'post_redo_model_matched':bool(model and model['matched'] and model['actual_label']=='Select layer: Vision 世界'),'save_completion_proven':False}
+
+def exported_files_diagnostics(folder,manifest):
+ need(type(manifest) is list and len(manifest)<=16 and all(type(r) is dict and type(r.get('attachments')) is list for r in manifest),'diagnostic-attachment-records')
+ need(sum(len(r['attachments']) for r in manifest)<=1024,'diagnostic-attachment-count')
+ names={'vision-files-diag-'+stage+'-'+kind for stage in FILES_DIAG_STAGES for kind in ['ax','screen']};found={};seen=set()
+ for record in manifest:
+  for item in record['attachments']:
+   need(type(item) is dict,'diagnostic-attachment-item');name=item.get('suggestedHumanReadableName','');file=item.get('exportedFileName')
+   need(type(file) is str and Path(file).name==file and file not in {'','.','..'} and file not in seen,'diagnostic-attachment-path');seen.add(file)
+   matches=[n for n in names if name==n or type(name) is str and name.startswith(n+'_')]
+   if not matches:continue
+   need(len(matches)==1 and matches[0] not in found and record.get('testIdentifier')=='NativeVisionUITests/'+FILES_METHOD+'()','diagnostic-owner-or-duplicate');key=matches[0]
+   ax=key.endswith('-ax');raw=safe_read(folder/file,70000 if ax else 1000000)
+   if ax:raw.decode('utf8');ext='.txt'
+   else:need(raw.startswith(b'\x89PNG\r\n\x1a\n') or raw.startswith(b'\xff\xd8\xff'),'diagnostic-image-type');ext='.png' if raw.startswith(b'\x89PNG') else '.jpg'
+   found[key]={'source':str(folder/file),'bytes':len(raw),'sha256':digest(raw),'extension':ext,'attachment_provenance':{'test_identifier':record['testIdentifier'],'attachment_name':name,'exported_file_name':file},'scope':'diagnostic only, never a substitute for original required screenshots'}
+ need(len(found)<=2,'at-most-one-failure-stage-pair')
+ if found:
+  stages={key.removeprefix('vision-files-diag-').rsplit('-',1)[0] for key in found};need(len(stages)==1,'mixed-failure-stages')
+ return found
+
 class VisionCommands:
  def __init__(self,temp):self.temp=temp;self.events=[];self.blocked=False
  def run(self,argv,label,*,deadline,seconds,cleanup=15,check_code=True,full=False):
@@ -232,9 +664,11 @@ class VisionCommands:
   try:result=bounded_optional_process(list(map(str,argv)),end-cleanup,end,cap=MAX_OUTPUT,stop_on_signal_error=True)
   except BaseException as e:
    self.blocked=True;self.events.append({'label':label,'argv':list(map(str,argv)),'begin_monotonic':now,'exception':type(e).__name__,'finalized':False});print_command_receipt('END',label,argv,now,self.events[-1]);raise
+  # Latch uncertainty before any output extraction, filesystem write or receipt
+  # printing can fail. Diagnostic I/O must never re-enable native dispatch.
+  if not result['finalized'] or result['timed_out'] or result['overflow']:self.blocked=True
   output=result.pop('output');log.write_bytes(output)
   event={'label':label,'argv':list(map(str,argv)),'begin_monotonic':now,**result,'log':log.name,'log_bytes':len(output),'log_sha256':digest(output)};self.events.append(event);print_command_receipt('END',label,argv,now,result)
-  if not result['finalized'] or result['timed_out'] or result['overflow']:self.blocked=True
   need(result['finalized'],'process-cleanup-unconfirmed')
   need(not result['timed_out'] and not result['overflow'],'process-timeout-or-output-bound')
   if check_code:need(result['return_code']==0,'command-exit-'+str(result['return_code'])+'-'+label)
@@ -266,7 +700,7 @@ def exported_images(folder,manifest,method):
    need(len(matches)==1,'ambiguous-shot-name');key=matches[0]
    need(record.get('testIdentifier')=='NativeVisionUITests/'+method+'()' and key not in found,'wrong-or-duplicate-shot-owner')
    raw=safe_read(folder/path,5000000);need(raw.startswith(b'\x89PNG\r\n\x1a\n') or raw.startswith(b'\xff\xd8\xff'),'shot-magic')
-   found[key]={'source':str(folder/path),'bytes':len(raw),'sha256':digest(raw),'extension':'.png' if raw.startswith(b'\x89PNG') else '.jpg'}
+   found[key]={'source':str(folder/path),'bytes':len(raw),'sha256':digest(raw),'extension':'.png' if raw.startswith(b'\x89PNG') else '.jpg','attachment_provenance':{'test_identifier':record['testIdentifier'],'attachment_name':name,'exported_file_name':path}}
  return found
 
 
@@ -275,7 +709,8 @@ def execute(env):
  config=validate_config(strict_json(safe_read(ROOT/CONFIG,16384)),env);clock=validate_clock(strict_json(safe_read(temp/CLOCK,16384)),env)
  method=config['selected_method'];key=str(UI_METHODS.index(method)+1);prefix='vision-wave-'+key+'-'+env['GITHUB_RUN_ID']+'-'+env['GITHUB_RUN_ATTEMPT']
  commands=VisionCommands(temp);work=clock['started_monotonic']+NATIVE_SECONDS;final=clock['started_monotonic']+FINAL_SECONDS
- report={'schema':'Celluloid.FinalVisionSingleMethodWave.1','control_sha':env['GITHUB_SHA'],'product_sha':SOURCE,'product_tree':TREE,'run_id':env['GITHUB_RUN_ID'],'run_attempt':env['GITHUB_RUN_ATTEMPT'],'selected_method':method,'omitted_ui_methods':[m for m in UI_METHODS if m!=method],'original_hosted_inventory':list(HOSTED),'original_ui_inventory':list(UI_METHODS),'retained_hosted_evidence':{'run_id':37909497562,'control_sha':'46fc7a5a41efea647dc27099ab9883187b8814ec','passed_methods':list(HOSTED),'new_execution_claim':False},'retained_release_evidence':{'run_id':37909497562,'binary_sha256':'a03d12bfb39b98a372bf9ea2f7bab01ecef13996fd8ef316e628cb1fcaf21e85','fresh_release_build':False},'fixture_dependency':DEPENDENCIES[method],'fixture_producer_selected':bool(selectors_for(method)['producer']),'clock':clock,'ui_limit_seconds':UI_SECONDS,'selected_method_passed':False,'wave_qualified':False,'all_eight_qualified':False,'archive_qualified':False,'required_screenshots':list(SHOTS[method]),'screenshots':{},'commands':commands.events,'errors':[],'omissions':[]}
+ report={'schema':'Celluloid.FinalVisionSingleMethodWave.1','test_diagnostics':{'path':DIAGNOSTIC_TEST,'sha256':DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':ORIGINAL_TEST_SHA256,'unchanged_original_files':961,'product_compiled_inputs_unchanged':True},'control_sha':env['GITHUB_SHA'],'product_sha':SOURCE,'product_tree':TREE,'run_id':env['GITHUB_RUN_ID'],'run_attempt':env['GITHUB_RUN_ATTEMPT'],'selected_method':method,'omitted_ui_methods':[m for m in UI_METHODS if m!=method],'original_hosted_inventory':list(HOSTED),'original_ui_inventory':list(UI_METHODS),'retained_hosted_evidence':{'run_id':37909497562,'control_sha':'46fc7a5a41efea647dc27099ab9883187b8814ec','passed_methods':list(HOSTED),'new_execution_claim':False},'retained_release_evidence':{'run_id':37909497562,'binary_sha256':'a03d12bfb39b98a372bf9ea2f7bab01ecef13996fd8ef316e628cb1fcaf21e85','fresh_release_build':False},'fixture_dependency':DEPENDENCIES[method],'fixture_producer_selected':bool(selectors_for(method)['producer']),'clock':clock,'ui_limit_seconds':UI_SECONDS,'selected_method_passed':False,'wave_qualified':False,'all_eight_qualified':False,'archive_qualified':False,'required_screenshots':list(SHOTS[method]),'screenshots':{},'commands':commands.events,'errors':[],'omissions':[]}
+ fixture_initial=None
  udid=None;bundle=temp/(prefix+'-ui.xcresult');ui_log=None;ui_result=None;summary=None
  def call(args,label,seconds,**kwargs):return commands.run(args,prefix+'-'+label,deadline=kwargs.pop('deadline',work-CLEANUP_RESERVE),seconds=seconds,**kwargs)
  try:
@@ -290,7 +725,7 @@ def execute(env):
   raw,_=call(['xcrun','simctl','list','devicetypes','--json'],'device-types',45);types=strict_json(raw)['devicetypes']
   possible=[r for r in runtimes if r.get('isAvailable') and ('vision' in r.get('name','').lower() or 'xros' in r.get('identifier','').lower())];need(possible,'no-vision-runtime')
   runtime=sorted(possible,key=lambda r:tuple(int(x) for x in r['version'].split('.')),reverse=True)[0];supported={t['identifier'] for t in runtime.get('supportedDeviceTypes',[])}
-  device=next(t for t in types if (not supported or t['identifier'] in supported) and 'Apple Vision Pro' in t['name']);report.update(runtime=runtime,device_type=device)
+  device=next(t for t in types if (not supported or t['identifier'] in supported) and 'Apple Vision Pro' in t['name']);report.update(runtime={k:runtime[k] for k in ('name','version','identifier','buildversion') if k in runtime},device_type={k:device[k] for k in ('name','identifier') if k in device})
   raw,_=call(['xcrun','simctl','create',prefix,device['identifier'],runtime['identifier']],'create',45);udid=raw.strip();need(re.fullmatch(r'[0-9A-Fa-f-]{36}',udid),'invalid-device-id');report['udid']=udid
   call(['xcrun','simctl','boot',udid],'boot',195)
   call(['xcrun','simctl','bootstatus',udid,'-b'],'bootstatus',255)
@@ -319,10 +754,33 @@ def execute(env):
    report['producer_fixture']=verify_producer(producer_log,raw.strip())
   elif DEPENDENCIES[method]=='own-generated-png':
    raw,_=call(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data'],'png-container',195);report['png_fixture']=seed_png(raw.strip())
+   if method==FILES_METHOD:
+    try:
+     fixture_initial=capture_initial_fixture(raw.strip(),udid,report['png_fixture'],deadline=min(work-CLEANUP_RESERVE,time.monotonic()+FIXTURE_READ_SECONDS))
+     report['fixture_initial_receipt']=fixture_initial
+    except (ValueError,OSError,KeyError,TypeError) as e:
+     # Failed diagnostic ownership never permits a substitute read and does not
+     # erase execution of the original UI method under its unchanged admission.
+     report['errors'].append('initial owned fixture diagnostic unavailable: '+type(e).__name__+': '+str(e))
+     report['fixture_initial_diagnostic']={'status':'unavailable','save_completion_proven':False,'qualification_proven':False}
   deadline=admit_ui(clock)
   ui_log,ui_result=call(xctest_command(temp,udid,bundle,selection['ui']),'ui-tests',UI_SECONDS+15,deadline=deadline,full=True,check_code=False)
  except BaseException as e:report['errors'].append(type(e).__name__+': '+str(e))
  finally:
+  # Pure bounded reads of the one initially-owned fixture, after known UI process
+  # completion and before deletion. No read or new native action follows uncertainty.
+  if method==FILES_METHOD and fixture_initial is not None and ui_result is not None and not commands.blocked:
+   try:
+    receipts=files_marker_receipts(ui_log or '');report['files_model_receipts']=receipts
+    started=time.monotonic()
+    report['fixture_readback']=read_fixture(fixture_initial,receipts['fixture'],deadline=min(work-CLEANUP_RESERVE,started+FIXTURE_READ_SECONDS),ui_process=ui_result,process_blocked=commands.blocked)
+    report['fixture_readback_timing']={'after_finalized_ui':True,'started_monotonic':started,'finished_monotonic':time.monotonic(),'save_completion_proven':False}
+    observed=report['fixture_readback']
+    if observed['status']!='captured':report['errors'].append('owned fixture diagnostic unavailable: '+observed.get('reason','missing'))
+    elif not observed.get('expected_layer_present') or not observed.get('expected_text_matches'):report['errors'].append('owned fixture observed layer/text differs from expected; save-completion and cause remain unproven')
+    if not receipts['post_redo_model_matched']:report['errors'].append('exact post-Redo model checkpoint is missing or failed')
+   except (ValueError,OSError,KeyError,TypeError) as e:report['errors'].append('Files model/package diagnostics: '+type(e).__name__+': '+str(e))
+  elif method==FILES_METHOD:report['omissions'].append('No package read without an initial owned fixture and finalized UI command; no save or persisted-content claim.')
   if udid and not commands.blocked:
    for action in ['shutdown','delete']:
     try:call(['xcrun','simctl',action,udid],action,60,deadline=work)
@@ -342,7 +800,9 @@ def execute(env):
    try:
     folder=temp/(prefix+'-attachments');need(not folder.exists(),'attachment-dir-exists')
     call(['xcrun','xcresulttool','export','attachments','--path',bundle,'--output-path',folder],'attachments',75,deadline=final-45)
-    report['screenshots']=exported_images(folder,strict_json(safe_read(folder/'manifest.json',262144)),method)
+    attachment_manifest=strict_json(safe_read(folder/'manifest.json',262144))
+    report['screenshots']=exported_images(folder,attachment_manifest,method)
+    if method==FILES_METHOD:report['files_diagnostic_attachments']=exported_files_diagnostics(folder,attachment_manifest)
     need(set(report['screenshots'])==set(SHOTS[method]),'required-screenshot-missing')
    except BaseException as e:report['errors'].append('screenshots: '+str(e))
  report['process_blocked']=commands.blocked
@@ -356,6 +816,7 @@ def execute(env):
 def validate_report_identity(report,env):
  need(type(report) is dict and report.get('schema')=='Celluloid.FinalVisionSingleMethodWave.1','report-schema')
  for key,value in [('control_sha',env['GITHUB_SHA']),('product_sha',SOURCE),('product_tree',TREE),('run_id',env['GITHUB_RUN_ID']),('run_attempt',env['GITHUB_RUN_ATTEMPT']),('selected_method',env['VISION_WAVE_METHOD'])]:need(report.get(key)==value,'report-identity-'+key)
+ need(report.get('test_diagnostics')=={'path':DIAGNOSTIC_TEST,'sha256':DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':ORIGINAL_TEST_SHA256,'unchanged_original_files':961,'product_compiled_inputs_unchanged':True},'report-test-diagnostic-provenance')
  method=report['selected_method'];need(method in UI_METHODS and report.get('omitted_ui_methods')==[m for m in UI_METHODS if m!=method],'report-scope')
  need(report.get('original_hosted_inventory')==list(HOSTED) and report.get('original_ui_inventory')==list(UI_METHODS),'report-inventory')
  need(report.get('ui_limit_seconds')==UI_SECONDS and report.get('all_eight_qualified') is False and report.get('archive_qualified') is False,'report-claim')
@@ -364,6 +825,10 @@ def validate_report_identity(report,env):
  if report['wave_qualified']:need(report['selected_method_passed'] and not report['errors'] and set(report['screenshots'])==set(SHOTS[method]),'unsupported-wave-success')
  return validate_clock(report['clock'],env)
 
+
+# Public artifacts retain only bounded current-job diagnostics, never complete
+# host runtime/device-type discovery or unrelated attachment-enumeration output.
+PUBLIC_OPTIONAL_STAGES=frozenset(('xcode','validate_native_sources','validate_native_localization','test_native_process','test_native_evidence','test_native_release','icons','icon-proof','create','boot','bootstatus','install','pretest-launch','pretest-process','pretest-screenshot','pretest-terminate','png-container','shutdown','delete'))
 
 def collect(env):
  temp=Path(env['RUNNER_TEMP']).resolve(strict=True);report=strict_json(safe_read(temp/'vision-wave-report.json',200000));clock=validate_report_identity(report,env)
@@ -384,7 +849,13 @@ def collect(env):
   if 'log' in event and ('ui-tests' in event['label'] or 'producer-tests' in event['label'] or 'summary' in event['label']):
    need(Path(event['log']).name==event['log'],'log-path')
    if event['log_bytes']==0:manifest['omissions'].append({'name':event['log'],'reason':'empty captured output'});continue
-   p=temp/event['log'];raw=safe_read(p,MAX_OUTPUT);need(len(raw)==event['log_bytes'] and digest(raw)==event['log_sha256'],'log-identity');retain(p.name,raw)
+   p=temp/event['log'];raw=safe_read(p,MAX_OUTPUT);need(len(raw)==event['log_bytes'] and digest(raw)==event['log_sha256'],'log-identity')
+   if event['label'].endswith('-ui-tests'):
+    started="Test Case '-[CelluloidVisionUITests.NativeVisionUITests "+report['selected_method']+"]' started."
+    if started not in raw.decode('utf8','replace').splitlines():
+     report['ui_transcript_retention']={'state':'withheld-before-selected-case','reason':'exact selected Test Case never started; raw pre-test diagnostics may enumerate unrelated destinations','log':p.name,'source_bytes':len(raw),'source_sha256':digest(raw),'original_return_code':event.get('return_code')}
+     manifest['omissions'].append({'name':p.name,'reason':'selected-case-never-started'});continue
+   retain(p.name,raw)
  if report.get('selected_method_passed') is True:
   try:
    tests=[e for e in report['commands'] if e.get('label','').endswith('-ui-tests')];summaries=[e for e in report['commands'] if e.get('label','').endswith('-ui-summary')]
@@ -403,9 +874,22 @@ def collect(env):
   if size+len(raw)>MAX_EVIDENCE-150000:
    report['wave_qualified']=False;report['errors'].append('required retained screenshot exceeds fixed byte cap: '+name);manifest['omissions'].append({'name':name,'reason':'required-image-byte-cap'})
   else:retain(name+row['extension'],raw)
+ for name,row in report.get('files_diagnostic_attachments',{}).items():
+  allowed={'vision-files-diag-'+stage+'-'+kind for stage in FILES_DIAG_STAGES for kind in ['ax','screen']}
+  need(name in allowed and env['VISION_WAVE_METHOD']==FILES_METHOD,'diagnostic-retention-name')
+  expected_folder=temp/('vision-wave-2-'+env['GITHUB_RUN_ID']+'-'+env['GITHUB_RUN_ATTEMPT']+'-attachments')
+  need(Path(row['source']).parent==expected_folder,'diagnostic-not-owned-export')
+  raw=safe_read(row['source'],70000 if name.endswith('-ax') else 1000000);need(len(raw)==row['bytes'] and digest(raw)==row['sha256'],'diagnostic-identity')
+  if size+len(raw)>MAX_EVIDENCE-150000:
+   report['wave_qualified']=False;report['errors'].append('diagnostic attachment exceeds fixed evidence cap: '+name);manifest['omissions'].append({'name':name,'reason':'diagnostic-byte-cap'})
+  else:retain(name+row['extension'],raw)
  retain('report.json',encoded(report))
  for event in report['commands']:
   if 'log' in event and not (out/event['log']).exists():
+   prefix='vision-wave-'+str(UI_METHODS.index(env['VISION_WAVE_METHOD'])+1)+'-'+env['GITHUB_RUN_ID']+'-'+env['GITHUB_RUN_ATTEMPT']+'-'
+   stage=event['label'][len(prefix):] if event['label'].startswith(prefix) else ''
+   if stage not in PUBLIC_OPTIONAL_STAGES:
+    manifest['omissions'].append({'name':event['log'],'reason':'outside-public-diagnostic-allowlist'});continue
    need(Path(event['log']).name==event['log'],'log-path')
    if event['log_bytes']==0:continue
    p=temp/event['log'];raw=safe_read(p,MAX_OUTPUT);need(len(raw)==event['log_bytes'] and digest(raw)==event['log_sha256'],'optional-log-identity');retain(p.name,raw[-24000:],False)

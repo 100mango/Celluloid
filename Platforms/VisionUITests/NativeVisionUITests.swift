@@ -52,6 +52,21 @@ extension NativeVisionUITests {
         try openEditor(in:app)
         let documentName = app.navigationBars.firstMatch.identifier
         XCTAssertFalse(documentName.isEmpty)
+        // VISION_FILES_DIAG_BEGIN:failure-receipts
+        // Diagnostics observe this same document and never replace its original assertions.
+        func filesDiagnosticFailure(_ stage: String) {
+            let full = app.debugDescription
+            let bytes = Array(full.utf8), cap = 65536
+            let complete = bytes.count <= cap
+            let bounded = complete ? full : String(decoding: bytes.prefix(cap / 2), as: UTF8.self)
+                + "\n[bounded middle omission]\n" + String(decoding: bytes.suffix(cap / 2), as: UTF8.self)
+            let attachment = XCTAttachment(string: bounded)
+            attachment.name = "vision-files-diag-" + stage + "-ax"
+            attachment.lifetime = .keepAlways; add(attachment)
+            print("VISION_FILES_DIAGNOSTIC_AX stage=\(stage) complete=\(complete) fullBytes=\(bytes.count) retainedBytes=\(bounded.utf8.count)")
+            capture(app, name: "vision-files-diag-" + stage + "-screen")
+        }
+        // VISION_FILES_DIAG_END:failure-receipts
         let importButton = app.buttons["editor.import-files"]
         importButton.tap()
         print("VISION_FILES_PICKER_REQUESTED state=\(app.state.rawValue)")
@@ -73,7 +88,19 @@ extension NativeVisionUITests {
         app.buttons["editor.add-bubble"].tap()
         let bubble = app.buttons["asset.say1"]; XCTAssertTrue(bubble.waitForExistence(timeout: 10)); bubble.tap()
         let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
-        XCTAssertTrue(text.waitForExistence(timeout: 10)); text.tap()
+        // VISION_FILES_DIAG_BEGIN:fixture-identity
+        XCTAssertTrue(text.waitForExistence(timeout: 10))
+        let diagnosticLayers = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'layer.'"))
+        if diagnosticLayers.count != 1 { filesDiagnosticFailure("identity") }
+        XCTAssertEqual(diagnosticLayers.count, 1, "A fresh Files document must identify exactly its inserted layer")
+        let diagnosticLayerIdentifier = diagnosticLayers.firstMatch.identifier
+        XCTAssertTrue(diagnosticLayerIdentifier.hasPrefix("layer."))
+        XCTAssertNotNil(UUID(uuidString: String(diagnosticLayerIdentifier.dropFirst(6))))
+        let fixtureReceipt: [String: Any] = ["schema": "Celluloid.VisionFilesFixture.1", "document_name": documentName, "layer_identifier": diagnosticLayerIdentifier]
+        let fixtureReceiptBytes = try JSONSerialization.data(withJSONObject: fixtureReceipt, options: [.sortedKeys])
+        print("VISION_FILES_FIXTURE_JSON " + String(decoding: fixtureReceiptBytes, as: UTF8.self))
+        text.tap()
+        // VISION_FILES_DIAG_END:fixture-identity
         print("VISION_TEXT_FOCUS value=\(text.value ?? "none") hittable=\(text.isHittable)")
         // Two separate ordinary key events must survive without retapping the
         // field. Do not hide a first-keystroke focus/reset defect behind paste.
@@ -125,6 +152,18 @@ extension NativeVisionUITests {
         XCTAssertNotEqual(text.value as? String, "Vision 世界")
         XCTAssertTrue(redo.isEnabled); redo.tap()
         XCTAssertEqual(text.value as? String, "Vision 世界")
+        // VISION_FILES_DIAG_BEGIN:post-redo-model
+        let diagnosticModelRow = app.buttons.matching(identifier: diagnosticLayerIdentifier).firstMatch
+        let diagnosticExpectedLabel = "Select layer: Vision 世界"
+        let diagnosticModelMatched = XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "exists == true AND label == %@", diagnosticExpectedLabel), evaluatedWith: diagnosticModelRow)], timeout: 10) == .completed
+        let modelReceipt: [String: Any] = ["schema": "Celluloid.VisionFilesModel.1", "stage": "post-redo", "document_name": documentName, "layer_identifier": diagnosticLayerIdentifier, "expected_text": "Vision 世界", "matched": diagnosticModelMatched, "actual_label": diagnosticModelRow.exists ? String(diagnosticModelRow.label.prefix(256)) : "missing layer"]
+        let modelReceiptBytes = try JSONSerialization.data(withJSONObject: modelReceipt, options: [.sortedKeys])
+        print("VISION_FILES_MODEL_JSON " + String(decoding: modelReceiptBytes, as: UTF8.self))
+        if !diagnosticModelMatched { filesDiagnosticFailure("post-redo") }
+        XCTAssertTrue(diagnosticModelMatched, "The same recipe-backed layer UUID must retain exact multilingual text after Redo")
+        // Documents exposes no observed disk-save completion. Keep the original
+        // navigation/termination below; do not add a delay or claim a save barrier.
+        // VISION_FILES_DIAG_END:post-redo-model
         print("VISION_NATIVE_UNDO_REDO real document controls restored exact multilingual text")
         let documents = app.navigationBars.buttons["Documents"].firstMatch
         XCTAssertTrue(documents.exists); documents.tap()
@@ -139,7 +178,14 @@ extension NativeVisionUITests {
         }
         XCTAssertTrue(app.staticTexts["1200 × 800 px"].waitForExistence(timeout: 20))
         let layer = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'layer.' AND label == %@", "Select layer: Vision 世界")).firstMatch
-        XCTAssertTrue(layer.waitForExistence(timeout: 10)); layer.tap()
+        // VISION_FILES_DIAG_BEGIN:reopen-failure
+        let diagnosticReopenedMatched = layer.waitForExistence(timeout: 10)
+        if !diagnosticReopenedMatched { filesDiagnosticFailure("reopen-layer") }
+        XCTAssertTrue(diagnosticReopenedMatched)
+        if layer.identifier != diagnosticLayerIdentifier { filesDiagnosticFailure("reopen-identity") }
+        XCTAssertEqual(layer.identifier, diagnosticLayerIdentifier, "Reopen must retain the same document layer identity")
+        layer.tap()
+        // VISION_FILES_DIAG_END:reopen-failure
         XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertEqual(text.value as? String, "Vision 世界")
         capture(app, name: "vision-saved-document-reopened")
         print("VISION_NATIVE_DOCUMENT_REOPEN real process relaunch restored source dimensions and exact bubble text")
