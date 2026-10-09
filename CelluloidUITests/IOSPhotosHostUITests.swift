@@ -193,7 +193,15 @@ final class IOSPhotosHostUITests: XCTestCase {
         // exact unique controlled basename, never a date/position heuristic.
         let filename = try value("fixture_filename")
         let basename = (filename as NSString).deletingPathExtension
-        _ = try unique(photos.staticTexts.matching(NSPredicate(format: "label IN %@", [filename, basename])))
+        // Run37918693951: Photos exposes the public filename as this field's
+        // String value. Its label is "Filename", never the filename itself.
+        let fields = photos.staticTexts.matching(identifier: "com.apple.photos.infoPanel.filename")
+        let field = try unique(fields)
+        guard fields.count == 1, field.label == "Filename",
+              let publicFilename = field.value as? String,
+              [filename, basename].contains(publicFilename) else {
+            throw failure("Observed public filename differs from the exact owned fixture")
+        }
         checkpoint("owned-photo-info")
         try tap(photos.buttons.matching(identifier: "Info"))
         _ = try unique(photos.buttons.matching(identifier: "Edit"))

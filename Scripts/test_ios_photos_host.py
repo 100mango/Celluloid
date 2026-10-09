@@ -598,6 +598,7 @@ ALBUM_OLD_BLOCK = '        _ = try unique(photos.navigationBars.matching(identif
 ALBUM_NEW_BLOCK = '        let cell = try observedOwnedAlbumItem(title: title)\n'
 
 def restore_observed_album_delta(source):
+    source=restore_observed_filename_delta(source)
     start=source.index('    private func observedOwnedAlbumItem(title: String) throws -> XCUIElement {')
     end=source.index('    private func ',start+len('    private func '))
     helper=source[start:end]
@@ -645,5 +646,28 @@ class ObservedOwnedAlbumSourceTests(unittest.TestCase):
         for source in mutants:
             with self.assertRaises(ValueError):restore_observed_album_delta(source)
 
+
+
+# Preserve the already allowed exact filename-or-basename identity. Only the
+# observed AX attribute changes from label to this unique field's String value.
+FILENAME_OLD_BLOCK = '        _ = try unique(photos.staticTexts.matching(NSPredicate(format: "label IN %@", [filename, basename])))\n'
+FILENAME_NEW_BLOCK = '        // Run37918693951: Photos exposes the public filename as this field\'s\n        // String value. Its label is "Filename", never the filename itself.\n        let fields = photos.staticTexts.matching(identifier: "com.apple.photos.infoPanel.filename")\n        let field = try unique(fields)\n        guard fields.count == 1, field.label == "Filename",\n              let publicFilename = field.value as? String,\n              [filename, basename].contains(publicFilename) else {\n            throw failure("Observed public filename differs from the exact owned fixture")\n        }\n'
+
+def restore_observed_filename_delta(source):
+    if source.count(FILENAME_NEW_BLOCK)!=1:raise ValueError('Missing/changed/duplicate observed filename value contract')
+    return source.replace(FILENAME_NEW_BLOCK,FILENAME_OLD_BLOCK)
+
+class ObservedFilenameValueTests(unittest.TestCase):
+    def setUp(self):self.source=(Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+    def testObservedValueRestoresExactPublishedParentAndAllFunctionalChecks(self):
+        import hashlib
+        self.assertEqual(hashlib.sha256(restore_observed_filename_delta(self.source).encode()).hexdigest(),'76d1c73a4103e9748d40a3599b90238a34e044d23e27e3ff34af1049d73cccf0')
+        validate_observed_notification_navigation_source(self.source)
+    def testMissingNonStringOrDefaultFilenameValueCannotPass(self):
+        for old,new in [('let publicFilename = field.value as? String','let publicFilename = field.value'),('let publicFilename = field.value as? String','let publicFilename = String(describing: field.value)'),('let publicFilename = field.value as? String','let publicFilename = (field.value as? String) ?? basename'),('[filename, basename].contains(publicFilename)','publicFilename.hasPrefix(basename)'),('[filename, basename].contains(publicFilename)','true')]:
+            with self.subTest(old=old,new=new),self.assertRaises(ValueError):restore_observed_filename_delta(self.source.replace(old,new))
+    def testDuplicateIdentifierWrongLabelOrWrongCompleteNameCannotPass(self):
+        for old,new in [('fields.count == 1','fields.count > 0'),('fields.count == 1','true'),('field.label == "Filename"','true'),('"com.apple.photos.infoPanel.filename"','"Unknown"'),('[filename, basename].contains(publicFilename)','["other.png", basename].contains(publicFilename)'),('let field = try unique(fields)','let field = fields.firstMatch'),('let field = try unique(fields)','let field = fields.element(boundBy: 0)'),('try tap(photos.buttons.matching(identifier: "Info"))','try withinBudget()')]:
+            with self.subTest(old=old,new=new),self.assertRaises(ValueError):validate_observed_notification_navigation_source(self.source.replace(old,new))
 
 if __name__ == '__main__': unittest.main()
