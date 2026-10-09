@@ -14,7 +14,8 @@ from run_ios_photos_host import check_product_control, PRODUCT_CONTROL_TREE, PRO
 class HostDiagnostic(Acceptance):
     def command(self, name, command, seconds, simulator=False, allow_failure=False, nested_owned=False):
         require(not self.uncertain, 'Uncertain Photos native state blocks further command dispatch')
-        dispatched=time.monotonic();result=None
+        dispatched=time.monotonic();result=None;command_raised=False
+        event_start=len(getattr(self,'events',[]));failure_start=len(getattr(self,'failures',[]))
         if name == 'photos-bootstrap' and nested_owned:
             require(seconds == 750, 'Photos bootstrap parent cap differs')
             parent_path=OUT/'photos-bootstrap-dispatch-timing.json'
@@ -33,7 +34,19 @@ class HostDiagnostic(Acceptance):
                      '--deadline-monotonic',str(dispatched+seconds),*command]
         try:
             result=super().command(name,command,seconds,simulator=simulator,allow_failure=allow_failure,nested_owned=True)
+        except BaseException as failure:
+            command_raised=True
+            if isinstance(failure,(KeyboardInterrupt,SystemExit)):self.uncertain=True
+            raise
         finally:
+            # A killed wrapper cannot attest that its native children settled.
+            # Publish this before timing/receipt I/O, even when super raised and
+            # result stayed None. Only this Photos controller changes behavior.
+            codes=[result[0]] if result is not None else []
+            codes += [item.get('exit_code') for item in getattr(self,'events',[])[event_start:]
+                      + getattr(self,'failures',[])[failure_start:] if item.get('phase')==name]
+            codes=[code for code in codes if type(code) is int]
+            if any(code<0 or 128<=code<=255 for code in codes) or (command_raised and not codes):self.uncertain=True
             elapsed=time.monotonic()-dispatched;late=elapsed>seconds
             if late:
                 self.uncertain=True
@@ -108,7 +121,9 @@ class HostDiagnostic(Acceptance):
         self.command('boot', ['xcrun', 'simctl', 'boot', device], 60, simulator=True)
         self.command('bootstatus', ['xcrun', 'simctl', 'bootstatus', device, '-b'], 300, simulator=True)
         # No preliminary product suite is needed to register the built app.
-        self.command('install-owned-app', ['xcrun', 'simctl', 'install', device, str(binary.parent)], 120, simulator=True)
+        # Preparation receives at most90s; actual Popen/install at most120s.
+        # Both consume the single210s parent cap and unchanged2280s work clock.
+        self.command('install-owned-app', ['xcrun', 'simctl', 'install', device, str(binary.parent)], 210, simulator=True)
         require(self.bootstrap() == 0 and not self.uncertain, 'Real fixture bootstrap failed')
         command = [sys.executable, 'Scripts/run_ios_photos_host.py', '--device', device, '--derived', str(DERIVED),
             '--out', str(OUT / 'ios-photos-host'), '--owner', str(OUT / 'owned-simulator.json'),
@@ -131,7 +146,9 @@ def main():
     def stop(signum, frame): raise KeyboardInterrupt('Actual Photos diagnostic interrupted')
     signal.signal(signal.SIGTERM, stop); signal.signal(signal.SIGINT, stop)
     try: gate.run()
-    except BaseException as failure: error = str(failure)
+    except BaseException as failure:
+        if isinstance(failure,(KeyboardInterrupt,SystemExit)):gate.uncertain=True
+        error = str(failure)
     finally:
         gate.cleanup()
         accepted = error is None and not gate.failures and not gate.device and not gate.uncertain

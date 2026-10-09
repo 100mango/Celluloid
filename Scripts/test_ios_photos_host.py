@@ -292,27 +292,27 @@ class PhotosParentDeadlineTests(unittest.TestCase):
                 gate.cleanup();self.assertEqual(called.call_count,1);self.assertTrue(gate.uncertain);self.assertEqual(gate.device,'owned-device')
                 gate.cleanup();self.assertEqual(called.call_count,1)
 
-    def testObservedInstallBudgetIs120AndStillRejectsLateOrUnfundedWork(self):
+    def testSplitInstallParentIs210AndStillRejectsLateOrUnfundedWork(self):
         import ast,inspect
         from unittest.mock import patch
         import run_ios_photos_host_diagnostic as diagnostic
         source=inspect.getsource(diagnostic);calls=[n for n in ast.walk(ast.parse(source)) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='command' and n.args and isinstance(n.args[0],ast.Constant) and n.args[0].value=='install-owned-app']
-        self.assertEqual(len(calls),1);self.assertEqual(calls[0].args[2].value,120)
+        self.assertEqual(len(calls),1);self.assertEqual(calls[0].args[2].value,210)
         self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45])
-        for duration in [77.0164555,119.0,120.001]:
+        for duration in [77.0164555,209.0,210.001]:
             with self.subTest(duration=duration),tempfile.TemporaryDirectory() as folder:
                 clock=[100.0];gate=object.__new__(diagnostic.HostDiagnostic);gate.uncertain=False;gate.failures=[];seen=[]
                 def invoke(self,*args,**kwargs):seen.append(args);clock[0]+=duration;return 0,'synthetic completion'
                 with patch.object(diagnostic,'OUT',Path(folder)),patch.object(diagnostic.time,'monotonic',side_effect=lambda:clock[0]),patch.object(diagnostic.Acceptance,'command',invoke):
-                    if duration>120:
-                        with self.assertRaisesRegex(ValueError,'deadline exceeded'):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],120,simulator=True)
+                    if duration>210:
+                        with self.assertRaisesRegex(ValueError,'deadline exceeded'):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],210,simulator=True)
                         with self.assertRaisesRegex(ValueError,'blocks further'):gate.command('photos-bootstrap',['must-not-dispatch'],750,simulator=True)
-                    else:self.assertEqual(gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],120,simulator=True),(0,'synthetic completion'))
-                self.assertEqual(len(seen),1);wrapped=seen[0][1];self.assertEqual(wrapped[wrapped.index('--seconds')+1],'120');self.assertEqual(wrapped[wrapped.index('--deadline-monotonic')+1],'220.0');self.assertIs(gate.uncertain,duration>120)
+                    else:self.assertEqual(gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],210,simulator=True),(0,'synthetic completion'))
+                self.assertEqual(len(seen),1);wrapped=seen[0][1];self.assertEqual(wrapped[wrapped.index('--seconds')+1],'210');self.assertEqual(wrapped[wrapped.index('--deadline-monotonic')+1],'310.0');self.assertIs(gate.uncertain,duration>210)
         with tempfile.TemporaryDirectory() as folder:
-            gate=object.__new__(diagnostic.HostDiagnostic);gate.uncertain=False;gate.failures=[];gate.deadline=230.0
+            gate=object.__new__(diagnostic.HostDiagnostic);gate.uncertain=False;gate.failures=[];gate.deadline=320.0
             with patch.object(diagnostic,'OUT',Path(folder)),patch.object(diagnostic.time,'monotonic',return_value=100.0),patch.object(diagnostic.subprocess,'call') as called:
-                with self.assertRaisesRegex(ValueError,'full phase and cleanup allowance do not fit'):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],120,simulator=True)
+                with self.assertRaisesRegex(ValueError,'full phase and cleanup allowance do not fit'):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],210,simulator=True)
                 called.assert_not_called()
 
 
@@ -669,5 +669,201 @@ class ObservedFilenameValueTests(unittest.TestCase):
     def testDuplicateIdentifierWrongLabelOrWrongCompleteNameCannotPass(self):
         for old,new in [('fields.count == 1','fields.count > 0'),('fields.count == 1','true'),('field.label == "Filename"','true'),('"com.apple.photos.infoPanel.filename"','"Unknown"'),('[filename, basename].contains(publicFilename)','["other.png", basename].contains(publicFilename)'),('let field = try unique(fields)','let field = fields.firstMatch'),('let field = try unique(fields)','let field = fields.element(boundBy: 0)'),('try tap(photos.buttons.matching(identifier: "Info"))','try withinBudget()')]:
             with self.subTest(old=old,new=new),self.assertRaises(ValueError):validate_observed_notification_navigation_source(self.source.replace(old,new))
+
+
+
+PHOTOS_INSTALL_SPLIT_PREFIX = "# Only the exact final Photos install command gets the split phase budget.\n# Source/owner/build admission remains in the unchanged parent host controller.\nphotos_install_split = (os.environ.get('GITHUB_REF') == 'refs/heads/cell-ios-photos-host-final'\n                        and args.label == 'install-owned-app')\nif photos_install_split:\n    import re\n    expected_app = os.path.join(os.getcwd(), '.build/swiftui-ios/Build/Products/Debug-iphonesimulator/Celluloid.app')\n    if (not absolute_deadline or args.seconds != 210 or len(args.command) != 5\n            or args.command[:3] != ['xcrun', 'simctl', 'install']\n            or re.fullmatch(r'[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}', args.command[3]) is None\n            or args.command[4] != expected_app):\n        parser.error('Invalid exact Photos install preparation/native split')\n"
+PHOTOS_INSTALL_SPLIT_HELPER = "def refuse_expired_install_preparation():\n    if time.monotonic() >= args.deadline_monotonic - 120:\n        photos_timing('install-preparation-expired', child_started=False, preparation_limit_seconds=90)\n        print('BOUNDED_COMMAND_TIMEOUT', args.label, 'preparation deadline expired; no install dispatch', flush=True)\n        photos_timing('wrapper-end', exit_code=124, child_started=False)\n        sys.exit(124)\n\n\n"
+PHOTOS_INSTALL_SPLIT_NATIVE = "refuse_expired_parent()\nif photos_install_split:\n    refuse_expired_install_preparation()\n    # Sample before receipt I/O and Popen. Neither can earn a new120s window.\n    native_dispatch_started = time.monotonic()\n    deadline = min(native_dispatch_started + 120, args.deadline_monotonic)\n    photos_timing('install-native-dispatch', native_dispatch_started_monotonic=native_dispatch_started,\n                  native_deadline_monotonic=deadline, native_limit_seconds=120,\n                  preparation_deadline_monotonic=args.deadline_monotonic - 120,\n                  preparation_limit_seconds=90, phase_limit_seconds=210)\n    refuse_expired_install_preparation()\n    refuse_expired_parent()\ntry:\n"
+
+class PhotosInstallSplitClockTests(unittest.TestCase):
+    def exercise(self,mode='timely',cap=210,parent=211,absolute=True,command_change=None,route='cell-ios-photos-host-final'):
+        import contextlib,io,os,runpy,signal,subprocess,sys
+        from unittest.mock import MagicMock,patch
+        root=Path(__file__).resolve().parents[1];clock=[50.0]
+        process=MagicMock(pid=12345,returncode=0);process.poll.return_value=0
+        command=['xcrun','simctl','install','12345678-1234-1234-1234-123456789AB0',str(root/'.build/swiftui-ios/Build/Products/Debug-iphonesimulator/Celluloid.app')]
+        if command_change:command_change(command)
+        argv=['run_bounded.py','--seconds',str(cap),'--label','install-owned-app']
+        if absolute:argv+=['--deadline-monotonic',str(parent)]
+        argv+=command;output=io.StringIO();real_print=print
+        if mode=='expired-preparation':clock[0]=92
+        if mode=='expired-parent':clock[0]=212
+        def emitted(*args,**kwargs):
+            real_print(*args,**kwargs)
+            if mode=='slow-native-receipt' and args and args[0]=='PHOTOS_BOUNDED_TIMING' and '"phase": "install-native-dispatch"' in args[1]:clock[0]=92
+        def popen(*args,**kwargs):
+            self.assertTrue(kwargs['start_new_session'])
+            if mode=='slow-popen':clock[0]+=6
+            elif mode=='late-popen':clock[0]=171
+            return process
+        def wait(timeout):
+            if mode=='late-zero':clock[0]=171;return 0
+            if mode=='denied':clock[0]=171;raise subprocess.TimeoutExpired(command,timeout)
+            clock[0]+=20;return 0
+        process.wait.side_effect=wait
+        if mode=='denied':process.poll.return_value=None
+        env={'GITHUB_REF':'refs/heads/'+route,'GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1'}
+        with patch.dict(os.environ,env,clear=True),patch.object(os,'getcwd',return_value=str(root)),patch.object(sys,'argv',argv),patch('time.monotonic',side_effect=lambda:clock[0]),patch('builtins.print',side_effect=emitted),patch('subprocess.Popen',side_effect=popen) as opened,patch('subprocess.run',side_effect=AssertionError('new query')),patch('os.killpg',side_effect=PermissionError('denied') if mode=='denied' else None) as killed,contextlib.redirect_stdout(output),contextlib.redirect_stderr(output),self.assertRaises(SystemExit) as caught:
+            runpy.run_path(str(root/'Scripts/run_bounded.py'),run_name='__main__')
+        events=[json.loads(x.split(' ',1)[1]) for x in output.getvalue().splitlines() if x.startswith('PHOTOS_BOUNDED_TIMING ')]
+        return caught.exception.code,events,opened,process,killed,output.getvalue()
+    def testPreparationAndNativeClocksKeepOriginalParentAbsoluteOrigin(self):
+        code,events,opened,process,killed,text=self.exercise();self.assertEqual(code,0);opened.assert_called_once();killed.assert_not_called()
+        native=next(x for x in events if x['phase']=='install-native-dispatch')
+        self.assertEqual((native['preparation_deadline_monotonic'],native['native_dispatch_started_monotonic'],native['native_deadline_monotonic'],native['parent_deadline_monotonic']),(91,50,170,211))
+        self.assertEqual((native['preparation_limit_seconds'],native['native_limit_seconds'],native['phase_limit_seconds']),(90,120,210));process.wait.assert_called_once_with(timeout=120)
+    def testSlowPopenConsumesNative120RatherThanReceivingFreshWait(self):
+        code,events,opened,process,killed,text=self.exercise('slow-popen');self.assertEqual(code,0);process.wait.assert_called_once_with(timeout=114)
+        self.assertEqual(next(x for x in events if x['phase']=='install-native-dispatch')['native_deadline_monotonic'],170)
+        code,events,opened,process,killed,text=self.exercise('late-popen');self.assertEqual(code,124);opened.assert_called_once();process.wait.assert_not_called()
+    def testPreparationExpiryAndSlowDispatchReceiptNeverStartInstall(self):
+        for mode in ['expired-preparation','slow-native-receipt','expired-parent']:
+            with self.subTest(mode=mode):
+                code,events,opened,process,killed,text=self.exercise(mode);self.assertEqual(code,124);opened.assert_not_called();process.wait.assert_not_called();killed.assert_not_called()
+    def testNativeLateZeroFailsEvenWithFortySecondsLeftInParentPhase(self):
+        code,events,opened,process,killed,text=self.exercise('late-zero');self.assertEqual(code,124);self.assertIn('BOUNDED_COMMAND_TIMEOUT',text);killed.assert_not_called()
+        self.assertEqual(next(x for x in events if x['phase']=='timeout-observed')['monotonic'],171)
+        self.assertTrue(any(x['phase']=='cleanup-result' and x['status']=='child_reaped' and x['child_returncode']==0 and x['group_exit_confirmed'] is False for x in events))
+    def testMissingWrongNonfiniteParentCapAndWrongExactArgumentsReject(self):
+        variants=[dict(absolute=False),dict(cap=120),dict(cap=211),dict(parent=999),dict(parent=float('nan')),dict(parent=float('inf')),dict(command_change=lambda c:c.__setitem__(2,'uninstall')),dict(command_change=lambda c:c.__setitem__(3,'unowned')),dict(command_change=lambda c:c.__setitem__(4,'/other.app')),dict(command_change=lambda c:c.append('--extra')),dict(route='cell-ios-install-diagnostic')]
+        for kwargs in variants:
+            with self.subTest(kwargs=kwargs):
+                code,events,opened,process,killed,text=self.exercise(**kwargs);self.assertEqual(code,2);opened.assert_not_called();killed.assert_not_called()
+    def testOriginalSignalDenialStopsEscalationAndKeepsTenSecondCleanup(self):
+        import signal
+        code,events,opened,process,killed,text=self.exercise('denied');self.assertEqual(code,124);killed.assert_called_once_with(12345,signal.SIGTERM);self.assertEqual(process.wait.call_count,1)
+        timeout=next(x for x in events if x['phase']=='timeout-observed');self.assertEqual(timeout['cleanup_deadline_monotonic']-timeout['cleanup_started_monotonic'],10)
+        self.assertTrue(any(x['phase']=='cleanup-result' and x['status']=='signal_denied' for x in events))
+    def testParentCancellationMarksUncertainAndBlocksBootstrapAndCleanup(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        with tempfile.TemporaryDirectory() as folder:
+            gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+            gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+            with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',side_effect=KeyboardInterrupt('cancelled')) as called:
+                with self.assertRaises(KeyboardInterrupt):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],210,simulator=True)
+                self.assertTrue(gate.uncertain);self.assertEqual(called.call_count,1)
+                with self.assertRaisesRegex(ValueError,'blocks further'):gate.bootstrap()
+                gate.cleanup();self.assertEqual(called.call_count,1);self.assertEqual(gate.device,'owned')
+
+    def testSignalledWrapperExitBlocksAllFurtherNativeForBothFailureModes(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        for code in [-15,-2,-9,128,129,130,134,137,139,143,255]:
+            for allow_failure in [False,True]:
+                with self.subTest(code=code,allow_failure=allow_failure),tempfile.TemporaryDirectory() as folder:
+                    gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+                    gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+                    with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=code) as called:
+                        if allow_failure:self.assertEqual(gate.command('install-owned-app',['owned-command'],210,simulator=True,allow_failure=True)[0],code)
+                        else:
+                            with self.assertRaises(ValueError):gate.command('install-owned-app',['owned-command'],210,simulator=True)
+                        self.assertTrue(gate.uncertain);self.assertEqual(called.call_count,1)
+                        with self.assertRaisesRegex(ValueError,'blocks further'):gate.bootstrap()
+                        gate.cleanup();self.assertEqual(called.call_count,1);self.assertEqual(gate.device,'owned')
+    def testKilledBuildWrapperAlsoBlocksOwnedDeviceCleanup(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        for code in [-15,-9,128,130,134,137,139,143,255]:
+            with self.subTest(code=code),tempfile.TemporaryDirectory() as folder:
+                gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+                gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+                with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=code) as called:
+                    with self.assertRaises(ValueError):gate.command('build',['owned-build-command'],720,simulator=False)
+                    self.assertTrue(gate.uncertain);gate.cleanup();self.assertEqual(called.call_count,1)
+                    with self.assertRaisesRegex(ValueError,'blocks further'):gate.command('boot',['must-not-dispatch'],60,simulator=True)
+
+    def testSignalUncertaintyPrecedesReceiptFailureAndOrdinaryCodeIsNotReclassified(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        for code in [-15,130,1]:
+            with self.subTest(code=code),tempfile.TemporaryDirectory() as folder:
+                gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+                gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+                def retain(path,value):
+                    self.assertEqual(gate.uncertain,code in [-15,130]);raise OSError('timing retention failure')
+                with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=code) as called,patch.object(diagnostic,'save',side_effect=retain):
+                    with self.assertRaises(OSError):gate.command('install-owned-app',['owned-command'],210,simulator=True,allow_failure=True)
+                    self.assertEqual(gate.uncertain,code in [-15,130])
+                    if code in [-15,130]:gate.cleanup();self.assertEqual(called.call_count,1)
+
+    def testUnknownWrapperOutcomeFromLogReadFailureOrBuildInterruptionStopsCleanup(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        real_read=Path.read_text
+        def unreadable(path,*args,**kwargs):
+            if path.name=='build.log':raise OSError('owned wrapper log unreadable')
+            return real_read(path,*args,**kwargs)
+        for code in [0,-15,139]:
+            with self.subTest(code=code),tempfile.TemporaryDirectory() as folder:
+                gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+                gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+                with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=code) as called,patch.object(Path,'read_text',unreadable):
+                    with self.assertRaises(OSError):gate.command('build',['owned-build'],720,simulator=False)
+                    self.assertEqual(gate.events,[]);self.assertTrue(gate.uncertain);gate.cleanup();self.assertEqual(called.call_count,1)
+                    with self.assertRaisesRegex(ValueError,'blocks further'):gate.bootstrap()
+        with tempfile.TemporaryDirectory() as folder:
+            gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+            gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+            with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',side_effect=KeyboardInterrupt('build cancelled')) as called:
+                with self.assertRaises(KeyboardInterrupt):gate.command('build',['owned-build'],720,simulator=False)
+                self.assertTrue(gate.uncertain);gate.cleanup();self.assertEqual(called.call_count,1)
+
+    def testCancellationAfterKnownChildExitStillPreventsNewCleanupDispatch(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        for exception in [KeyboardInterrupt('cancelled after exit'),SystemExit(130)]:
+            with self.subTest(exception=type(exception).__name__),tempfile.TemporaryDirectory() as folder:
+                gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+                gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+                with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=0) as called,patch('run_swiftui_acceptance.save',side_effect=exception):
+                    with self.assertRaises(type(exception)):gate.command('build',['owned-build'],720,simulator=False)
+                    self.assertEqual(gate.events[0]['exit_code'],0);self.assertTrue(gate.uncertain)
+                    gate.cleanup();self.assertEqual(called.call_count,1)
+
+    def testActualMainCancellationInFinalReceiptOrBetweenCommandsNeverDispatchesCleanup(self):
+        import os
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        real_read=Path.read_text;admission={'product_sha':host.PRODUCT_SHA}
+        def read(path,*args,**kwargs):
+            if path==diagnostic.ROOT/'build/final-photos-host-source-before.json':return json.dumps(admission)
+            return real_read(path,*args,**kwargs)
+        for where in ['dispatch-timing','between-commands']:
+            for failure in [KeyboardInterrupt('cancelled'),SystemExit(130)]:
+                with self.subTest(where=where,failure=type(failure).__name__),tempfile.TemporaryDirectory() as folder:
+                    gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+                    gate.source='a'*40;gate.source_tree='b'*40;gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[];final=[]
+                    def run():
+                        if where=='between-commands':raise failure
+                        gate.command('install-owned-app',['owned-command'],210,simulator=True)
+                    gate.run=run
+                    def save(path,value):
+                        if path.name=='install-owned-app-dispatch-timing.json':raise failure
+                        if path.name=='acceptance.json':final.append(value)
+                    with patch.object(diagnostic,'admit_probe',return_value=admission),patch.object(diagnostic,'HostDiagnostic',return_value=gate),patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch.object(Path,'read_text',read),patch.object(diagnostic,'save',side_effect=save),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=0) as called,patch.object(diagnostic.signal,'signal'),patch.object(diagnostic.os,'chdir'):
+                        self.assertEqual(diagnostic.main(),1)
+                    self.assertTrue(gate.uncertain);self.assertEqual(gate.device,'owned');self.assertEqual(called.call_count,1 if where=='dispatch-timing' else 0)
+                    self.assertEqual(len(final),1);self.assertTrue(final[0]['simulator_uncertain']);self.assertFalse(final[0]['actual_host_diagnostic_passed'])
+
+    def testExactSplitRemovalRestoresAllHistoricalWrapperBytes(self):
+        import hashlib
+        source=(Path(__file__).resolve().parents[1]/'Scripts/run_bounded.py').read_text()
+        def restore(value):
+            for fragment in [PHOTOS_INSTALL_SPLIT_PREFIX,PHOTOS_INSTALL_SPLIT_HELPER,PHOTOS_INSTALL_SPLIT_NATIVE]:
+                if value.count(fragment)!=1:raise ValueError('Split fragment changed/duplicated')
+            return value.replace(PHOTOS_INSTALL_SPLIT_PREFIX,'').replace(PHOTOS_INSTALL_SPLIT_HELPER,'').replace(PHOTOS_INSTALL_SPLIT_NATIVE,'refuse_expired_parent()\ntry:\n')
+        self.assertEqual(hashlib.sha256(restore(source).encode()).hexdigest(),'798a18065939c9787dcf27d42ab1917ee8d7dd4835d9ff48ef6b52e8b4cf1acd')
+        changed=source.replace('photos_cleanup_started + 10','photos_cleanup_started + 20');self.assertNotEqual(hashlib.sha256(restore(changed).encode()).hexdigest(),hashlib.sha256(restore(source).encode()).hexdigest())
+    def testNoDiagnosticCollectorsOrAppChangeAndFiveStrictStagesRemain(self):
+        import hashlib
+        root=Path(__file__).resolve().parents[1];driver=(root/'Scripts/run_ios_photos_host_diagnostic.py').read_text();wrapper=(root/'Scripts/run_bounded.py').read_text()
+        for token in ['ios_install_observer','InstallObservation','sample_receipt','install-device-log','install-only']:self.assertNotIn(token,driver+wrapper)
+        for name in ['ios_install_observer.py','run_ios_install_diagnostic.py','test_ios_install_observer.py','test_ios_install_diagnostic.py']:self.assertFalse((root/'Scripts'/name).exists())
+        self.assertEqual(host.product_control(root),(424,host.PRODUCT_CONTROL_SHA256))
+        for path,digest in host.PROBE_FIXED_FILES.items():self.assertEqual(hashlib.sha256((root/path).read_bytes()).hexdigest(),digest)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45]);self.assertIn("self.command('actual-photos-host', command, 630",driver);self.assertIn("command, 750, simulator=True",driver);self.assertIn("'work_budget_seconds': 2280",driver)
+
 
 if __name__ == '__main__': unittest.main()

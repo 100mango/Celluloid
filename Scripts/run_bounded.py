@@ -30,6 +30,18 @@ if absolute_deadline:
             or not math.isfinite(args.seconds) or not math.isfinite(args.deadline_monotonic) or args.deadline_monotonic <= 0
             or args.deadline_monotonic > time.monotonic() + args.seconds):
         parser.error('Invalid reviewed Photos-host parent deadline')
+# Only the exact final Photos install command gets the split phase budget.
+# Source/owner/build admission remains in the unchanged parent host controller.
+photos_install_split = (os.environ.get('GITHUB_REF') == 'refs/heads/cell-ios-photos-host-final'
+                        and args.label == 'install-owned-app')
+if photos_install_split:
+    import re
+    expected_app = os.path.join(os.getcwd(), '.build/swiftui-ios/Build/Products/Debug-iphonesimulator/Celluloid.app')
+    if (not absolute_deadline or args.seconds != 210 or len(args.command) != 5
+            or args.command[:3] != ['xcrun', 'simctl', 'install']
+            or re.fullmatch(r'[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}', args.command[3]) is None
+            or args.command[4] != expected_app):
+        parser.error('Invalid exact Photos install preparation/native split')
 def photos_timing(phase, **values):
     # Only the already-admitted Photos absolute-deadline route emits this
     # receipt. Entry was sampled with time alone, before other module imports.
@@ -78,10 +90,29 @@ def refuse_expired_parent():
         sys.exit(124)
 
 
+def refuse_expired_install_preparation():
+    if time.monotonic() >= args.deadline_monotonic - 120:
+        photos_timing('install-preparation-expired', child_started=False, preparation_limit_seconds=90)
+        print('BOUNDED_COMMAND_TIMEOUT', args.label, 'preparation deadline expired; no install dispatch', flush=True)
+        photos_timing('wrapper-end', exit_code=124, child_started=False)
+        sys.exit(124)
+
+
 refuse_expired_parent()
 photos_timing('spawn-begin')
 # Receipt I/O must not authorize a child after the parent deadline.
 refuse_expired_parent()
+if photos_install_split:
+    refuse_expired_install_preparation()
+    # Sample before receipt I/O and Popen. Neither can earn a new120s window.
+    native_dispatch_started = time.monotonic()
+    deadline = min(native_dispatch_started + 120, args.deadline_monotonic)
+    photos_timing('install-native-dispatch', native_dispatch_started_monotonic=native_dispatch_started,
+                  native_deadline_monotonic=deadline, native_limit_seconds=120,
+                  preparation_deadline_monotonic=args.deadline_monotonic - 120,
+                  preparation_limit_seconds=90, phase_limit_seconds=210)
+    refuse_expired_install_preparation()
+    refuse_expired_parent()
 try:
     if first_summary is not None and time.monotonic() >= deadline:
         raise subprocess.TimeoutExpired(args.command, args.seconds)
