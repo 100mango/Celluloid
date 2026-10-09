@@ -136,6 +136,8 @@ final class IOSPhotosHostUITests: XCTestCase {
         try tap(photos.buttons.matching(identifier: "Collections"))
         checkpoint("collections")
         try dismissObservedWhatsNewIfPresent()
+        try declineObservedPhotosNotificationsIfPresent()
+        try selectObservedCollections()
         stage = "open-albums"
         try tap(photos.buttons.matching(identifier: "Albums"))
         checkpoint("albums")
@@ -197,6 +199,76 @@ final class IOSPhotosHostUITests: XCTestCase {
         checkpoint("owned-photo-info")
         try tap(photos.buttons.matching(identifier: "Info"))
         _ = try unique(photos.buttons.matching(identifier: "Edit"))
+    }
+    private func declineObservedPhotosNotificationsIfPresent() throws {
+        // Run37912970403 screenshot after the introduction: only this exact
+        // Photos notification request may be denied. Never grant notifications.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let alerts = springboard.alerts
+        guard alerts.firstMatch.waitForExistence(timeout: 2) else {
+            guard photos.alerts.count == 0 else { throw failure("Unknown Photos alert; no action taken") }
+            return
+        }
+        stage = "decline-observed-photos-notifications"
+        try withinBudget()
+        guard alerts.count == 1, photos.alerts.count == 0 else {
+            throw failure("Multiple or unexpected Photos notification prompts; no action taken")
+        }
+        let proof = XCTAttachment(string: String(alerts.element.debugDescription.prefix(80_000)))
+        proof.name = "ios-photos-host-notification-candidate-ax"; proof.lifetime = .keepAlways; add(proof)
+        // Keep the action query scoped to this title and body even if the
+        // system replaces its alert between observation and tap resolution.
+        let observed = alerts.containing(.staticText, identifier: "“Photos” Would Like to Send You Notifications")
+            .containing(.staticText, identifier: "Notifications may include alerts, sounds, and icon badges. These can be configured in Settings.")
+        guard observed.count == 1 else { throw failure("Unknown notification prompt; no action taken") }
+        let alert = observed.element
+        let title = alert.staticTexts.matching(NSPredicate(format: "label == %@", "“Photos” Would Like to Send You Notifications"))
+        let body = alert.staticTexts.matching(NSPredicate(format: "label == %@", "Notifications may include alerts, sounds, and icon badges. These can be configured in Settings."))
+        let deny = alert.buttons.matching(NSPredicate(format: "label == %@", "Don’t Allow"))
+        let allow = alert.buttons.matching(NSPredicate(format: "label == %@", "Allow"))
+        guard title.count == 1, body.count == 1, deny.count == 1, allow.count == 1,
+              alert.buttons.count == 2, title.element.isHittable, body.element.isHittable else {
+            throw failure("Notification prompt differs from observed Photos request; no action taken")
+        }
+        let decline = try unique(deny)
+        _ = try unique(allow)
+        // Retain one prompt screenshot and the alert AX above; avoid a second
+        // full Photos AX traversal on this 120-second critical path.
+        let screenshot = XCTAttachment(screenshot: photos.screenshot())
+        screenshot.name = "ios-photos-host-observed-photos-notifications"; screenshot.lifetime = .keepAlways; add(screenshot)
+        print("IOS_PHOTOS_HOST_CHECKPOINT observed-photos-notifications stage=\(stage)")
+        print("IOS_PHOTOS_HOST_ACTION stage=\(stage) label=\(decline.label) identifier=\(decline.identifier)")
+        decline.tap()
+        guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                    object: alert)], timeout: 8) == .completed,
+              springboard.alerts.count == 0, photos.alerts.count == 0 else {
+            throw failure("Observed notification denial did not close the sole prompt")
+        }
+        print("IOS_PHOTOS_HOST_CHECKPOINT observed-photos-notifications-declined stage=\(stage)")
+    }
+    private func selectObservedCollections() throws {
+        // The same run showed LibraryTab still selected after the introductory
+        // overlay consumed the first tap. Resolve the observed tabs afresh.
+        stage = "select-observed-collections"
+        try withinBudget()
+        guard photos.alerts.count == 0,
+              XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {
+            throw failure("Unknown alert before Collections; no action taken")
+        }
+        let query = photos.buttons.matching(identifier: "CollectionsTab").matching(NSPredicate(format: "label == %@", "Collections"))
+        let library = photos.buttons.matching(identifier: "LibraryTab").matching(NSPredicate(format: "label == %@", "Library"))
+        guard query.count == 1, library.count == 1 else { throw failure("Observed Photos tab identity changed") }
+        let collections = try unique(query)
+        if !collections.isSelected {
+            guard try unique(library).isSelected else { throw failure("Expected observed Library selection before Collections") }
+            print("IOS_PHOTOS_HOST_ACTION stage=\(stage) label=\(collections.label) identifier=\(collections.identifier)")
+            collections.tap()
+        }
+        guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in collections.isSelected },
+                    object: nil)], timeout: 8) == .completed else {
+            throw failure("Observed Collections tab did not become selected")
+        }
+        checkpoint("observed-collections-selected")
     }
     private func openCelluloidExtension() throws {
         stage = "photos-edit"

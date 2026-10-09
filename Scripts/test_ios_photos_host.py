@@ -148,7 +148,7 @@ def validate_observed_notice_source(source):
         raise ValueError('Unexpected additional introduction action')
     if source.count('        try dismissObservedWhatsNewIfPresent()') != 1:
         raise ValueError('Observed introduction may only be handled after Collections')
-    sequence = 'checkpoint("collections")\n        try dismissObservedWhatsNewIfPresent()\n        stage = "open-albums"'
+    sequence = 'checkpoint("collections")\n        try dismissObservedWhatsNewIfPresent()\n        try declineObservedPhotosNotificationsIfPresent()\n        try selectObservedCollections()\n        stage = "open-albums"'
     if sequence not in source:
         raise ValueError('Observed introduction handler moved out of the observed route')
     for required_budget in ['executionTimeAllowance = 120', 'systemUptime - started < 120']:
@@ -515,6 +515,82 @@ class BootstrapQueryBudgetTests(unittest.TestCase):
             result=subprocess.run(['/bin/bash','-c',script],text=True,capture_output=True,timeout=5)
             self.assertEqual(result.returncode,status,result.stderr)
             self.assertEqual(result.stdout.splitlines(),['<Scripts/run_bounded.py>','<--seconds>','<45>','<--label>','<current-label>','<--deadline-monotonic>','<155.0>','<owned-command>','<arg>'] if status==0 else [])
+
+
+NOTIFICATION_TITLE = '“Photos” Would Like to Send You Notifications'
+NOTIFICATION_BODY = 'Notifications may include alerts, sounds, and icon badges. These can be configured in Settings.'
+
+def validate_observed_notification_navigation_source(source):
+    import hashlib
+    start=source.index('    private func declineObservedPhotosNotificationsIfPresent() throws {')
+    middle=source.index('    private func selectObservedCollections() throws {',start)
+    end=source.index('    private func openCelluloidExtension() throws {',middle)
+    denial=source[start:middle];navigation=source[middle:end]
+    required=[
+        'let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")',
+        'let alerts = springboard.alerts',
+        'guard alerts.firstMatch.waitForExistence(timeout: 2) else {',
+        'guard photos.alerts.count == 0 else { throw failure("Unknown Photos alert; no action taken") }',
+        'try withinBudget()',
+        'guard alerts.count == 1, photos.alerts.count == 0 else {',
+        'let observed = alerts.containing(.staticText, identifier: "'+NOTIFICATION_TITLE+'")',
+        '.containing(.staticText, identifier: "'+NOTIFICATION_BODY+'")',
+        'guard observed.count == 1 else {',
+        'let alert = observed.element',
+        'let title = alert.staticTexts.matching(NSPredicate(format: "label == %@", "'+NOTIFICATION_TITLE+'"))',
+        'let body = alert.staticTexts.matching(NSPredicate(format: "label == %@", "'+NOTIFICATION_BODY+'"))',
+        'let deny = alert.buttons.matching(NSPredicate(format: "label == %@", "Don’t Allow"))',
+        'let allow = alert.buttons.matching(NSPredicate(format: "label == %@", "Allow"))',
+        'guard title.count == 1, body.count == 1, deny.count == 1, allow.count == 1,',
+        'alert.buttons.count == 2, title.element.isHittable, body.element.isHittable else {',
+        'let decline = try unique(deny)', '_ = try unique(allow)', 'decline.tap()',
+        'object: alert)], timeout: 8) == .completed,',
+        'springboard.alerts.count == 0, photos.alerts.count == 0 else {'
+    ]
+    previous=-1
+    for fragment in required:
+        if denial.count(fragment)!=1 or denial.index(fragment)<=previous:raise ValueError('Missing/changed/out-of-order notification guard: '+fragment)
+        previous=denial.index(fragment)
+    if denial.count('.tap()')!=1:raise ValueError('Only one explicit notification denial may be tapped')
+    if denial.count('.debugDescription')!=1 or denial.count('photos.screenshot()')!=1 or 'photos.debugDescription' in denial:raise ValueError('Prompt evidence must stay bounded without duplicate Photos AX traversal')
+    ordered=['try withinBudget()', 'guard photos.alerts.count == 0,',
+        'XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {',
+        'let query = photos.buttons.matching(identifier: "CollectionsTab").matching(NSPredicate(format: "label == %@", "Collections"))',
+        'let library = photos.buttons.matching(identifier: "LibraryTab").matching(NSPredicate(format: "label == %@", "Library"))',
+        'guard query.count == 1, library.count == 1 else {', 'let collections = try unique(query)',
+        'if !collections.isSelected {', 'guard try unique(library).isSelected else {', 'collections.tap()',
+        'XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in collections.isSelected },',
+        'object: nil)], timeout: 8) == .completed else {', 'checkpoint("observed-collections-selected")']
+    previous=-1
+    for fragment in ordered:
+        if navigation.count(fragment)!=1 or navigation.index(fragment)<=previous:raise ValueError('Missing/changed/out-of-order Collections guard: '+fragment)
+        previous=navigation.index(fragment)
+    if navigation.count('.tap()')!=1:raise ValueError('Only one observed Collections reselection is permitted')
+    calls='        try declineObservedPhotosNotificationsIfPresent()\n        try selectObservedCollections()\n'
+    if source.count(calls)!=1 or ('try dismissObservedWhatsNewIfPresent()\n'+calls+'        stage = "open-albums"') not in source:raise ValueError('Notification denial must precede observed reselection and original Albums route')
+    restored=(source[:start]+source[end:]).replace(calls,'')
+    if hashlib.sha256(restored.encode()).hexdigest()!='1bc8de8517c0e522f42322d98861e557c010b82531a46991f9242b13f92ce1c1':raise ValueError('Original host assertions, introduction, unknown-alert monitor or budgets changed')
+
+class ObservedNotificationNavigationTests(unittest.TestCase):
+    def setUp(self):self.source=(Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+    def testObservedDenialAndSelectionPreserveAllOriginalHostBytes(self):
+        validate_observed_notification_navigation_source(self.source)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45]);self.assertEqual(len(host.STEPS),5)
+    def testChangedPromptAmbiguousButtonsOrGrantCannotAuthorizeAction(self):
+        mutations=[self.source.replace('"'+text+'"','"Unknown"') for text in [NOTIFICATION_TITLE,NOTIFICATION_BODY,'Don’t Allow','Allow']]
+        for token in ['alerts.count == 1','observed.count == 1','photos.alerts.count == 0','title.count == 1','body.count == 1','deny.count == 1','allow.count == 1','alert.buttons.count == 2','title.element.isHittable','body.element.isHittable']:
+            mutations.append(self.source.replace(token,'true'))
+        mutations += [self.source.replace('decline.tap()','allow.element.tap()'),self.source.replace('decline.tap()','decline.tap()\n        decline.tap()'),self.source.replace('let decline = try unique(deny)','let decline = deny.element')]
+        for value in mutations:
+            with self.assertRaises(ValueError):validate_observed_notification_navigation_source(value)
+    def testUnknownTabUnselectedOutcomeOrActionBeforeDenialRejects(self):
+        for old,new in [('"CollectionsTab"','"GuessedTab"'),('"LibraryTab"','"GuessedTab"'),('query.count == 1','query.count > 0'),('library.count == 1','library.count > 0'),('guard try unique(library).isSelected else','guard true else'),('collections.isSelected },','true },'),('collections.tap()','collections.tap()\n            collections.tap()')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):validate_observed_notification_navigation_source(self.source.replace(old,new))
+        calls='        try declineObservedPhotosNotificationsIfPresent()\n        try selectObservedCollections()\n'
+        with self.assertRaises(ValueError):validate_observed_notification_navigation_source(self.source.replace(calls,'        try selectObservedCollections()\n        try declineObservedPhotosNotificationsIfPresent()\n'))
+    def testOwnedAlbumFilenameAndFunctionalAssertionsCannotBeRelaxed(self):
+        for old,new in [('let titleNode = try unique(','let titleNode = '),('let cell = try unique(cells)','let cell = cells.firstMatch'),('try verifyPublicFilename()','try withinBudget()'),('"filter-Sepia"','"filter-None"'),('changed != original','changed == original'),('executionTimeAllowance = 120','executionTimeAllowance = 180'),('fatalError("IOS_PHOTOS_HOST_UNKNOWN_ALERT no action taken")','return true')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):validate_observed_notification_navigation_source(self.source.replace(old,new))
 
 
 if __name__ == '__main__': unittest.main()
