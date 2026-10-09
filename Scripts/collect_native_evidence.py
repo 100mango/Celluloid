@@ -47,6 +47,9 @@ def retain_file(name,path,source):
 # Required source/package/consumer receipts precede optional logs and screenshots.
 # A missing receipt stays an explicit omission; its producing verification step is red.
 required=['combined-source-before.json','combined-source-after.json']
+if os.environ.get('CELLULOID_RENDERING_QUALIFICATION')=='corrected-v2':
+    required+=['corrected-rendering-result.json','corrected-mac-summary.json','corrected-rendering-dependencies.json','corrected-v2-clock.json']
+    if (TEMP/'corrected-native-dispatch-failure.json').exists():required+=['corrected-native-dispatch-failure.json']
 if PLATFORM=='preflight':required+=['combined-preflight.json','preflight-phone-embedded-watch.json','preflight-phone-embedded-watch-release.json']
 if PLATFORM=='mac':required+=['interop-continuation.json','CelluloidEarlyUIKit2x.xcresult.summary.json','CelluloidEarlyUIKit3x.xcresult.summary.json','early-uikit-2x-file-open-observation.json','early-uikit-3x-file-open-observation.json','early-uikit-interop.json','early-uikit-2x-staging.json','early-uikit-3x-staging.json','mac-required-tests.json','sandbox-extension-entitlements-before.plist','sandbox-extension-entitlements.plist']
 if PLATFORM=='phone':required+=['phone-embedded-watch.json','phone-embedded-watch-release.json','phone-required-tests.json','phone-required-tests.runtime-summary.json']
@@ -228,6 +231,8 @@ if FULL_SHIPPING and optional_budget is not None:
     optional_budget.deadline=min(optional_budget.deadline,COLLECTION_STARTED+150)
 
 def optional_export(args,timeout):
+    if os.environ.get('CELLULOID_RENDERING_QUALIFICATION')=='corrected-v2':
+        raise OptionalExportError('Corrected route retains existing finalized official summaries and fixture PNGs; optional native re-export is not admitted')
     if STAGED_CONTEXT is not None:
         try:
             require_clear(TEMP,STAGED_CONTEXT)

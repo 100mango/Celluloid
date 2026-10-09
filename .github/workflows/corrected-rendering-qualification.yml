@@ -1,0 +1,64 @@
+name: Corrected Celluloid v2 fixture qualification
+'on':
+  push:
+    branches: [celluloid-rendering-qualification]
+    paths:
+      - .github/corrected-rendering-qualification.json
+      - .github/workflows/corrected-rendering-qualification.yml
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-corrected-rendering-qualification
+  cancel-in-progress: false
+jobs:
+  corrected-v2:
+    # Root must review exact source/control and capacity, then open this and READY/sourceReady together.
+    if: ${{ false && github.event_name == 'push' && github.ref == 'refs/heads/celluloid-rendering-qualification' }}
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      TZ: UTC
+      PYTHONDONTWRITEBYTECODE: '1'
+      CELLULOID_RENDERING_QUALIFICATION: corrected-v2
+      CELLULOID_EVIDENCE_PLATFORM: mac
+    steps:
+      - name: Reserve five minutes for evidence and upload
+        timeout-minutes: 1
+        run: |
+          python3 - <<'PY_CLOCK'
+          import json, os, time
+          from pathlib import Path
+          Path(os.environ['RUNNER_TEMP'], 'corrected-v2-clock.json').write_text(json.dumps({
+            'source_sha': os.environ['GITHUB_SHA'], 'run_id': os.environ['GITHUB_RUN_ID'],
+            'started_monotonic': time.monotonic()}))
+          PY_CLOCK
+      - name: Check out exact control source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 3
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 64
+          persist-credentials: false
+      - name: Admit corrected product and complete pinned dependency closure
+        id: admit
+        timeout-minutes: 2
+        run: python3 -B Scripts/corrected_rendering_admission.py --phase before
+      - name: Execute43 Mac methods and the two existing v2 consumers
+        if: ${{ steps.admit.outcome == 'success' }}
+        timeout-minutes: 41
+        run: python3 -B Scripts/run_corrected_rendering_qualification.py
+      - name: Retain existing bounded synthetic evidence
+        id: evidence
+        if: ${{ always() && steps.admit.outcome == 'success' }}
+        timeout-minutes: 3
+        run: python3 -B Scripts/collect_native_evidence.py
+      - name: Upload bounded receipts
+        if: ${{ always() && steps.admit.outcome == 'success' && steps.evidence.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 2
+        with:
+          name: celluloid-corrected-v2-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/celluloid-bounded-evidence/
+          retention-days: 1
+          if-no-files-found: error

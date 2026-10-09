@@ -10,7 +10,7 @@ import argparse, hashlib, json, math, os, plistlib, re, subprocess, sys, uuid
 from native_fixture_handoff import load_layer_exact, layer_from_log, LAYER_FILE, LAYER_COMPONENTS
 from native_process import run
 from run_early_uikit_interop import (ROOT, PROFILES, FROZEN_UIKIT_SHA,
-    FROZEN_UIKIT_FINGERPRINT, frozen_uikit_fingerprint)
+    FROZEN_UIKIT_FINGERPRINT, frozen_uikit_fingerprint, corrected_source_admission)
 from verify_required_interoperability import CONSUMER, PIXELS, verify as verify_required
 from uikit_installed_identity import validate as validate_installation
 from platform_rendering_contract import from_log as platform_from_log,CONTROL_SHA,RUNTIME_BUILD,PREFIX as PLATFORM_PREFIX
@@ -170,9 +170,23 @@ def verify(temp,source,platform_contract=True):
     temp=Path(temp);require(re.fullmatch(r'[0-9a-f]{40}',source),'Invalid source')
     require(subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()==source,'Wrong checkout source')
     require(not subprocess.check_output(['git','status','--porcelain','--untracked-files=all'],cwd=ROOT,text=True).strip(),'Dirty source checkout')
-    require(frozen_uikit_fingerprint()==FROZEN_UIKIT_FINGERPRINT and sha(ROOT/TEST_SOURCE)==TEST_SOURCE_SHA,'Original UIKit/consumer source changed')
+    admission=corrected_source_admission()
+    if admission is not None:
+        from corrected_rendering_admission import require_native_clear
+        require_native_clear(temp)
+    current_fingerprint=frozen_uikit_fingerprint()
+    require(sha(ROOT/TEST_SOURCE)==TEST_SOURCE_SHA,'Original consumer source changed')
     packet=read(temp/'early-uikit-interop.json');require(packet['source_sha']==source and 'setup_error' not in packet,'Wrong source or setup error')
-    require(packet['frozen_uikit_source']==FROZEN_UIKIT_SHA and packet['uikit_production_fingerprint']==FROZEN_UIKIT_FINGERPRINT,'Frozen UIKit identity mismatch')
+    if admission is None:
+        require(current_fingerprint==FROZEN_UIKIT_FINGERPRINT,'Original UIKit/consumer source changed')
+        require(packet['frozen_uikit_source']==FROZEN_UIKIT_SHA and packet['uikit_production_fingerprint']==FROZEN_UIKIT_FINGERPRINT,'Frozen UIKit identity mismatch')
+        require('source_mode' not in packet and 'corrected_source_admission' not in packet,'Corrected receipt on historical route')
+    else:
+        require(platform_contract is True,'Corrected source requires the unchanged v2 contract')
+        require(current_fingerprint==admission['current_uikit_fingerprint'],'Corrected UIKit dependency identity changed')
+        require(packet.get('source_mode')=='corrected-v2' and packet.get('corrected_source_admission')==admission,'Corrected source admission mismatch')
+        require('frozen_uikit_source' not in packet and packet.get('frozen_control_source')==admission['frozen_control_source'],'Original-control provenance mismatch')
+        require(packet['uikit_production_fingerprint']==current_fingerprint,'Corrected UIKit identity mismatch')
     require(packet['same_built_app_verified'] is True and packet['cleanup_passed'] is True,'Binary/cleanup guard failed')
     rows=packet['profiles'];require([r['profile'] for r in rows]==['2x','3x'],'Both actual displays required')
     require(len({r['udid'] for r in rows})==2,'Same device reused as another display')
@@ -208,7 +222,7 @@ def verify(temp,source,platform_contract=True):
     require(packet['pixel_passed'] is strict,'Aggregate historical strict result mismatch')
     if platform_contract:require(packet.get('platform_contract_passed') is True and packet['passed'] is True,'Aggregate platform contract failed')
     else:require(packet['passed'] is strict,'Aggregate historical pass mismatch')
-    return {'source_sha':source,'continuation_safe':True,'platform_contract_accepted':platform_contract,'native_text_contract':producer.get('native_text_contract'),'strict_pixel_passed':strict,'final_archive_accepted':False,'binary_sha256':digest,'fixture_sha256':sha(directory/LAYER_FILE),'uikit_fingerprint':FROZEN_UIKIT_FINGERPRINT,'consumer_source_sha256':TEST_SOURCE_SHA,'profiles':result,'scope':'Versioned fixture-specific rendering proof with actual consumers and cleanup. Historical universal results remain diagnostics; all-platform and Photos-host lifecycle acceptance remain incomplete.' if platform_contract else 'Historical scheduling-only replay, not replacement acceptance.'}
+    return {'source_sha':source,'continuation_safe':True,'platform_contract_accepted':platform_contract,'native_text_contract':producer.get('native_text_contract'),'strict_pixel_passed':strict,'final_archive_accepted':False,'binary_sha256':digest,'fixture_sha256':sha(directory/LAYER_FILE),'uikit_fingerprint':current_fingerprint,'consumer_source_sha256':TEST_SOURCE_SHA,'profiles':result,'scope':'Versioned fixture-specific rendering proof with actual consumers and cleanup. Historical universal results remain diagnostics; all-platform and Photos-host lifecycle acceptance remain incomplete.' if platform_contract else 'Historical scheduling-only replay, not replacement acceptance.'}
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--github-output',type=Path,required=True);args=parser.parse_args()

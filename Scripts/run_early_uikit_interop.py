@@ -21,6 +21,13 @@ def frozen_uikit_fingerprint():
     rows=[[p,hashlib.sha256((ROOT/p).read_bytes()).hexdigest()] for p in paths if p]
     return hashlib.sha256(json.dumps(rows,separators=(',',':')).encode()).hexdigest()
 
+def corrected_source_admission():
+    mode=os.environ.get("CELLULOID_RENDERING_QUALIFICATION", "")
+    if not mode:return None
+    if mode!="corrected-v2":raise ValueError("Unknown rendering qualification mode")
+    from corrected_rendering_admission import admit
+    return admit()
+
 def main():
     temp=Path(os.environ['RUNNER_TEMP']); source=os.environ['GITHUB_SHA'];deadline=time.monotonic()+ACTIVE_SECONDS
     report={'source_sha':source,'frozen_uikit_source':FROZEN_UIKIT_SHA,'profiles':[],
@@ -28,10 +35,34 @@ def main():
     def bounded(args,timeout=180,**kwargs):
         remaining=deadline-time.monotonic()
         if remaining<=0:raise TimeoutError('Early UIKit active budget exhausted; cleanup reserve retained')
-        return run(args,timeout=min(timeout,remaining),**kwargs)
+        corrected=os.environ.get('CELLULOID_RENDERING_QUALIFICATION')=='corrected-v2'
+        if corrected:
+            from corrected_rendering_admission import require_native_clear,mark_native_failure
+            require_native_clear()
+        try:return run(args,timeout=min(timeout,remaining),**kwargs)
+        except BaseException as error:
+            if corrected:mark_native_failure(error)
+            raise
+    def owned_cleanup(args):
+        corrected=os.environ.get('CELLULOID_RENDERING_QUALIFICATION')=='corrected-v2'
+        if corrected:
+            from corrected_rendering_admission import require_native_clear,mark_native_failure
+            require_native_clear()
+        try:return run(args,timeout=45,check=False)
+        except BaseException as error:
+            if corrected:mark_native_failure(error)
+            raise
     try:
+        admission=corrected_source_admission()
         fingerprint=frozen_uikit_fingerprint();report['uikit_production_fingerprint']=fingerprint
-        if fingerprint!=FROZEN_UIKIT_FINGERPRINT:raise RuntimeError('Frozen original UIKit production bytes changed')
+        if admission is None:
+            if fingerprint!=FROZEN_UIKIT_FINGERPRINT:raise RuntimeError('Frozen original UIKit production bytes changed')
+        else:
+            if fingerprint!=admission['current_uikit_fingerprint']:raise RuntimeError('Corrected UIKit source fingerprint changed')
+            report['scope']='Two corrected-source UIKit consumers against immutable original2x/3x controls; not full-platform acceptance.'
+            report.pop('frozen_uikit_source')
+            report.update(source_mode='corrected-v2',corrected_source_admission=admission,
+                          frozen_control_source=admission['frozen_control_source'])
         fixtures=temp/'early-uikit-fixtures';fixtures.mkdir(exist_ok=False)
         payload=layer_from_log(temp/'mac.log',source)
         (fixtures/LAYER_FILE).write_bytes(payload)
@@ -93,7 +124,7 @@ def main():
                         row['file_open_observation_error']=type(error).__name__+': '+str(error)
                     for action in ['shutdown','delete']:
                         try:
-                            result=run(['xcrun','simctl',action,udid],timeout=45,check=False)
+                            result=owned_cleanup(['xcrun','simctl',action,udid])
                             row['cleanup'].append({'action':action,'exit_code':result.returncode})
                         except Exception as error:row['cleanup'].append({'action':action,'error':str(error)})
                 row['cleanup_passed']=len(row['cleanup'])==2 and all(c.get('exit_code')==0 for c in row['cleanup'])
