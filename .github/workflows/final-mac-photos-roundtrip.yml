@@ -1,0 +1,54 @@
+name: Owned writer and neutral Photos roundtrip (CLOSED review)
+on:
+  push:
+    branches: [celluloid-final-mac-photos-roundtrip]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-platforms-refs/heads/apple-platforms
+  cancel-in-progress: false
+jobs:
+  owned-photos-roundtrip:
+    if: ${{ github.ref == 'refs/heads/celluloid-final-mac-photos-roundtrip' && github.run_attempt == 1 }}
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      CELLULOID_VALIDATION_SCOPE: photos-writer-roundtrip-observation
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Start original fixed Mac job clock
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          Path(os.environ['RUNNER_TEMP'],'mac-job-clock.json').write_text(json.dumps({
+            'source_sha':os.environ['GITHUB_SHA'],'started_monotonic':time.monotonic(),
+            'started_unix':time.time(),'execution_budget_seconds':41*60}))
+          PY
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - name: Fetch exact product parent without credentials
+        shell: bash
+        run: |
+          python3 -B -S - <<'PYFETCH'
+          import subprocess
+          subprocess.run(['git','fetch','--no-tags','--depth=1','origin','13e9a1ed63c6e7744803419f27e429a759df1209'],check=True,timeout=60)
+          PYFETCH
+      - name: Observe one owned writer and neutral Photos roundtrip
+        timeout-minutes: 41
+        shell: bash
+        run: python3 Scripts/mac_photos_roundtrip.py
+      - name: Upload bounded synthetic roundtrip evidence
+        if: always()
+        timeout-minutes: 5
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: celluloid-photos-roundtrip-${{ github.sha }}
+          path: ${{ runner.temp }}/celluloid-photos-roundtrip-evidence/
+          retention-days: 1
+          if-no-files-found: error
