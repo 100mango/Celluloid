@@ -462,15 +462,15 @@ def verify_package(root, temp, context, clock, source):
     metadata = plist(read(archive / 'Info.plist'))
     properties = metadata.get('ApplicationProperties', {})
     need(type(metadata.get('ArchiveVersion')) is int and metadata['ArchiveVersion'] == 2 and metadata.get('SchemeName') == 'Celluloid', 'Wrong archive metadata')
-    for key, wanted in {'ApplicationPath': 'Applications/Celluloid.app', 'CFBundleIdentifier': 'Mango.Celluloid', 'CFBundleShortVersionString': '1.1', 'CFBundleVersion': '2'}.items():
+    for key, wanted in {'ApplicationPath': 'Applications/Celluloid.app', 'CFBundleIdentifier': 'Mango.Celluloid', 'CFBundleShortVersionString': '1.1.1', 'CFBundleVersion': '3'}.items():
         need(properties.get(key) == wanted, 'Wrong archive property: ' + key)
     bundle_reports, probes = [], ProofCommands(deadline)
     for path, (name, bundle_id, package_type, _) in BUNDLES.items():
         check_deadline(deadline)
         info = plist(read(archive / path / 'Info.plist'))
         expected = {'CFBundleExecutable': name, 'CFBundleIdentifier': bundle_id,
-                    'CFBundlePackageType': package_type, 'CFBundleShortVersionString': '1.0' if path == SNAPKIT else '1.1',
-                    'CFBundleVersion': '1' if path == SNAPKIT else '2',
+                    'CFBundlePackageType': package_type, 'CFBundleShortVersionString': '1.0' if path == SNAPKIT else '1.1.1',
+                    'CFBundleVersion': '1' if path == SNAPKIT else '3',
                     'DTPlatformName': 'iphoneos', 'CFBundleSupportedPlatforms': ['iPhoneOS'], 'MinimumOSVersion': '15.0'}
         if path != SNAPKIT:
             expected['CFBundleName'] = name

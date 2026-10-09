@@ -43,16 +43,21 @@ def source_proof(temp,phase='before',*,fixed_original_replay=False,fixed_origina
     row=read(temp/('combined-source-'+phase+'.json'))
     count,fingerprint=source_profile()
     ident=identity()
+    expected_route=current_route()
     if fixed_original_replay:
-        from original_ios_fixed_rows import replay_identity,row_cohort,WORKFLOW_COMMAND_SHA256,COMMAND_SHA256
+        from original_ios_fixed_rows import replay_identity,row_cohort,WORKFLOW_COMMAND_SHA256,COMMAND_SHA256,HISTORICAL_BRANCH
         ident=replay_identity(fixed_original_row);cohort=row_cohort(fixed_original_row)
+        # Only immutable fixed-run receipts carry this historical branch.
+        # Current routing, branch creation and job admission never use it.
+        expected_route={'scope':'original-ios-release','branch':HISTORICAL_BRANCH,
+                        'workflow_path':'.github/workflows/original-ios-release.yml','diagnostic_only':True}
         need(row.get('tree')==cohort['source_tree'],'Wrong fixed original source tree')
         need(row.get('workflow_sha256')==cohort['workflow_sha256']
              and WORKFLOW_COMMAND_SHA256[cohort['workflow_sha256']]==COMMAND_SHA256,
              'Wrong historical workflow/native command binding')
     else:need(fixed_original_row is None,'Unexpected historical row selector')
     need(row['source_sha']==ident['source_sha'] and type(row['file_count']) is int and row['file_count']==count and row['source_fingerprint']==fingerprint,'Unqualified shipping source')
-    need(row['validation_route']==current_route() and row['phase']==phase,'Wrong source proof phase')
+    need(row['validation_route']==expected_route and row['phase']==phase,'Wrong source proof phase')
     if current_route()==ORIGINAL_IOS:
         from original_ios_source_contract import audit
         projection=row.get('original_ios_source')

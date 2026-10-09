@@ -21,7 +21,7 @@ checks = {
     'device_sdk': info.get('DTPlatformName') == 'iphoneos',
     'native_arm64': architectures == ['arm64'],
     'minimum_os': info.get('MinimumOSVersion') == '15.0' and re.findall(r'\bminos\s+(\S+)', loads) == ['15.0'],
-    'version_and_build': info.get('CFBundleShortVersionString') == '1.1' and info.get('CFBundleVersion') == '2',
+    'version_and_build': info.get('CFBundleShortVersionString') == '1.1.1' and info.get('CFBundleVersion') == '3',
     'debug_proof_and_seed_absent': not any(marker in data for marker in markers),
     'no_test_bundle': not any(app.rglob('*.xctest')),
 }

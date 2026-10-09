@@ -105,7 +105,7 @@ class PlatformContractTests(unittest.TestCase):
         for row in packet['profiles']:
             row['staging']['control_file_sha256']=contract.CONTROL_SHA
             row['post_test_installation']={'device_id':row['udid'],'app_path':row['staging']['installed_app'],'binary_sha256':row['staging']['binary_sha256'],
-                'identity':{'CFBundleIdentifier':'Mango.Celluloid','CFBundleExecutable':'Celluloid','CFBundleShortVersionString':'1.1','CFBundleVersion':'2','DTPlatformName':'iphonesimulator'},'relocated_since_initial_staging':False,'lookup_count':1,'lookup_timeout_seconds':60}
+                'identity':{'CFBundleIdentifier':'Mango.Celluloid','CFBundleExecutable':'Celluloid','CFBundleShortVersionString':'1.1.1','CFBundleVersion':'3','DTPlatformName':'iphonesimulator'},'relocated_since_initial_staging':False,'lookup_count':1,'lookup_timeout_seconds':60}
             (temp/f"early-uikit-{row['profile']}-staging.json").write_text(json.dumps(row['staging']))
             row['consumer']=required_verify('uikit',temp/f"early-uikit-{row['profile']}-interop.log",temp/'early-uikit-fixtures',self.SOURCE,platform_contract=True,runtime_summary=summaries[row['profile']],expected_device={'id':row['udid'],'model':row['device_type']})
         (temp/'early-uikit-interop.json').write_text(json.dumps(packet));return packet,summaries

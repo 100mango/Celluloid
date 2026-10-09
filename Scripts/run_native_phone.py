@@ -21,7 +21,7 @@ udid=run(['xcrun','simctl','create','Celluloid Native Phone Companion Validation
 app=temp/'celluloid-phone/Build/Products/Debug-iphonesimulator'/(product+'.app')
 info=plistlib.loads((app/'Info.plist').read_bytes())
 assert info.get('CFBundleIdentifier')=='Mango.Celluloid' and info.get('CFBundleExecutable')==product
-assert (info.get('CFBundleShortVersionString'),info.get('CFBundleVersion'))==('1.1','2')
+if (info.get('CFBundleShortVersionString'),info.get('CFBundleVersion'))!=('1.1.1','3'):raise ValueError('Current phone version/build differs')
 evidence={'runtime':runtime,'device_type':device_type,'udid':udid,'head':os.environ['GITHUB_SHA'],'shipping_entry':shipping,'project':project,'scheme':scheme,'built_app':str(app),'bundle_version':info.get('CFBundleShortVersionString'),'bundle_build':info.get('CFBundleVersion')}
 try:
     run(['xcrun','simctl','boot',udid]);run(['xcrun','simctl','bootstatus',udid,'-b'],timeout=240)

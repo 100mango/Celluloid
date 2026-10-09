@@ -212,7 +212,7 @@ class ProducerTests(HandoffFixtures):
         with self.assertRaises(ValueError): handoff.producer(self.temp)
 
     def test_wrong_route_source_workflow_run_or_attempt_identity_rejects(self):
-        for key, value in (('GITHUB_REF', 'refs/heads/codex/apple-platforms'), ('GITHUB_WORKFLOW_SHA', 'd' * 40),
+        for key, value in (('GITHUB_REF', 'refs/heads/apple-platforms'), ('GITHUB_WORKFLOW_SHA', 'd' * 40),
                            ('GITHUB_EVENT_NAME', 'workflow_dispatch'), ('GITHUB_RUN_ID', '0'), ('GITHUB_RUN_ATTEMPT', '01')):
             with self.subTest(key=key), patch.dict(os.environ, {key: value}), self.assertRaises(ValueError):
                 handoff.identity()

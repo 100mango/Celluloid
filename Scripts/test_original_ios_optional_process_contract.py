@@ -43,7 +43,7 @@ class OptionalProcessContractTests(unittest.TestCase):
             records[value['artifact_id']] = {'id': int(value['artifact_id']), 'name': value['name'],
                 'expired': False, 'digest': 'sha256:'+value['reported_upload_artifact_digest'],
                 'workflow_run': {'id': int(value['run_id']), 'head_sha': value['source_sha'],
-                                 'head_branch': fixed.ORIGINAL_IOS['branch']}}
+                                 'head_branch': fixed.HISTORICAL_BRANCH}}
         (self.root/'metadata-fixture.json').write_text(json.dumps(records))
         self.script('gh', '''import json,os,pathlib,sys
 root=pathlib.Path(os.environ['RUNNER_TEMP'])

@@ -1,7 +1,7 @@
 name: Combined Apple platform validation
 on:
   push:
-    branches: [codex/apple-platforms]
+    branches: [apple-platforms]
 permissions:
   contents: read
 concurrency:
@@ -564,7 +564,7 @@ jobs:
         set -euo pipefail
         case "$GITHUB_EVENT_NAME" in push|workflow_dispatch) ;; *) exit 1 ;; esac
         test "$GITHUB_REPOSITORY" = 100mango/Celluloid
-        test "$GITHUB_REF" = refs/heads/codex/apple-platforms
+        test "$GITHUB_REF" = refs/heads/apple-platforms
         test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
         test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
         git diff --exit-code HEAD --
@@ -792,7 +792,7 @@ jobs:
         set -euo pipefail
         case "$GITHUB_EVENT_NAME" in push|workflow_dispatch) ;; *) exit 1 ;; esac
         test "$GITHUB_REPOSITORY" = 100mango/Celluloid
-        test "$GITHUB_REF" = refs/heads/codex/apple-platforms
+        test "$GITHUB_REF" = refs/heads/apple-platforms
         test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
         test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
         git diff --exit-code HEAD --

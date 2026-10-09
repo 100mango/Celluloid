@@ -21,7 +21,7 @@ def main():
     parser=argparse.ArgumentParser(); parser.add_argument('udid'); parser.add_argument('app',type=Path); parser.add_argument('fixtures',type=Path); parser.add_argument('--output',type=Path,required=True)
     args=parser.parse_args(); payload=load_layer_exact(args.fixtures,os.environ['GITHUB_SHA'])
     info=plistlib.loads((args.app/'Info.plist').read_bytes())
-    assert (info['CFBundleIdentifier'],info['CFBundleExecutable'],info['CFBundleShortVersionString'],info['CFBundleVersion'],info['DTPlatformName']) == ('Mango.Celluloid','Celluloid','1.1','2','iphonesimulator')
+    if (info['CFBundleIdentifier'],info['CFBundleExecutable'],info['CFBundleShortVersionString'],info['CFBundleVersion'],info['DTPlatformName']) != ('Mango.Celluloid','Celluloid','1.1.1','3','iphonesimulator'):raise ValueError('Current UIKit staging product identity differs')
     from original_ios_process_guard import active,ensure_native_dispatch
     ensure_native_dispatch()
     if active():

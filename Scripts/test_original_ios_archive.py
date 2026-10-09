@@ -82,15 +82,15 @@ class Package:
         for path, (name, bundle_id, kind, filetype) in archive.BUNDLES.items():
             info = {} if path == archive.SNAPKIT else plistlib.loads((self.root / name / 'Info.plist').read_bytes())
             info.update(CFBundleIdentifier=bundle_id, CFBundleExecutable=name, CFBundleName=name,
-                        CFBundlePackageType=kind, CFBundleVersion='1' if path == archive.SNAPKIT else '2',
-                        CFBundleShortVersionString='1.0' if path == archive.SNAPKIT else '1.1', CFBundleSupportedPlatforms=['iPhoneOS'],
+                        CFBundlePackageType=kind, CFBundleVersion='1' if path == archive.SNAPKIT else '3',
+                        CFBundleShortVersionString='1.0' if path == archive.SNAPKIT else '1.1.1', CFBundleSupportedPlatforms=['iPhoneOS'],
                         DTPlatformName='iphoneos', MinimumOSVersion='15.0', UIDeviceFamily=[1, 2])
             dump(self.path / path / 'Info.plist', info)
             # A small synthetic Mach-O header, never offered as actual native evidence.
             put(self.path / path / name, struct.pack('<IIIIIIII', 0xfeedfacf, 0x100000c, 0, filetype, 1, 8, 0, 0) + struct.pack('<II', 0x1b, 8) + b'synthetic-release')
         dump(self.path / 'Info.plist', {'ArchiveVersion': 2, 'SchemeName': 'Celluloid', 'ApplicationProperties': {
             'ApplicationPath': 'Applications/Celluloid.app', 'CFBundleIdentifier': 'Mango.Celluloid',
-            'CFBundleShortVersionString': '1.1', 'CFBundleVersion': '2'}})
+            'CFBundleShortVersionString': '1.1.1', 'CFBundleVersion': '3'}})
         for path, source in [(archive.APP + '/collage.json', 'Celluloid/collage.json'),
                              (archive.KIT + '/bubble.json', 'CelluloidKit/bubble.json'),
                              (archive.KIT + '/SnapKit-LICENSE.txt', 'CelluloidKit/ThirdPartyNotices/SnapKit-LICENSE.txt')]:
@@ -262,7 +262,7 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(snapkit['metadata']['CFBundleVersion'], '1')
         self.assertNotIn('CFBundleName', snapkit['metadata'])
         for row in result['code_bundles'][:-1]:
-            self.assertEqual((row['metadata']['CFBundleShortVersionString'], row['metadata']['CFBundleVersion']), ('1.1', '2'))
+            self.assertEqual((row['metadata']['CFBundleShortVersionString'], row['metadata']['CFBundleVersion']), ('1.1.1', '3'))
         for key, value in [('CFBundleExecutable', 'SnapKit'), ('CFBundleIdentifier', 'Mango.SnapKit'),
                            ('CFBundleShortVersionString', '1.1'), ('CFBundleVersion', '2')]:
             with self.subTest(key=key), tempfile.TemporaryDirectory() as folder:

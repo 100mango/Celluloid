@@ -2,11 +2,11 @@ name: Original iOS fixed archive qualification
 on:
   push:
     branches:
-    - codex/original-ios-release
+    - original-ios-release
 permissions:
   contents: read
 concurrency:
-  group: celluloid-platforms-refs/heads/codex/apple-platforms
+  group: celluloid-platforms-refs/heads/apple-platforms
   cancel-in-progress: false
 env:
   CELLULOID_VALIDATION_SCOPE: original-ios-release

@@ -6,7 +6,7 @@ class InstalledIdentityTests(unittest.TestCase):
     UDID='12345678-1234-1234-1234-123456789AB0'
     def fixture(self,root):
         app=root.resolve()/('Devices/'+self.UDID+'/data/Containers/Bundle/Application/NEW/Celluloid.app');app.mkdir(parents=True)
-        identity={'CFBundleIdentifier':'Mango.Celluloid','CFBundleExecutable':'Celluloid','CFBundleShortVersionString':'1.1','CFBundleVersion':'2','DTPlatformName':'iphonesimulator'}
+        identity={'CFBundleIdentifier':'Mango.Celluloid','CFBundleExecutable':'Celluloid','CFBundleShortVersionString':'1.1.1','CFBundleVersion':'3','DTPlatformName':'iphonesimulator'}
         (app/'Info.plist').write_bytes(plistlib.dumps(identity));(app/'Celluloid').write_bytes(b'actual exact compiled binary')
         staging={'binary_sha256':hashlib.sha256((app/'Celluloid').read_bytes()).hexdigest(),'installed_app':str(app).replace('/NEW/','/OLD/')}
         return app,staging

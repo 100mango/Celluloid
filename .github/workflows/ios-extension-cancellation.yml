@@ -2,7 +2,7 @@ name: iOS27 Photos cancellation and consent checkpoint
 'on':
   push:
     branches:
-    - codex/ios-extension-cancellation
+    - ios-extension-cancellation
   workflow_dispatch: null
 permissions:
   contents: read
@@ -36,7 +36,7 @@ jobs:
         set -euo pipefail
         case "$GITHUB_EVENT_NAME" in push|workflow_dispatch) ;; *) exit 1 ;; esac
         test "$GITHUB_REPOSITORY" = 100mango/Celluloid
-        test "$GITHUB_REF" = refs/heads/codex/ios-extension-cancellation
+        test "$GITHUB_REF" = refs/heads/ios-extension-cancellation
         test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
         test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
         git diff --exit-code HEAD --

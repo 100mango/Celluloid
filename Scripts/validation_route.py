@@ -2,17 +2,17 @@
 import hashlib,json,os,re
 
 REPOSITORY='100mango/Celluloid'
-FULL={'scope':'full','branch':'codex/apple-platforms','workflow_path':'.github/workflows/apple-platforms.yml','diagnostic_only':False}
-FOCUSED={'scope':'mac-repair','branch':'codex/mac-repair','workflow_path':'.github/workflows/mac-repair.yml','diagnostic_only':True}
+FULL={'scope':'full','branch':'apple-platforms','workflow_path':'.github/workflows/apple-platforms.yml','diagnostic_only':False}
+FOCUSED={'scope':'mac-repair','branch':'mac-repair','workflow_path':'.github/workflows/mac-repair.yml','diagnostic_only':True}
 
-UIKIT_FULL={'scope':'uikit-full-shipping','branch':'codex/uikit-full-shipping','workflow_path':'.github/workflows/uikit-full-shipping.yml','diagnostic_only':True}
+UIKIT_FULL={'scope':'uikit-full-shipping','branch':'uikit-full-shipping','workflow_path':'.github/workflows/uikit-full-shipping.yml','diagnostic_only':True}
 UIKIT_FULL_BASE={'commit':'a940bcdf8a92811210bcfacf84141dceb6c3fcd3','tree':'c68526b6228dffb891825e000caf50ea7a53fc45','fingerprint':'d1eaa8c2612fd92c66c0089ea8f6dc9026caff49aac8b00c6c62e2e9ff64c886'}
 UIKIT_FULL_PREDECESSOR={'commit':'a79d359ea605320e37750057adf1a053c13a5fee','tree':'945455872f5a153fdc5a6754f9355c928526883d'}
 UIKIT_FULL_REPAIR_PATHS={'.github/workflows/uikit-full-shipping.yml','Scripts/validation_route.py','Scripts/verify_combined_source.py','Scripts/test_uikit_full_shipping_bootstrap.py','Scripts/test_uikit_full_shipping_route.py','Scripts/test_uikit_full_shipping_workflow.py'}
 UIKIT_FULL_DRIVER_PATHS={'.github/workflows/uikit-full-shipping.yml','Scripts/validation_route.py','Scripts/verify_combined_source.py','Scripts/mac_photos_host_gate.py','Scripts/collect_native_evidence.py','Scripts/uikit_full_shipping_gate.py','Scripts/test_uikit_full_shipping_gate.py','Scripts/uikit_full_shipping_handoff.py','Scripts/probe_photos_bootstrap.py','Scripts/test_uikit_full_shipping_route.py','Scripts/test_uikit_full_shipping_workflow.py','Scripts/test_uikit_full_shipping_bootstrap.py','Scripts/test_mac_photos_host_gate.py','Scripts/test_combined_preflight.py','Scripts/test_combined_validation.py','Scripts/test_consumer_runtime_binding.py','Scripts/test_native_evidence.py','Scripts/test_text_observation_evidence.py','Documentation/uikit-full-shipping.md'}
 
 
-ORIGINAL_IOS={'scope':'original-ios-release','branch':'codex/original-ios-release','workflow_path':'.github/workflows/original-ios-release.yml','diagnostic_only':True}
+ORIGINAL_IOS={'scope':'original-ios-release','branch':'original-ios-release','workflow_path':'.github/workflows/original-ios-release.yml','diagnostic_only':True}
 ORIGINAL_IOS_BASE={'commit':'4c0c6cb3314cd89e41fc9cfc67b833aca7de7d56','tree':'67ee79704e23936ba451173ce8aa68614b1ec1da'}
 ORIGINAL_IOS_PREDECESSOR={'commit':'588fa917cbe62e60c6b3502d47aae70b1db3ff55','tree':'2f410ba817e274a2236513b37b3917ad6420fbc1'}
 ORIGINAL_IOS_QUALIFIED_PREDECESSOR={'commit':'04d18a496b019f54706ff42128605cda1d7dea83','tree':'ea20b3393c2ec6f65bc19b4a7a523ce59de6003d'}
@@ -112,7 +112,7 @@ ORIGINAL_IOS_PATHS={
     'Scripts/verify_combined_source.py',
 }
 
-HOST_ONLY={'scope':'photos-export-observation','branch':'codex/photos-export-observation','workflow_path':'.github/workflows/photos-export-observation.yml','diagnostic_only':True}
+HOST_ONLY={'scope':'photos-export-observation','branch':'photos-export-observation','workflow_path':'.github/workflows/photos-export-observation.yml','diagnostic_only':True}
 HOST_ONLY_BASE={'commit':'25b8edc92c3f53cf13208ffa0065746b87ae20e0','tree':'7622774f3291c7b32f46966bebffddd645e57326','fingerprint':'d395f03291d06dc09f0d561b2096fd0bfe32b63f08764753c9d1b31a1069c88b'}
 HOST_ONLY_PROTECTED_FINGERPRINT='c1d88b1bafe0ef55c838e28eccb606d0b7e4701d792d88399f8b03ecc40f984b'
 HOST_ONLY_UI_TEST={'path':'Platforms/UITests/MacPhotosHostUITests.swift','sha256':'67bdca402040600b35a2e452a13049b4a44bd55df797596a32e8c460e9eb4fb0'}

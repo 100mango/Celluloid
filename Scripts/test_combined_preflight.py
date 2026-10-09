@@ -87,7 +87,7 @@ class CombinedPreflightTests(unittest.TestCase):
         self.assertFalse(failed['selected_prerequisites_passed']);self.assertFalse(failed['all_prerequisites_passed']);self.assertFalse(failed['long_matrix_allowed'])
         self.assertFalse(failed['checks']['mac-build-for-testing']);self.assertEqual(len(failed['checks']),3)
         from test_validation_route import focused_environment
-        for env,args in [(dict(focused_environment(),GITHUB_REF='refs/heads/codex/apple-platforms'),['--mac-repair']),
+        for env,args in [(dict(focused_environment(),GITHUB_REF='refs/heads/apple-platforms'),['--mac-repair']),
                          (dict(focused_environment(),GITHUB_WORKFLOW_SHA='b'*40),['--mac-repair']),
                          (focused_environment(),['--platform','mac']), (focused_environment(),['--mac-repair','extra'])]:
             with mock.patch.dict(os.environ,env,clear=True),mock.patch.object(preflight,'run') as command:

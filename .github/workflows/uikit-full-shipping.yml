@@ -2,11 +2,11 @@ name: Original shipping UIKit regression (fixed four rows)
 on:
   push:
     branches:
-    - codex/uikit-full-shipping
+    - uikit-full-shipping
 permissions:
   contents: read
 concurrency:
-  group: celluloid-platforms-refs/heads/codex/apple-platforms
+  group: celluloid-platforms-refs/heads/apple-platforms
   cancel-in-progress: false
 env:
   CELLULOID_VALIDATION_SCOPE: uikit-full-shipping
@@ -312,7 +312,7 @@ jobs:
         set -euo pipefail
         test "$GITHUB_EVENT_NAME" = push
         test "$GITHUB_REPOSITORY" = 100mango/Celluloid
-        test "$GITHUB_REF" = refs/heads/codex/uikit-full-shipping
+        test "$GITHUB_REF" = refs/heads/uikit-full-shipping
         test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
         test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
         git diff --exit-code HEAD --

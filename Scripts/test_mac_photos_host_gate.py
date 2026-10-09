@@ -500,7 +500,7 @@ class RuntimeAcceptanceTests(SyntheticHostFixtureCase):
         app = str(root / 'Applications/CelluloidHost-test.app')
         extension = app + '/Contents/PlugIns/CelluloidMacPhotosExtension.appex'
         executable = extension + '/Contents/MacOS/CelluloidMacPhotosExtension'
-        context = {'host_clock_profile':host_clock_profile(FULL_ROUTE),'validation_route':dict(FULL_ROUTE),'runner_environment':{'GITHUB_REF':'refs/heads/codex/apple-platforms'},'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'base_sha': gate.BASE, 'app_path': app,
+        context = {'host_clock_profile':host_clock_profile(FULL_ROUTE),'validation_route':dict(FULL_ROUTE),'runner_environment':{'GITHUB_REF':'refs/heads/apple-platforms'},'host_entry_contract':gate.HOST_CONTRACT,'source_sha': self.SOURCE, 'base_sha': gate.BASE, 'app_path': app,
                    'extension_path': extension, 'extension_executable': executable,
                    'extension_debug_dylib':executable+'.debug.dylib','extension_debug_dylib_sha256':'9'*64,
                    'app_id': gate.APP_ID, 'extension_id': gate.EXT_ID, 'complete_host_e2e': False,
@@ -1002,8 +1002,8 @@ class CollectedProofTests(SyntheticHostFixtureCase):
         # real route/source identity under which the portable suite executes.
         env=dict(os.environ,RUNNER_TEMP=str(root),GITHUB_SHA=self.SOURCE,GITHUB_WORKFLOW_SHA=self.SOURCE,
             GITHUB_REPOSITORY='100mango/Celluloid',GITHUB_EVENT_NAME='push',
-            GITHUB_REF='refs/heads/codex/apple-platforms',CELLULOID_VALIDATION_SCOPE='full',
-            GITHUB_WORKFLOW_REF='100mango/Celluloid/.github/workflows/apple-platforms.yml@refs/heads/codex/apple-platforms',
+            GITHUB_REF='refs/heads/apple-platforms',CELLULOID_VALIDATION_SCOPE='full',
+            GITHUB_WORKFLOW_REF='100mango/Celluloid/.github/workflows/apple-platforms.yml@refs/heads/apple-platforms',
             CELLULOID_EVIDENCE_PLATFORM='mac')
         return subprocess.run([sys.executable,str(ROOT/'Scripts/collect_native_evidence.py')],env=env,text=True,capture_output=True,timeout=15)
     def mutate_manifest(self,folder,mutate):
@@ -1132,8 +1132,8 @@ class CollectedProofTests(SyntheticHostFixtureCase):
             root=Path(tmp);self.packet(root,False);self.collect(root)
             for scope in ('uikit-full-shipping','photos-export-observation'):
                 inherited={'GITHUB_SHA':'b'*40,'GITHUB_WORKFLOW_SHA':'c'*40,
-                    'CELLULOID_VALIDATION_SCOPE':scope,'GITHUB_REF':'refs/heads/codex/'+scope,
-                    'GITHUB_WORKFLOW_REF':'100mango/Celluloid/.github/workflows/'+scope+'.yml@refs/heads/codex/'+scope}
+                    'CELLULOID_VALIDATION_SCOPE':scope,'GITHUB_REF':'refs/heads/'+scope,
+                    'GITHUB_WORKFLOW_REF':'100mango/Celluloid/.github/workflows/'+scope+'.yml@refs/heads/'+scope}
                 with mock.patch.dict(os.environ,inherited):
                     before=dict(os.environ);result=self.outer(root)
                     self.assertEqual(result.returncode,0,result.stderr)
@@ -1193,7 +1193,7 @@ class CollectedProofTests(SyntheticHostFixtureCase):
 class HostTimeBudgetTests(SyntheticHostFixtureCase):
     def setUp(self):
         super().setUp()
-        route_environment=mock.patch.dict(os.environ,GITHUB_REF='refs/heads/codex/apple-platforms')
+        route_environment=mock.patch.dict(os.environ,GITHUB_REF='refs/heads/apple-platforms')
         route_environment.start();self.addCleanup(route_environment.stop)
     def prepare(self,root):
         gate.write(root/'mac-job-clock.json',{'source_sha':'a'*40,'started_monotonic':100.0,'started_unix':10000.0,'execution_budget_seconds':2460})

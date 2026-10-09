@@ -5,7 +5,7 @@ python3 Scripts/mac_photos_host_gate.py budget-before-host
 # budget-before-host has validated the exact route/source. Canonical remains720/660.
 process_seconds=720
 test_seconds=660
-if [ "$GITHUB_REF" = refs/heads/codex/photos-export-observation ]; then
+if [ "$GITHUB_REF" = refs/heads/photos-export-observation ]; then
   process_seconds=1020
   test_seconds=960
 fi

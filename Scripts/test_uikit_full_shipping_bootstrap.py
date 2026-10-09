@@ -33,7 +33,7 @@ def load_functions(folder, full_row=True):
 
 
 def environment(folder):
-    branch = 'refs/heads/codex/uikit-full-shipping'
+    branch = 'refs/heads/uikit-full-shipping'
     return {'PATH': os.environ.get('PATH', ''), 'PYTHONPATH': str(ROOT / 'Scripts'),
             'PYTHONDONTWRITEBYTECODE': '1', 'RUNNER_TEMP': str(folder),
             'GITHUB_REPOSITORY': '100mango/Celluloid', 'GITHUB_EVENT_NAME': 'push',

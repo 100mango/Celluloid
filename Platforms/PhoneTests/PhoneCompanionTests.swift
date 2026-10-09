@@ -15,8 +15,8 @@ final class PhoneCompanionTests: XCTestCase {
         XCTAssertEqual(Bundle.main.infoDictionary?["DTPlatformName"] as? String, "iphonesimulator")
         #if CELLULOID_SHIPPING_COMPANION
         XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleExecutable") as? String, "Celluloid")
-        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String, "1.1")
-        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String, "2")
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String, "1.1.1")
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String, "3")
         XCTAssertTrue(UIApplication.shared.windows.contains { $0.rootViewController != nil })
         XCTAssertEqual(PHPhotoLibrary.authorizationStatus(for: .readWrite), .authorized,
                        "Shipping companion fixtures require the actual synthetic full-access prerequisite; permission UI is tested separately")

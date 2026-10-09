@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest import mock
 import validation_route as route
 from test_native_workflow_syntax import run_blocks
+from test_validation_route import reviewed_workflow_projection
 ROOT=Path(__file__).resolve().parents[1]
 
 def environment(source='a'*40):
@@ -35,9 +36,9 @@ class PhotosObservationRouteTests(unittest.TestCase):
         expected=expected.replace('name: celluloid-repair-mac-host-','name: celluloid-photos-export-observation-')
         expected=expected.replace('timeout-minutes: 14','timeout-minutes: 28').replace('python3 Scripts/test_mac_photos_host_gate.py','python3 Scripts/run_bounded.py --seconds 240 --label photos-host-portable-pretest python3 Scripts/test_mac_photos_host_gate.py')
         self.assertEqual(source.split('  native-mac-host:',1)[1],expected)
-        self.assertIn('branches: [codex/photos-export-observation]',source)
+        self.assertIn('branches: [photos-export-observation]',source)
         self.assertIn('CELLULOID_VALIDATION_SCOPE: photos-export-observation',source)
-        self.assertIn('group: celluloid-platforms-refs/heads/codex/apple-platforms',source)
+        self.assertIn('group: celluloid-platforms-refs/heads/apple-platforms',source)
         self.assertIn('cancel-in-progress: false',source)
         self.assertEqual(source.count('runs-on: xcode-27'),1)
         self.assertEqual(source.count('timeout-minutes: 45'),1)
@@ -47,7 +48,7 @@ class PhotosObservationRouteTests(unittest.TestCase):
         for forbidden in ['workflow_dispatch:', 'strategy:', 'matrix:', 'run_early_uikit_interop.py','verify_required_interoperability.py','download-artifact','GITHUB_SHA=', 'GITHUB_WORKFLOW_SHA=']:
             self.assertNotIn(forbidden,source)
         for path,digest in [('.github/workflows/apple-platforms.yml','40fe18118e1f3996717354e56d55e167dff29b8fbe87455c832386e9a1c36f91'),('.github/workflows/mac-repair.yml','20b2fa6763be3b0014fb598a68088d9927c65790f30904cc04061a902b751daa')]:
-            self.assertEqual(hashlib.sha256((ROOT/path).read_bytes()).hexdigest(),digest)
+            self.assertEqual(hashlib.sha256(reviewed_workflow_projection(path,(ROOT/path).read_bytes())).hexdigest(),digest)
 
     def test_exact_clock_profiles_nest_and_cannot_cross_routes(self):
         import copy

@@ -20,6 +20,9 @@ from uikit_full_shipping_gate import ROWS, ROW_COUNTS, clock_status
 from validation_route import ORIGINAL_IOS, current_route
 
 ROOT = Path(__file__).resolve().parents[1]
+# Only fixed historical run records use this name. Never current routing,
+# branch creation, or current-job admission.
+HISTORICAL_BRANCH = 'codex/original-ios-release'
 COHORTS = {
     '04d18': {'source_sha': '04d18a496b019f54706ff42128605cda1d7dea83',
               'run_id': '37432040947', 'run_attempt': '1',
@@ -116,7 +119,7 @@ def verify_artifact_metadata(metadata, key):
     need(type(run) is dict and type(run.get('id')) is int
          and str(run['id']) == fixed['run_id']
          and run.get('head_sha') == fixed['source_sha']
-         and run.get('head_branch') == ORIGINAL_IOS['branch'], 'Wrong fixed artifact workflow run')
+         and run.get('head_branch') == HISTORICAL_BRANCH, 'Wrong fixed artifact workflow run')
     return fixed
 
 

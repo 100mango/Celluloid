@@ -18,7 +18,7 @@ check('bundle_identifier',info.get('CFBundleIdentifier')==bundle)
 check('executable_name',info.get('CFBundleExecutable')==product and executable.is_file())
 check('device_sdk_not_simulator',info.get('DTPlatformName')==sdk and 'simulator' not in info.get('DTSDKName',''))
 check('minimum_os_metadata',info.get('LSMinimumSystemVersion' if platform=='mac' else 'MinimumOSVersion')==floor)
-check('version_and_build',info.get('CFBundleShortVersionString')=='1.1' and info.get('CFBundleVersion')=='2')
+check('version_and_build',info.get('CFBundleShortVersionString')=='1.1.1' and info.get('CFBundleVersion')=='3')
 check('localized_bundles',all((base/('Resources' if platform=='mac' else '')/(lang+'.lproj')/'Localizable.strings').is_file() for lang in ['en','zh-Hans']))
 resources=base/'Resources' if platform=='mac' else base
 check('license_packaged', (resources/'LICENSE.txt').is_file() and (resources/'LICENSE.txt').read_bytes()==(ROOT/'LICENSE.txt').read_bytes())

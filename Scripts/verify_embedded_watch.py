@@ -45,7 +45,7 @@ def bundle_checks(phone, producer, mode, build_for_testing=False):
     actual, expected = inventory(nested), inventory(producer)
     checks = {
         'shipping_phone_identity': p.get('CFBundleIdentifier') == 'Mango.Celluloid' and p.get('CFBundleExecutable') == 'Celluloid',
-        'phone_version': (p.get('CFBundleShortVersionString'), p.get('CFBundleVersion')) == ('1.1', '2'),
+        'phone_version': (p.get('CFBundleShortVersionString'), p.get('CFBundleVersion')) == ('1.1.1', '3'),
         'watch_version_equals_phone': all(w.get(k) == p.get(k) for k in ['CFBundleShortVersionString', 'CFBundleVersion']),
         'watch_identity': w.get('CFBundleIdentifier') == 'Mango.Celluloid.watchkitapp' and w.get('CFBundleExecutable') == 'CelluloidWatch',
         'watch_companion_binding': w.get('WKApplication') is True and w.get('WKCompanionAppBundleIdentifier') == p.get('CFBundleIdentifier'),

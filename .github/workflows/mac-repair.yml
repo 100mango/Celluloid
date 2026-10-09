@@ -1,11 +1,11 @@
 name: Focused Mac repair (diagnostic only)
 on:
   push:
-    branches: [codex/mac-repair]
+    branches: [mac-repair]
 permissions:
   contents: read
 concurrency:
-  group: celluloid-platforms-refs/heads/codex/apple-platforms
+  group: celluloid-platforms-refs/heads/apple-platforms
   cancel-in-progress: false
 env:
   CELLULOID_VALIDATION_SCOPE: mac-repair

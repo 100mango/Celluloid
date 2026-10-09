@@ -443,7 +443,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
-				"CURRENT_PROJECT_VERSION" = "2";
+				"CURRENT_PROJECT_VERSION" = "3";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -471,7 +471,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
-				"CURRENT_PROJECT_VERSION" = "2";
+				"CURRENT_PROJECT_VERSION" = "3";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -592,7 +592,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
-				"CURRENT_PROJECT_VERSION" = "2";
+				"CURRENT_PROJECT_VERSION" = "3";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -617,7 +617,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
-				"CURRENT_PROJECT_VERSION" = "2";
+				"CURRENT_PROJECT_VERSION" = "3";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -1069,7 +1069,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
-				"CURRENT_PROJECT_VERSION" = "2";
+				"CURRENT_PROJECT_VERSION" = "3";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -1094,7 +1094,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "15.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
-				"CURRENT_PROJECT_VERSION" = "2";
+				"CURRENT_PROJECT_VERSION" = "3";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -1367,7 +1367,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
-				"CURRENT_PROJECT_VERSION" = "2";
+				"CURRENT_PROJECT_VERSION" = "3";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -1392,7 +1392,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
-				"CURRENT_PROJECT_VERSION" = "2";
+				"CURRENT_PROJECT_VERSION" = "3";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -1492,7 +1492,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
-				"CURRENT_PROJECT_VERSION" = "2";
+				"CURRENT_PROJECT_VERSION" = "3";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";
@@ -1516,7 +1516,7 @@
 				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"CODE_SIGN_STYLE" = "Automatic";
-				"CURRENT_PROJECT_VERSION" = "2";
+				"CURRENT_PROJECT_VERSION" = "3";
 				"LD_RUNPATH_SEARCH_PATHS" = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "YES";
 				"SUPPORTED_PLATFORMS" = "iphoneos iphonesimulator";

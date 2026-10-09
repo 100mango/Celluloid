@@ -18,6 +18,7 @@ import unittest
 from unittest.mock import patch
 
 from test_native_workflow_syntax import run_blocks
+from test_validation_route import reviewed_workflow_projection
 import uikit_full_shipping_gate as gate
 from test_uikit_full_shipping_gate import execution, DEVICE
 
@@ -71,7 +72,7 @@ class FixedWorkflowTests(unittest.TestCase):
     def test_original_workflow_fixture_actions_and_test_sources_are_unchanged(self):
         for name, digest in UNCHANGED.items():
             with self.subTest(name=name):
-                self.assertEqual(hashlib.sha256((ROOT / name).read_bytes()).hexdigest(), digest)
+                self.assertEqual(hashlib.sha256(reviewed_workflow_projection(name,(ROOT / name).read_bytes())).hexdigest(), digest)
         self.assertEqual(sum(gate.ROW_COUNTS.values()), 412)
         self.assertEqual(len(gate.source_inventory()), 106)
 
@@ -115,7 +116,7 @@ class FixedWorkflowTests(unittest.TestCase):
     def test_one_push_only_route_two_jobs_and_four_serial_fresh_rows(self):
         self.assertEqual(re.findall(r'^  ([a-z][a-z-]*):$', self.source[self.source.index('jobs:\n'):], re.M),
                          ['mac-producer', 'uikit-regression'])
-        self.assertIn('on:\n  push:\n    branches:\n    - codex/uikit-full-shipping\n', self.source)
+        self.assertIn('on:\n  push:\n    branches:\n    - uikit-full-shipping\n', self.source)
         for forbidden in ('workflow_dispatch', 'pull_request', 'workflow_run', 'schedule:', 'repository_dispatch',
                           'native-mac-host', 'archive:', 'strategy.fail-fast', 'fromJSON(', 'run-id:'):
             self.assertNotIn(forbidden, self.source)
@@ -128,7 +129,7 @@ class FixedWorkflowTests(unittest.TestCase):
         self.assertIn('timeout-minutes: 45\n', self.mac)
         self.assertIn('timeout-minutes: 60\n', self.row)
         self.assertIn('cancel-in-progress: false', self.source)
-        self.assertIn('group: celluloid-platforms-refs/heads/codex/apple-platforms', self.source)
+        self.assertIn('group: celluloid-platforms-refs/heads/apple-platforms', self.source)
 
     def test_same_source_run_attempt_artifact_id_manifest_hash_and_unchanged_mac600(self):
         original = body(ORIGINAL.read_text(), 'Native Mac document tests')

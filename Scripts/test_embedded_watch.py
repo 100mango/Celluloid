@@ -8,8 +8,8 @@ class EmbeddedWatchTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name)
         self.phone = self.root / 'Celluloid.app'; self.watch = self.phone / 'Watch/CelluloidWatch.app'; self.watch.mkdir(parents=True)
         self.producer = self.root / 'ProducedWatch.app'
-        self.phone_info = {'CFBundleIdentifier':'Mango.Celluloid','CFBundleExecutable':'Celluloid','CFBundleShortVersionString':'1.1','CFBundleVersion':'2','DTPlatformName':'iphoneos'}
-        self.watch_info = {'CFBundleIdentifier':'Mango.Celluloid.watchkitapp','CFBundleExecutable':'CelluloidWatch','CFBundleShortVersionString':'1.1','CFBundleVersion':'2','DTPlatformName':'watchos','MinimumOSVersion':'9.0','WKApplication':True,'WKCompanionAppBundleIdentifier':'Mango.Celluloid'}
+        self.phone_info = {'CFBundleIdentifier':'Mango.Celluloid','CFBundleExecutable':'Celluloid','CFBundleShortVersionString':'1.1.1','CFBundleVersion':'3','DTPlatformName':'iphoneos'}
+        self.watch_info = {'CFBundleIdentifier':'Mango.Celluloid.watchkitapp','CFBundleExecutable':'CelluloidWatch','CFBundleShortVersionString':'1.1.1','CFBundleVersion':'3','DTPlatformName':'watchos','MinimumOSVersion':'9.0','WKApplication':True,'WKCompanionAppBundleIdentifier':'Mango.Celluloid'}
         (self.phone/'Info.plist').write_bytes(plistlib.dumps(self.phone_info)); (self.watch/'Info.plist').write_bytes(plistlib.dumps(self.watch_info))
         (self.watch/'CelluloidWatch').write_bytes(b'synthetic executable'); (self.watch/'Assets.car').write_bytes(b'synthetic catalog')
         for language in ['en','zh-Hans']:
@@ -19,7 +19,7 @@ class EmbeddedWatchTests(unittest.TestCase):
     def test_exact_nested_identity_and_bytes(self):
         checks, _, _, privacy = bundle_checks(self.phone,self.producer,'device'); self.assertTrue(all(checks.values())); self.assertEqual(privacy,[])
     def test_version_and_changed_copy_are_rejected(self):
-        self.watch_info['CFBundleVersion']='3'; (self.watch/'Info.plist').write_bytes(plistlib.dumps(self.watch_info))
+        self.watch_info['CFBundleVersion']='4'; (self.watch/'Info.plist').write_bytes(plistlib.dumps(self.watch_info))
         checks, *_ = bundle_checks(self.phone,self.producer,'device'); self.assertFalse(checks['watch_version_equals_phone']); self.assertFalse(checks['exact_nested_producer_inventory'])
     def test_harness_or_wrong_companion_is_rejected(self):
         self.phone_info['CFBundleExecutable']='CelluloidPhoneCompanion'; (self.phone/'Info.plist').write_bytes(plistlib.dumps(self.phone_info))

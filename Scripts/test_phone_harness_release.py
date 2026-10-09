@@ -16,7 +16,7 @@ class PhoneReleaseGuardTests(unittest.TestCase):
             root=Path(directory);app=root/'CelluloidPhoneCompanion.app';app.mkdir()
             info={'CFBundleIdentifier':'Mango.Celluloid','CFBundleExecutable':'CelluloidPhoneCompanion',
                   'CFBundleDisplayName':'Celluloid Companion Validation','DTPlatformName':'iphoneos',
-                  'MinimumOSVersion':floor,'CFBundleShortVersionString':'1.1','CFBundleVersion':'2'}
+                  'MinimumOSVersion':floor,'CFBundleShortVersionString':'1.1.1','CFBundleVersion':'3'}
             (app/'Info.plist').write_bytes(plistlib.dumps(info))
             (app/'CelluloidPhoneCompanion').write_bytes(b'CI checker synthetic placeholder'+(b'CELLULOID_PHONE_OUTPUT_PROOF' if marker else b''))
             tools=root/'bin';tools.mkdir();mock=tools/'xcrun'

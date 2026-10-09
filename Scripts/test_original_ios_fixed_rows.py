@@ -27,7 +27,49 @@ def metadata(key):
     return {'id': int(value['artifact_id']), 'name': value['name'], 'expired': False,
             'digest': 'sha256:' + value['reported_upload_artifact_digest'],
             'workflow_run': {'id': int(value['run_id']), 'head_sha': value['source_sha'],
-                             'head_branch': fixed.ORIGINAL_IOS['branch']}}
+                             'head_branch': fixed.HISTORICAL_BRANCH}}
+
+
+class FixedHistoricalBranchTests(unittest.TestCase):
+    def test_fixed_source_receipts_and_current_proofs_reject_mutual_relabeling(self):
+        with (tempfile.TemporaryDirectory() as directory,
+              patch.dict(os.environ, environment(), clear=True),
+              patch.object(projection, 'audit', return_value={'synthetic_source_projection': True})):
+            temp = Path(directory)
+            before = dict(os.environ)
+            current = {'source_sha': handoff.identity()['source_sha'], 'tree': 'b'*40,
+                       'phase': 'before', 'file_count': 546, 'source_fingerprint': fixed.FINGERPRINT,
+                       'validation_route': dict(fixed.ORIGINAL_IOS),
+                       'original_ios_source': {'synthetic_source_projection': True}}
+            put(temp / 'combined-source-before.json', current)
+            self.assertEqual(handoff.source_proof(temp), current)
+            historical_route = {'scope':'original-ios-release', 'branch':'codex/original-ios-release',
+                                'workflow_path':'.github/workflows/original-ios-release.yml', 'diagnostic_only':True}
+            for row in fixed.FIXED_ROWS:
+                cohort = fixed.row_cohort(row)
+                historical = dict(current, source_sha=cohort['source_sha'], tree=cohort['source_tree'],
+                                  workflow_sha256=cohort['workflow_sha256'], validation_route=historical_route)
+                put(temp / 'combined-source-before.json', historical)
+                self.assertEqual(handoff.source_proof(temp, fixed_original_replay=True, fixed_original_row=row), historical)
+                with self.assertRaises(ValueError):handoff.source_proof(temp)
+                relabeled = dict(historical, validation_route=dict(fixed.ORIGINAL_IOS))
+                put(temp / 'combined-source-before.json', relabeled)
+                with self.assertRaises(ValueError):
+                    handoff.source_proof(temp, fixed_original_replay=True, fixed_original_row=row)
+            put(temp / 'combined-source-before.json', dict(current, validation_route=historical_route))
+            with self.assertRaises(ValueError):handoff.source_proof(temp)
+            self.assertEqual(dict(os.environ), before)
+
+    def test_fixed_runs_keep_original_branch_while_live_route_is_unprefixed(self):
+        self.assertEqual(fixed.HISTORICAL_BRANCH, 'codex/original-ios-release')
+        self.assertEqual(fixed.ORIGINAL_IOS['branch'], 'original-ios-release')
+        for key in fixed.ARTIFACTS:
+            original = metadata(key)
+            self.assertEqual(fixed.verify_artifact_metadata(original, key), fixed.artifact_record(key))
+            for branch in [fixed.ORIGINAL_IOS['branch'], 'codex/arbitrary', 'arbitrary']:
+                changed = copy.deepcopy(original);changed['workflow_run']['head_branch'] = branch
+                with self.subTest(key=key,branch=branch),self.assertRaises(ValueError):
+                    fixed.verify_artifact_metadata(changed,key)
 
 
 class FixedRowsTests(unittest.TestCase):
@@ -171,6 +213,7 @@ class FixedRowsTests(unittest.TestCase):
                 handoff.accept_row(self.temp, row=row, fixed_original_replay=True)
         before = dict(os.environ)
         source = copy.deepcopy(self.source)
+        source['validation_route'] = dict(fixed.ORIGINAL_IOS, branch=fixed.HISTORICAL_BRANCH)
         source.update(source_sha=fixed.COHORTS['da9d']['source_sha'], tree=fixed.COHORTS['da9d']['source_tree'], workflow_sha256=fixed.COHORTS['da9d']['workflow_sha256'])
         put(self.temp / 'combined-source-before.json', source)
         self.assertEqual(handoff.source_proof(self.temp, fixed_original_replay=True, fixed_original_row='small-ipad'), source)
