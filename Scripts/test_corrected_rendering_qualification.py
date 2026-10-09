@@ -36,7 +36,7 @@ class CorrectedRenderingTests(unittest.TestCase):
         all_paths=sorted(str(p.relative_to(admission.ROOT)) for p in admission.ROOT.rglob('*') if p.is_file() and '.git' not in p.parts and '__pycache__' not in p.parts)
         with patch.object(admission,'git',return_value='\0'.join(all_paths)):
             result=admission.check_dependencies()
-        self.assertEqual(result['file_count'],372);self.assertEqual(len(paths),372)
+        self.assertEqual(result['file_count'],495);self.assertEqual(len(paths),495)
         self.assertTrue(result['historical_differences'])
     def test_historical_freeze_and_unknown_mode_remain_closed(self):
         self.assertEqual(early.FROZEN_UIKIT_SHA,'d9a9fe00b79b8199877d81ced8abac7bde4784b6')
@@ -66,13 +66,15 @@ class CorrectedRenderingTests(unittest.TestCase):
         edits=[lambda p,t:p.update(frozen_uikit_source=early.FROZEN_UIKIT_SHA),lambda p,t:p.update(source_mode='historical'),lambda p,t:p.update(frozen_control_source='f'*40),lambda p,t:p['corrected_source_admission'].update(product_sha='f'*40),lambda p,t:p['profiles'].pop(),lambda p,t:p['profiles'][0]['cleanup'][0].update(exit_code=1),lambda p,t:(t/'early-uikit-2x-interop.log').write_text((t/'early-uikit-2x-interop.log').read_text().replace('"full": 0','"full": 3'))]
         for edit in edits:
             with self.subTest(edit=edit),self.assertRaises((ValueError,KeyError)):self.corrected_packet(edit)
-    def test_mac_all43_actual_named_outcomes_and_official_summary_are_required(self):
+    def test_mac_all43_plus_one_producer_actual_outcomes_and_official_summary_are_required(self):
         rows=[]
         for name in MAC_REQUIRED_CASES:
             owner,method=name.split('.');case=f'Test Case \'-[CelluloidMacPhotosExtensionTests.{owner} {method}]\''
             rows.extend([case+' started.',case+' passed (0.1 seconds).'])
-        rows+=['Executed 43 tests, with 0 failures (0 unexpected)','** TEST SUCCEEDED **']
-        log='\n'.join(rows)+'\n';summary={'result':'Passed','totalTestCount':43,'passedTests':43,'failedTests':0,'skippedTests':0,'expectedFailures':0,'testFailures':[],'runtimeWarnings':[],'startTime':1,'finishTime':2}
+        producer="Test Case '-[CelluloidMacTests.LegacyFilterAdjustmentTests testNewlyAuthoredFilterOnlyArchivesAndOpaqueFallbackPreservation]'"
+        rows.extend([producer+' started.',producer+' passed (0.1 seconds).'])
+        rows+=['Executed 44 tests, with 0 failures (0 unexpected)','** TEST SUCCEEDED **']
+        log='\n'.join(rows)+'\n';summary={'result':'Passed','totalTestCount':44,'passedTests':44,'failedTests':0,'skippedTests':0,'expectedFailures':0,'testFailures':[],'runtimeWarnings':[],'startTime':1,'finishTime':2}
         runner.mac_outcome(log,summary,0)
         for mutation in [dict(passedTests=42),dict(runtimeWarnings=[{'message':'warning'}]),dict(expectedFailures=1),dict(finishTime=1),dict(totalTestCount=True)]:
             with self.subTest(mutation=mutation),self.assertRaises(ValueError):runner.mac_outcome(log,dict(summary,**mutation),0)
@@ -122,7 +124,7 @@ class CorrectedRenderingTests(unittest.TestCase):
         path=admission.ROOT/admission.WORKFLOW;source=path.read_text()
         # Pin the complete reviewed workflow first; no general YAML normalization
         # can hide another job, trigger, permission, step, command or timeout.
-        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),'8ae56984b1cbd7270e969bf5fcf87ca40e6c6467fb68686ad520e39d42ec56c5')
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),'36cc9811d3cd5e69f607069ccf63d9948dba6ae76cbbe7bd24fd581a9d48d644')
         self.assertEqual(re.findall(r'^  ([a-z][a-z0-9-]*):$',source.split('jobs:\n',1)[1],re.M),['corrected-v2'])
         self.assertIn("    if: ${{ false && github.event_name == 'push' && github.ref == 'refs/heads/"+admission.BRANCH+"' }}",source)
         self.assertEqual(re.findall(r'^    runs-on: (.+)$',source,re.M),['xcode-27'])
@@ -164,7 +166,7 @@ class CorrectedRenderingTests(unittest.TestCase):
         matched=[]
         for name,path in sorted(files.items()):
             if name in product_workflows:self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),product_workflows[name])
-            else:self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),'8ae56984b1cbd7270e969bf5fcf87ca40e6c6467fb68686ad520e39d42ec56c5')
+            else:self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),'36cc9811d3cd5e69f607069ccf63d9948dba6ae76cbbe7bd24fd581a9d48d644')
             # Exact bytes are already pinned above. These are the only two
             # reviewed branch-list spellings in this closed workflow inventory.
             text=path.read_text()
@@ -243,5 +245,67 @@ class TestOnlyPauseOverlayTests(unittest.TestCase):
         self.assertEqual(result['test_control_overlay'],{'path':admission.TEST_OVERLAY,'base_product_sha256':admission.TEST_OVERLAY_BASE_SHA256,'control_sha256':admission.TEST_OVERLAY_SHA256})
         facts['changed_paths'].remove(admission.TEST_OVERLAY)
         with self.assertRaises(ValueError):admission.validate(cfg,env,facts)
+
+
+class MacFixtureReachabilityTests(unittest.TestCase):
+    def test_selected_existing_scheme_reaches_original43_and_one_filter_producer(self):
+        result=runner.mac_fixture_selection()
+        self.assertEqual(result['aggregate_cases'],44)
+        self.assertEqual((result['extension_cases'],result['filter_producer_cases']),(43,1))
+        self.assertEqual(runner.MAC_SCHEME,'CelluloidMac')
+        self.assertEqual(runner.WORK_SECONDS,2280);self.assertEqual(runner.CONSUMER_RESERVE,1260)
+        source=(admission.ROOT/'Scripts/run_corrected_rendering_qualification.py').read_text()
+        self.assertIn("'mac-deterministic'",source);self.assertIn('900,check=False',source)
+        self.assertIn("'-scheme',MAC_SCHEME",source);self.assertIn('*MAC_SELECTORS',source)
+        self.assertNotIn('-only-testing:CelluloidMacUITests',source)
+    def test_missing_wrong_or_extra_selector_fails_before_native_command(self):
+        variants=[('MAC_SCHEME','CelluloidMacPhotosExtension'),('MAC_FILTER_SELECTOR',runner.MAC_FILTER_SELECTOR+'Wrong'),('MAC_SELECTORS',runner.MAC_SELECTORS[:1]),('MAC_SELECTORS',runner.MAC_SELECTORS+('-only-testing:CelluloidMacUITests',)),('MAC_AGGREGATE_CASES',43)]
+        for key,value in variants:
+            with self.subTest(key=key),patch.object(runner,key,value),self.assertRaises(ValueError):runner.mac_fixture_selection()
+    def test_actual_scheme_target_or_compiled_producer_mutation_fails(self):
+        import shutil
+        manifest=json.loads((admission.ROOT/admission.DEPENDENCIES).read_text());relative='CelluloidNative.xcodeproj/xcshareddata/xcschemes/CelluloidMac.xcscheme'
+        source_path=manifest['mac_producer_graph']['filter_producer_source']
+        for kind in ['target','skipped','target-id','compiled-source','method']:
+            with self.subTest(kind=kind),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder)
+                for rel in [admission.DEPENDENCIES,relative,source_path]:
+                    target=root/rel;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(admission.ROOT/rel,target)
+                if kind=='compiled-source':
+                    value=copy.deepcopy(manifest);value['mac_producer_graph']['compiled_sources_by_target']['CelluloidMacTests'].remove(source_path);(root/admission.DEPENDENCIES).write_text(json.dumps(value))
+                elif kind=='method':
+                    p=root/source_path;p.write_text(p.read_text().replace(runner.MAC_FILTER_SELECTOR.split('/')[-1],'testWrong',1))
+                else:
+                    p=root/relative;data=p.read_text()
+                    if kind=='target':data=data.replace('BlueprintName="CelluloidMacTests"','BlueprintName="UnselectedTests"',1)
+                    elif kind=='skipped':data=data.replace('skipped="NO"','skipped="YES"',1)
+                    else:data=data.replace(manifest['mac_producer_graph']['target_ids']['CelluloidMacTests'],'0'*24,1)
+                    p.write_text(data)
+                with self.assertRaises(ValueError):runner.mac_fixture_selection(root)
+    def test_complete_actual_target_graph_and_local_packages_are_pinned(self):
+        import hashlib,xml.etree.ElementTree as ET
+        root=admission.ROOT;source=(root/'Scripts/generate_native_project.py').read_text();boundary="project=ROOT/'CelluloidNative.xcodeproj';project.mkdir(exist_ok=True)";self.assertEqual(source.count(boundary),1)
+        ns={'__file__':str(root/'Scripts/generate_native_project.py')};exec(compile(source.split(boundary,1)[0],'read-only-native-generator','exec'),ns)
+        emitted='// !$*UTF8*$!\n'+ns['encode']({'archiveVersion':'1','classes':{},'objectVersion':'56','objects':ns['objects'],'rootObject':ns['uid']('project')})+'\n'
+        self.assertEqual(emitted,(root/'CelluloidNative.xcodeproj/project.pbxproj').read_text())
+        manifest=json.loads((root/admission.DEPENDENCIES).read_text());graph=manifest['mac_producer_graph'];objects=ns['objects'];pinned={r['path']:r['sha256'] for r in manifest['files']}
+        self.assertEqual(set(graph['compiled_sources_by_target']),{'CelluloidMac','CelluloidMacTests','CelluloidMacPhotosExtension','CelluloidMacPhotosExtensionTests'})
+        for name,expected in graph['compiled_sources_by_target'].items():
+            target=objects[graph['target_ids'][name]];self.assertEqual(target['name'],name)
+            actual=[objects[objects[b]['fileRef']]['path'] for phase in target['buildPhases'] if objects[phase]['isa']=='PBXSourcesBuildPhase' for b in objects[phase]['files']]
+            self.assertEqual(sorted(actual),expected)
+            for path in actual:self.assertEqual(hashlib.sha256((root/path).read_bytes()).hexdigest(),pinned[path])
+        for package in graph['package_target_roots']:
+            for path in (root/package).rglob('*'):
+                if path.is_file():self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),pinned[str(path.relative_to(root))])
+        self.assertIn('Platforms/Tests/LegacyFilterAdjustmentTests.swift',pinned)
+        self.assertIn('Packages/CelluloidRendering/Package.swift',pinned)
+    def test_43_clean_counts_cannot_substitute_for_unrun_fixture_producer(self):
+        rows=[]
+        for name in MAC_REQUIRED_CASES:
+            owner,method=name.split('.');case=f"Test Case '-[CelluloidMacPhotosExtensionTests.{owner} {method}]'";rows.extend([case+' started.',case+' passed (0.1 seconds).'])
+        rows+=['Executed 43 tests, with 0 failures (0 unexpected)','** TEST SUCCEEDED **']
+        summary={'result':'Passed','totalTestCount':43,'passedTests':43,'failedTests':0,'skippedTests':0,'expectedFailures':0,'testFailures':[],'runtimeWarnings':[],'startTime':1,'finishTime':2}
+        with self.assertRaises(ValueError):runner.mac_outcome('\n'.join(rows)+'\n',summary,0)
 
 if __name__=='__main__':unittest.main()

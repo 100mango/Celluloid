@@ -13,7 +13,7 @@ concurrency:
 jobs:
   corrected-v2:
     # Root must review exact source/control and capacity, then open this and READY/sourceReady together.
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/celluloid-rendering-qualification' }}
+    if: ${{ false && github.event_name == 'push' && github.ref == 'refs/heads/celluloid-rendering-qualification' }}
     runs-on: xcode-27
     timeout-minutes: 45
     env:
@@ -44,7 +44,7 @@ jobs:
         id: admit
         timeout-minutes: 2
         run: python3 -B Scripts/corrected_rendering_admission.py --phase before
-      - name: Execute43 Mac methods and the two existing v2 consumers
+      - name: Execute 43 extension tests, one filter producer and two UIKit consumers
         if: ${{ steps.admit.outcome == 'success' }}
         timeout-minutes: 41
         run: python3 -B Scripts/run_corrected_rendering_qualification.py
