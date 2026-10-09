@@ -296,7 +296,7 @@ class PhotosParentDeadlineTests(unittest.TestCase):
         import ast,inspect
         from unittest.mock import patch
         import run_ios_photos_host_diagnostic as diagnostic
-        source=inspect.getsource(diagnostic);calls=[n for n in ast.walk(ast.parse(source)) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='command' and n.args and isinstance(n.args[0],ast.Constant) and n.args[0].value=='install-owned-app']
+        source=inspect.getsource(diagnostic);calls=[n for n in ast.walk(ast.parse(source)) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='command' and n.args and isinstance(n.args[0],ast.Constant) and n.args[0].value=='deploy-hosted-app']
         self.assertEqual(len(calls),1);self.assertEqual(calls[0].args[2].value,210)
         self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45])
         for duration in [77.0164555,209.0,210.001]:
@@ -865,5 +865,134 @@ class PhotosInstallSplitClockTests(unittest.TestCase):
         for path,digest in host.PROBE_FIXED_FILES.items():self.assertEqual(hashlib.sha256((root/path).read_bytes()).hexdigest(),digest)
         self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45]);self.assertIn("self.command('actual-photos-host', command, 630",driver);self.assertIn("command, 750, simulator=True",driver);self.assertIn("'work_budget_seconds': 2280",driver)
 
+
+
+class ManagedHostedDeploymentTests(unittest.TestCase):
+    def summary(self):
+        return {'totalTestCount':1,'passedTests':1,'failedTests':0,'skippedTests':0,'expectedFailures':0,
+                'result':'Passed','testFailures':[],'runtimeWarnings':[],
+                'devicesAndConfigurations':[{'device':{'deviceId':'owned'}}], 'startTime':101.0,'finishTime':109.0}
+    def log(self):
+        return "Test Case '-[CelluloidTests.PhoneEntryDesignTests testOriginalUIKitStyleMeasurementsAreRetained]' started.\nTest Case '-[CelluloidTests.PhoneEntryDesignTests testOriginalUIKitStyleMeasurementsAreRetained]' passed (0.001 seconds).\n** TEST EXECUTE SUCCEEDED **\n"
+    def testExactOneMethodSummaryAndFreshWallIntervalAccept(self):
+        import run_ios_photos_host_diagnostic as d
+        d.validate_hosted_deployment(self.summary(),self.log(),'owned',100,110)
+    def testWrongCountsSkipsWarningsOrDeviceNeverQualify(self):
+        import run_ios_photos_host_diagnostic as d
+        mutations=[('totalTestCount',0),('totalTestCount',True),('passedTests',0),('skippedTests',1),('failedTests',1),('expectedFailures',1),('result','Failed'),('runtimeWarnings',None),('runtimeWarnings',[{'message':'unrelated system warning'}]),('devicesAndConfigurations',[{'device':{'deviceId':'other'}}])]
+        for key,value in mutations:
+            s=self.summary();s[key]=value
+            with self.subTest(key=key,value=value),self.assertRaises(ValueError):d.validate_hosted_deployment(s,self.log(),'owned',100,110)
+    def testWrongOrMissingDuplicateMethodCannotBorrowOnePassSummary(self):
+        import run_ios_photos_host_diagnostic as d
+        for log in ['',self.log()*2,self.log().replace('testOriginalUIKitStyleMeasurementsAreRetained','testOther'),self.log().replace('CelluloidTests.PhoneEntryDesignTests','Other.Tests'),self.log().replace(' passed ',' failed '),self.log().replace("' started.\n","' skipped.\n"),self.log().splitlines()[1]+'\n** TEST EXECUTE SUCCEEDED **\n',self.log()+'Retrying after unexpected exit\n',self.log().replace('SUCCEEDED','FAILED'),self.log()+"Test Case '-[Other method]' started.\n"]:
+            with self.subTest(log=log),self.assertRaises(ValueError):d.validate_hosted_deployment(self.summary(),log,'owned',100,110)
+    def testStructuredToolDiagnosticsAndMalformedAdditionalCaseRowsReject(self):
+        import run_ios_photos_host_diagnostic as d
+        for line in ['xcodebuild: error: diagnostic sentinel','xcodebuild: warning: diagnostic sentinel',
+                     '--- xcodebuild: WARNING: Using the first of multiple matching destinations:',
+                     '--- xcodebuild: ERROR: diagnostic sentinel',
+                     'warning: diagnostic sentinel','error: diagnostic sentinel',
+                     '/tmp/Example.swift:12:3: warning: diagnostic sentinel',
+                     '/tmp/Example.swift:12: error: diagnostic sentinel','Example.m:12:3: fatal error: sentinel',
+                     "Test Case malformed extra event", "Test case 'Other.method()' passed on 'Other'", "  Test Case '-[Other method]' started."]:
+            with self.subTest(line=line),self.assertRaises(ValueError):d.validate_hosted_deployment(self.summary(),self.log()+line+'\n','owned',100,110)
+        # Known historical ordinary diagnostics are retained for review, not
+        # relabelled as compiler failures by a broad substring search.
+        for line in ['fopen failed for data file: errno = 2 (No such file or directory)',
+                     '[XPCErrors] non-launching port is incompatible with service identifier',
+                     'PHOTOS_OUTPUT_OWNED_STAGING_CLEANUP_FAILED domain=NSPOSIXErrorDomain code=13']:
+            d.validate_hosted_deployment(self.summary(),self.log()+line+'\n','owned',100,110)
+    def testStaleFutureMissingOrNonfiniteSummaryCannotMixOldResult(self):
+        import run_ios_photos_host_diagnostic as d
+        for key,value in [('startTime',99),('finishTime',111),('startTime',None),('finishTime',float('nan')),('startTime',True),('finishTime',100)]:
+            s=self.summary();s[key]=value
+            with self.subTest(key=key,value=value),self.assertRaises(ValueError):d.validate_hosted_deployment(s,self.log(),'owned',100,110)
+    def exercise(self,mode='success'):
+        from unittest.mock import patch
+        import os
+        import run_ios_photos_host_diagnostic as d
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);binary=root/'Celluloid.app/Celluloid';binary.parent.mkdir();binary.write_bytes(b'original')
+            binding={'source_sha':'a'*40,'source_tree':'b'*40};(root/'build-binding.json').write_text(json.dumps(binding))
+            result=root/'hosted-deployment-123-1.xcresult';target=root/'foreign';target.mkdir()
+            if mode=='stale':result.mkdir()
+            if mode=='stale-symlink':result.symlink_to(target,target_is_directory=True)
+            gate=object.__new__(d.HostDiagnostic);gate.device='owned';gate.source='a'*40;gate.source_tree='b'*40;gate.uncertain=False
+            calls=[]
+            base=['xcodebuild','-project','Celluloid.xcodeproj','-scheme','Celluloid','-configuration','Debug','-destination','platform=iOS Simulator,id=owned','-derivedDataPath','same-derived','CODE_SIGNING_ALLOWED=NO','CODE_SIGNING_REQUIRED=NO','COMPILER_INDEX_STORE_ENABLE=NO']
+            def command(name,argv,seconds,**kwargs):
+                calls.append((name,argv,seconds,kwargs))
+                if name=='deploy-hosted-app':
+                    if mode=='cancel':gate.uncertain=True;raise KeyboardInterrupt('cancelled')
+                    if mode=='timeout':gate.uncertain=True;return 124,'BOUNDED_COMMAND_TIMEOUT'
+                    if mode=='denied':gate.uncertain=True;return 124,'CLEANUP_UNCONFIRMED'
+                    if mode=='watchdog':return 65,'Test execution timed out'
+                    if mode=='ordinary-failure':return 65,'Assertion failed'
+                    if mode=='overflow':return 1,'OUTPUT_LIMIT'
+                    if mode!='missing-result':
+                        if mode=='foreign-result':result.symlink_to(target,target_is_directory=True)
+                        else:result.mkdir()
+                    return 0,self.log()
+                self.assertEqual(name,'deploy-hosted-app-summary')
+                return 0,json.dumps(self.summary())
+            gate.command=command
+            with patch.object(d,'OUT',root),patch.dict(os.environ,{'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1'}),patch.object(d,'check_build') as checked,patch.object(d,'check_owned_versions') as versions,patch.object(d.time,'time',side_effect=[100,110]):
+                if mode=='success':gate.deploy_hosted_app(base,binary)
+                elif mode=='cancel':
+                    with self.assertRaises(KeyboardInterrupt):gate.deploy_hosted_app(base,binary)
+                else:
+                    with self.assertRaises(ValueError):gate.deploy_hosted_app(base,binary)
+            receipt=json.loads((root/'hosted-deployment.json').read_text()) if (root/'hosted-deployment.json').exists() else None
+            return calls,receipt,checked.call_count,versions.call_count,gate.uncertain,str(result),base
+    def testOnlyOneManagedCommandThenOfficialSummaryAndTwiceBoundPayload(self):
+        calls,receipt,checks,versions,uncertain,result,base=self.exercise()
+        self.assertEqual(checks,2);self.assertEqual(versions,2);self.assertFalse(uncertain)
+        self.assertEqual(calls,[('deploy-hosted-app',base+['-resultBundlePath',result,'-parallel-testing-enabled','NO','-collect-test-diagnostics','never','-only-testing:CelluloidTests/PhoneEntryDesignTests/testOriginalUIKitStyleMeasurementsAreRetained','test-without-building'],210,{'simulator':True,'allow_failure':True}),('deploy-hosted-app-summary',['xcrun','xcresulttool','get','test-results','summary','--path',result],30,{})])
+        self.assertEqual((receipt['source_sha'],receipt['source_tree'],receipt['run_id'],receipt['run_attempt'],receipt['device_id']),('a'*40,'b'*40,'123','1','owned'))
+        self.assertEqual(receipt['photos_host_methods_executed'],0);self.assertIs(receipt['manual_simctl_install'],False)
+    def testStaleResultRefusesBeforeNativeAndMissingForeignResultBeforeSummary(self):
+        for mode,count in [('stale',0),('stale-symlink',0),('missing-result',1),('foreign-result',1)]:
+            with self.subTest(mode=mode):
+                calls,receipt,*_=self.exercise(mode);self.assertEqual(len(calls),count);self.assertIsNone(receipt)
+    def testTimeoutDenialCancellationWatchdogFailureOrOverflowNeverRequestsSummary(self):
+        for mode in ['timeout','denied','cancel','watchdog','ordinary-failure','overflow']:
+            with self.subTest(mode=mode):
+                calls,receipt,checks,versions,uncertain,*_=self.exercise(mode);self.assertEqual(len(calls),1);self.assertIsNone(receipt)
+                if mode in ['timeout','denied','cancel','watchdog']:self.assertTrue(uncertain)
+    def testRealManagedCommandSignalAndLateZeroBlockSummaryAndCleanup(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as d
+        for code in [-15,-2,130,137,143,124]:
+            with self.subTest(code=code),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);gate=object.__new__(d.HostDiagnostic);gate.device='owned';gate.source='a'*40;gate.source_tree='b'*40;gate.started=0;gate.deadline=2280;gate.uncertain=False;gate.events=[];gate.failures=[]
+                with patch.object(d,'OUT',root),patch('run_swiftui_acceptance.OUT',root),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=code) as called:
+                    gate.command('deploy-hosted-app',['owned-xcodebuild'],210,simulator=True,allow_failure=True)
+                    self.assertTrue(gate.uncertain)
+                    with self.assertRaisesRegex(ValueError,'blocks further'):gate.command('deploy-hosted-app-summary',['must-not-dispatch'],30)
+                    gate.cleanup();self.assertEqual(called.call_count,1)
+        with tempfile.TemporaryDirectory() as folder:
+            gate=object.__new__(d.HostDiagnostic);gate.uncertain=False;gate.failures=[];clock=[100.0]
+            def late(self,*args,**kwargs):clock[0]=310.01;return 0,'late zero'
+            with patch.object(d,'OUT',Path(folder)),patch.object(d.time,'monotonic',side_effect=lambda:clock[0]),patch.object(d.Acceptance,'command',late):
+                with self.assertRaisesRegex(ValueError,'deadline exceeded'):gate.command('deploy-hosted-app',['owned-xcodebuild'],210,simulator=True)
+                self.assertTrue(gate.uncertain)
+                with self.assertRaisesRegex(ValueError,'blocks further'):gate.command('deploy-hosted-app-summary',['must-not-dispatch'],30)
+    def testSummaryReservesItsWholeCapAndCleanupBeforeDispatch(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as d
+        gate=object.__new__(d.HostDiagnostic);gate.uncertain=False;gate.failures=[];gate.events=[];gate.deadline=144
+        with tempfile.TemporaryDirectory() as folder,patch.object(d,'OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call') as called:
+            with self.assertRaisesRegex(ValueError,'full phase and cleanup'):gate.command('deploy-hosted-app-summary',['xcresulttool'],30)
+            called.assert_not_called()
+    def testLiveDriverUsesHostedDeploymentOnceBeforeUnchangedBootstrapWithoutInstall(self):
+        import ast
+        root=Path(__file__).resolve().parents[1];source=(root/'Scripts/run_ios_photos_host_diagnostic.py').read_text();tree=ast.parse(source)
+        run=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='run')
+        calls=[n for n in ast.walk(run) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute)]
+        deployment=[n for n in calls if n.func.attr=='deploy_hosted_app'];bootstrap=[n for n in calls if n.func.attr=='bootstrap']
+        self.assertEqual(len(deployment),1);self.assertEqual(len(bootstrap),1);self.assertLess(deployment[0].lineno,bootstrap[0].lineno)
+        self.assertNotIn("'simctl', 'install'",source);self.assertNotIn("'install-owned-app'",source)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45]);self.assertIn("self.command('actual-photos-host', command, 630",source);self.assertIn("command, 750, simulator=True",source);self.assertIn("'work_budget_seconds': 2280",source)
 
 if __name__ == '__main__': unittest.main()

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Dedicated diagnostic: one build/bootstrap plus five actual Photos-host cases."""
 import json
+import math
 import os
 import re
 import signal
@@ -8,8 +9,34 @@ import subprocess
 import sys
 import time
 from run_swiftui_acceptance import Acceptance, ROOT, OUT, DERIVED, extract_json, owner_receipt, save, require
-from run_picker_acceptance import build_binding
-from run_ios_photos_host import check_product_control, PRODUCT_CONTROL_TREE, PRODUCT_CONTROL_SHA256, admit_probe
+from run_picker_acceptance import build_binding, check_build, qualify_summary
+from run_ios_photos_host import check_product_control, PRODUCT_CONTROL_TREE, PRODUCT_CONTROL_SHA256, admit_probe, check_owned_versions, native_uncertain
+
+HOSTED_DEPLOYMENT_SELECTOR = 'CelluloidTests/PhoneEntryDesignTests/testOriginalUIKitStyleMeasurementsAreRetained'
+
+def validate_hosted_deployment(summary, log, device, dispatched_wall, returned_wall):
+    qualify_summary(summary, 1, device)
+    require(summary.get('runtimeWarnings') == [], 'Hosted deployment runtime warnings')
+    events = re.findall(r"^Test Case '-\[([^\]]+)\]' (.+)$", log, re.M)
+    identity = 'CelluloidTests.PhoneEntryDesignTests testOriginalUIKitStyleMeasurementsAreRetained'
+    event_lines = re.findall(r'^[ \t]*Test [Cc]ase\b.*$', log, re.M)
+    require(len(event_lines) == len(events) == 2 and events[0] == (identity, 'started.')
+            and events[1][0] == identity
+            and re.fullmatch(r'passed \([0-9]+(?:\.[0-9]+)? seconds\)\.', events[1][1]) is not None,
+            'Missing, duplicate, failed or different hosted deployment method')
+    require(re.findall(r'^\*\* TEST EXECUTE (.+) \*\*$', log, re.M) == ['SUCCEEDED']
+            and re.search(r'\b(?:retry|retrying|retries|restart|restarting|rerun|rerunning)\b', log, re.I) is None,
+            'Hosted deployment retried or did not finish successfully')
+    # Reject explicit tool/compiler diagnostics, not ordinary application words
+    # such as historical expected-failure test names or an fopen log message.
+    require(re.search(r'^(?:(?:---\s*)?xcodebuild:\s*|[^\n]+:\d+(?::\d+)?:\s*)?'
+                      r'(?:warning|error|fatal error):', log, re.M | re.I) is None,
+            'Hosted deployment has a tool or compiler warning/error')
+    start, finish = summary.get('startTime'), summary.get('finishTime')
+    require(all(type(value) in [int, float] and math.isfinite(value)
+                for value in [start, finish, dispatched_wall, returned_wall])
+            and dispatched_wall <= start <= finish <= returned_wall,
+            'Hosted deployment summary is stale or outside this command')
 
 class HostDiagnostic(Acceptance):
     def command(self, name, command, seconds, simulator=False, allow_failure=False, nested_owned=False):
@@ -77,6 +104,44 @@ class HostDiagnostic(Acceptance):
             if code or late:self.uncertain=True;return
         self.device=None
 
+    def deploy_hosted_app(self, base, binary):
+        # An existing permission-independent hosted XCTest makes Xcode deploy
+        # this same built App, embedded extension and test bundle. No second
+        # simctl install is issued. Registration/grant/readiness remain below.
+        binding = json.loads((OUT / 'build-binding.json').read_text())
+        check_build(binding, binary, self.source, self.source_tree)
+        check_owned_versions(binary.parent)
+        run_id, attempt = os.environ.get('GITHUB_RUN_ID', ''), os.environ.get('GITHUB_RUN_ATTEMPT', '')
+        require(re.fullmatch(r'[1-9][0-9]*', run_id) and attempt == '1', 'Wrong hosted deployment run identity')
+        result = OUT / ('hosted-deployment-' + run_id + '-' + attempt + '.xcresult')
+        require(not result.exists() and not result.is_symlink(), 'Refuse stale hosted deployment result')
+        selector = HOSTED_DEPLOYMENT_SELECTOR
+        dispatched_wall = time.time()
+        code, log = self.command('deploy-hosted-app', [*base,
+            '-resultBundlePath', str(result), '-parallel-testing-enabled', 'NO',
+            '-collect-test-diagnostics', 'never', '-only-testing:' + selector,
+            'test-without-building'], 210, simulator=True, allow_failure=True)
+        returned_wall = time.time()
+        if native_uncertain(code, log): self.uncertain = True
+        require(code == 0 and not self.uncertain, 'Uncertain hosted deployment forbids summary and bootstrap')
+        require(result.is_dir() and not result.is_symlink() and result.resolve().parent == OUT.resolve(),
+                'Missing or foreign hosted deployment xcresult')
+        _, raw = self.command('deploy-hosted-app-summary', ['xcrun', 'xcresulttool', 'get',
+            'test-results', 'summary', '--path', str(result)], 30)
+        summary = extract_json(raw, 'totalTestCount')
+        save(OUT / 'hosted-deployment-summary.json', summary)
+        validate_hosted_deployment(summary, log, self.device, dispatched_wall, returned_wall)
+        check_build(binding, binary, self.source, self.source_tree)
+        check_owned_versions(binary.parent)
+        save(OUT / 'hosted-deployment.json', {'schema': 'Celluloid.PhotosHostedDeployment.1',
+             'source_sha': self.source, 'source_tree': self.source_tree,
+             'run_id': run_id, 'run_attempt': attempt, 'result_bundle_path': str(result),
+             'dispatch_wall': dispatched_wall, 'return_wall': returned_wall,
+             'device_id': self.device, 'selector': selector, 'passed': 1,
+             'skipped': 0, 'runtime_warnings': 0, 'build_binding': binding,
+             'deployment_phase_seconds': 210, 'summary_phase_seconds': 30,
+             'manual_simctl_install': False, 'photos_host_methods_executed': 0})
+
     def bootstrap(self):
         command = ['/bin/bash', 'Scripts/run_swiftui_photos_gate.sh', 'bootstrap', self.device,
             str(DERIVED), str(OUT / 'photos'), str(OUT / 'owned-simulator.json'), 'refs/heads/cell-ios-photos-host-final']
@@ -120,10 +185,9 @@ class HostDiagnostic(Acceptance):
         save(OUT / 'build-binding.json', build_binding(binary, self.source, self.source_tree))
         self.command('boot', ['xcrun', 'simctl', 'boot', device], 60, simulator=True)
         self.command('bootstatus', ['xcrun', 'simctl', 'bootstatus', device, '-b'], 300, simulator=True)
-        # No preliminary product suite is needed to register the built app.
-        # Preparation receives at most90s; actual Popen/install at most120s.
-        # Both consume the single210s parent cap and unchanged2280s work clock.
-        self.command('install-owned-app', ['xcrun', 'simctl', 'install', device, str(binary.parent)], 210, simulator=True)
+        # One existing hosted method replaces the manual install prerequisite.
+        # Deployment210s + official summary30s share the original2280s clock.
+        self.deploy_hosted_app(base, binary)
         require(self.bootstrap() == 0 and not self.uncertain, 'Real fixture bootstrap failed')
         command = [sys.executable, 'Scripts/run_ios_photos_host.py', '--device', device, '--derived', str(DERIVED),
             '--out', str(OUT / 'ios-photos-host'), '--owner', str(OUT / 'owned-simulator.json'),
