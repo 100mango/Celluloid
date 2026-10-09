@@ -1,0 +1,38 @@
+name: Export exact Celluloid picker diagnostics
+on:
+  push:
+    branches: [cell-receipt-diagnostics]
+    paths: [.github/workflows/swiftui-native-diagnostics.yml, Scripts/export_exact_picker_diagnostics.py]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: celluloid-swiftui-native-diagnostics
+  cancel-in-progress: false
+jobs:
+  export-existing-evidence:
+    runs-on: xcode-27
+    timeout-minutes: 6
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Export official diagnostics from exact existing artifact
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 Scripts/export_exact_picker_diagnostics.py
+      - name: Preserve bounded text evidence
+        if: always()
+        timeout-minutes: 1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: celluloid-picker-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/exact-picker-diagnostics/
+          retention-days: 1
+          if-no-files-found: error
