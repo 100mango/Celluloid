@@ -1,12 +1,15 @@
 import UIKit
+import Combine
+import SwiftUI
 import Photos
 import PhotosUI
 import CelluloidKit
 
-final class PhotoEditingViewController: BaseEditPhotoController, PHContentEditingController {
-    // Photos owns the navigation bar and displays this view behind it. Keep
-    // only that system-chrome region semantic; the existing photo canvas stays
-    // dark. No host navigation appearance or interface style is overridden.
+/// PhotoKit requires a UIViewController protocol entry point. All editor UI,
+/// recipe state and user actions are owned by the shared SwiftUI editor.
+final class PhotoEditingViewController: UIViewController, PHContentEditingController {
+    let session = CelluloidEditingSession()
+    private var hostingController: UIHostingController<CelluloidEditorContent>?
     let hostNavigationBackground: UIView = {
         let surface = UIView()
         surface.backgroundColor = .systemBackground
@@ -18,6 +21,19 @@ final class PhotoEditingViewController: BaseEditPhotoController, PHContentEditin
     }()
     override func viewDidLoad() {
         super.viewDidLoad()
+        view.backgroundColor = .blackBackgroundColor
+        let host = UIHostingController(rootView: CelluloidEditorContent(session: session))
+        addChild(host)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor)
+        ])
+        host.didMove(toParent: self)
+        hostingController = host
         view.addSubview(hostNavigationBackground)
         NSLayoutConstraint.activate([
             hostNavigationBackground.topAnchor.constraint(equalTo: view.topAnchor),
@@ -29,92 +45,61 @@ final class PhotoEditingViewController: BaseEditPhotoController, PHContentEditin
     private var cancelled = false
     private var sessionGeneration: UInt64 = 0
     private var pendingOutputWrite: PhotosOutputWrite?
+    private var pendingPreparation: AnyCancellable?
     #if DEBUG
     var outputWriterPreparedForTesting: ((PhotosOutputWrite) -> Void)?
     #endif
     deinit { pendingOutputWrite?.cancel() }
     private func cancelPendingOutputWrite() {
-        pendingOutputWrite?.cancel()
-        pendingOutputWrite = nil
+        pendingOutputWrite?.cancel(); pendingOutputWrite = nil
     }
-    private var needsUnreadableNotice = false
-    private weak var unreadableNotice: UIAlertController?
     func canHandle(_ adjustmentData: PHAdjustmentData) -> Bool {
-        // This is format negotiation, not validation of a particular input.
-        // Inspect input.adjustmentData in start so opaque errors cannot be
-        // accidentally associated with a different photo/session.
         AdjustmentData.supportIdentifier(adjustmentData.formatIdentifier, version: adjustmentData.formatVersion)
     }
-    func startContentEditing(with contentEditingInput: PHContentEditingInput, placeholderImage: UIImage) {
-        cancelled = false
-        cancelPendingOutputWrite()
-        sessionGeneration &+= 1
-        needsUnreadableNotice = false
-        unreadableNotice?.dismiss(animated: false)
-        loadViewIfNeeded()
-        view.isUserInteractionEnabled = true
-        input = contentEditingInput
-        if sourceImage == nil { sourceImage = placeholderImage }
-        if let data = contentEditingInput.adjustmentData {
-            do {
-                guard AdjustmentData.supportIdentifier(data.formatIdentifier, version: data.formatVersion) else {
-                    throw AdjustmentDataError.invalidValue("bound adjustment format")
-                }
-                restoreFromData(try AdjustmentData.decode(data.data))
-            } catch {
-                // Apple defines placeholderImage as the current rendered state;
-                // the handled input's displaySizeImage is the earlier version.
-                preserveUnreadableAdjustment(data, currentImage: placeholderImage)
-                needsUnreadableNotice = true
-                if view.window != nil { presentUnreadableNoticeIfNeeded() }
-            }
-        }
-    }
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        presentUnreadableNoticeIfNeeded()
-    }
-    private func presentUnreadableNoticeIfNeeded() {
-        guard needsUnreadableNotice, !cancelled, isAdjustmentReadOnly, presentedViewController == nil else { return }
-        needsUnreadableNotice = false
-        let alert = UIAlertController(title: tr(.unreadableEditsTitle), message: tr(.unreadableEditsMessage), preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: tr(.done), style: .default))
-        unreadableNotice = alert
-        present(alert, animated: true)
+    func startContentEditing(with input: PHContentEditingInput, placeholderImage: UIImage) {
+        cancelled = false; pendingPreparation = nil; cancelPendingOutputWrite(); sessionGeneration &+= 1
+        loadViewIfNeeded(); view.isUserInteractionEnabled = true
+        session.start(input: input, placeholder: placeholderImage)
     }
     func finishContentEditing(completionHandler: @escaping (PHContentEditingOutput?) -> Void) {
         let finish = { [weak self] in
             guard let self = self, !self.cancelled else { return }
-            guard let input = self.input else { completionHandler(nil); return }
-            // A repeated finish supersedes the previous preparation just as a
-            // new start does. Its canceled export cannot complete an older host
-            // request or re-enable controls while this one is still rendering.
+            guard let input = self.session.input else { completionHandler(nil); return }
             self.sessionGeneration &+= 1
+            self.pendingPreparation = nil
             self.cancelPendingOutputWrite()
-            if self.isAdjustmentReadOnly {
-                // Documented Photos no-change output: no adjustment data and no
-                // write to renderedContentURL. Never replace the opaque recipe.
+            if self.session.phase == .loading {
+                let generation = self.sessionGeneration
+                self.view.isUserInteractionEnabled = false
+                self.pendingPreparation = self.session.$phase
+                    .filter { $0 != .loading && $0 != .empty }
+                    .first()
+                    .receive(on: DispatchQueue.main)
+                    .sink { [weak self] _ in
+                        guard let self = self, !self.cancelled,
+                              self.sessionGeneration == generation, self.session.input === input else { return }
+                        self.pendingPreparation = nil
+                        self.finishContentEditing(completionHandler: completionHandler)
+                    }
+                return
+            }
+            if self.session.isReadOnly {
+                self.view.isUserInteractionEnabled = true
                 completionHandler(PHContentEditingOutput(contentEditingInput: input))
                 return
             }
             let generation = self.sessionGeneration
             self.view.isUserInteractionEnabled = false
-            // The export task completes cancellation once for its own callers.
-            // Photos has a different contract: after cancelContentEditing, its
-            // pending completion must not be invoked, even with a nil output.
-            // https://developer.apple.com/documentation/photosui/phcontenteditingcontroller/cancelcontentediting()
-            // A replacement session likewise cannot receive an older response.
             var completed = false
             let finishCurrentSession: (PHContentEditingOutput?) -> Void = { [weak self] output in
                 guard let self = self, !completed, !self.cancelled,
-                      self.sessionGeneration == generation, self.input === input else { return }
-                completed = true
-                self.view.isUserInteractionEnabled = true
+                      self.sessionGeneration == generation, self.session.input === input else { return }
+                completed = true; self.view.isUserInteractionEnabled = true
                 completionHandler(output)
             }
-            self.exportPhoto { [weak self] result in
+            self.session.export { [weak self] result in
                 guard let self = self, !self.cancelled,
-                      self.sessionGeneration == generation, self.input === input else { return }
+                      self.sessionGeneration == generation, self.session.input === input else { return }
                 guard case .success(let exported) = result else { finishCurrentSession(nil); return }
                 let output = PHContentEditingOutput(contentEditingInput: input)
                 output.adjustmentData = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier,
@@ -126,17 +111,12 @@ final class PhotoEditingViewController: BaseEditPhotoController, PHContentEditin
                 #endif
                 writer.start(jpeg: exported.jpegData) { [weak self] writer, result in
                     guard let self = self, !self.cancelled,
-                          self.sessionGeneration == generation, self.input === input,
+                          self.sessionGeneration == generation, self.session.input === input,
                           self.pendingOutputWrite === writer else { writer.cancel(); return }
                     self.pendingOutputWrite = nil
                     guard case .success = result, writer.claimForDelivery() else {
-                        writer.cancel()
-                        finishCurrentSession(nil)
-                        return
+                        writer.cancel(); finishCurrentSession(nil); return
                     }
-                    // Claim prevents reentrant cancellation from deleting the
-                    // handed-off result. Its destination remains reserved until
-                    // the actual Photos completion returns.
                     finishCurrentSession(output)
                     writer.completeDelivery()
                 }
@@ -144,19 +124,31 @@ final class PhotoEditingViewController: BaseEditPhotoController, PHContentEditin
         }
         if Thread.isMainThread { finish() } else { DispatchQueue.main.async(execute: finish) }
     }
-    // A protected session cannot create unsaved edits and returns a no-change
-    // output. Editable sessions retain conservative confirmation, including
-    // while a render/write is preparing. Existing cancellation ownership stays
-    // unchanged for the render, writer and pending Photos callback.
-    var shouldShowCancelConfirmation: Bool { !isAdjustmentReadOnly }
+    var shouldShowCancelConfirmation: Bool { !session.isReadOnly }
     func cancelContentEditing() {
-        cancelled = true
-        needsUnreadableNotice = false
-        sessionGeneration &+= 1
-        cancelPendingOutputWrite()
-        cancelExport()
-        // Release the preview and session's input URL ownership once abandoned.
-        input = nil
+        cancelled = true; pendingPreparation = nil; sessionGeneration &+= 1
+        cancelPendingOutputWrite(); session.cancel()
         viewIfLoaded?.isUserInteractionEnabled = true
     }
+
+    #if DEBUG
+    // Transitional inspection seams keep existing rendering/Photos tests in the
+    // target while their UIKit-layout assumptions migrate. No legacy screen runs.
+    var input: PHContentEditingInput? {
+        get { session.input }
+        set { if let input = newValue { session.start(input: input, placeholder: input.displaySizeImage) } else { session.cancel() } }
+    }
+    var sourceImage: UIImage? {
+        get { session.sourceImage }
+        set { if let image = newValue { session.startCopy(image: image) } else { session.cancel() } }
+    }
+    var preview: UIImageView { session.previewViewForTesting }
+    var adjustmentData: AdjustmentData { session.adjustment }
+    var outputImage: UIImage? { session.outputImageForTesting }
+    var preservedAdjustmentData: PHAdjustmentData? { session.preservedAdjustmentData }
+    var isAdjustmentReadOnly: Bool { session.isReadOnly }
+    var activeExportForTesting: PhotoExportTask? { session.activeExportForTesting }
+    func restoreFromData(_ data: AdjustmentData) { session.restore(data) }
+    func preserveUnreadableAdjustment(_ data: PHAdjustmentData, currentImage: UIImage?) { session.preserve(data, currentImage: currentImage) }
+    #endif
 }

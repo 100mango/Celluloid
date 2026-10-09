@@ -16,6 +16,10 @@ def configs(key,settings):
     for name in ['Debug','Release']:
         values=dict(settings,SWIFT_OPTIMIZATION_LEVEL='-Onone' if name=='Debug' else '-O')
         if name=='Debug': values.update(ENABLE_TESTABILITY='YES',SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG',ONLY_ACTIVE_ARCH='YES')
+        if key=='CelluloidMacPhotosExtension' and name=='Debug':
+            values.update(CELLULOID_MAC_PHOTOS_BOUNDARY_INFO_PLIST='Platforms/macOSExtension/Info.plist',
+                INFOPLIST_FILE='$(CELLULOID_MAC_PHOTOS_BOUNDARY_INFO_PLIST)',
+                SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG $(CELLULOID_MAC_PHOTOS_BOUNDARY_CONDITION)')
         result.append(add(key+name,'XCBuildConfiguration',name=name,buildSettings=values))
     return add(key+'configs','XCConfigurationList',buildConfigurations=result,defaultConfigurationIsVisible='0',defaultConfigurationName='Release')
 def reference(path):
@@ -80,6 +84,7 @@ for name,platform in settings_by_name.items():
         for fixture in ['legacy-points.base64','legacy-points.json','reference-canvas.base64','reference-canvas.json']:
             path='Packages/CelluloidCore/Tests/CelluloidDomainTests/Fixtures/'+fixture
             localized.append(add('build:mac-photos-fixture:'+fixture,'PBXBuildFile',fileRef=reference(path)))
+        localized.append(add('build:mac-native-codec-source','PBXBuildFile',fileRef=reference('Platforms/MacExtensionTests/Fixtures/lifecycle-source.png')))
     if name=='CelluloidTV':
         localized.append(add('build:tv-privacy-manifest','PBXBuildFile',fileRef=reference('Platforms/tvOS/PrivacyInfo.xcprivacy')))
         refs=[]
@@ -147,7 +152,7 @@ for name in ['CelluloidMac','CelluloidVision','CelluloidMacUI','CelluloidTV','Ce
 <Scheme LastUpgradeVersion="2700" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{ref(app_name)}</BuildActionEntry></BuildActionEntries></BuildAction><TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="NO"><MacroExpansion>{ref(app_name)}</MacroExpansion><Testables>{tests}</Testables>{environment}</TestAction><LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB"><BuildableProductRunnable runnableDebuggingMode="0">{ref(app_name)}</BuildableProductRunnable></LaunchAction><ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES"><BuildableProductRunnable runnableDebuggingMode="0">{ref(app_name)}</BuildableProductRunnable></ProfileAction><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>\n''')
 for platform in ['macOS','visionOS','tvOS','watchOS','PhoneHarness','macOSExtension']:
     info={'CFBundleIdentifier':'$(PRODUCT_BUNDLE_IDENTIFIER)','CFBundleName':'Celluloid','CFBundleDevelopmentRegion':'en','CFBundleLocalizations':['en','zh-Hans'],'CFBundleExecutable':'$(EXECUTABLE_NAME)','CFBundlePackageType':'APPL','CFBundleVersion':'$(CURRENT_PROJECT_VERSION)','CFBundleShortVersionString':'$(MARKETING_VERSION)','NSHumanReadableCopyright':'Copyright © Mango. See bundled LICENSE.txt.','CFBundleDocumentTypes':[{'CFBundleTypeName':'Celluloid Document','CFBundleTypeRole':'Editor','LSHandlerRank':'Owner','LSItemContentTypes':['Mango.Celluloid.document']}],'UTExportedTypeDeclarations':[{'UTTypeIdentifier':'Mango.Celluloid.document','UTTypeDescription':'Celluloid Editable Document','UTTypeConformsTo':['com.apple.package'],'UTTypeTagSpecification':{'public.filename-extension':['celluloid']}}]}
-    if platform=='macOS': info.update(LSMinimumSystemVersion='$(MACOSX_DEPLOYMENT_TARGET)',NSPrincipalClass='NSApplication')
+    if platform=='macOS': info.update(LSApplicationCategoryType='public.app-category.utilities',LSMinimumSystemVersion='$(MACOSX_DEPLOYMENT_TARGET)',NSPrincipalClass='NSApplication')
     elif platform=='macOSExtension':
         for key in ['CFBundleDocumentTypes','UTExportedTypeDeclarations']:info.pop(key)
         info.update(CFBundlePackageType='XPC!',CFBundleDisplayName='Celluloid',LSMinimumSystemVersion='$(MACOSX_DEPLOYMENT_TARGET)',NSExtension={'NSExtensionPointIdentifier':'com.apple.photo-editing','NSExtensionPrincipalClass':'$(PRODUCT_MODULE_NAME).MacPhotoEditingController','NSExtensionAttributes':{'PHSupportedMediaTypes':['Image']}})

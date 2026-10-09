@@ -16,7 +16,7 @@ final class OverlayResizeTests: XCTestCase {
         }
     }
 
-    private func layout(_ editor: BaseEditPhotoController, _ size: CGSize) {
+    private func layout(_ editor: UIViewController, _ size: CGSize) {
         editor.loadViewIfNeeded()
         editor.view.frame = CGRect(origin: .zero, size: size)
         editor.view.setNeedsLayout()
@@ -242,8 +242,10 @@ final class OverlayResizeTests: XCTestCase {
         editor.restoreFromData(state)
         let replacement = image(.blue)
         editor.sourceImage = replacement
+        wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !editor.isPreviewRendering }, object: nil)], timeout: 10)
         try assertSamePixels(try XCTUnwrap(editor.preview.image), replacement.filteredImage(Filters.filter(.Invert)))
         editor.restoreFromData(state) // Selecting the same filter must still use the new source.
+        wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !editor.isPreviewRendering }, object: nil)], timeout: 10)
         try assertSamePixels(try XCTUnwrap(editor.preview.image), replacement.filteredImage(Filters.filter(.Invert)))
         XCTAssertNotEqual(try pixels(try XCTUnwrap(editor.preview.image)), try pixels(replacement))
         editor.input = nil
@@ -295,12 +297,14 @@ final class OverlayResizeTests: XCTestCase {
         let editor = PhotoEditingViewController()
         layout(editor, CGSize(width: 390, height: 844))
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         let undecorated = try XCTUnwrap(editor.outputImage)
         var state = decorations(canvas: editor.preview.imageRect.size)
         state.filterType = .Sepia
         editor.restoreFromData(state)
         editor.cancelContentEditing()
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertEqual(editor.adjustmentData.filterType, .Original)
         XCTAssertTrue(editor.adjustmentData.bubbles.isEmpty)
         XCTAssertTrue(editor.adjustmentData.stickers.isEmpty)

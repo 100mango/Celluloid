@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import SwiftUI
 import SnapKit
 import CelluloidKit
 import Photos
@@ -226,21 +227,11 @@ private extension EntranceViewController {
     @objc func makeCollage() { presentPhotoPicker(maximum: 4) }
 
     func presentPhotoPicker(maximum: Int) {
-        let picker = PhotoPickerViewController(maximumSelection: maximum) { [weak self] assets in
-            guard let self = self, !assets.isEmpty else { return }
-            let editor: UIViewController
-            if assets.count == 1 {
-                editor = EditPhotoViewController(model: PhotoModel(asset: assets[0]))
-            } else {
-                editor = CollageViewController(assets: assets)
-            }
-            let navigation = UINavigationController(rootViewController: editor)
-            navigation.modalPresentationStyle = .fullScreen
-            self.present(navigation, animated: true)
-        }
-        let navigation = UINavigationController(rootViewController: picker)
-        navigation.modalPresentationStyle = .fullScreen
-        present(navigation, animated: true)
+        // Compatibility entry for existing callers/tests. The shipping scene
+        // owns PhoneRootView; neither route instantiates the old full-library grid.
+        let flow = UIHostingController(rootView: PhotoSelectionFlowView(maximumSelection: maximum))
+        flow.modalPresentationStyle = .fullScreen
+        present(flow, animated: true)
     }
 }
 

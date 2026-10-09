@@ -9,6 +9,7 @@
 import Foundation
 import CoreImage
 import UIKit
+import CelluloidDomain
 
 public typealias Filter = (CIImage) -> CIImage
 
@@ -158,6 +159,56 @@ public struct Filters {
 }
 
 private let context = CIContext()
+
+/// Async display-only adapter for the unchanged shipped filter graph. Own one
+/// per editor. Export continues through the original full-resolution path.
+/// Initialization is cheap: the shared CIContext is first touched by the worker.
+/// Pass nil for an exact-size compatibility preview. Bounded SwiftUI previews
+/// should lay out using original source dimensions, since raster sizes round.
+public final class LegacyFilterPreviewPipeline {
+    private struct Request {
+        let source: UIImage
+        let filter: FilterType
+        let maximumDimension: Int?
+    }
+    private let work = LatestImageWork<Request, UIImage> { request, token in
+        try autoreleasepool {
+            try token.checkCancellation()
+            guard request.maximumDimension.map({ (1...4096).contains($0) }) ?? true,
+                  let input = request.source.filterInputImage,
+                  hasRenderableExtent(input) else { throw LegacyPreviewError.invalidImage }
+            // Spatial filters and face detection must run in original source
+            // coordinates. Downsampling the input would change saved preset
+            // meanings; only the final display raster is reduced.
+            let graph = Filters.filter(request.filter)(input)
+            try token.checkCancellation()
+            let scale = request.maximumDimension.map { min(1, CGFloat($0) / max(input.extent.width, input.extent.height)) } ?? 1
+            let transform = CGAffineTransform(scaleX: scale, y: scale)
+            let sampled = graph.transformed(by: transform)
+            let bounds = input.extent.applying(transform)
+            guard let pixels = context.createCGImage(sampled, from: bounds) else { throw LegacyPreviewError.renderFailed }
+            try token.checkCancellation()
+            // Retain logical point size and UIKit orientation for the legacy
+            // overlay coordinate space; the preview is never an export input.
+            return UIImage(cgImage: pixels, scale: request.source.scale * scale,
+                           orientation: request.source.imageOrientation)
+        }
+    }
+    public init() {}
+    @discardableResult
+    public func render(source: UIImage, filter: FilterType, maximumDimension: Int? = 1400,
+                       completion: @escaping (Result<UIImage, Error>) -> Void) -> ImageWorkCancellation {
+        work.submit(Request(source: source, filter: filter, maximumDimension: maximumDimension), completion: completion)
+    }
+    public func image(source: UIImage, filter: FilterType, maximumDimension: Int? = 1400) async throws -> UIImage {
+        try await work.value(for: Request(source: source, filter: filter, maximumDimension: maximumDimension))
+    }
+    public func cancel() { work.cancel() }
+}
+
+public enum LegacyPreviewError: Error {
+    case invalidImage, renderFailed
+}
 
 private func hasRenderableExtent(_ image: CIImage) -> Bool {
     let extent = image.extent

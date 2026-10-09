@@ -403,6 +403,7 @@ final class EditorRegressionTests: XCTestCase {
         editor.loadViewIfNeeded()
         editor.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation)
         editor.view.layoutIfNeeded()
         var adjustment = AdjustmentData()
@@ -434,6 +435,7 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertNil(editor.input)
 
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation)
         let cancelledDuringRender = expectation(description: "Photos canceled during preparation: suppress pending host callback")
         cancelledDuringRender.isInverted = true
@@ -447,6 +449,7 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertTrue(editor.view.isUserInteractionEnabled)
 
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation)
         editor.view.layoutIfNeeded()
         var renderedState = editor.adjustmentData
@@ -480,6 +483,7 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertTrue(pending.isCancelled)
 
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation)
         let superseded = expectation(description: "Superseded Photos session must not invoke its host completion")
         superseded.isInverted = true
@@ -491,6 +495,7 @@ final class EditorRegressionTests: XCTestCase {
         // Same PHContentEditingInput object, new host session: object identity alone
         // must not authorize an older asynchronous completion.
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation)
         XCTAssertTrue(editor.view.isUserInteractionEnabled)
         let replacement = expectation(description: "Replacement Photos session completes successfully once")
@@ -510,6 +515,7 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertTrue(editor.view.isUserInteractionEnabled)
 
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation)
         editor.restoreFromData(renderedState)
         let earlierFinish = expectation(description: "Repeated finish supersedes the older host completion")
@@ -564,6 +570,7 @@ final class EditorRegressionTests: XCTestCase {
             wait(for: [drained], timeout: 5)
         }
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation)
         let canceledWrite = try pauseActualOutputWrite()
         editor.cancelContentEditing()
@@ -572,10 +579,12 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: canceledWrite.0.destination.path))
 
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation)
         let replacedWrite = try pauseActualOutputWrite()
         // Exactly the same PHContentEditingInput identity starts a new session.
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation)
         let replacementWritten = expectation(description: "Replacement output completes once")
         replacementWritten.assertForOverFulfill = true
@@ -592,9 +601,11 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertTrue(editor.view.isUserInteractionEnabled)
 
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation)
         let protectedReplacementWrite = try pauseActualOutputWrite()
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation)
         // This directly tests the protected adapter mode. Actual malformed-bound
         // PhotoKit input and host preservation have separate integration gates.
@@ -615,6 +626,7 @@ final class EditorRegressionTests: XCTestCase {
         XCTAssertFalse(editor.shouldShowCancelConfirmation)
         XCTAssertFalse(FileManager.default.fileExists(atPath: protectedReplacementWrite.0.destination.path))
         editor.startContentEditing(with: input, placeholderImage: placeholder)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.shouldShowCancelConfirmation, "A later editable input restores conservative confirmation")
         editor.cancelContentEditing()
         XCTAssertNil(editor.input)

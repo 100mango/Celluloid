@@ -32,6 +32,7 @@ def file(path,typ=None):
   add(key,'PBXFileReference',lastKnownFileType=typ,path=path,sourceTree='<group>');children.append(i)
  return i
 package=add('snapkit','XCRemoteSwiftPackageReference',repositoryURL='https://github.com/SnapKit/SnapKit.git',requirement={'kind':'exactVersion','version':'5.7.1'})
+core_package=add('celluloid-core','XCLocalSwiftPackageReference',relativePath='Packages/CelluloidCore')
 # This staged iPhone/iPad project retains the original app, framework and Photos extension.
 # New Watch and standalone companion development remain in CelluloidNative.xcodeproj.
 names=['CelluloidKit','CelluloidPhotoExtension','Celluloid','CelluloidTests','CelluloidUITests']
@@ -66,6 +67,9 @@ for n in names:
  if n in ['Celluloid','CelluloidKit']:
   dep=add('package:'+n,'XCSwiftPackageProductDependency',package=package,productName='SnapKit');packages.append(dep)
   framework.append(add('build:package:'+n,'PBXBuildFile',productRef=dep))
+ if n=='CelluloidKit':
+  dep=add('package:CelluloidKit:CelluloidDomain','XCSwiftPackageProductDependency',package=core_package,productName='CelluloidDomain');packages.append(dep)
+  framework.append(add('build:package:CelluloidKit:CelluloidDomain','PBXBuildFile',productRef=dep))
  dependent={'Celluloid':['CelluloidKit','CelluloidPhotoExtension'],'CelluloidPhotoExtension':['CelluloidKit'],'CelluloidTests':['Celluloid','CelluloidKit'],'CelluloidUITests':['Celluloid']}.get(n,[])
  for other in dependent:
   proxy=add('proxy:'+n+other,'PBXContainerItemProxy',containerPortal=uid('project'),proxyType='1',remoteGlobalIDString=targetids[other],remoteInfo=other)
@@ -91,7 +95,7 @@ for n in names:
  add('target:'+n,'PBXNativeTarget',name=n,productName=n,productReference=products[n],productType='com.apple.product-type.'+producttype,buildConfigurationList=configlist('target:'+n,settings),buildPhases=phases,buildRules=[],dependencies=deps,packageProductDependencies=packages)
 prodgroup=add('products','PBXGroup',name='Products',children=list(products.values()),sourceTree='<group>')
 rootgroup=add('rootgroup','PBXGroup',children=children+[prodgroup],sourceTree='<group>')
-add('project','PBXProject',attributes={'LastUpgradeCheck':'2700','BuildIndependentTargetsInParallel':'YES','TargetAttributes':{targetids['CelluloidTests']:{'TestTargetID':targetids['Celluloid']},targetids['CelluloidUITests']:{'TestTargetID':targetids['Celluloid']}}},buildConfigurationList=configlist('project',{'SDKROOT':'iphoneos','CLANG_ENABLE_MODULES':'YES','CLANG_ENABLE_OBJC_ARC':'YES','GCC_C_LANGUAGE_STANDARD':'gnu17','IPHONEOS_DEPLOYMENT_TARGET':'15.0','SWIFT_VERSION':'5.0','ENABLE_BITCODE':'NO'}),compatibilityVersion='Xcode 14.0',developmentRegion='en',hasScannedForEncodings='0',knownRegions=['en','Base','zh-Hans'],mainGroup=rootgroup,productRefGroup=prodgroup,projectDirPath='',projectRoot='',targets=list(targetids.values()),packageReferences=[package])
+add('project','PBXProject',attributes={'LastUpgradeCheck':'2700','BuildIndependentTargetsInParallel':'YES','TargetAttributes':{targetids['CelluloidTests']:{'TestTargetID':targetids['Celluloid']},targetids['CelluloidUITests']:{'TestTargetID':targetids['Celluloid']}}},buildConfigurationList=configlist('project',{'SDKROOT':'iphoneos','CLANG_ENABLE_MODULES':'YES','CLANG_ENABLE_OBJC_ARC':'YES','GCC_C_LANGUAGE_STANDARD':'gnu17','IPHONEOS_DEPLOYMENT_TARGET':'15.0','SWIFT_VERSION':'5.0','ENABLE_BITCODE':'NO'}),compatibilityVersion='Xcode 14.0',developmentRegion='en',hasScannedForEncodings='0',knownRegions=['en','Base','zh-Hans'],mainGroup=rootgroup,productRefGroup=prodgroup,projectDirPath='',projectRoot='',targets=list(targetids.values()),packageReferences=[package,core_package])
 (ROOT/'Celluloid.xcodeproj/project.pbxproj').write_text('// !$*UTF8*$!\n'+emit({'archiveVersion':'1','classes':{},'objectVersion':'56','objects':objects,'rootObject':uid('project')})+'\n')
 # One shared scheme builds the shipping extension with the app and both regression suites.
 scheme=ROOT/'Celluloid.xcodeproj/xcshareddata/xcschemes/Celluloid.xcscheme';scheme.parent.mkdir(parents=True,exist_ok=True)

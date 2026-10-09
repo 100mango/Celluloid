@@ -8,7 +8,15 @@ import CelluloidDomain
 /// cancellation before allocating; superseded callers must also reject their stale result.
 public actor NativeRenderQueue {
     public static let shared = NativeRenderQueue()
-    private let renderer = RecipeRenderer()
+    // Actor initializers run on the caller. Create CIContext only after the
+    // first actor hop, never while a SwiftUI/MainActor model initializes shared.
+    private var storedRenderer: RecipeRenderer?
+    private var renderer: RecipeRenderer {
+        if let storedRenderer { return storedRenderer }
+        let renderer = RecipeRenderer()
+        storedRenderer = renderer
+        return renderer
+    }
     public init() {}
     private var activeRasterJobs = 0
     private(set) var maximumConcurrentRasterJobs = 0

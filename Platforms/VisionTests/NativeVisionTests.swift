@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 import UIKit
 import CelluloidDomain
 import CelluloidRendering
@@ -56,6 +57,34 @@ final class NativeVisionTests: XCTestCase {
             XCTAssertThrowsError(try document.editing { $0.editOverlay(bubble.id) { $0.text = String(repeating: "界", count: 6000) } })
             XCTAssertEqual(document, final)
         }
+    }
+    @MainActor func testPrepareVisionRemainingDocumentFixture() throws {
+        // Fixture setup only; the previously passed field/Undo case is not selected.
+        let bitmap = try RasterCodec.bitmap(width: 120, height: 80)
+        bitmap.setFillColor(CGColor(srgbRed: 0.1, green: 0.5, blue: 0.8, alpha: 1))
+        bitmap.fill(CGRect(x: 0, y: 0, width: 120, height: 80))
+        let bytes = try RasterCodec.encode(XCTUnwrap(bitmap.makeImage()), as: .png)
+        var seed = NativeDocument(); try seed.replaceSources([("Synthetic.png", bytes)])
+        let documents = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        let fixture = documents.appendingPathComponent("VisionRemaining.celluloid", isDirectory: true)
+        guard !FileManager.default.fileExists(atPath: fixture.path) else { throw CocoaError(.fileWriteFileExists) }
+        try seed.archive().write(to: fixture, options: .atomic, originalContentsURL: nil)
+        let wrapper = try FileWrapper(url: fixture, options: .immediate)
+        XCTAssertEqual(try NativeDocument(wrapper: wrapper), seed)
+        XCTAssertEqual(Bundle.main.bundleIdentifier, "Mango.Celluloid")
+        let children = try XCTUnwrap(wrapper.fileWrappers); XCTAssertEqual(children.count, 2)
+        var files: [[String: Any]] = []
+        for name in children.keys.sorted() {
+            let data = try XCTUnwrap(children[name]?.regularFileContents)
+            files.append(["name": name, "bytes": data.count,
+                          "sha256": SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()])
+        }
+        let metadata: [String: Any] = ["schema": "Celluloid.VisionFixture.1", "bundle_identifier": Bundle.main.bundleIdentifier!,
+            "data_home": NSHomeDirectory(), "documents_path": documents.path, "package_path": fixture.path,
+            "package_name": "VisionRemaining.celluloid", "pixel_width": 120, "pixel_height": 80,
+            "initial_overlays": 0, "files": files]
+        let encoded = try JSONSerialization.data(withJSONObject: metadata, options: [.sortedKeys])
+        print("VISION_REMAINING_FIXTURE_JSON " + String(decoding: encoded, as: UTF8.self))
     }
     @MainActor func testNativeVisionExecutableAndSceneAreLive() throws {
         XCTAssertEqual(Bundle.main.bundleIdentifier, "Mango.Celluloid")

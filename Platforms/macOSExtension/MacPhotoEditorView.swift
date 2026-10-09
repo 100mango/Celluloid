@@ -8,6 +8,9 @@ struct MacPhotoEditorView: View {
 #if DEBUG
     @ObservedObject var selfIdentity: MacPhotoSelfIdentity
 #endif
+#if DEBUG && CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE
+    @ObservedObject var boundaryProbe: MacPhotoBoundaryProbe
+#endif
     @State private var palette: MacPhotoLayer.Kind?
     var body: some View {
         HStack(spacing: 16) {
@@ -23,6 +26,9 @@ struct MacPhotoEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Celluloid").font(.title)
+#if DEBUG && CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE
+                    MacPhotoBoundaryProbeView(probe: boundaryProbe, session: session, identity: selfIdentity)
+#endif
                     if session.readOnly {
                         Text("These edits cannot be safely restored here. You can view the current photo. Done and Cancel leave its existing edits and original unchanged.")
                             .accessibilityIdentifier("photos-extension.read-only")

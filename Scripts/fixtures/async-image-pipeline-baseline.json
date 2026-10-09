@@ -1,0 +1,33 @@
+{
+  "release_commit": "baea0ae3b3c9d9911937e9dd95a9fba6cbdf9d73",
+  "origin_file_blobs": {
+    "CelluloidKit/Controller/BaseEditPhotoController.swift": "ad8ce049e3025421b0eee453b43f6de52f6ce5dc",
+    "CelluloidKit/Filter/Filter.swift": "4e9a62414859a175f93a89ef3d354755fd55287c"
+  },
+  "export_method_body_sha256": {
+    "composite": "b30f5fb8bae4f9f627ce49b9c298fe291dbcec291eca2eaea4a201090c61abac",
+    "scaledOverlayModels": "70509c3e8bc75d713faff2782d1c5f2463d1cd4c65c66b04a079423abe8645b4",
+    "rasterizeScene": "2fb0564ed644eff71d07f48b260b558fbf916b441aceb99923d4d71b646685d6",
+    "materializedImage": "56c75a4e3825b96447a5b9429b45963f5bd5eadbfc71595bdf6a9c4f8754d85b",
+    "compositeOffMain": "ce46c5f05e9dd3107bce46caa37f6b1257a71be2a37018c816ef9c0a4f2c3ce1",
+    "prepareFullSizeImage": "a158da16c1dcf66987bb756f5500aea096e19571439bbd7903654cfbd17e8678"
+  },
+  "filter_method_body_sha256": {
+    "filter": "3b5c49329cf1bd18c131e30a8fdc4a07a6064aa2e9c79d42e87bed546ccc728c",
+    "simpleFilter": "f2c7697d88e9b5bb820513b7fcb98794265981645115f75468eb6ec781894482",
+    "pixellate": "3e8503d59d3e3cd74d87de10490394a37638d202c01f25dd9f3dbf410e6df75e",
+    "sourceOver": "5edde3c7fa1142f05bacf083503bc38475c359543b4ef54a0c68db10fa69b441",
+    "makeRadialGradientCImage": "aced57ec5e25b671cfd2dd9bc0a8a5c9df8dbb7a26149d4abde38156de5e4ff5",
+    "pixellateFace": "ea4ccd68b6b38c20225518e81564b2d8910175b9018b480d31a96d67bb6a9c4b",
+    "blur": "2a29e009833dd4146fe45ed0b6e7b070a77cbf1eb3de35fe3bc15c8792304774",
+    "blurAndSepia": "f06a2db36d57c1d36f0545c2350558d1c52b49ac0a80bdd6a277bda71b22a6bb",
+    "hasRenderableExtent": "3a74fafc8164db52f20e0fa4e51d683f7305b526674cfd063e8b2b657070a328"
+  },
+  "unchanged_file_sha256": {
+    "CelluloidKit/Model/AdjustmentData.swift": "2b846ca22af55d7832053e62504755dade8551879463f4b37d99285667ef9a93",
+    "CelluloidKit/View/ImageOverlayView.swift": "adedf67378049d4d9d9174430b442c2c4a9a8a0ec0451699bf0e9bd7b0153503",
+    "Packages/CelluloidRendering/Sources/CelluloidRendering/Renderer.swift": "f307e2fbf3f98792d70ebee713f7e44310e6cf82735d2099b72b8cd61c6618ae",
+    "Platforms/macOSExtension/MacPhotoRenderer.swift": "4fc934c7087eb5fd578de4e92885342852273dcdc90fd5e82891d67a5d6864c0",
+    "Platforms/macOSExtension/MacPhotoAdjustment.swift": "4856aae30a5c6d733de535ea41c7d8cf0086f44d1c8c88d875d83886dc6461ad"
+  }
+}

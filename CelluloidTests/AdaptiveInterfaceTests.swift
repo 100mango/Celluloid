@@ -35,6 +35,7 @@ final class AdaptiveInterfaceTests: XCTestCase {
                 // test window's full subtree before asserting the real style;
                 // do not force the extension itself into the expected theme.
                 window.updateTraitsIfNeeded()
+                waitForSwiftUIEditor(editor)
                 XCTAssertEqual(window.traitCollection.userInterfaceStyle, style)
                 XCTAssertEqual(host.traitCollection.userInterfaceStyle, style)
                 XCTAssertEqual(editor.traitCollection.userInterfaceStyle, style)
@@ -45,7 +46,8 @@ final class AdaptiveInterfaceTests: XCTestCase {
                 XCTAssertEqual(surface.frame.minX, 0, accuracy: 0.5)
                 XCTAssertEqual(surface.frame.width, editor.view.bounds.width, accuracy: 0.5)
                 XCTAssertEqual(surface.frame.maxY, editor.view.safeAreaLayoutGuide.layoutFrame.minY, accuracy: 0.5)
-                XCTAssertEqual(editor.preview.frame.minY, surface.frame.maxY, accuracy: 0.5)
+                let previewInRoot = editor.preview.convert(editor.preview.bounds, to: editor.view)
+                XCTAssertGreaterThanOrEqual(previewInRoot.minY + 0.5, surface.frame.maxY, "Photo artwork must stay below Photos host chrome")
                 XCTAssertFalse(surface.isUserInteractionEnabled)
                 XCTAssertFalse(surface.isAccessibilityElement)
                 XCTAssertTrue(surface.accessibilityElementsHidden)

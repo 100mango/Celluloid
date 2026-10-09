@@ -33,6 +33,11 @@ final class MacPhotosHostUITests: XCTestCase {
     private var lifecycleAssetLabel = ""
     private var singlePhotoTopologies: [String] = []
     private var lifecycleComplete = false
+    private var observeSavedPixelDifference = false
+    private var functionalObservationComplete = false
+    private var deferredSavedPixelDelta: Int?
+    private var observeRevertedProfile = false
+    private var revertedProfileReceipt: [String: Any]?
     private var lifecycleRows: [[String: Any]] = []
     private var lifecycleControls: [Int] = []
     private var lifecycleControlCatalog: [[Any]] = []
@@ -81,12 +86,24 @@ final class MacPhotosHostUITests: XCTestCase {
         XCTAssertEqual(context["host_entry_contract"] as? String, Self.hostEntryContract)
         let route = try XCTUnwrap(context["validation_route"] as? [String: Any])
         let clock = try XCTUnwrap(context["host_clock_profile"] as? [String: Any])
-        let hostOnly = route["scope"] as? String == "photos-export-observation"
+        let hostOnly = ["photos-export-observation", "photos-boundary-observation", "photos-lifecycle-observation"].contains(route["scope"] as? String ?? "")
         lifecycleDeadlineSeconds = hostOnly ? 900 : 600
         XCTAssertEqual(clock["name"] as? String, hostOnly ? "photos-export-observation-900-v1" : "canonical-600-v1")
         XCTAssertEqual(clock["case_seconds"] as? Int, lifecycleDeadlineSeconds)
         XCTAssertEqual(clock["test_seconds"] as? Int, hostOnly ? 960 : 660)
         XCTAssertEqual(clock["process_seconds"] as? Int, hostOnly ? 1020 : 720)
+        if let observation = context["owned_saved_pixel_observation"] {
+            XCTAssertEqual(observation as? String, "defer-known-saved-pixel-assertion-v1")
+            XCTAssertEqual(route["scope"] as? String, "photos-lifecycle-observation")
+            XCTAssertNil(context["boundary_probe"])
+            observeSavedPixelDifference = true
+        }
+        if let profile = context["owned_reverted_profile_observation"] {
+            XCTAssertEqual(profile as? String, "gama-chrm-canonical-srgb-v1")
+            XCTAssertTrue(observeSavedPixelDifference)
+            XCTAssertEqual(route["scope"] as? String, "photos-lifecycle-observation")
+            observeRevertedProfile = true
+        }
         contextHash = digest(data)
         XCTAssertEqual(try digest(URL(fileURLWithPath: value("script_path"))), try value("script_sha256"))
         XCTAssertEqual(try digest(URL(fileURLWithPath: value("test_source_path"))), try value("test_source_sha256"))
@@ -100,15 +117,32 @@ final class MacPhotosHostUITests: XCTestCase {
         testStarted = ProcessInfo.processInfo.systemUptime
         try verifyBinaryScalarContract()
         try verifyInternationalTextContract()
-        // Validate the exact read-only input before any host UI action. Only
-        // XCTest stdout/attachments carry data back across the sandbox boundary.
-        try report(["schema": "Celluloid.HostTransport.3", "host_entry_contract": Self.hostEntryContract, "source_sha": try value("source_sha"),
+        // Validate the input before host UI. Ordinarily proof uses stdout and
+        // attachments; this one profile mode also permits the fixed owned staging
+        // below. Permission does not claim a write: receipt/readback proves that.
+        var transport: [String: Any] = ["schema": "Celluloid.HostTransport.3", "host_entry_contract": Self.hostEntryContract, "source_sha": try value("source_sha"),
                     "context_sha256": contextHash, "test_source_sha256": try value("test_source_sha256"),
                     "verifier_sha256": try value("script_sha256"),
                     "app_executable_sha256": try value("app_executable_sha256"),
                     "extension_executable_sha256": try value("extension_executable_sha256"),
                     "extension_debug_dylib_sha256": try value("extension_debug_dylib_sha256"),
-                    "external_writes": false, "context_validated": true], named: "transport.json")
+                    "external_writes": false, "context_validated": true]
+        if observeRevertedProfile {
+            let environment = try XCTUnwrap(context["runner_environment"] as? [String: String])
+            let temporary = URL(fileURLWithPath: try XCTUnwrap(environment["RUNNER_TEMP"])).standardizedFileURL
+            let evidence = temporary.appendingPathComponent("mac-host-observed")
+            XCTAssertEqual(try value("evidence_path"), evidence.path)
+            XCTAssertEqual(environment["GITHUB_RUN_ATTEMPT"], "1")
+            transport["external_writes"] = "bounded-owned-staging-permitted"
+            let staging: [String: Any] = ["source_sha": try value("source_sha"), "context_sha256": contextHash,
+                "run_id": try XCTUnwrap(environment["GITHUB_RUN_ID"]), "run_attempt": 1,
+                "directory": evidence.appendingPathComponent("owned-reverted-profile").path,
+                "files": ["reverted-input.png": 131072, "reverted-canonical.png": 131072,
+                          "profile.json": 8192, "profile.pending.json": 8192],
+                "actual_write_evidence": "owned_profile_receipt-and-fixed-file-readback"]
+            transport["owned_staging"] = staging
+        }
+        try report(transport, named: "transport.json")
         let photos = XCUIApplication(bundleIdentifier: "com.apple.Photos")
         var photosIdentityVerified = false
         defer {
@@ -120,6 +154,7 @@ final class MacPhotosHostUITests: XCTestCase {
             if let firstBlockedOperation { outcome["first_blocked_operation"] = firstBlockedOperation }
             if !exportPNGDiagnostics.isEmpty { outcome["export_png_diagnostics"] = exportPNGDiagnostics }
             if let extensionMenuObservation { outcome["extension_menu_observation"] = extensionMenuObservation }
+            if observeSavedPixelDifference { outcome["functional_observation_complete"] = functionalObservationComplete }
             if retainedSource != nil {
                 try? report(lifecycleReceipt(photosPID: lifecyclePhotosPID), named: "lifecycle.json")
             }
@@ -279,6 +314,86 @@ final class MacPhotosHostUITests: XCTestCase {
         try runFilterLifecycle(in: photos, photosPID: photosPID, fixtureHash: fixtureHash,
             assetLabel: selectedAssetLabel, baselineIdentity: firstIdentity.raw)
 
+    }
+
+    @MainActor private func armOwnedBoundary(in photos: XCUIApplication, fixtureHash: String, identity: String) throws {
+        _ = try remainingTime(1)
+        let probe = try XCTUnwrap(context["boundary_probe"] as? [String: Any])
+        let lease = try XCTUnwrap(probe["lease"] as? [String: String])
+        guard fixtureHash == "6138992615dd7d5bd499b80d9f11e39a0815111feccd5d4d3e59a676f4384772",
+              lease["fixture_sha256"] == fixtureHash, lease["source_sha"] == (try value("source_sha")),
+              lease["run_attempt"] == "1", lease["raw_cap"] == "131072",
+              let nonce = lease["nonce"], nonce.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil,
+              let own = try JSONSerialization.jsonObject(with: Data(identity.utf8)) as? [String: Any],
+              let generation = own["generation"] as? String else { throw block("Invalid owned boundary lease") }
+        let editors = editorMatches(in: photos)
+        guard editors.count == 1 else { throw block("Boundary editor changed") }
+        let editor = editors.element(boundBy: 0)
+        let fields = editor.textFields.matching(identifier: "photos-extension.boundary-token")
+        guard fields.count == 1 else { throw block("Missing unique Debug boundary token input") }
+        let field = fields.element(boundBy: 0)
+        guard field.isEnabled, field.isHittable, (field.value as? String ?? "").isEmpty else { throw block("Boundary token input is not empty and ready") }
+        try deadlineClick(field); try deadlineText(field, nonce)
+        try deadlineKey(field, XCUIKeyboardKey.return, modifierFlags: [])
+        let receipts = editor.descendants(matching: .any).matching(identifier: "photos-extension.boundary-arm")
+        let receiptCount = receipts.count
+        guard receiptCount == 1 else {
+            throw block("Owned boundary arm failed", operation: ["failure": "missing-or-ambiguous", "count": receiptCount])
+        }
+        let leaf = receipts.element(boundBy: 0)
+        let observedLabel = leaf.label
+        let observedValue = leaf.value // The sole payload read; never fall back to label or retry.
+        var checks: [String: Bool] = [:]
+        func rejected(_ failure: String) -> NSError {
+            let valueType = observedValue.map { String(reflecting: Swift.type(of: $0)) } ?? "nil"
+            var observation: [String: Any] = ["failure": failure, "count": receiptCount, "checks": checks,
+                "label_bytes": observedLabel.utf8.count,
+                "label_content": String(decoding: observedLabel.utf8.prefix(128), as: UTF8.self),
+                "value_type": String(decoding: valueType.utf8.prefix(128), as: UTF8.self)]
+            if let raw = observedValue as? String {
+                observation["value_bytes"] = raw.utf8.count
+                observation["value_content"] = String(decoding: raw.utf8.prefix(4096), as: UTF8.self)
+                observation["value_truncated"] = raw.utf8.count > 4096
+                if let data = try? JSONSerialization.data(withJSONObject: observation), data.count > 12_000 {
+                    observation["value_content"] = String(decoding: raw.utf8.prefix(1024), as: UTF8.self)
+                    observation["value_truncated"] = raw.utf8.count > 1024
+                }
+            }
+            // Use the existing bounded outcome proof, never a new AX dump or attachment.
+            guard let data = try? JSONSerialization.data(withJSONObject: observation), data.count <= 12_000 else {
+                return block("Wrong boundary arm receipt", operation: ["failure": failure, "observation_incomplete": true])
+            }
+            return block("Wrong boundary arm receipt", operation: observation)
+        }
+        guard observedLabel == "CELLULOID_OWNED_PHOTOS_BOUNDARY_ARM_V1" else { throw rejected("marker") }
+        guard let raw = observedValue as? String else { throw rejected(observedValue == nil ? "missing" : "type") }
+        guard !raw.isEmpty else { throw rejected("empty") }
+        guard raw.utf8.count <= 4096 else { throw rejected("oversize") }
+        guard let data = raw.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) else { throw rejected("parse") }
+        guard let arm = object as? [String: Any] else { throw rejected("dictionary") }
+        checks["schema"] = arm["schema"] as? String == "Celluloid.OwnedPhotosBoundaryArm.1"
+        let observedLease = arm["lease"] as? [String: String]
+        checks["lease_type"] = observedLease != nil
+        checks["lease_keys"] = observedLease.map { Set($0.keys) == Set(lease.keys) } ?? false
+        checks["lease"] = observedLease == lease
+        for key in ["schema", "source_sha", "source_tree", "run_id", "run_attempt", "fixture_sha256", "nonce", "raw_cap"] {
+            checks["lease_" + key] = observedLease?[key] == lease[key]
+        }
+        checks["identity_sha256"] = arm["identity_sha256"] as? String == digest(Data(identity.utf8))
+        checks["generation"] = arm["generation"] as? String == generation
+        guard checks["schema"] == true else { throw rejected("schema") }
+        guard checks["lease"] == true else { throw rejected("lease") }
+        guard checks["identity_sha256"] == true else { throw rejected("identity_sha256") }
+        guard checks["generation"] == true else { throw rejected("generation") }
+        let binding: [String: Any] = ["schema": "Celluloid.OwnedPhotosBoundaryHostArm.1",
+            "context_sha256": contextHash, "source_sha": try value("source_sha"), "arm": arm]
+        let encoded = try JSONSerialization.data(withJSONObject: binding, options: [.sortedKeys])
+        guard encoded.count <= 8192 else { throw block("Oversized boundary arm binding") }
+        print("MAC_PHOTOS_BOUNDARY_ARM " + String(decoding: encoded, as: UTF8.self))
+        // Reuse the old ready identity and product/fixture guards immediately
+        // before Save; the token action itself grants no host/pixel acceptance.
+        guard try selfIdentityObservation(in: photos, allowWait: false).raw == identity else { throw block("Identity changed after boundary arm") }
+        try lifecycleGuard(photos, photosPID: lifecyclePhotosPID, fixtureHash: fixtureHash, assetLabel: lifecycleAssetLabel)
     }
 
     @MainActor private func importFixture(_ fixture: URL, into photos: XCUIApplication) throws {
@@ -516,7 +631,7 @@ final class MacPhotosHostUITests: XCTestCase {
         lifecycleControls.removeAll()
     }
     private func lifecycleReceipt(photosPID: pid_t) throws -> [String: Any] {
-        return ["schema": Self.lifecycleContract, "host_entry_contract": Self.hostEntryContract,
+        var receipt: [String: Any] = ["schema": Self.lifecycleContract, "host_entry_contract": Self.hostEntryContract,
             "source_sha": try value("source_sha"), "context_sha256": contextHash,
             "test_source_sha256": try value("test_source_sha256"), "verifier_sha256": try value("script_sha256"),
             "photos_pid": photosPID, "fixture_sha256": retainedSource.map { digest($0.bytes) } ?? "",
@@ -527,6 +642,8 @@ final class MacPhotosHostUITests: XCTestCase {
             "export_option_bindings": exportOptionBindings,
             "binary_states": exportBinaryStates, "binary_scalar_self_tested": binaryScalarSelfTested,
             "srgb_icc_reference": lifecycleICC.map { $0 as Any } ?? NSNull()]
+        if observeSavedPixelDifference { receipt["functional_observation_complete"] = functionalObservationComplete }
+        return receipt
     }
     @MainActor private func lifecycleGuard(_ photos: XCUIApplication, photosPID: pid_t,
         fixtureHash: String, assetLabel: String, normal: Bool = false) throws {
@@ -765,14 +882,32 @@ final class MacPhotosHostUITests: XCTestCase {
         let beforeSaveIdentity = try selfIdentityObservation(in: photos, allowWait: false)
         guard beforeSaveIdentity.raw == baselineIdentity else { throw block("Initial editing identity changed before Save Changes") }
         try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel)
+        if context["boundary_probe"] != nil {
+            try armOwnedBoundary(in: photos, fixtureHash: fixtureHash, identity: beforeSaveIdentity.raw)
+        }
         try closeExtension(in: photos, save: true)
         try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
         let saved = try exportRaster("saved", in: photos, original: false)
         try lifecycleGuard(photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel, normal: true)
         let savedDelta = try maximumDelta(saved.rgba, reference.raster.rgba)
         try retainLifecycleImage(saved, named: "lifecycle-saved.png")
-        guard savedDelta <= 2 else { throw block("Stored saved raster disagrees with independent JPEG-aware reference", operation: ["max_channel_delta": savedDelta]) }
+        if observeSavedPixelDifference && savedDelta > 2 {
+            // Only the already-retained synthetic discrepancy is deferred.
+            // A new image/difference remains an immediate stop, never a tolerance change.
+            guard savedDelta == 3,
+                  fixtureHash == "6138992615dd7d5bd499b80d9f11e39a0815111feccd5d4d3e59a676f4384772",
+                  digest(saved.rgba) == "744dfa09d6ab997552cdb11393a53761c8e098ffd37e6a8c3a9febdfd0972c99",
+                  digest(reference.raster.rgba) == "eacc2ada4af742470b52d2ed14996d07e71db7c2b68b2da4f7947efcc7f9855a" else {
+                throw block("Stored saved raster disagrees with independent JPEG-aware reference", operation: ["max_channel_delta": savedDelta])
+            }
+            deferredSavedPixelDelta = savedDelta
+        } else {
+            guard savedDelta <= 2 else { throw block("Stored saved raster disagrees with independent JPEG-aware reference", operation: ["max_channel_delta": savedDelta]) }
+        }
         try lifecyclePhase("saved-export", details: ["max_channel_delta": savedDelta, "limit": 2, "sole_asset_count": 1])
+        // A boundary observation cannot qualify the original full lifecycle.
+        // The old <=2 assertion above is always evaluated, even in this mode.
+        if context["boundary_probe"] != nil { return }
         stage = "lifecycle-reopen-fade"
         let reopened = try reenter(in: photos, photosPID: photosPID, fixtureHash: fixtureHash, assetLabel: assetLabel,
             filter: "Fade", previousGenerations: [initialGeneration])
@@ -821,6 +956,15 @@ final class MacPhotosHostUITests: XCTestCase {
             throw block("Incomplete/oversized mandatory lifecycle proof")
         }
         _ = try remainingTime(1)
+        if observeSavedPixelDifference {
+            functionalObservationComplete = true
+            stage = "photos-filter-lifecycle-observed"
+            print("MAC_HOST_FILTER_LIFECYCLE_OBSERVED owned Save, Fade reentry, nonmutating Cancel, Revert, original bytes and Original reentry observed; strict saved-pixel result remains separate")
+            if let deferredSavedPixelDelta {
+                throw block("Stored saved raster disagrees with independent JPEG-aware reference",
+                    operation: ["max_channel_delta": deferredSavedPixelDelta, "deferred_from": "lifecycle-save-and-export"])
+            }
+        }
         lifecycleComplete = true
         stage = "photos-filter-lifecycle-passed"
         print("MAC_HOST_FILTER_LIFECYCLE_PASSED owned static sRGB Fade Save, reopen, nonmutating Cancel, Revert and mandatory Original reentry; dirty Cancel untested")
@@ -1247,6 +1391,7 @@ final class MacPhotosHostUITests: XCTestCase {
         // Preserve exact owned bytes and bounded framing before ImageIO/profile/
         // pixel acceptance. Failed decoding never becomes an accepted image.
         exportPNGDiagnostics.append(pngInventory(bytes, phase: name))
+        if observeRevertedProfile && name == "reverted" { retainRevertedProfileInput(bytes) }
         if original {
             guard let source = retainedSource, bytes == source.bytes else {
                 let failure = block("Unmodified original export differs from retained source bytes")
@@ -1256,7 +1401,8 @@ final class MacPhotosHostUITests: XCTestCase {
             }
             guard retainedPNGHashes[retainedImage] == digest(bytes) else { throw block("Original source byte retention is missing") }
         } else { try retainLifecycleBytes(bytes, named: retainedImage) }
-        let raster = try lifecycleRaster(bytes, expectedFormat: UTType.png.identifier)
+        let raster = try lifecycleRaster(bytes, expectedFormat: UTType.png.identifier,
+            allowCalibratedRGB: observeRevertedProfile && name == "reverted")
         lifecycleExports[name] = ["image": retainedImage, "relative_path": name + "/" + Self.fixtureFilename,
             "bytes": bytes.count, "sha256": digest(bytes)]
         return raster
@@ -1320,7 +1466,99 @@ final class MacPhotosHostUITests: XCTestCase {
         _ = try remainingTime(1)
         return bytes
     }
-    private func pngHeader(_ data: Data) throws -> (colorType: Int, profileEncoding: String) {
+    private func profileFailure(_ message: String) -> NSError {
+        NSError(domain: "Celluloid.OwnedRevertedProfile", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+    private func profileDirectory() throws -> Int32 {
+        _ = try remainingTime(1)
+        let path = URL(fileURLWithPath: try value("evidence_path")).appendingPathComponent("owned-reverted-profile")
+        guard path.standardizedFileURL == path.resolvingSymlinksInPath() else { throw profileFailure("Profile directory alias") }
+        let fd = open(path.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard fd >= 0 else { throw profileFailure("Profile directory unavailable") }
+        var status = stat()
+        guard fstat(fd, &status) == 0, status.st_mode & S_IFMT == S_IFDIR, status.st_uid == getuid() else {
+            close(fd); throw profileFailure("Unowned profile directory")
+        }
+        return fd
+    }
+    private func writeProfileFile(_ bytes: Data, name: String, limit: Int) throws {
+        guard ["reverted-input.png", "reverted-canonical.png", "profile.pending.json"].contains(name),
+              !bytes.isEmpty, bytes.count <= limit else { throw profileFailure("Profile file cap/name") }
+        let directory = try profileDirectory(); defer { close(directory) }
+        let fd = openat(directory, name, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { throw profileFailure("Exclusive profile file open") }; defer { close(fd) }
+        var offset = 0
+        while offset < bytes.count {
+            _ = try remainingTime(1)
+            let count = bytes.withUnsafeBytes { Darwin.write(fd, $0.baseAddress!.advanced(by: offset), min(65_536, bytes.count - offset)) }
+            if count < 0 && errno == EINTR { continue }
+            guard count > 0 else { throw profileFailure("Profile file write") }; offset += count
+        }
+        var status = stat()
+        guard fstat(fd, &status) == 0, status.st_mode & S_IFMT == S_IFREG, status.st_nlink == 1,
+              status.st_uid == getuid(), status.st_size == bytes.count else { throw profileFailure("Profile file changed") }
+        _ = try remainingTime(1)
+    }
+    private func publishProfileReceipt() throws {
+        guard let receipt = revertedProfileReceipt else { throw profileFailure("Missing profile receipt") }
+        let data = try JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys])
+        try writeProfileFile(data, name: "profile.pending.json", limit: 8192)
+        let directory = try profileDirectory(); defer { close(directory) }
+        var previous = stat()
+        if fstatat(directory, "profile.json", &previous, AT_SYMLINK_NOFOLLOW) == 0 {
+            guard previous.st_mode & S_IFMT == S_IFREG, previous.st_nlink == 1, previous.st_uid == getuid(),
+                  previous.st_size > 0, previous.st_size <= 8192 else { throw profileFailure("Changed profile receipt") }
+        } else { guard errno == ENOENT else { throw profileFailure("Profile receipt lookup") } }
+        _ = try remainingTime(1)
+        guard renameat(directory, "profile.pending.json", directory, "profile.json") == 0 else { throw profileFailure("Profile receipt publication") }
+        if let index = exportPNGDiagnostics.lastIndex(where: { $0["phase"] as? String == "reverted" }) {
+            exportPNGDiagnostics[index]["owned_profile_receipt"] = receipt
+        }
+    }
+    private func retainRevertedProfileInput(_ bytes: Data) {
+        do {
+            let environment = try XCTUnwrap(context["runner_environment"] as? [String: String])
+            revertedProfileReceipt = ["schema": "Celluloid.OwnedRevertedProfile.1", "source_sha": try value("source_sha"),
+                "context_sha256": contextHash, "run_id": try XCTUnwrap(environment["GITHUB_RUN_ID"]), "run_attempt": 1,
+                "phase": "reverted", "raw_file": "reverted-input.png", "raw_bytes": bytes.count, "raw_sha256": digest(bytes),
+                "canonical_file": NSNull(), "profile": NSNull(), "declaration": NSNull(), "qualification": false]
+            try writeProfileFile(bytes, name: "reverted-input.png", limit: 131_072)
+            try publishProfileReceipt()
+        } catch {
+            exportPNGDiagnostics[exportPNGDiagnostics.count - 1]["retention_error"] = String(String(describing: error).prefix(256))
+        }
+    }
+    private func retainRevertedProfileCanonical(_ bytes: Data, profile: [String: Any]) {
+        do {
+            guard revertedProfileReceipt != nil else { throw profileFailure("Raw profile retention unavailable") }
+            try writeProfileFile(bytes, name: "reverted-canonical.png", limit: 131_072)
+            revertedProfileReceipt?["canonical_file"] = "reverted-canonical.png"
+            revertedProfileReceipt?["profile"] = profile
+            try publishProfileReceipt()
+        } catch {
+            exportPNGDiagnostics[exportPNGDiagnostics.count - 1]["retention_error"] = String(String(describing: error).prefix(256))
+        }
+    }
+    private func boundedProfileName(_ value: String?) -> String {
+        let name = String(decoding: (value ?? "").utf8.prefix(125), as: UTF8.self)
+        return !name.isEmpty && name.unicodeScalars.allSatisfy({ $0.value >= 32 && !(127...159).contains($0.value) }) ? name : "unavailable"
+    }
+    private func validateCalibratedRGB(gamma: Int, chromaticities: [Int]) throws {
+        // W3C PNG 7.1 and 11.3.2: uint31 fields, scaled by100000. This
+        // observation supports physical, nondegenerate calibrated RGB only.
+        guard gamma > 0, gamma <= Int(Int32.max), chromaticities.count == 8,
+              chromaticities.allSatisfy({ $0 >= 0 && $0 <= Int(Int32.max) }) else { throw block("Invalid PNG calibrated RGB fields") }
+        let points = stride(from: 0, to: 8, by: 2).map { (Int64(chromaticities[$0]), Int64(chromaticities[$0 + 1])) }
+        guard points.allSatisfy({ $0.0 >= 0 && $0.1 > 0 && $0.0 + $0.1 <= 100_000 }),
+              points[0].0 > 0, points[0].0 + points[0].1 < 100_000 else { throw block("Unsupported PNG calibrated RGB coordinates") }
+        func cross(_ a: (Int64, Int64), _ b: (Int64, Int64), _ c: (Int64, Int64)) -> Int64 {
+            (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0)
+        }
+        let area = cross(points[1], points[2], points[3])
+        let edges = [cross(points[1], points[2], points[0]), cross(points[2], points[3], points[0]), cross(points[3], points[1], points[0])]
+        guard area != 0, edges.allSatisfy({ area > 0 ? $0 > 0 : $0 < 0 }) else { throw block("Degenerate PNG calibrated RGB primaries or white point") }
+    }
+    private func pngHeader(_ data: Data, allowCalibratedRGB: Bool = false) throws -> (colorType: Int, profileEncoding: String, calibrated: [String: Any]?) {
         let bytes = [UInt8](data)
         guard bytes.count >= 45, bytes.count <= 128 * 1024,
               Array(bytes.prefix(8)) == [137, 80, 78, 71, 13, 10, 26, 10] else { throw block("Required PNG signature/128 KiB bound failed") }
@@ -1333,6 +1571,8 @@ final class MacPhotosHostUITests: XCTestCase {
             throw block("Required PNG dimensions/depth/color type/interlace failed", operation: ["sha256": digest(data), "bytes": data.count])
         }
         var offset = 8, chunks = 0, srgb = 0, icc = 0, textChunks = 0
+        var gamma: Int?, chromaticities: [Int]?
+        var seenImageData = false
         while offset < bytes.count {
             guard offset <= bytes.count - 12, chunks < 64 else { throw block("PNG chunk framing limit") }
             let count = u32(offset)
@@ -1345,6 +1585,18 @@ final class MacPhotosHostUITests: XCTestCase {
                 textChunks += 1
                 guard textChunks == 1 else { throw block("Duplicate iTXt before decode") }
                 try admitInternationalText(Array(bytes[(offset + 8)..<(offset + 8 + count)]))
+            }
+            if tag == "IDAT" { seenImageData = true }
+            if tag == "gAMA" {
+                guard !seenImageData, gamma == nil, count == 4 else { throw block("Malformed, duplicate or late PNG gamma") }
+                gamma = u32(offset + 8)
+            }
+            if tag == "cHRM" {
+                guard !seenImageData, chromaticities == nil, count == 32 else { throw block("Malformed, duplicate or late PNG chromaticities") }
+                chromaticities = (0..<8).map { u32(offset + 8 + $0 * 4) }
+            }
+            if allowCalibratedRGB && seenImageData && ["sRGB", "iCCP"].contains(tag) {
+                throw block("Late PNG color profile")
             }
             if tag == "sRGB" {
                 guard count == 1, bytes[offset + 8] == 0 else { throw block("PNG sRGB rendering intent mismatch") }
@@ -1361,10 +1613,29 @@ final class MacPhotosHostUITests: XCTestCase {
             guard !["acTL", "fcTL", "fdAT", "tRNS"].contains(tag) else { throw block("Animated/transparency PNG is outside the fixture contract") }
             offset += count + 12; chunks += 1
         }
-        guard offset == bytes.count, (srgb == 1 && icc == 0) || (srgb == 0 && icc == 1) else {
+        guard offset == bytes.count else { throw block("PNG profile chunk framing incomplete") }
+        if allowCalibratedRGB {
+            revertedProfileReceipt?["declaration"] = ["gamma_scaled": gamma.map { $0 as Any } ?? NSNull(),
+                "chromaticities_scaled": chromaticities.map { $0 as Any } ?? NSNull(), "sRGB_chunks": srgb, "iCCP_chunks": icc]
+            do { try publishProfileReceipt() }
+            catch { exportPNGDiagnostics[exportPNGDiagnostics.count - 1]["retention_error"] = String(String(describing: error).prefix(256)) }
+            if let gamma { guard gamma > 0, gamma <= Int(Int32.max) else { throw block("Invalid PNG calibrated RGB gamma") } }
+            if let chromaticities { try validateCalibratedRGB(gamma: gamma ?? 45455, chromaticities: chromaticities) }
+            if srgb > 0 || icc > 0 {
+                guard gamma == nil || gamma == 45455,
+                      chromaticities == nil || chromaticities == [31270,32900,64000,33000,30000,60000,15000,6000] else {
+                    throw block("Conflicting PNG profile and gamma/chromaticities")
+                }
+            }
+        }
+        if allowCalibratedRGB && srgb == 0 && icc == 0, let gamma, let chromaticities {
+            try validateCalibratedRGB(gamma: gamma, chromaticities: chromaticities)
+            return (Int(bytes[25]), "gama-chrm", ["gamma_scaled": gamma, "chromaticities_scaled": chromaticities])
+        }
+        guard (srgb == 1 && icc == 0) || (srgb == 0 && icc == 1) else {
             throw block("PNG profile missing/ambiguous; pixel conversion is not a fallback", operation: ["sha256": digest(data), "sRGB_chunks": srgb, "iCCP_chunks": icc])
         }
-        return (Int(bytes[25]), srgb == 1 ? "srgb-chunk" : "icc-reference")
+        return (Int(bytes[25]), srgb == 1 ? "srgb-chunk" : "icc-reference", nil)
     }
     private func admitInternationalText(_ payload: [UInt8]) throws {
         do { try Self.validateInternationalText(payload) }
@@ -1451,9 +1722,9 @@ final class MacPhotosHostUITests: XCTestCase {
             space: CGColorSpace(name: CGColorSpace.sRGB)!,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue))
     }
-    private func lifecycleRaster(_ data: Data, expectedFormat: String) throws -> LifecycleRaster {
+    private func lifecycleRaster(_ data: Data, expectedFormat: String, allowCalibratedRGB: Bool = false) throws -> LifecycleRaster {
         _ = try remainingTime(1)
-        let header = try pngHeader(data)
+        let header = try pngHeader(data, allowCalibratedRGB: allowCalibratedRGB)
         let imageSource = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary))
         guard CGImageSourceGetCount(imageSource) == 1,
               CGImageSourceGetType(imageSource) as String? == expectedFormat,
@@ -1471,9 +1742,28 @@ final class MacPhotosHostUITests: XCTestCase {
         context.draw(image, in: CGRect(x: 0, y: 0, width: 1200, height: 800))
         let rgba = Data(bytes: try XCTUnwrap(context.data), count: 1200 * 800 * 4)
         guard stride(from: 3, to: rgba.count, by: 4).allSatisfy({ rgba[$0] == 255 }) else { throw block("Export alpha mismatch; opaque source required") }
+        if let calibrated = header.calibrated {
+            var profile = calibrated
+            profile["raw_sha256"] = digest(data); profile["raw_bytes"] = data.count
+            profile["imageio_color_space_model"] = "rgb"
+            profile["imageio_color_space_name"] = boundedProfileName((image.colorSpace?.name).map { $0 as String })
+            profile["imageio_profile_name"] = boundedProfileName(properties[kCGImagePropertyProfileName] as? String)
+            let icc = image.colorSpace.flatMap { $0.copyICCData() }.map { $0 as Data }
+            profile["imageio_icc_sha256"] = icc.map { digest($0) } ?? "unavailable"
+            let canonical = NSMutableData()
+            let encoder = try XCTUnwrap(CGImageDestinationCreateWithData(canonical, UTType.png.identifier as CFString, 1, nil))
+            CGImageDestinationAddImage(encoder, try XCTUnwrap(context.makeImage()),
+                [kCGImagePropertyPNGDictionary: [kCGImagePropertyPNGInterlaceType: 0]] as CFDictionary)
+            guard CGImageDestinationFinalize(encoder), canonical.length > 0, canonical.length <= 131_072 else {
+                throw block("Canonical reverted PNG exceeded its fixed evidence allowance")
+            }
+            profile["canonical_sha256"] = digest(canonical as Data); profile["canonical_bytes"] = canonical.length
+            profile["canonical_rgba_sha256"] = digest(rgba); profile["canonical_space"] = "sRGB"
+            retainRevertedProfileCanonical(canonical as Data, profile: profile)
+        }
         let metadata: [String: Any] = ["bytes": data.count, "sha256": digest(data), "rgba_sha256": digest(rgba),
             "format": expectedFormat, "width": 1200, "height": 800, "bit_depth": 8,
-            "color_type": header.colorType, "interlace": 0, "orientation": 1, "profile": "sRGB",
+            "color_type": header.colorType, "interlace": 0, "orientation": 1, "profile": header.calibrated == nil ? "sRGB" : "canonical-sRGB",
             "profile_encoding": header.profileEncoding, "alpha": "opaque"]
         return LifecycleRaster(bytes: data, rgba: rgba, metadata: metadata)
     }

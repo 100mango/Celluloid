@@ -10,6 +10,9 @@ import CelluloidRendering
 #if DEBUG
     private let selfIdentity = MacPhotoSelfIdentity()
 #endif
+#if DEBUG && CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE
+    private let boundaryProbe = MacPhotoBoundaryProbe()
+#endif
     private var input: PHContentEditingInput?
     private var generation = UUID()
     private var active = false
@@ -23,7 +26,9 @@ import CelluloidRendering
     override func loadView() {
         // The principal object is an NSViewController; the hosted SwiftUI root has
         // real child containment and a resizable, Photos-sized content view.
-#if DEBUG
+#if DEBUG && CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE
+        let host = NSHostingController(rootView: MacPhotoEditorView(session: session, selfIdentity: selfIdentity, boundaryProbe: boundaryProbe))
+#elseif DEBUG
         let host = NSHostingController(rootView: MacPhotoEditorView(session: session, selfIdentity: selfIdentity))
 #else
         let host = NSHostingController(rootView: MacPhotoEditorView(session: session))
@@ -51,6 +56,9 @@ import CelluloidRendering
     }
     func finishContentEditing(completionHandler: @escaping (PHContentEditingOutput?) -> Void) {
         guard active else { return }
+#if DEBUG && CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE
+        let boundaryArm = boundaryProbe.consume(identity: selfIdentity.readyValue(for: session))
+#endif
 #if DEBUG
         selfIdentity.invalidate()
 #endif
@@ -75,6 +83,10 @@ import CelluloidRendering
             let jpeg = try await MacPhotoRenderQueue.shared.export(snapshot.adjustment, source: snapshot.source, bytes: snapshot.bytes)
             try Task.checkCancellation()
             guard let self, active, generation == token, self.input === input else { throw CancellationError() }
+#if DEBUG && CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE
+            // Diagnostic IO precedes the writer. Failure cannot alter delivery.
+            boundaryArm?.captureIntended(snapshot: snapshot, jpeg: jpeg, orientation: input.fullSizeImageOrientation)
+#endif
             let output = PHContentEditingOutput(contentEditingInput: input)
             output.adjustmentData = PHAdjustmentData(formatIdentifier: MacPhotoAdjustment.identifier,
                 formatVersion: MacPhotoAdjustment.version, data: adjustmentBytes)
@@ -103,6 +115,9 @@ import CelluloidRendering
     }
     var shouldShowCancelConfirmation: Bool { session.changed }
     func cancelContentEditing() {
+#if DEBUG && CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE
+        boundaryProbe.cancel()
+#endif
 #if DEBUG
         selfIdentity.invalidate()
 #endif

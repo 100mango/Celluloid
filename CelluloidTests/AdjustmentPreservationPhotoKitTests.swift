@@ -91,6 +91,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         XCTAssertFalse(editor.canHandle(foreign)); XCTAssertFalse(editor.canHandle(future))
         XCTAssertNil(editor.input); XCTAssertFalse(editor.isAdjustmentReadOnly)
         editor.startContentEditing(with: protectedInput, placeholderImage: current)
+        waitForSwiftUIEditor(editor)
         editor.view.layoutIfNeeded()
         XCTAssertTrue(editor.isAdjustmentReadOnly)
         XCTAssertFalse(editor.shouldShowCancelConfirmation, "Actual protected input has no unsaved edits to discard")
@@ -103,6 +104,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         editor.finishContentEditing { _ in canceledBeforeAnyFinish.fulfill() }
         wait(for: [canceledBeforeAnyFinish], timeout: 0.1)
         editor.startContentEditing(with: protectedInput, placeholderImage: current)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.isAdjustmentReadOnly)
         XCTAssertFalse(editor.shouldShowCancelConfirmation, "Actual protected input has no unsaved edits to discard")
         let noChange = expectation(description: "Protected Photos session returns one documented no-change output")
@@ -124,6 +126,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         let fresh = try input(freshAsset, handles: { _ in true })
         XCTAssertNil(fresh.adjustmentData)
         editor.startContentEditing(with: fresh, placeholderImage: freshPixels)
+        waitForSwiftUIEditor(editor)
         XCTAssertFalse(editor.isAdjustmentReadOnly)
         XCTAssertTrue(editor.shouldShowCancelConfirmation, "Editable bound sessions remain conservative")
         XCTAssertNil(editor.preservedAdjustmentData)
@@ -133,6 +136,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         try finishNormally(editor, expectedImage: freshPixels)
         XCTAssertEqual(try integrity(freshAsset, stage: "fresh-after-normal-export"), pristineFresh)
         editor.startContentEditing(with: protectedInput, placeholderImage: current)
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.isAdjustmentReadOnly, "Reverse ordering is bound to the actual input, not an earlier negotiation")
         XCTAssertEqual(editor.preservedAdjustmentData?.data, opaque)
         XCTAssertEqual(try integrity(protectedAsset, stage: "opaque-after-replacement-session"), before)
@@ -146,6 +150,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         let validInput = try input(protectedAsset, handles: { AdjustmentData.supportIdentifier($0.formatIdentifier, version: $0.formatVersion) })
         XCTAssertEqual(validInput.adjustmentData?.data, valid.data)
         editor.startContentEditing(with: validInput, placeholderImage: expectedOutput)
+        waitForSwiftUIEditor(editor)
         editor.view.layoutIfNeeded()
         XCTAssertFalse(editor.isAdjustmentReadOnly)
         XCTAssertTrue(editor.shouldShowCancelConfirmation, "Editable bound sessions remain conservative")
@@ -165,6 +170,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         let canvasInput = try input(protectedAsset, handles: { _ in true })
         let canvasState = try AdjustmentData.decode(canvasBytes)
         editor.startContentEditing(with: canvasInput, placeholderImage: expectedOutput)
+        waitForSwiftUIEditor(editor)
         editor.view.layoutIfNeeded()
         try assertLiteralLegacy(canvasState, canvas: expectedCanvas)
         try assertLiteralLegacy(editor.adjustmentData, canvas: expectedCanvas)
@@ -185,6 +191,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         let foreignCurrent = try currentImage(protectedAsset)
         XCTAssertEqual(try rgba(foreignCurrent), try rgba(expectedRenderedJPEG))
         editor.startContentEditing(with: foreignInput, placeholderImage: foreignCurrent)
+        waitForSwiftUIEditor(editor)
         XCTAssertFalse(editor.isAdjustmentReadOnly)
         XCTAssertTrue(editor.shouldShowCancelConfirmation, "Editable bound sessions remain conservative")
         XCTAssertEqual(try rgba(XCTUnwrap(editor.outputImage)), try rgba(foreignCurrent), "Foreign editing uses its current version, never the original")
@@ -193,6 +200,7 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         let unexpectedlyHandledForeign = try input(protectedAsset, handles: { _ in true })
         XCTAssertEqual(unexpectedlyHandledForeign.adjustmentData?.formatIdentifier, foreign.formatIdentifier)
         editor.startContentEditing(with: unexpectedlyHandledForeign, placeholderImage: try currentImage(protectedAsset))
+        waitForSwiftUIEditor(editor)
         XCTAssertTrue(editor.isAdjustmentReadOnly)
         XCTAssertFalse(editor.shouldShowCancelConfirmation, "Actual protected input has no unsaved edits to discard")
         XCTAssertEqual(editor.preservedAdjustmentData?.data, opaque)
@@ -201,6 +209,66 @@ final class AdjustmentPreservationPhotoKitTests: XCTestCase {
         print("BOUND_INPUT_PRESERVATION_ASSERTIONS_COMPLETED use_terminal_XCTest_result_for_pass_status")
         // These two explicitly created resources remain only in this disposable
         // simulator. Never delete or edit pre-existing library assets here.
+    }
+
+    func testDoneWhileRecipeLoadsPreservesOpaqueStateAndNewestCompletion() throws {
+        try requireAuthorizedSyntheticProbe()
+        let original = fixture(left: .red, right: .blue)
+        let rendered = fixture(left: .orange, right: .purple)
+        let asset = try createOwnedAsset(original, label: "swiftui-loading-finish")
+        let initial = try input(asset, handles: { _ in true })
+        let opaque = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier,
+            formatVersion: AdjustmentData.formatVersion, data: Data([0, 1, 2, 3]))
+        try install(opaque, image: rendered, asset: asset, input: initial)
+        let bound = try input(asset, handles: { _ in true })
+        let before = try integrity(asset, stage: "loading-finish-before")
+        let editor = PhotoEditingViewController(); editor.loadViewIfNeeded()
+        editor.view.frame = CGRect(x: 0, y: 0, width: 375, height: 667)
+        editor.startContentEditing(with: bound, placeholderImage: rendered)
+        XCTAssertEqual(editor.session.phase, .loading)
+        let opaqueDone = expectation(description: "Done waits for opaque recipe and returns no-change")
+        editor.finishContentEditing { output in
+            XCTAssertNotNil(output)
+            XCTAssertNil(output?.adjustmentData)
+            if let output = output { XCTAssertFalse(FileManager.default.fileExists(atPath: output.renderedContentURL.path)) }
+            opaqueDone.fulfill()
+        }
+        wait(for: [opaqueDone], timeout: 10)
+        XCTAssertEqual(try integrity(asset, stage: "loading-finish-after-no-change"), before)
+
+        editor.startContentEditing(with: bound, placeholderImage: rendered)
+        let older = expectation(description: "Earlier loading finish stays silent"); older.isInverted = true
+        editor.finishContentEditing { _ in older.fulfill() }
+        let newest = expectation(description: "Latest loading finish completes once"); newest.assertForOverFulfill = true
+        editor.finishContentEditing { output in XCTAssertNotNil(output); XCTAssertNil(output?.adjustmentData); newest.fulfill() }
+        wait(for: [newest], timeout: 10)
+        wait(for: [older], timeout: 0.2)
+
+        editor.startContentEditing(with: bound, placeholderImage: rendered)
+        let cancelled = expectation(description: "Cancellation while decoding suppresses Photos callback"); cancelled.isInverted = true
+        editor.finishContentEditing { _ in cancelled.fulfill() }
+        editor.cancelContentEditing()
+        wait(for: [cancelled], timeout: 0.2)
+
+        var recipe = AdjustmentData(); recipe.filterType = .Sepia
+        recipe.referenceCanvasSize = expectedCanvas
+        let valid = PHAdjustmentData(formatIdentifier: AdjustmentData.formatIdentifier,
+            formatVersion: AdjustmentData.formatVersion, data: try recipe.encode())
+        try install(valid, image: rendered, asset: asset, input: bound)
+        let validInput = try input(asset, handles: { _ in true })
+        let validBefore = try integrity(asset, stage: "loading-valid-before")
+        editor.startContentEditing(with: validInput, placeholderImage: rendered)
+        XCTAssertEqual(editor.session.phase, .loading)
+        let validDone = expectation(description: "Done waits for valid recipe then exports that recipe")
+        editor.finishContentEditing { output in
+            XCTAssertNotNil(output?.adjustmentData)
+            if let bytes = output?.adjustmentData?.data {
+                XCTAssertEqual(try? AdjustmentData.decode(bytes).filterType, .Sepia)
+            }
+            validDone.fulfill()
+        }
+        wait(for: [validDone], timeout: 10)
+        XCTAssertEqual(try integrity(asset, stage: "loading-valid-after-export"), validBefore)
     }
 
     func testActualPhotosOutputDestinationsIsolateLateWrites() throws {

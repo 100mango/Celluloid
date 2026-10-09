@@ -1,0 +1,52 @@
+# Exact-source, unsigned migration validation. This branch is activated only after root review.
+name: Celluloid SwiftUI first unsigned slice
+on:
+  push:
+    branches: [swiftui-first-native]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-swiftui-first-native
+  cancel-in-progress: false
+jobs:
+  first-slice:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      EXPECTED_COMMIT: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Verify exact source and unchanged generated memberships
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 100mango/Celluloid
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REF" = refs/heads/swiftui-first-native
+          [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          test "$GITHUB_SHA" = "$EXPECTED_COMMIT"
+          git diff --exit-code HEAD --
+          mkdir -p build
+          git rev-parse HEAD 'HEAD^{tree}' > build/swiftui-source.txt
+      - name: Compile and test the first complete iOS slice
+        run: /bin/bash Scripts/verify_swiftui_native.sh
+      - name: Verify source remained unchanged
+        if: always()
+        run: git diff --exit-code HEAD --
+      - name: Retain native proof without signing material
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: celluloid-swiftui-first-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/swiftui-source.txt
+            build/swiftui-topology.json
+            build/swiftui-xcode-version.txt
+            build/swiftui-acceptance/
+          retention-days: 1
+          if-no-files-found: error

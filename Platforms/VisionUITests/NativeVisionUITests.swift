@@ -148,6 +148,143 @@ extension NativeVisionUITests {
             return false // Report every real issue; this callback suppresses nothing.
         } }
     }
+    func testSeededDocumentSequentialTextUndoRedoAndBrowserReopen() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication(); defer { app.terminate() }
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        try openRemainingDocument(in: app)
+        XCTAssertTrue(app.staticTexts["120 × 80 px"].waitForExistence(timeout: 20))
+        app.buttons["editor.add-bubble"].tap()
+        let bubble = app.buttons["asset.say1"]
+        XCTAssertTrue(bubble.waitForExistence(timeout: 10)); XCTAssertTrue(bubble.isHittable); bubble.tap()
+        // Observe the real transition implicated by 9ff before the first tap.
+        // Do not force focus, retry the tap or inject a final-text fixture.
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: bubble)], timeout: 10), .completed)
+        print("VISION_REMAINING_PALETTE_DISMISSED real bubble insertion")
+        let fields = app.textViews.matching(identifier: "editor.bubble-text")
+        let text = fields.firstMatch
+        XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertEqual(fields.count, 1)
+        XCTAssertEqual(text.value as? String, "Hello"); XCTAssertTrue(text.isHittable)
+        // The text view owns a local draft. Verify the independent recipe-backed
+        // layer button at each boundary; a correct draft alone is not a model edit.
+        let layers = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'layer.'"))
+        XCTAssertEqual(layers.count, 1)
+        let layerIdentifier = layers.firstMatch.identifier
+        requireRemainingModelText(in: app, identifier: layerIdentifier, expected: "Hello", stage: "initial")
+        print("VISION_REMAINING_PRE_TAP " + String(text.debugDescription.prefix(4000)))
+        text.tap() // Exactly one ordinary tap; no scripted focus or text injection.
+        text.typeText("A"); let first = String(describing: text.value ?? "")
+        text.typeText("B"); let second = String(describing: text.value ?? "")
+        print("VISION_REMAINING_SEQUENTIAL first=\(first) second=\(second)")
+        XCTAssertTrue(first.contains("A") && second.contains("AB"), "Consecutive keys must retain focus without retapping")
+        requireRemainingModelText(in: app, identifier: layerIdentifier, expected: second, stage: "sequential")
+        text.press(forDuration: 1.1)
+        let selectMenu = app.menuItems["Select All"].firstMatch
+        let selectButton = app.buttons["Select All"].firstMatch
+        if selectMenu.waitForExistence(timeout: 3) { selectMenu.tap() }
+        else { XCTAssertTrue(selectButton.waitForExistence(timeout: 3)); selectButton.tap() }
+        text.typeText("Vision 世界")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "value == %@", "Vision 世界"), evaluatedWith: text)], timeout: 10), .completed)
+        requireRemainingModelText(in: app, identifier: layerIdentifier, expected: "Vision 世界", stage: "replacement")
+        let undo = app.buttons["editor.undo"], redo = app.buttons["editor.redo"]
+        XCTAssertTrue(undo.isEnabled); undo.tap()
+        XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertNotEqual(text.value as? String, "Vision 世界")
+        let undoneText = try XCTUnwrap(text.value as? String)
+        requireRemainingModelText(in: app, identifier: layerIdentifier, expected: undoneText, stage: "undo")
+        XCTAssertTrue(redo.isEnabled); redo.tap(); XCTAssertEqual(text.value as? String, "Vision 世界")
+        requireRemainingModelText(in: app, identifier: layerIdentifier, expected: "Vision 世界", stage: "redo")
+        print("VISION_REMAINING_UNDO_REDO exact multilingual replacement restored")
+        let documents = app.navigationBars.buttons["Documents"].firstMatch
+        XCTAssertTrue(documents.exists); documents.tap()
+        // The system Documents action exposes the browser. Its window layout
+        // is evidence, not a save/close contract. Do not require a placeholder
+        // from another window or terminate the process as a save barrier.
+        print("VISION_REMAINING_BROWSER_TRANSITION editorExposed=\(app.buttons["editor.import-files"].exists) emptyShellObserved=\(app.staticTexts["No Document"].exists); neither observation proves close or completed save")
+        recordRemainingBrowser(app, stage: "after-documents-before-browser-reopen")
+        // Reselect through the already observed real Files route. This may use
+        // cached document state; independent final disk readback remains required.
+        try openRemainingDocument(in: app)
+        XCTAssertTrue(app.staticTexts["120 × 80 px"].waitForExistence(timeout: 20))
+        requireRemainingModelText(in: app, identifier: layerIdentifier, expected: "Vision 世界", stage: "reopen")
+        let reopened = app.buttons.matching(identifier: layerIdentifier).firstMatch
+        XCTAssertTrue(reopened.waitForExistence(timeout: 10)); reopened.tap()
+        XCTAssertTrue(text.waitForExistence(timeout: 10)); XCTAssertEqual(text.value as? String, "Vision 世界")
+        print("VISION_REMAINING_BROWSER_REOPEN actual file reselection retained source dimensions and exact text; not a close/save-completion receipt")
+    }
+    private func requireRemainingModelText(in app: XCUIApplication, identifier: String, expected: String, stage: String) {
+        XCTAssertTrue(identifier.hasPrefix("layer."))
+        guard !expected.isEmpty else {
+            XCTFail("DIAGNOSTIC BOUNDARY: An empty draft uses the bubble-title fallback label, so this label cannot prove the raw model text at \(stage)")
+            return
+        }
+        let layer = app.buttons.matching(identifier: identifier).firstMatch
+        let label = "Select layer: " + String(expected.prefix(80))
+        let matched = XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "exists == true AND label == %@", label), evaluatedWith: layer)], timeout: 10) == .completed
+        print("VISION_REMAINING_MODEL stage=\(stage) identifier=\(identifier) expected=\(label) matched=\(matched)")
+        if !matched { print("VISION_REMAINING_MODEL_FAILURE stage=\(stage) actual=" + (layer.exists ? layer.label : "missing layer")) }
+        XCTAssertTrue(matched, "The recipe-backed layer must match the text draft at \(stage)")
+    }
+    private func recordRemainingBrowser(_ app: XCUIApplication, stage: String) {
+        // Scan the whole snapshot first. The former prefix cut off the file region.
+        let lines = app.debugDescription.components(separatedBy: "\n")
+        var sidebar: [String] = [], content: [String] = []
+        var sidebarDepth: Int?
+        for line in lines {
+            let depth = line.prefix(while: { $0 == " " }).count
+            if let rootDepth = sidebarDepth, depth <= rootDepth { sidebarDepth = nil }
+            if line.contains("DOC.sidebar.") || line.contains("DOCSidebarView") { sidebarDepth = depth }
+            if sidebarDepth != nil { sidebar.append(line) } else { content.append(line) }
+        }
+        // Keep every node type outside the observed sidebar subtrees, including
+        // Other containers. No semantic-type filter may discard a file node.
+        for (name, values, cap) in [("sidebar", sidebar, 49152), ("content-and-shell", content, 98304)] {
+            let text = values.joined(separator: "\n")
+            if text.utf8.count <= cap {
+                print("VISION_REMAINING_BROWSER_AX stage=\(stage) region=\(name) complete=true bytes=\(text.utf8.count)\n" + text)
+            } else {
+                let bytes = Array(text.utf8)
+                let start = String(decoding: bytes.prefix(cap / 2), as: UTF8.self)
+                let end = String(decoding: bytes.suffix(cap / 2), as: UTF8.self)
+                print("VISION_REMAINING_BROWSER_AX stage=\(stage) region=\(name) complete=false fullBytes=\(bytes.count)\n" + start + "\n[bounded middle omission]\n" + end)
+                XCTFail("Document-browser AX region exceeded its fixed evidence cap")
+            }
+        }
+    }
+    private func openRemainingDocument(in app: XCUIApplication) throws {
+        let documents = app.navigationBars.buttons["Documents"].firstMatch
+        if documents.exists && documents.isHittable { documents.tap() }
+        recordRemainingBrowser(app, stage: "initial")
+        // Normalize to the observed local root on both launch and real reopen.
+        let locations = app.cells.matching(identifier: "DOC.sidebar.item.On My Apple Vision Pro")
+        let local = locations.firstMatch
+        let localReady = local.waitForExistence(timeout: 10)
+        if !localReady || locations.count != 1 || !local.isHittable { recordRemainingBrowser(app, stage: "local-location-unavailable") }
+        XCTAssertTrue(localReady); XCTAssertEqual(locations.count, 1); XCTAssertTrue(local.isHittable); local.tap()
+        // Exact Cell and accessibility identifier observed in run37648299628.
+        // A direct readiness query replaces the slow multi-query block predicate.
+        let folders = app.cells.matching(identifier: "Celluloid, Container")
+        let folder = folders.firstMatch
+        let folderReady = folder.waitForExistence(timeout: 20)
+        let titleMatches = folderReady && (folder.label == "Celluloid, 1 item" || folder.staticTexts["Celluloid"].exists)
+        if !folderReady || folders.count != 1 || !titleMatches || !folder.isHittable { recordRemainingBrowser(app, stage: "owned-app-folder-unavailable") }
+        XCTAssertTrue(folderReady); XCTAssertEqual(folders.count, 1); XCTAssertTrue(titleMatches)
+        XCTAssertTrue(folder.isEnabled); XCTAssertTrue(folder.isHittable)
+        print("VISION_REMAINING_BROWSER_ITEM stage=owned-app-folder identifier=\(folder.identifier) label=\(folder.label) frame=\(folder.frame)")
+        folder.tap()
+        // Exact Cell identifier and title observed in run37654222192. The
+        // mutable timestamp/byte-count label is diagnostic only, never a key.
+        let files = app.cells.matching(identifier: "VisionRemaining, celluloid")
+        let document = files.firstMatch
+        let documentReady = document.waitForExistence(timeout: 20)
+        let documentTitleMatches = documentReady && document.staticTexts["VisionRemaining"].exists
+        if !documentReady || files.count != 1 || !documentTitleMatches || !document.isHittable { recordRemainingBrowser(app, stage: "exact-seed-document") }
+        XCTAssertTrue(documentReady); XCTAssertEqual(files.count, 1); XCTAssertTrue(documentTitleMatches)
+        XCTAssertTrue(document.isEnabled); XCTAssertTrue(document.isHittable)
+        print("VISION_REMAINING_BROWSER_ITEM stage=exact-seed-document identifier=\(document.identifier) label=\(document.label) frame=\(document.frame)")
+        document.tap()
+        XCTAssertTrue(app.buttons["editor.import-files"].waitForExistence(timeout: 30))
+    }
     func testSimplifiedChineseDocumentPrivacyAndLargeText() throws {
         continueAfterFailure = false
         let app = XCUIApplication(); defer { app.terminate() }
@@ -176,7 +313,9 @@ extension NativeVisionUITests {
             let done = app.buttons["完成"].firstMatch
             XCTAssertTrue(done.waitForExistence(timeout: 10)); XCTAssertTrue(done.isHittable)
             XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "本地数据可通过相应应用或系统删除，权限可在系统设置中撤回。")).firstMatch.exists)
-            capture(app, name: large ? "vision-zh-Hans-large-privacy" : "vision-zh-Hans-privacy")
+            // Keep one ordinary screenshot; the largest-text pass establishes
+            // the actual policy/Done path without a second optional capture.
+            if !large { capture(app, name: "vision-zh-Hans-privacy") }
             if #available(visionOS 27.0, *) {
                 let previous = continueAfterFailure; continueAfterFailure = true
                 defer { continueAfterFailure = previous }

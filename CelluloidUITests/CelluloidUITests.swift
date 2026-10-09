@@ -114,10 +114,40 @@ final class CelluloidUITests: XCTestCase {
         print("ACCESSIBILITY_AUDIT_END screen=\(screen)")
     }
 
+    /// A cold first open and two repeat opens, with no Photos authorization or
+    /// seeded-image prerequisite. Timing is observed UI automation latency,
+    /// not a device frame-time or Instruments measurement.
+    func testBeautifyOpensSystemPickerAndCancelsRepeatedly() {
+        launch(diagnostics: false)
+        for iteration in 1...3 {
+            let edit = app.buttons["edit-photo"]
+            XCTAssertTrue(edit.isHittable)
+            XCTAssertFalse(app.buttons["Cancel"].exists)
+            let started = ProcessInfo.processInfo.systemUptime
+            edit.tap()
+            let cancel = app.buttons["Cancel"]
+            let usablePicker = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                cancel.exists && cancel.isEnabled && cancel.isHittable
+            }, object: nil)
+            let outcome = XCTWaiter.wait(for: [usablePicker], timeout: 3)
+            let elapsed = ProcessInfo.processInfo.systemUptime - started
+            print("SWIFTUI_PICKER_ENTRY iteration=\(iteration) elapsed_seconds=\(elapsed) budget_seconds=3 result=\(outcome.rawValue)")
+            XCTAssertEqual(outcome, .completed, "The real PHPicker Cancel action must become usable")
+            XCTAssertLessThanOrEqual(elapsed, 3, "Home-to-system-picker observed latency budget")
+            XCTAssertFalse(app.buttons["photos-allow-originals"].exists)
+            XCTAssertFalse(app.buttons["editor-done"].exists)
+            XCTAssertFalse(app.alerts.firstMatch.exists, "Opening the system picker must not request PhotoKit access")
+            cancel.tap()
+            XCTAssertTrue(edit.waitForExistence(timeout: 5))
+            XCTAssertTrue(edit.isHittable)
+        }
+    }
+
     func testAccessibilityHomeAndDeniedPicker() {
         launch(["--photos-denied"], diagnostics: false)
         audit("home")
         app.buttons["edit-photo"].tap()
+        selectSystemPhotos(app, indices: [0])
         XCTAssertTrue(app.staticTexts["photos-state"].waitForExistence(timeout: 5))
         waitForStableLayout(["photos-state", "photos-settings"])
         audit("denied-picker")
@@ -128,13 +158,10 @@ final class CelluloidUITests: XCTestCase {
     func testAccessibilityGrantedPickerEditorAndSaved() {
         launch(diagnostics: false, photosAccess: true)
         app.buttons["edit-photo"].tap()
-        let photo = app.descendants(matching: .any)["photo-0"]
-        XCTAssertTrue(waitForFullPhotoAccessPicker(app))
-        assertFullPhotoAccessPicker(app)
-        waitForStableLayout(["photo-0", "picker-done"])
-        audit("granted-picker")
-        photo.tap()
-        app.buttons["picker-done"].tap()
+        XCTAssertTrue(waitForSystemPhotoPicker(app))
+        audit("system-picker")
+        selectSystemPhotos(app, indices: [0])
+        allowOriginalEditingIfRequested(app)
         let done = app.buttons["editor-done"]
         XCTAssertTrue(done.waitForExistence(timeout: 15))
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: done)
@@ -220,12 +247,19 @@ final class CelluloidUITests: XCTestCase {
                     let collage = app.buttons["make-collage"]
                     let footer = app.buttons["privacy-policy"]
                     rotate(orientation, observing: ["edit-photo", "make-collage", "privacy-policy"])
-                    XCTAssertTrue(edit.isHittable && collage.isHittable && footer.isHittable)
+                    // SwiftUI preserves Dynamic Type with scrolling on the
+                    // smallest/landscape viewports rather than clipping titles.
+                    XCTAssertTrue(edit.exists && collage.exists && footer.exists)
+                    if !edit.isHittable { app.swipeDown() }
+                    XCTAssertTrue(edit.isHittable)
                     XCTAssertGreaterThanOrEqual(edit.frame.height, 120)
                     XCTAssertGreaterThanOrEqual(collage.frame.height, 120)
                     XCTAssertFalse(edit.frame.intersects(collage.frame), "Primary choices must not collapse together")
                     XCTAssertGreaterThanOrEqual(footer.frame.minY + 1, max(edit.frame.maxY, collage.frame.maxY))
                     XCTAssertLessThan(footer.frame.height, app.frame.height * 0.40)
+                    if !footer.isHittable { app.swipeUp() }
+                    XCTAssertTrue(footer.isHittable)
+                    app.swipeDown()
                 }
                 app.terminate()
             }
@@ -274,10 +308,11 @@ final class CelluloidUITests: XCTestCase {
         launch(["--photos-denied"])
         for _ in 0..<2 {
             app.buttons["edit-photo"].tap()
+            selectSystemPhotos(app, indices: [0])
             let state = app.staticTexts["photos-state"]
             XCTAssertTrue(state.waitForExistence(timeout: 5))
-            XCTAssertTrue(state.label.contains("Settings"))
-            XCTAssertFalse(app.buttons["picker-done"].isEnabled)
+            XCTAssertTrue(app.buttons["photos-settings"].isHittable)
+            XCTAssertFalse(app.buttons["editor-done"].exists)
             app.buttons["Cancel"].tap()
             XCTAssertTrue(app.buttons["edit-photo"].waitForExistence(timeout: 5))
         }
@@ -285,8 +320,9 @@ final class CelluloidUITests: XCTestCase {
     func testLimitedEmptyPhotosHasManagementAndAdaptiveLayout() {
         launch(["--photos-limited-empty"])
         app.buttons["make-collage"].tap()
+        selectSystemPhotos(app, indices: [0])
         XCTAssertTrue(app.buttons["manage-photos"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["photos-state"].label.contains("No photos"))
+        XCTAssertTrue(app.staticTexts["photos-state"].label.contains("unavailable"))
         let cancel = app.buttons["Cancel"]
         let manage = app.buttons["manage-photos"]
         rotate(.landscapeLeft, observing: ["Cancel", "manage-photos"])
@@ -303,10 +339,8 @@ final class CelluloidUITests: XCTestCase {
     func testSeededPhotoEditingSaveAndReopen() {
         launch(photosAccess: true)
         app.buttons["edit-photo"].tap()
-        XCTAssertTrue(waitForFullPhotoAccessPicker(app), "The granted flow must finish the exact Photos consent prompt and expose fixtures")
-        assertFullPhotoAccessPicker(app)
-        app.descendants(matching: .any)["photo-0"].tap()
-        app.buttons["picker-done"].tap()
+        selectSystemPhotos(app, indices: [0])
+        allowOriginalEditingIfRequested(app)
         let done = app.buttons["editor-done"]
         XCTAssertTrue(done.waitForExistence(timeout: 15))
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true AND hittable == true"), object: done)
@@ -360,9 +394,8 @@ final class CelluloidUITests: XCTestCase {
         }
         rotate(.portrait, observing: ["edit-photo", "make-collage"])
         app.buttons["edit-photo"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["photo-0"].waitForExistence(timeout: 10))
-        app.descendants(matching: .any)["photo-0"].tap()
-        app.buttons["picker-done"].tap()
+        selectSystemPhotos(app, indices: [0])
+        allowOriginalEditingIfRequested(app)
         XCTAssertTrue(app.buttons["editor-done"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["tool-bubble"].isHittable)
         app.buttons["Cancel"].tap()
@@ -371,12 +404,8 @@ final class CelluloidUITests: XCTestCase {
     func testTwoPhotoCollageZoomRotateAndSave() {
         launch(photosAccess: true)
         app.buttons["make-collage"].tap()
-        XCTAssertTrue(waitForFullPhotoAccessPicker(app))
-        XCTAssertTrue(app.descendants(matching: .any)["photo-1"].waitForExistence(timeout: 5))
-        assertFullPhotoAccessPicker(app)
-        app.descendants(matching: .any)["photo-0"].tap()
-        app.descendants(matching: .any)["photo-1"].tap()
-        app.buttons["picker-done"].tap()
+        selectSystemPhotos(app, indices: [0, 1])
+        allowOriginalEditingIfRequested(app)
         let done = app.buttons["collage-done"]
         XCTAssertTrue(done.waitForExistence(timeout: 10))
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: done)
@@ -427,36 +456,64 @@ final class CelluloidUITests: XCTestCase {
 // Only expected full-access flows use this monitor. The library contains CI
 // fixtures; denied/revoked/limited cases intentionally never install this handler.
 extension XCTestCase {
-    func waitForFullPhotoAccessPicker(_ app: XCUIApplication) -> Bool {
-        let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let title = "Allow “Celluloid” to access your photo library?"
-        let deadline = Date().addingTimeInterval(15)
-        repeat {
-            // Queries alone do not invoke an interruption monitor. Resolve only
-            // this expected Photos prompt directly, before waiting for assets.
-            let alerts = [system.alerts[title], app.alerts[title]]
-            if let alert = alerts.first(where: { $0.exists }) {
-                let actions = alert.buttons.matching(NSPredicate(format: "label IN %@",
-                    ["Allow Full Access", "Allow Access to All Photos"]))
-                if actions.count == 1, actions.element.isEnabled, actions.element.isHittable {
-                    print("EXPECTED_PHOTOS_DIRECT_AUTHORIZATION_ACTION " + actions.element.label)
-                    actions.element.tap()
-                    let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: alert)
-                    guard XCTWaiter.wait(for: [dismissed], timeout: 10) == .completed else { return false }
-                }
-            }
-            if app.descendants(matching: .any)["photo-0"].exists { return true }
-            Thread.sleep(forTimeInterval: 0.25)
-        } while Date() < deadline
-        print("EXPECTED_PHOTOS_PREREQUISITE_UNRESOLVED " + String(system.debugDescription.prefix(6000)))
-        return false
+    /// The disposable CI simulator contains only synthetic images dated today.
+    /// Match public user-visible content, never Photos' private identifiers.
+    func systemPhotoCandidates(_ app: XCUIApplication) -> [XCUIElement] {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "MMMM d"
+        let date = formatter.string(from: Date())
+        formatter.dateFormat = "MMMM dd"
+        let paddedDate = formatter.string(from: Date())
+        return app.images.matching(NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@ OR label CONTAINS[c] %@", date, paddedDate, "Today"))
+            .allElementsBoundByIndex.filter { $0.isHittable && $0.frame.width >= 40 && $0.frame.height >= 40 }
     }
 
-    func assertFullPhotoAccessPicker(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertTrue(app.descendants(matching: .any)["photo-0"].exists, "Granted flow requires actual assets", file: file, line: line)
-        XCTAssertFalse(app.buttons["manage-photos"].exists, "The app exposes this management control for limited access only", file: file, line: line)
-        XCTAssertFalse(app.buttons["photos-settings"].exists, "Granted flow cannot remain denied", file: file, line: line)
-        print("FULL_ACCESS_PICKER_POSTCONDITION assets_visible=true limited_management=false denied_recovery=false")
+    func waitForSystemPhotoPicker(_ app: XCUIApplication) -> Bool {
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !self.systemPhotoCandidates(app).isEmpty
+        }, object: nil)
+        return XCTWaiter.wait(for: [ready], timeout: 15) == .completed
+    }
+
+    @discardableResult
+    func selectSystemPhotos(_ app: XCUIApplication, indices: [Int], file: StaticString = #filePath, line: UInt = #line) -> [String] {
+        XCTAssertTrue(waitForSystemPhotoPicker(app), "The real PHPicker must expose public synthetic-photo labels", file: file, line: line)
+        let candidates = systemPhotoCandidates(app)
+        guard let maximum = indices.max(), maximum < candidates.count else {
+            XCTFail("Missing synthetic picker fixtures: " + String(app.debugDescription.prefix(6000)), file: file, line: line)
+            return []
+        }
+        let selected = indices.map { candidates[$0] }
+        let labels = selected.map(\.label)
+        for photo in selected { photo.tap() }
+        // Single selection may finish immediately; multiple selection has a
+        // visible Add/Done confirmation. Only those public actions are allowed.
+        let transitioned = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            if app.buttons["editor-done"].exists || app.buttons["collage-done"].exists || app.staticTexts["photos-state"].exists { return true }
+            let done = app.navigationBars.buttons.matching(NSPredicate(format: "label == 'Done' OR label == 'Add' OR label BEGINSWITH 'Add ('"))
+            if done.count == 1, done.element.isEnabled, done.element.isHittable { done.element.tap(); return true }
+            return false
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [transitioned], timeout: 10), .completed, file: file, line: line)
+        return labels
+    }
+
+    func allowOriginalEditingIfRequested(_ app: XCUIApplication) {
+        let allow = app.buttons["photos-allow-originals"]
+        if allow.waitForExistence(timeout: 3) { allow.tap() }
+        let system = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let title = "Allow “Celluloid” to access your photo library?"
+        let completed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            if app.buttons["editor-done"].exists || app.buttons["collage-done"].exists { return true }
+            if let alert = [system.alerts[title], app.alerts[title]].first(where: { $0.exists }) {
+                let actions = alert.buttons.matching(NSPredicate(format: "label IN %@", ["Allow Full Access", "Allow Access to All Photos"]))
+                guard actions.count == 1, actions.element.isEnabled, actions.element.isHittable else { return false }
+                actions.element.tap()
+            }
+            return false
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [completed], timeout: 15), .completed)
     }
 
     func installExpectedFullPhotosAccessMonitor() -> NSObjectProtocol {
