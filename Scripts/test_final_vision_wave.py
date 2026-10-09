@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Site-free route, fixture, single-case and native ownership regressions."""
-import ast,copy,hashlib,importlib.util,json,os,re,shutil,subprocess,sys,tempfile,time,unittest
+import contextlib,io,ast,copy,hashlib,importlib.util,json,os,re,shutil,subprocess,sys,tempfile,time,unittest
 from pathlib import Path
 from unittest.mock import patch
 HERE=Path(__file__).resolve().parent
@@ -183,7 +183,7 @@ class WaveTests(unittest.TestCase):
       raw=out.encode();path=self.temp/(label+'.log');path.write_bytes(raw);self.events.append({'label':label,'log':path.name,'log_bytes':len(raw),'log_sha256':w.digest(raw),**result})
       return out,result
     try:
-     with patch.object(w,'ROOT',repo),patch.object(w,'VisionCommands',FakeCommands),patch.object(w,'validate_inventory',return_value={'synthetic':'source'}),patch.object(w.time,'sleep'):report=w.execute(e)
+     with contextlib.redirect_stdout(io.StringIO()),patch.object(w,'ROOT',repo),patch.object(w,'VisionCommands',FakeCommands),patch.object(w,'validate_inventory',return_value={'synthetic':'source'}),patch.object(w.time,'sleep'):report=w.execute(e)
     finally:os.chdir(original_cwd)
     self.assertTrue(report['wave_qualified'],report['errors']);self.assertFalse(report['all_eight_qualified']);self.assertEqual(report['omitted_ui_methods'],[m for m in w.UI_METHODS if m!=method])
     tests=[(a,k) for a,k in called if 'test-without-building' in a];self.assertEqual(len(tests),2 if method==w.UI_METHODS[2] else 1)
@@ -230,4 +230,18 @@ class WaveTests(unittest.TestCase):
  def test_report_identity_and_unsupported_success_fail_closed(self):
   e=env();r={'schema':'Celluloid.FinalVisionSingleMethodWave.1','control_sha':'wrong'}
   with self.assertRaises(ValueError):w.validate_report_identity(r,e)
+ def test_command_stdout_begin_end_names_executable_without_environment_or_arguments(self):
+  with tempfile.TemporaryDirectory() as t:
+   capture=io.StringIO();commands=w.VisionCommands(Path(t));result={'output':b'output-secret','finalized':False,'timed_out':True,'overflow':False,'return_code':None,'elapsed_seconds':20}
+   with patch.object(w,'bounded_optional_process',return_value=result),contextlib.redirect_stdout(capture):
+    with self.assertRaises(ValueError):commands.run(['/path/xcodebuild','argument-secret'],'vision-wave-2-123-1-build',deadline=time.monotonic()+30,seconds=20)
+   lines=capture.getvalue().splitlines();self.assertEqual(len(lines),2)
+   receipts=[json.loads(x.split(' ',1)[1]) for x in lines];self.assertEqual([x['phase'] for x in receipts],['BEGIN','END']);self.assertTrue(all(x['executable']=='xcodebuild' for x in receipts));self.assertFalse(receipts[1]['finalized']);self.assertTrue(receipts[1]['timed_out']);self.assertNotIn('secret',capture.getvalue());self.assertTrue(all(len(x.encode())<1100 for x in lines));self.assertIn('begin_monotonic',commands.events[0])
+ def test_command_stdout_exception_retained_and_no_later_dispatch(self):
+  with tempfile.TemporaryDirectory() as t:
+   capture=io.StringIO();commands=w.VisionCommands(Path(t))
+   with patch.object(w,'bounded_optional_process',side_effect=PermissionError('secret-detail')) as run,contextlib.redirect_stdout(capture):
+    with self.assertRaises(PermissionError):commands.run(['xcrun'],'vision-wave-2-123-1-boot',deadline=time.monotonic()+30,seconds=20)
+    with self.assertRaises(ValueError):commands.run(['xcrun'],'vision-wave-2-123-1-delete',deadline=time.monotonic()+30,seconds=20)
+   self.assertEqual(run.call_count,1);self.assertIn('PermissionError',capture.getvalue());self.assertNotIn('secret-detail',capture.getvalue());self.assertEqual(len(capture.getvalue().splitlines()),2)
 if __name__=='__main__':unittest.main()

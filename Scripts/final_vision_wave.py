@@ -210,6 +210,15 @@ def seed_png(container):
  need(safe_read(path,1000000)==png,'png-readback')
  return {'path':str(path),'bytes':len(png),'sha256':digest(png),'width':1200,'height':800,'original_runner_algorithm_unchanged':True}
 
+def print_command_receipt(phase,label,argv,started,result=None):
+ # Only executable basename and fixed status fields; never argv, environment or output.
+ receipt={'phase':phase,'label':label,'executable':Path(str(argv[0])).name,'started_monotonic':started,'observed_monotonic':time.monotonic()}
+ if result is not None:
+  for k in ['return_code','timed_out','overflow','finalized','pipe_eof','child_reaped','cleanup_error','elapsed_seconds','exception']:
+   if k in result:receipt[k]=result[k]
+ raw=json.dumps(receipt,sort_keys=True,allow_nan=False);need(len(raw.encode())<=1024,'command-receipt-cap')
+ print('VISION_WAVE_COMMAND '+raw,flush=True)
+
 class VisionCommands:
  def __init__(self,temp):self.temp=temp;self.events=[];self.blocked=False
  def run(self,argv,label,*,deadline,seconds,cleanup=15,check_code=True,full=False):
@@ -219,11 +228,12 @@ class VisionCommands:
   need(end-now>cleanup+0.1,'command-cleanup-reserve')
   need(re.fullmatch('[a-zA-Z0-9_.-]+',label) is not None,'log-label')
   log=self.temp/(label+'.log');need(not log.exists(),'duplicate-invocation-log')
+  print_command_receipt('BEGIN',label,argv,now)
   try:result=bounded_optional_process(list(map(str,argv)),end-cleanup,end,cap=MAX_OUTPUT,stop_on_signal_error=True)
   except BaseException as e:
-   self.blocked=True;self.events.append({'label':label,'argv':list(map(str,argv)),'exception':type(e).__name__,'finalized':False});raise
+   self.blocked=True;self.events.append({'label':label,'argv':list(map(str,argv)),'begin_monotonic':now,'exception':type(e).__name__,'finalized':False});print_command_receipt('END',label,argv,now,self.events[-1]);raise
   output=result.pop('output');log.write_bytes(output)
-  event={'label':label,'argv':list(map(str,argv)),**result,'log':log.name,'log_bytes':len(output),'log_sha256':digest(output)};self.events.append(event)
+  event={'label':label,'argv':list(map(str,argv)),'begin_monotonic':now,**result,'log':log.name,'log_bytes':len(output),'log_sha256':digest(output)};self.events.append(event);print_command_receipt('END',label,argv,now,result)
   if not result['finalized'] or result['timed_out'] or result['overflow']:self.blocked=True
   need(result['finalized'],'process-cleanup-unconfirmed')
   need(not result['timed_out'] and not result['overflow'],'process-timeout-or-output-bound')

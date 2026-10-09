@@ -31,12 +31,15 @@ jobs:
         python3 -B -S - <<'PY'
         import json,os,time
         from pathlib import Path
-        Path(os.environ['RUNNER_TEMP'],'final-vision-wave-clock.json').write_text(json.dumps({
-        'schema':'Celluloid.FinalVisionWaveClock.1','control_sha':os.environ['GITHUB_SHA'],
+        c={'schema':'Celluloid.FinalVisionWaveClock.1','control_sha':os.environ['GITHUB_SHA'],
         'run_id':os.environ['GITHUB_RUN_ID'],'run_attempt':os.environ['GITHUB_RUN_ATTEMPT'],
         'selected_method':os.environ['VISION_WAVE_METHOD'],'started_monotonic':time.monotonic(),
-        'started_unix':time.time(),'native_seconds':1560,'final_seconds':1740}))
+        'started_unix':time.time(),'native_seconds':1560,'final_seconds':1740}
+        Path(os.environ['RUNNER_TEMP'],'final-vision-wave-clock.json').write_text(json.dumps(c))
+        with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+         f.write('started_monotonic='+str(c['started_monotonic'])+'\nstarted_unix='+str(c['started_unix'])+'\n')
         PY
+      id: wave_clock
     - name: Checkout exact immutable product and five controls
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       timeout-minutes: 2
@@ -63,6 +66,126 @@ jobs:
       if: ${{ always() && steps.admit.outcome == 'success' }}
       timeout-minutes: 1
       run: python3 -B -S Scripts/qualify_final_vision_wave_source.py --phase after
+    - name: Retain failure-only source and command receipts without checkout execution
+      id: failure_receipts
+      if: ${{ always() && steps.admit.outcome == 'success' && steps.wave.outcome != 'skipped' && steps.source_after.outcome != 'success' }}
+      timeout-minutes: 1
+      env:
+        VISION_ADMISSION_OUTCOME: ${{ steps.admit.outcome }}
+        VISION_WAVE_OUTCOME: ${{ steps.wave.outcome }}
+        VISION_SOURCE_AFTER_OUTCOME: ${{ steps.source_after.outcome }}
+        VISION_TRUSTED_START: ${{ steps.wave_clock.outputs.started_monotonic }}
+        VISION_TRUSTED_UNIX: ${{ steps.wave_clock.outputs.started_unix }}
+      run: |
+        python3 -I -B -S - <<'PY'
+        # BEGIN_FAILURE_RECEIPT_COLLECTOR
+        import hashlib,json,math,os,re,stat,time
+        from pathlib import Path
+        def need(v,m):
+         if not v:raise ValueError(m)
+        def read(path,cap):
+         path=Path(path).absolute();parent=os.open('/',os.O_RDONLY|os.O_DIRECTORY);fd=None
+         try:
+          for part in path.parts[1:-1]:
+           child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent);os.close(parent);parent=child
+          fd=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent);before=os.fstat(fd)
+          need(stat.S_ISREG(before.st_mode) and before.st_nlink==1 and 0<before.st_size<=cap,'unsafe-file')
+          raw=b''
+          while len(raw)<before.st_size:
+           part=os.read(fd,min(65536,before.st_size-len(raw)));need(part,'short-file');raw+=part
+          def identity(x):return x.st_dev,x.st_ino,x.st_mode,x.st_nlink,x.st_size,x.st_mtime_ns,x.st_ctime_ns
+          need(identity(before)==identity(os.fstat(fd))==identity(os.stat(path.name,dir_fd=parent,follow_symlinks=False)),'changed-file');return raw
+         finally:
+          if fd is not None:os.close(fd)
+          os.close(parent)
+        def pairs(items):
+         d={}
+         for k,v in items:need(k not in d,'duplicate-json');d[k]=v
+         return d
+        def decode(raw):return json.loads(raw,object_pairs_hook=pairs,parse_constant=lambda x:(_ for _ in ()).throw(ValueError('nonfinite-json')))
+        def number(x):return (type(x) is int and abs(x)<=2**53) or (type(x) is float and math.isfinite(x) and abs(x)<=2**53)
+        def packed(x):return (json.dumps(x,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+        e=os.environ;t=Path(e['RUNNER_TEMP']).resolve(strict=True)
+        methods=('testNativeDocumentBrowserLaunchAndNewDocument','testRealFilesImportBubbleAndPNGExport','testSeededDocumentSequentialTextUndoRedoAndBrowserReopen','testSimplifiedChineseDocumentPrivacyAndLargeText')
+        stages={'xcode','validate_native_sources','validate_native_localization','test_native_process','test_native_evidence','test_native_release','icons','icon-proof','build','runtimes','device-types','create','boot','bootstatus','install','pretest-launch','pretest-process','pretest-screenshot','pretest-terminate','producer-tests','producer-summary','producer-container','png-container','ui-tests','shutdown','delete','ui-summary','attachments'}
+        exceptions={'OSError','PermissionError','ProcessLookupError','FileNotFoundError','FileExistsError','NotADirectoryError','IsADirectoryError','BlockingIOError','InterruptedError','TimeoutError','BrokenPipeError','ValueError','TypeError','KeyError','RuntimeError','ImportError','ModuleNotFoundError','OverflowError','RecursionError','MemoryError','KeyboardInterrupt','SystemExit','TimeoutExpired','SubprocessError','CalledProcessError'}
+        m=e['VISION_WAVE_METHOD'];sha=e['GITHUB_SHA'];run=e['GITHUB_RUN_ID'];attempt=e['GITHUB_RUN_ATTEMPT']
+        need(m in methods and re.fullmatch('[0-9a-f]{40}',sha) and re.fullmatch('[0-9]+',run) and attempt=='1','identity')
+        need(e['VISION_ADMISSION_OUTCOME']=='success' and e['VISION_WAVE_OUTCOME'] in {'success','failure','cancelled'} and e['VISION_SOURCE_AFTER_OUTCOME'] in {'failure','cancelled','skipped'},'failure-only-route')
+        start=float(e['VISION_TRUSTED_START']);unix=float(e['VISION_TRUSTED_UNIX']);now=time.monotonic()
+        need(number(start) and number(unix) and 0<start<=now and unix>0 and now+60<=start+1740,'original-upload-reserve')
+        fixed={'control_sha':sha,'product_sha':'13e9a1ed63c6e7744803419f27e429a759df1209','product_tree':'f2c6d0f38c026957b0b34f22b916eb80ed5b20a8','run_id':run,'run_attempt':attempt,'selected_method':m}
+        report={'schema':'Celluloid.VisionFailureReceipts.1',**fixed,'source_after_verified':False,'selected_method_passed':False,'wave_qualified':False,'all_eight_qualified':False,'archive_qualified':False,'full_platform_release_qualification':False,'source_after_outcome':e['VISION_SOURCE_AFTER_OUTCOME'],'wave_outcome':e['VISION_WAVE_OUTCOME'],'omitted_ui_methods':[x for x in methods if x!=m],'trusted_workflow_clock':{'started_monotonic':start,'started_unix':unix,'native_seconds':1560,'final_seconds':1740},'receipt_trust':'Diagnostic observations only; checkout source after execution is unverified. No case, screenshot, cleanup or product-mutation claim.','receipts':{}}
+        for phase in ['before','after']:
+         name='combined-source-'+phase+'.json'
+         try:
+          v=decode(read(t/name,16384));need(type(v) is dict,'source-schema')
+          expected={'phase':phase,'source_sha':sha,'control_sha':sha,'product_parent_sha':fixed['product_sha'],'product_parent_tree':fixed['product_tree'],'run_id':run,'run_attempt':attempt,'selected_method':m,'file_count':962,'product_fingerprint':'947a3db3d8caeb34680fb6c068cad1c9f785667448162264a6b31ce427a004b5'}
+          need(all(type(v.get(k)) is type(x) and v.get(k)==x for k,x in expected.items()),'source-identity')
+          report['receipts'][name]={'state':'valid-shaped-unverified-receipt','projection':expected}
+         except (OSError,ValueError,TypeError,KeyError,RecursionError):report['receipts'][name]={'state':'missing-or-invalid','qualification':False}
+        try:
+         v=decode(read(t/'final-vision-wave-clock.json',16384));expected={'schema':'Celluloid.FinalVisionWaveClock.1','control_sha':sha,'run_id':run,'run_attempt':attempt,'selected_method':m,'started_monotonic':start,'started_unix':unix,'native_seconds':1560,'final_seconds':1740}
+         need(type(v) is dict and v==expected,'clock-identity');report['receipts']['clock']={'state':'matches-trusted-workflow-start','projection':expected}
+        except (OSError,ValueError,TypeError,KeyError,RecursionError):report['receipts']['clock']={'state':'missing-or-invalid','qualification':False}
+        try:
+         raw=read(t/'vision-wave-report.json',200000);v=decode(raw);need(type(v) is dict and v.get('schema')=='Celluloid.FinalVisionSingleMethodWave.1','report-schema')
+         need(all(v.get(k)==x for k,x in fixed.items()),'report-identity');events=v.get('commands');need(type(events) is list and len(events)<=64,'command-count')
+         receipts=[];prefix='vision-wave-'+str(methods.index(m)+1)+'-'+run+'-'+attempt+'-'
+         for event in events:
+          need(type(event) is dict and type(event.get('label')) is str and event['label'] in {prefix+s for s in stages},'command-label')
+          argv=event.get('argv');need(type(argv) is list and argv and type(argv[0]) is str,'command-executable');exe=Path(argv[0]).name
+          need(re.fullmatch('(?:python3(?:[.][0-9]+)?|Python|xcodebuild|xcrun|ps|swift)',exe),'executable-allowlist')
+          r={'label':event['label'],'executable':exe}
+          for k in ['return_code','timed_out','overflow','finalized','pipe_eof','child_reaped','elapsed_seconds','begin_monotonic','command_deadline_monotonic','cleanup_deadline_monotonic','exception','cleanup_error']:
+           if k not in event:continue
+           x=event[k]
+           if k in ['timed_out','overflow','finalized','pipe_eof','child_reaped']:need(type(x) is bool,'command-bool')
+           elif k=='return_code':need(x is None or type(x) is int and -255<=x<=255,'command-return')
+           elif k=='exception':
+            need(type(x) is str,'exception-class');x=x if x in exceptions else 'OtherException'
+           elif k=='cleanup_error':need(x in {None,'direct child unreaped at absolute deadline','completion observed after absolute cleanup deadline','PermissionError','ProcessLookupError','OSError','ValueError'},'cleanup-code')
+           else:need(number(x) and x>=0,'command-number')
+           r[k]=x
+          need('finalized' in r and len(packed(r))<=1024,'command-receipt');receipts.append(r)
+         report['receipts']['commands']={'state':'valid-shaped-unverified-receipts','input_sha256':hashlib.sha256(raw).hexdigest(),'items':receipts}
+        except (OSError,ValueError,TypeError,KeyError,RecursionError):report['receipts']['commands']={'state':'missing-or-invalid','items':[],'qualification':False}
+        raw=packed(report);need(len(raw)<=65536,'failure-receipt-cap');out=t/'vision-wave-failure-evidence';out.mkdir(mode=0o700)
+        (out/'failure-receipts.json').write_bytes(raw)
+        manifest={'schema':'Celluloid.VisionFailureManifest.1','qualification':False,'source_after_verified':False,'limit_bytes':70000,'files':[{'name':'failure-receipts.json','bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}]}
+        (out/'manifest.json').write_bytes(packed(manifest));need(sum(p.stat().st_size for p in out.iterdir())<=70000,'failure-total-cap')
+        need(time.monotonic()+60<=start+1740,'original-upload-reserve')
+        with open(e['GITHUB_OUTPUT'],'a') as f:f.write('failure_ready=true\nfailure_deadline='+str(start+1740)+'\n')
+        print(json.dumps({'failure_receipts_ready':True,'source_after_verified':False,'wave_qualified':False,'bytes':len(raw)}))
+        # END_FAILURE_RECEIPT_COLLECTOR
+        PY
+    - name: Upload failure-only unverified-source receipts
+      id: failure_upload
+      if: ${{ always() && steps.failure_receipts.outputs.failure_ready == 'true' }}
+      timeout-minutes: 1
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: celluloid-final-vision-wave-${{ github.run_id }}-${{ github.run_attempt }}-FAILURE-source-unverified
+        path: |
+          ${{ runner.temp }}/vision-wave-failure-evidence/failure-receipts.json
+          ${{ runner.temp }}/vision-wave-failure-evidence/manifest.json
+        if-no-files-found: error
+        retention-days: 1
+    - name: Require timely failure receipt upload without qualifying wave
+      if: ${{ always() && steps.failure_receipts.outputs.failure_ready == 'true' }}
+      timeout-minutes: 1
+      env:
+        VISION_FAILURE_DEADLINE: ${{ steps.failure_receipts.outputs.failure_deadline }}
+        VISION_FAILURE_UPLOAD_OUTCOME: ${{ steps.failure_upload.outcome }}
+      run: |
+        python3 -I -B -S - <<'PY'
+        import json,math,os,time
+        deadline=float(os.environ['VISION_FAILURE_DEADLINE'])
+        timely=math.isfinite(deadline) and time.monotonic()<deadline
+        uploaded=os.environ['VISION_FAILURE_UPLOAD_OUTCOME']=='success'
+        print(json.dumps({'failure_receipt_upload_succeeded':uploaded,'within_original_clock':timely,'source_after_verified':False,'wave_qualified':False}))
+        raise SystemExit(0 if timely and uploaded else 1)
+        PY
     - name: Retain bounded per-method proof
       id: collect
       if: ${{ always() && steps.source_after.outcome == 'success' && steps.wave.outcome != 'skipped' }}
