@@ -136,7 +136,10 @@ class LifecycleSourceTests(unittest.TestCase):
         self.assertIn('4097',header);self.assertIn('4096',header);self.assertIn('Z_OK',header)
         self.assertIn('copyICCData()',header)
         body=self.section('private func lifecycleRaster(', 'private func retainLifecycleImage(')
-        self.assertLess(body.index('try pngHeader(data)'),body.index('CGImageSourceCreateWithData'))
+        self.assertIn('allowCalibratedRGB: Bool = false', body)
+        call = 'try pngHeader(data, allowCalibratedRGB: allowCalibratedRGB)'
+        self.assertEqual(body.count(call), 1)
+        self.assertLess(body.index(call),body.index('CGImageSourceCreateWithData'))
         self.assertNotIn('"base64": reference.base64EncodedString()',self.swift)
     def test_expected_image_is_independent_of_actual_exports_and_production_helper(self):
         body=self.section('private func expectedFade(', 'private func maximumDelta(')

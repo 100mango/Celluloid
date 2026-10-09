@@ -550,7 +550,12 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
                          and all(q["value"] == "true" for q in queries[i:i+3])]
             require(successes, "No real consecutive exists/isEnabled/isHittable success")
             success = successes[0]
-            require(all(q["wall"] >= appeared[2] for q in success), "Successful AX observation predates native appearance")
+            # A system control can genuinely be hittable while the presentation
+            # animation is still finishing, before ViewDidAppear is delivered.
+            # Both independent observations must belong to this input/picker
+            # window; readiness is the later of appearance and positive AX.
+            require(all(q["wall"] - q["duration"] >= input_wall for q in success),
+                    "Successful AX observation precedes native input")
             require(all(success[i]["uptime"] <= success[i+1]["uptime"] - success[i+1]["duration"] for i in range(2)), "Overlapping AX query clocks")
             native_elapsed = appeared[2] - action["wall"]
             uncertainty = drift + max(anchor_errors) + 0.001  # runner milliseconds
@@ -565,6 +570,8 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
             input_upper = input_elapsed + uncertainty
             input_lower = max(0, input_elapsed - uncertainty)
             input_ax_upper = success[-1]["wall"] - input_wall + uncertainty
+            readiness_elapsed = max(appeared[2], success[-1]["wall"]) - input_wall
+            readiness_upper = readiness_elapsed + uncertainty
             input_status = ("passed" if input_upper <= BUDGET_SECONDS else
                             "over_budget_observation" if input_lower > BUDGET_SECONDS else "inconclusive_clock_budget")
             input_ax_status = "passed" if input_ax_upper <= BUDGET_SECONDS else "inconclusive_interactivity_budget"
@@ -580,6 +587,9 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
                              "input_synthesis_to_native_appearance_budget": input_status,
                              "input_synthesis_to_successful_hittable_upper_seconds": input_ax_upper,
                              "input_synthesis_ax_observability_budget": input_ax_status,
+                             "input_synthesis_to_observed_readiness_seconds": readiness_elapsed,
+                             "input_synthesis_to_observed_readiness_upper_seconds": readiness_upper,
+                             "readiness_evidence_rule": "later of actual native appearance and actual positive exists/enabled/hittable completion",
                              "app_action_evidence": action["source_locations"], "successful_hittable_evidence": success[-1]["source_locations"],
                              "root_dismissal_evidence": dismissed["source_locations"],
                              "app_action_to_native_appearance_seconds": native_elapsed,

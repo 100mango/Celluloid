@@ -25,7 +25,7 @@ class RequiredExecutionTests(unittest.TestCase):
         for contents in [self.log(delta=3),self.log().replace('a'*64,'d'*64),self.log().split('MAC_LAYER')[0],self.log()+'MAC_LAYER'+self.log().split('MAC_LAYER')[1]]:
             self.assertFalse(all(self.inspect(contents)['checks'].values()))
     def test_exact_declared_required_counts_and_real_shipping_modules(self):
-        self.assertEqual({k:len(v) for k,v in required('mac').items()},{'CelluloidMacPhotosExtensionTests':42})
+        self.assertEqual({k:len(v) for k,v in required('mac').items()},{'CelluloidMacPhotosExtensionTests':43})
         self.assertEqual({k:len(v) for k,v in required('phone').items()},{'CelluloidCompanionTests':14,'CelluloidCompanionUITests':2})
         self.assertEqual(sum(map(len,required('uikit').values())),1)
     def test_shipping_markers_do_not_substitute_for_missing_ui_case(self):

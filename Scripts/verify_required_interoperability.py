@@ -9,6 +9,55 @@ RESULT = re.compile(r"^Test Case '-\[([\w.]+) (test\w+)\]' (passed|failed|skippe
 CONSUMER = 'MacPhotosManufacturedAdjustmentTests.testManufacturedMacArchiveThroughOriginalUIKitReaderAndCompositor'
 PIXELS = re.compile(r'MAC_LAYER_UIKIT_COMPOSITOR archiveSHA256=([0-9a-f]{64}) sourceSHA256=([0-9a-f]{64}) nativeSHA256=([0-9a-f]{64}) maximumChannelDifference=(\d+)')
 
+# Original 42 selectors retained byte-for-byte in six source files; add the
+# already-registered native codec control. Pin names so replacement/renaming
+# cannot accidentally satisfy a count-only gate. This is an inventory, not a pass.
+MAC_REQUIRED_CASES = (
+    'MacPhotoAdjustmentTests.testActualUIKitFixtureRetainsAllAffineAndBoundsComponents',
+    'MacPhotoAdjustmentTests.testFilterOnlyHistoricalPayloadCanAcquireANewCanvasWithoutChangingExistingGeometry',
+    'MacPhotoAdjustmentTests.testHistoricalSchemaMissingCanvasIsDecodedButNeverMadeEditableOrRewritten',
+    'MacPhotoAdjustmentTests.testNewManufacturedValuesKeepUIKitTypesAndAllFields',
+    'MacPhotoAdjustmentTests.testWrongTypedUnknownNonfiniteAndOverBudgetArchivesFailClosed',
+    'MacPhotoHostLifecycleTests.testCancelSuppressesLateOutputAndUnlocksEditingWithoutHostCallback',
+    'MacPhotoHostLifecycleTests.testCurrentFailureCompletesNilExactlyOnceAndReenablesEditing',
+    'MacPhotoHostLifecycleTests.testFailureObserverCancellationStillSuppressesPhotosCallback',
+    'MacPhotoHostLifecycleTests.testSupersededHostFinishCannotCompleteNewSessionOrReenableIt',
+    'MacPhotoHostLifecycleTests.testSynchronousCancellationFromPreparingStartsNoOperation',
+    'MacPhotoNativeCodecControlTests.testRetainedSourceFadeExportAfterOriginalAndFadePreviews',
+    'MacPhotoRendererTests.testAspectFitInsetsBoundsOriginAndBubbleBeforeStickerAreNotDiscarded',
+    'MacPhotoRendererTests.testBubbleTextAreaUsesOriginalUIKitRoundedImageRectBeforeInsets',
+    'MacPhotoRendererTests.testGeometryAndSpanOracleRejectsBackingBaselineAndWhitespaceMutations',
+    'MacPhotoRendererTests.testNaturalNativePitchKeepsIndependentObservedBaselinesAndLegacySpans',
+    'MacPhotoRendererTests.testOriginalAllOrientationsAndFilterMatchIndependentCoreImageInput',
+    'MacPhotoRendererTests.testPrincipalControllerHostsRealEditorAndPureFormatNegotiation',
+    'MacPhotoRendererTests.testProductionExportRejectsUnqualifiedLayersBeforeRasterOrEncoding',
+    'MacPhotoRendererTests.testProductionTextMatchesIndependentNativeControlAndRejectsPathMutations',
+    'MacPhotoRendererTests.testRawAffineStickerRasterMatchesIndependentFixedGeometryOracle',
+    'MacPhotoRendererTests.testSamePathPaddingDoesNotClipQualifiedTextCases',
+    'MacPhotoRendererTests.testTextBackingUsesIntrinsicPointSizeAndOneLogicalOrigin',
+    'MacPhotoRendererTests.testTextHasFiniteOriginalIntegerFontSearchAndNeverTruncatesOverflow',
+    'MacPhotoRendererTests.testUnicodeCoveragePreservesClustersWhitespaceAndRejectsOverflow',
+    'MacPhotoSelfIdentityTests.testSelfIdentityAccessibilityRejectsUnstartedDetachedAndCancelledEditors',
+    'MacPhotoSelfIdentityTests.testSelfIdentityCaptureRejectsTheNativeTestBundle',
+    'MacPhotoSelfIdentityTests.testSelfIdentityStartReplacesGenerationAndCancelClearsSynchronously',
+    'MacPhotoSessionTests.testActualLegacyPointsFixtureUsesReadOnlyCurrentAppearance',
+    'MacPhotoSessionTests.testCancellationAndReplacementSuppressLateSourceAndPreviewWithoutMutatingInput',
+    'MacPhotoSessionTests.testImmediateHostDoneDuringObservedLoadingIsNoChangeAndStartsNoRenderOrWritePreparation',
+    'MacPhotoSessionTests.testNewEditsFreezeForFinishAndKeepOriginalBytes',
+    'MacPhotoSessionTests.testOrientationMismatchNeverUsesUnverifiedOriginalAsCurrentAppearance',
+    'MacPhotoSessionTests.testReferenceCanvasLayersPreserveExactCurrentAppearanceUntilUIKitPixelGatePasses',
+    'MacPhotoSessionTests.testUnsupportedAndMalformedDataKeepExactCurrentPlaceholderAndOpaqueBytesReadOnly',
+    'PhotosOutputWriteTests.testCancelAfterCommitBeforeDeliveryRemovesOnlyOwnedOutput',
+    'PhotosOutputWriteTests.testCancelAfterDeliveryDoesNotRemovePhotosOwnedOutput',
+    'PhotosOutputWriteTests.testCanceledBeforeStartNeverWritesAndCompletesOnce',
+    'PhotosOutputWriteTests.testCancellationAtObservedPrewriteBarrierPreventsAbandonedDestination',
+    'PhotosOutputWriteTests.testClaimRetainsDestinationReservationUntilHostCompletionReturns',
+    'PhotosOutputWriteTests.testFileWriteFailureCompletesOnceWithoutAReplacement',
+    'PhotosOutputWriteTests.testNewWriteSucceedsAfterSupersedingPausedOldWrite',
+    'PhotosOutputWriteTests.testNonMissingStagingCleanupFailureIsReportedWithoutClaimingDeletion',
+    'PhotosOutputWriteTests.testUnexpectedDestinationReuseCannotOverwriteOrDeleteAnotherOwner',
+)
+
 def source_cases(paths):
     cases = []
     for path in paths:
@@ -21,7 +70,10 @@ def source_cases(paths):
 def required(scope):
     if scope == 'mac':
         cases = source_cases(sorted((ROOT/'Platforms/MacExtensionTests').glob('*.swift')) + [ROOT/'CelluloidTests/PhotosOutputWriteTests.swift'])
-        assert len(cases) == 42
+        if cases != list(MAC_REQUIRED_CASES):
+            missing = sorted(set(MAC_REQUIRED_CASES) - set(cases))
+            unexpected = sorted(set(cases) - set(MAC_REQUIRED_CASES))
+            raise ValueError(f"Required Mac test inventory changed: missing={missing}; unexpected={unexpected}")
         return {'CelluloidMacPhotosExtensionTests': cases}
     if scope == 'phone':
         hosted = source_cases(sorted((ROOT/'Platforms/PhoneTests').glob('*.swift'))) + [CONSUMER]

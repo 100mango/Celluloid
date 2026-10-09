@@ -10,6 +10,8 @@ import Darwin
 /// in this Debug product's Info.plist by the source-admitted host context helper.
 /// Nothing is captured from an ordinary build or merely by opening a photograph.
 @MainActor final class MacPhotoBoundaryProbe: ObservableObject {
+    // Byte-stable accessibility protocol marker; never a localized UI label.
+    static let armReceiptMarker = "CELLULOID_OWNED_PHOTOS_BOUNDARY_ARM_V1"
     static let fixtureSHA = "6138992615dd7d5bd499b80d9f11e39a0815111feccd5d4d3e59a676f4384772"
     static let bundleID = "Mango.Celluloid.CelluloidPhotoExtension"
     @Published var token = ""
@@ -192,7 +194,10 @@ struct MacPhotoBoundaryProbeView: View {
     var body: some View {
         VStack {
             if probe.enabled {
-                TextField("Owned synthetic diagnostic token", text: $probe.token)
+                // This explicitly armed Debug-only operator surface is verbatim.
+                TextField(text: $probe.token) {
+                    Text(verbatim: "Owned synthetic diagnostic token")
+                }
                     .accessibilityIdentifier("photos-extension.boundary-token")
                     .onSubmit { probe.arm(session: session, identity: identity) }
             }
@@ -214,7 +219,7 @@ struct MacPhotoBoundaryReceiptAccessibility: NSViewRepresentable {
         view.probe = probe
         view.setAccessibilityRole(.staticText)
         view.setAccessibilityIdentifier("photos-extension.boundary-arm")
-        view.setAccessibilityLabel("CELLULOID_OWNED_PHOTOS_BOUNDARY_ARM_V1")
+        view.setAccessibilityLabel(MacPhotoBoundaryProbe.armReceiptMarker)
         view.refreshAccessibility()
     }
     static func dismantleNSView(_ view: MacPhotoBoundaryReceiptAccessibilityView, coordinator: ()) {

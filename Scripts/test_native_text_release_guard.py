@@ -12,31 +12,44 @@ SWIFT = {
     'controller': 'Platforms/macOSExtension/MacPhotoEditingController.swift',
     'view': 'Platforms/macOSExtension/MacPhotoEditorView.swift',
     'identity': 'Platforms/macOSExtension/MacPhotoSelfIdentity.swift',
+    'boundary': 'Platforms/macOSExtension/MacPhotoBoundaryProbe.swift',
     'tests': 'Platforms/MacExtensionTests/MacPhotoSelfIdentityTests.swift',
 }
 
 
 def release_projection(source):
-    """Lexical DEBUG projection only; unexpected conditional syntax fails closed."""
-    stack, branches, result = [True], [], []
+    """Project only the two reviewed DEBUG forms; unknown directives reject.
+
+    Both admitted conditions are false in Release. The single admitted elseif
+    is the controller's DEBUG-only fallback after its stricter probe condition.
+    This is a source invariant, not a Swift compiler or general preprocessor.
+    """
+    compound = '#if DEBUG && CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE'
+    frames, result, active = [], [], True
     for line in source.splitlines(keepends=True):
         directive = line.strip()
-        if directive == '#if DEBUG':
-            stack.append(False); branches.append(False)
+        if directive in ('#if DEBUG', compound):
+            frames.append(dict(parent=active, condition=directive, seen_else=False, seen_elseif=False))
+            active = False
+        elif directive == '#elseif DEBUG':
+            if not frames or frames[-1]['condition'] != compound or frames[-1]['seen_else'] or frames[-1]['seen_elseif']:
+                raise ValueError('Unreviewed or unpaired elseif')
+            frames[-1]['seen_elseif'] = True
+            active = False
         elif directive == '#else':
-            if len(stack) < 2 or branches[-1]:
+            if not frames or frames[-1]['seen_else']:
                 raise ValueError('Unpaired or repeated else')
-            branches[-1] = True
-            stack[-1] = stack[-2] and not stack[-1]
+            frames[-1]['seen_else'] = True
+            active = frames[-1]['parent']
         elif directive == '#endif':
-            if len(stack) < 2:
+            if not frames:
                 raise ValueError('Unpaired endif')
-            stack.pop(); branches.pop()
+            active = frames.pop()['parent']
         elif directive.startswith(('#if ', '#elseif ')):
             raise ValueError('Unreviewed conditional')
-        elif stack[-1]:
+        elif active:
             result.append(line)
-    if len(stack) != 1:
+    if frames:
         raise ValueError('Unclosed conditional')
     return ''.join(result)
 
@@ -183,9 +196,23 @@ class SelfIdentitySourceTests(unittest.TestCase):
                 self.assertNotIn(marker.decode(), projected)
 
     def test_projection_rejects_unreviewed_or_unbalanced_conditionals(self):
-        for source in ('#if DEBUG\nmissing end', '#else\n', '#endif\n', '#if RELEASE\n', '#elseif DEBUG\n', '#if DEBUG\n#else\n#else\n#endif\n'):
+        for source in ('#if DEBUG\nmissing end', '#else\n', '#endif\n', '#if RELEASE\n', '#elseif DEBUG\n', '#if DEBUG\n#else\n#else\n#endif\n',
+                       '#if DEBUG || CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE\n#endif\n',
+                       '#if CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE\n#endif\n',
+                       '#if DEBUG && UNREVIEWED_FLAG\n#endif\n',
+                       '#if DEBUG\n#elseif DEBUG\n#endif\n',
+                       '#if DEBUG && CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE\n#else\n#elseif DEBUG\n#endif\n',
+                       '#if DEBUG && CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE\n#elseif DEBUG\n#elseif DEBUG\n#endif\n'):
             with self.subTest(source=source), self.assertRaises(ValueError):
                 release_projection(source)
+
+    def test_reviewed_compound_and_debug_fallback_project_only_release_else(self):
+        condition = '#if DEBUG && CELLULOID_OWNED_PHOTOS_BOUNDARY_PROBE\n'
+        self.assertEqual(release_projection(condition + 'probe\n#elseif DEBUG\ndebug\n#else\nrelease\n#endif\n'), 'release\n')
+        nested = condition + '#if DEBUG\nnested-debug\n#else\nstill-probe-only\n#endif\n#else\nrelease\n#endif\n'
+        self.assertEqual(release_projection(nested), 'release\n')
+        nested_release = '#if DEBUG\ndebug\n#else\n' + condition + 'probe\n#else\nrelease\n#endif\n#endif\n'
+        self.assertEqual(release_projection(nested_release), 'release\n')
 
     def test_controller_captures_only_after_start_and_invalidates_finish_cancel(self):
         source = self.sources['controller']

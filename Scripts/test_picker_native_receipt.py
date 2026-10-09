@@ -137,6 +137,35 @@ class ReceiptTests(unittest.TestCase):
         self.assertEqual(result['status'], 'not_accepted')
         self.assertEqual(result['presentations'][0]['input_synthesis_to_native_appearance_budget'], 'inconclusive_clock_budget')
 
+    def test_genuine_positive_controls_before_animation_end_are_independent_evidence(self):
+        result = self.validate(example(native_delay=1))
+        self.assertEqual(result['status'], 'passed')
+        row = result['presentations'][0]
+        self.assertAlmostEqual(row['input_synthesis_to_observed_readiness_seconds'], 1.85, places=5)
+        self.assertGreater(row['input_synthesis_to_observed_readiness_upper_seconds'],
+                           row['input_synthesis_to_successful_hittable_upper_seconds'])
+
+    def test_positive_query_sequence_may_straddle_native_appearance(self):
+        result = self.validate(example(native_delay=.25))
+        self.assertEqual(result['status'], 'passed')
+        row = result['presentations'][0]
+        self.assertAlmostEqual(row['input_synthesis_to_observed_readiness_seconds'], 1.25, places=5)
+        self.assertEqual(row['input_synthesis_to_observed_readiness_upper_seconds'],
+                         row['input_synthesis_to_successful_hittable_upper_seconds'])
+
+    def test_early_controls_cannot_excuse_slow_native_appearance(self):
+        result = self.validate(example(native_delay=2.3))
+        self.assertEqual(result['status'], 'not_accepted')
+        row = result['presentations'][0]
+        self.assertEqual(row['input_synthesis_to_native_appearance_budget'], 'over_budget_observation')
+        self.assertGreater(row['input_synthesis_to_observed_readiness_upper_seconds'], receipt.BUDGET_SECONDS)
+
+    def test_positive_controls_before_input_are_invalid(self):
+        logs = example()
+        for prop, old, new in [('exists',2.1,.91),('isEnabled',2.2,.93),('isHittable',2.3,.95)]:
+            logs['runner.log'] = logs['runner.log'].replace(ax(prop,old),ax(prop,new,duration=.01))
+        self.rejects(logs, 'AX query outside observation window')
+
     def test_recorded_query_start_end_and_duration_must_agree(self):
         logs = example()
         start_fields = f'start_uptime_seconds={UPTIME+2.08:.6f} start_wall_seconds={WALL+2.08:.6f}'
