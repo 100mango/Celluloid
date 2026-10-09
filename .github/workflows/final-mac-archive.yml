@@ -1,0 +1,72 @@
+name: Final Celluloid unsigned Mac archive diagnostic
+on:
+  push:
+    branches: [celluloid-final-mac-archive]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-final-mac-archive
+  cancel-in-progress: false
+jobs:
+  archive:
+    if: ${{ github.ref == 'refs/heads/celluloid-final-mac-archive' && github.run_attempt == 1 }}
+    name: Observe final unsigned Mac archive and symbols
+    runs-on: xcode-27
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Start the existing 1560 second archive clock
+        run: |
+          python3 -S - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          Path(os.environ['RUNNER_TEMP'], 'cell-final-mac-archive-clock.json').write_text(json.dumps({
+              'schema': 'Celluloid.FinalMacArchiveClock.1', 'control_sha': os.environ['GITHUB_SHA'],
+              'run_id': os.environ['GITHUB_RUN_ID'], 'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'started_monotonic': time.monotonic(), 'started_unix': time.time(),
+              'execution_budget_seconds': 1560}))
+          PY
+      - name: Check out exact independent control and product parent
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        timeout-minutes: 2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+          ref: ${{ github.sha }}
+          path: control
+      - name: Check out fixed final product
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        timeout-minutes: 2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          ref: 13e9a1ed63c6e7744803419f27e429a759df1209
+          path: product
+      - name: Admit source archive once and retain bounded package proof
+        id: proof
+        timeout-minutes: 25
+        run: python3 -B -S control/Scripts/final_mac_archive.py
+      - name: Admit bounded evidence upload and finalization
+        id: admit-upload
+        if: ${{ always() && steps.proof.outputs.evidence_ready == 'true' }}
+        timeout-minutes: 1
+        run: python3 -B -S control/Scripts/final_mac_archive.py admit-upload
+      - name: Retain report only
+        id: upload
+        if: ${{ always() && steps.admit-upload.outcome == 'success' && steps.admit-upload.outputs.upload_admitted == 'true' }}
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cell-final-mac-archive-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cell-final-mac-archive-evidence/report.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
+      - name: Verify upload and the original clock
+        if: ${{ always() && steps.admit-upload.outputs.upload_admitted == 'true' }}
+        timeout-minutes: 1
+        env:
+          CELL_ARCHIVE_UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: python3 -B -S control/Scripts/final_mac_archive.py finish-upload
