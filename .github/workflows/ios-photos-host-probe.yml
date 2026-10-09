@@ -1,0 +1,53 @@
+name: Celluloid actual iOS Photos host diagnostic
+on:
+  push:
+    branches: [cell-ios-photos-host-probe]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-ios-photos-host-probe
+  cancel-in-progress: false
+jobs:
+  actual-photos-host:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Bind exact source and dedicated route
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 100mango/Celluloid
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REF" = refs/heads/cell-ios-photos-host-probe
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          git diff --exit-code HEAD --
+          mkdir -p build
+          git rev-parse HEAD 'HEAD^{tree}' > build/ios-photos-host-source.txt
+      - name: One build and actual Photos host diagnostic
+        timeout-minutes: 40
+        run: python3 Scripts/run_ios_photos_host_diagnostic.py
+      - name: Verify source remained unchanged
+        timeout-minutes: 1
+        if: always()
+        run: git diff --exit-code HEAD --
+      - name: Retain native host proof
+        timeout-minutes: 2
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: celluloid-ios-photos-host-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/ios-photos-host-source.txt
+            build/swiftui-acceptance/
+          retention-days: 1
+          if-no-files-found: error
