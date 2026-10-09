@@ -33,13 +33,13 @@ class AdmissionTests(unittest.TestCase):
         def read(path,*args):return c if path==gate.ROOT/gate.CONFIG else receipt if path==gate.ADMISSION else owner
         with patch.dict(os.environ,e,clear=True),patch.object(gate,'strict_json',side_effect=read),patch.object(gate,'fingerprint',return_value='digest'):
             return gate.bounded_admission(label,command,cap)
-    def testExactOwnedInstallCommandOnlyAndOriginalCap(self):
+    def testExactOwnedInstallCommandOnlyAndSplitPhaseCap(self):
         command=['xcrun','simctl','install','12345678-1234-1234-1234-123456789AB0',str(gate.DERIVED/'Build/Products/Debug-iphonesimulator/Celluloid.app')]
-        self.assertEqual(self.bounded('install-owned-app',command,120)['run_id'],'123')
-        for argv,cap in [(command,121),(command+['--other'],120),([*command[:3],'OTHER',command[-1]],120),([*command[:-1],'/other.app'],120)]:
+        self.assertEqual(self.bounded('install-owned-app',command,210)['run_id'],'123')
+        for argv,cap in [(command,120),(command,211),(command+['--other'],210),([*command[:3],'OTHER',command[-1]],210),([*command[:-1],'/other.app'],210)]:
             with self.assertRaises(ValueError):self.bounded('install-owned-app',argv,cap)
         for change in [lambda r,o:r.update(run_id='124'),lambda r,o:r.update(control_fingerprint='wrong'),lambda r,o:o.update(created_by_this_job=False),lambda r,o:o.update(absent_before_create=False),lambda r,o:o.update(source_sha='c'*40),lambda r,o:o.update(run_id='124')]:
-            with self.assertRaises(ValueError):self.bounded('install-owned-app',command,120,change)
+            with self.assertRaises(ValueError):self.bounded('install-owned-app',command,210,change)
     def testUnknownCommandAndHostExecutionCannotEnterWrapper(self):
         for label,command,cap in [('actual-photos-host',['xcodebuild','test-without-building'],630),('sample',['sample','999','3'],8),('bootstrap',['xcrun','simctl','privacy'],750),('host-memory',['ps','-ax'],5),('host-memory',['/usr/sbin/sysctl','hw.ncpu','hw.memsize','vm.swapusage'],5),('runtime-metadata',['xcrun','simctl','list','runtimes','-j'],20)]:
             with self.assertRaises(ValueError):self.bounded(label,command,cap)
@@ -173,7 +173,7 @@ class PublicEvidenceTests(unittest.TestCase):
 
 
 WRAPPER_PREFIX = "install_diagnostic_route = absolute_deadline and os.environ.get('GITHUB_REF') == 'refs/heads/cell-ios-install-diagnostic'\ninstall_observer_context = None\ninstall_observer_wait = None\ninstall_observation = None\ninstall_cancelled = [None]\nif install_diagnostic_route:\n    # Only this exact new route defers cancellation while it owns children.\n    import atexit\n    from run_ios_install_diagnostic import bounded_admission, OBSERVATIONS, InstallObservation, defer_cancellation\n    install_cancelled = defer_cancellation()\n    install_observer_context = bounded_admission(args.label, args.command, args.seconds)\n    if args.label == 'install-owned-app':\n        from ios_install_observer import wait_with_one_sample\n        install_observer_wait = wait_with_one_sample\n"
-WRAPPER_SPAWN = "    if install_diagnostic_route and install_cancelled[0] is not None:\n        raise RuntimeError('Cancelled before native dispatch')\n    if install_observer_wait is None:\n        process = subprocess.Popen(args.command, start_new_session=True)\n    else:\n        install_observation = InstallObservation(install_observer_context,args.command,deadline,lambda: install_cancelled[0] is not None)\n        atexit.register(install_observation.finish)\n        install_observation.start()\n        process = install_observation.spawn(lambda: subprocess.Popen(args.command, start_new_session=True))\n"
+WRAPPER_SPAWN = "    if install_diagnostic_route and install_cancelled[0] is not None:\n        raise RuntimeError('Cancelled before native dispatch')\n    if install_observer_wait is None:\n        process = subprocess.Popen(args.command, start_new_session=True)\n    else:\n        install_observation = InstallObservation(install_observer_context,args.command,deadline,lambda: install_cancelled[0] is not None)\n        atexit.register(install_observation.finish)\n        install_observation.start()\n        process = install_observation.spawn(lambda: subprocess.Popen(args.command, start_new_session=True))\n        deadline = install_observation.deadline  # Native clock sampled before Popen; phase cap remains fixed.\n"
 WRAPPER_WAIT = "        if install_observer_wait is None:\n            code = process.wait(timeout=remaining)\n        else:\n            try:\n                code = install_observer_wait(process, deadline, args.command, OBSERVATIONS, install_observer_context)\n            except subprocess.TimeoutExpired:\n                raise\n            except BaseException as observation_error:\n                # Keep the same owned native waiter and original deadline. An\n                # observer failure is not evidence that install itself timed out.\n                install_observation.control_errors.append({'phase':'sample','error':type(observation_error).__name__})\n                print('BOUNDED_COMMAND_CLEANUP_UNCONFIRMED', json.dumps(error_record(observation_error)), flush=True)\n                remaining = deadline - time.monotonic()\n                if remaining <= 0:\n                    raise subprocess.TimeoutExpired(args.command, args.seconds) from observation_error\n                code = process.wait(timeout=remaining)\n            install_observation.observed(code)\n"
 WRAPPER_END = "if install_observation is not None:\n    install_observation.finish()\n    atexit.unregister(install_observation.finish)\nif install_diagnostic_route and install_cancelled[0] is not None:\n    print('BOUNDED_COMMAND_CLEANUP_UNCONFIRMED deferred cancellation', flush=True)\n    code = 128 + install_cancelled[0]\n"
 
@@ -189,19 +189,21 @@ class WrapperTests(unittest.TestCase):
         for old,new in [('os.killpg(process.pid, sig)','os.killpg(1, sig)'),('photos_cleanup_started + 10','photos_cleanup_started + 20'),("break  # Never switch signals or routes after denied cleanup.","pass  # ignore denial")]:
             changed=source.replace(old,new)
             self.assertNotEqual(hashlib.sha256(restore_install_wrapper(changed).encode()).hexdigest(),hashlib.sha256(restored.encode()).hexdigest())
-    def exercise(self,uncertain=False,closed=False,hook_error=False):
+    def exercise(self,uncertain=False,closed=False,hook_error=False,slow_spawn=0,late_native=False):
         import contextlib,io,runpy,subprocess
         from unittest.mock import Mock
         import ios_install_observer
         proc=Mock(pid=4321,returncode=0);proc.poll.return_value=0;proc.wait.return_value=0;context={'source_sha':'a'*40,'run_id':'123','run_attempt':'1'}
-        logger=Mock();logger.start.return_value={'uncertain':False};logger.finish.return_value={'uncertain':False,'host_pid':987,'simulator_stream_settled':True};logger.spawn_if_certain.side_effect=lambda callback,deadline,cancelled:callback()
+        logger=Mock();logger.uncertain=False;logger.start.return_value={'uncertain':False};logger.finish.return_value={'uncertain':False,'host_pid':987,'simulator_stream_settled':True};logger.spawn_if_certain.side_effect=lambda callback,deadline,cancelled:callback()
         def hook(process,deadline,command,out,values):
-            self.assertIs(process,proc);self.assertEqual(deadline,20);self.assertIs(values,context)
+            self.assertIs(process,proc);self.assertEqual(deadline,121);self.assertIs(values,context)
             if hook_error:raise ValueError('unexpected observer error')
-            values['sample_receipt']={'uncertain':uncertain,'install_returncode':0,'install_return_monotonic':1};return 0
+            if late_native:clock[0]=122
+            values['sample_receipt']={'uncertain':uncertain,'install_returncode':0,'install_return_monotonic':clock[0]};return 0
         env={'GITHUB_REF':'refs/heads/'+gate.BRANCH,'GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1'}
-        output=io.StringIO()
-        with patch.dict(os.environ,env,clear=True),patch.object(sys,'argv',['run_bounded.py','--seconds','120','--label','install-owned-app','--deadline-monotonic','20','xcrun','simctl','install','owned','owned.app']),patch('time.monotonic',return_value=1),patch('signal.signal'),patch.object(gate,'save'),patch.object(gate,'bounded_admission',side_effect=ValueError('closed') if closed else None,return_value=context),patch.object(ios_install_observer,'DeviceLog',return_value=logger),patch.object(ios_install_observer,'wait_with_one_sample',side_effect=hook) as sampled,patch('subprocess.Popen',return_value=proc) as spawned,patch('os.killpg') as killed,contextlib.redirect_stdout(output):
+        output=io.StringIO();clock=[1]
+        def popen(*a,**k):clock[0]+=slow_spawn;return proc
+        with patch.dict(os.environ,env,clear=True),patch.object(sys,'argv',['run_bounded.py','--seconds','210','--label','install-owned-app','--deadline-monotonic','211','xcrun','simctl','install','owned','owned.app']),patch('time.monotonic',side_effect=lambda:clock[0]),patch('signal.signal'),patch.object(gate,'save'),patch.object(gate,'bounded_admission',side_effect=ValueError('closed') if closed else None,return_value=context),patch.object(ios_install_observer,'DeviceLog',return_value=logger),patch.object(ios_install_observer,'wait_with_one_sample',side_effect=hook) as sampled,patch('subprocess.Popen',side_effect=popen) as spawned,patch('os.killpg') as killed,contextlib.redirect_stdout(output):
             if closed:
                 with self.assertRaises(ValueError):runpy.run_path(str(gate.ROOT/'Scripts/run_bounded.py'),run_name='__main__')
                 spawned.assert_not_called();sampled.assert_not_called();return None,output.getvalue()
@@ -213,6 +215,18 @@ class WrapperTests(unittest.TestCase):
         code,text=self.exercise(uncertain=True);self.assertEqual(code,0);self.assertIn('CLEANUP_UNCONFIRMED',text)
         code,text=self.exercise(hook_error=True);self.assertEqual(code,0);self.assertNotIn('BOUNDED_COMMAND_TIMEOUT',text);self.assertIn('CLEANUP_UNCONFIRMED',text)
         records=[json.loads(line.split(' ',1)[1]) for line in text.splitlines() if line.startswith('INSTALL_WRAPPER_OBSERVATION ')];self.assertEqual(records[0]['native_install']['returncode'],0);self.assertTrue(records[0]['native_install']['within_deadline']);self.assertEqual(records[0]['control_errors'],[{'phase':'sample','error':'ValueError'}])
+
+    def testWrapperKeepsNativeDeadlineAfterSlowPopenEvenWhileParentHasTime(self):
+        code,text=self.exercise(slow_spawn=6);self.assertEqual(code,0)
+        events=[json.loads(line.split(' ',1)[1]) for line in text.splitlines() if line.startswith('PHOTOS_BOUNDED_TIMING ')]
+        wait=next(x for x in events if x['phase']=='wait-begin');self.assertEqual(wait['remaining_seconds'],114)
+        self.assertEqual(wait['parent_deadline_monotonic'],211)
+    def testNativeLateZeroStillFailsInsideUnusedPhaseBudget(self):
+        code,text=self.exercise(late_native=True);self.assertEqual(code,124)
+        self.assertIn('BOUNDED_COMMAND_TIMEOUT',text)
+        receipt=next(json.loads(line.split(' ',1)[1]) for line in text.splitlines() if line.startswith('INSTALL_WRAPPER_OBSERVATION '))
+        self.assertEqual(receipt['native_install']['returncode'],0);self.assertFalse(receipt['native_install']['within_deadline'])
+        self.assertEqual(receipt['native_dispatch']['deadline_monotonic'],121);self.assertEqual(receipt['native_dispatch']['phase_deadline_monotonic'],211)
 
 class RealCancellationTests(unittest.TestCase):
     def checkpoint(self,output,cleanup):
@@ -241,7 +255,7 @@ import run_ios_install_diagnostic as gate,ios_install_observer as observer
 context={'source_sha':'a'*40,'run_id':'123','run_attempt':'1'}
 gate.bounded_admission=lambda *a:context
 class Observation:
- def __init__(self,*a):self.control_errors=[]
+ def __init__(self,*a):self.control_errors=[];self.deadline=a[2]
  def start(self):pass
  def spawn(self,callback):return callback()
  def observed(self,code,when=None):print('REAL_NATIVE_EXIT',code,flush=True)
@@ -293,6 +307,92 @@ else:raise RuntimeError('continued after cancellation')
 """
         result=subprocess.run([sys.executable,'-S','-c',script,str(gate.ROOT/'Scripts')],capture_output=True,text=True,timeout=5)
         self.assertEqual(result.returncode,0,result.stderr);self.assertIn('CANCELLED_NO_DISPATCH',result.stdout)
+
+class SplitInstallDeadlineTests(unittest.TestCase):
+    def observation(self,clock):
+        from unittest.mock import Mock
+        import ios_install_observer
+        logger=Mock();logger.uncertain=False;logger.start.return_value={'uncertain':False};logger.spawn_if_certain.side_effect=lambda callback,deadline,cancelled:callback()
+        self.addCleanup(patch.stopall)
+        patch.object(ios_install_observer,'DeviceLog',return_value=logger).start()
+        patch.object(gate.time,'monotonic',side_effect=lambda:clock[0]).start()
+        patch('builtins.print').start()
+        context={'source_sha':'a'*40,'run_id':'123','run_attempt':'1'}
+        return gate.InstallObservation(context,['xcrun','simctl','install','owned','app'],210,lambda:False),logger
+    def testExactPreparationNativePhaseLimitsAndOriginalReserves(self):
+        self.assertEqual((gate.INSTALL_PREPARATION_SECONDS,gate.INSTALL_NATIVE_SECONDS,gate.INSTALL_PHASE_SECONDS),(90,120,210))
+        source=(gate.ROOT/'Scripts/run_ios_install_diagnostic.py').read_text()
+        self.assertIn('self.deadline-time.monotonic()>=INSTALL_PHASE_SECONDS+135',source)
+        self.assertIn("str(binary.parent)],INSTALL_PHASE_SECONDS,simulator=True,allow_failure=True)",source)
+        self.assertIn('work_budget_seconds\':2280',source)
+        self.assertIn('self.started+2370',source)
+    def testObservedStartupCostChargesPreparationAndNativeStartsBeforePopen(self):
+        clock=[54.449];obs,logger=self.observation(clock);obs.start();clock[0]+=9.061
+        seen=[]
+        def popen():
+            seen.append((clock[0],obs.deadline));clock[0]+=6;return 'owned-process'
+        self.assertEqual(obs.spawn(popen),'owned-process')
+        self.assertAlmostEqual(seen[0][0],63.510);self.assertAlmostEqual(obs.deadline,183.510)
+        self.assertAlmostEqual(obs.deadline-clock[0],114)
+        self.assertEqual(obs.preparation_deadline,90);self.assertEqual(obs.phase_deadline,210)
+        self.assertEqual(logger.spawn_if_certain.call_args.args[1],90)
+    def testExpiredPreparationBeforeLoggerNeverDispatchesLoggerOrInstall(self):
+        for value in [90,91,210]:
+            clock=[value];obs,logger=self.observation(clock)
+            with self.assertRaises(ValueError):obs.start()
+            logger.start.assert_not_called();logger.spawn_if_certain.assert_not_called()
+            patch.stopall()
+    def testLoggerStartupConsumesPreparationWithoutResetAndBlocksLateInstall(self):
+        from unittest.mock import Mock
+        clock=[80];obs,logger=self.observation(clock)
+        def slow_start():clock[0]=91;return {'uncertain':False}
+        logger.start.side_effect=slow_start;obs.start();popen=Mock()
+        with self.assertRaises(ValueError):obs.spawn(popen)
+        popen.assert_not_called();self.assertIsNone(obs.native_dispatch)
+    def testSlowDispatchReceiptCannotStartInstallAfterPreparationDeadline(self):
+        from unittest.mock import Mock
+        clock=[89];obs,logger=self.observation(clock)
+        def slow_receipt(*a,**k):clock[0]=91
+        with patch('builtins.print',side_effect=slow_receipt):
+            popen=Mock()
+            with self.assertRaises(ValueError):obs.spawn(popen)
+        popen.assert_not_called();self.assertEqual(obs.deadline,209)
+    def testStickyUncertaintyDuringReceiptIOBlocksActualInstallPopen(self):
+        from unittest.mock import Mock
+        from ios_install_observer import DeviceLog
+        clock=[60];obs,_=self.observation(clock)
+        # Real dispatch fence holds its lock while receipt I/O executes. A
+        # logger stop cannot take that lock and instead publishes pending_stop.
+        actual=DeviceLog('unused','12345678-1234-1234-1234-123456789AB0','a'*40,'123','1',210);actual._started=True
+        obs.collector=actual;obs.context['device_log']=actual;popen=Mock()
+        with patch('builtins.print',side_effect=lambda *a,**k:actual._mark_stop()):
+            with self.assertRaises(ValueError):obs.spawn(popen)
+        self.assertTrue(actual._pending_stop.is_set());self.assertTrue(actual.uncertain)
+        popen.assert_not_called()
+    def testNativePopenReturningLateNeverReceivesFreshWaitBudget(self):
+        clock=[70];obs,logger=self.observation(clock)
+        def slow_popen():clock[0]=191;return 'owned-process'
+        self.assertEqual(obs.spawn(slow_popen),'owned-process');self.assertEqual(obs.deadline,190)
+        self.assertLess(obs.deadline-clock[0],0)
+        # Existing wrapper remaining<=0 guard routes this exact child to bounded cleanup.
+        wrapper=(gate.ROOT/'Scripts/run_bounded.py').read_text();self.assertIn('deadline = install_observation.deadline',wrapper)
+        self.assertIn('remaining = deadline - time.monotonic()\n        if remaining <= 0:',wrapper)
+    def testNoInstallAfterLoggerUncertaintyOrRecordedCancellation(self):
+        from unittest.mock import Mock
+        from ios_install_observer import ObserverDispatchRefused
+        clock=[60];obs,logger=self.observation(clock);popen=Mock()
+        logger.spawn_if_certain.side_effect=ObserverDispatchRefused('observer_uncertain')
+        with self.assertRaises(ObserverDispatchRefused):obs.spawn(popen)
+        popen.assert_not_called();self.assertIsNone(obs.native_dispatch)
+        logger.spawn_if_certain.side_effect=lambda callback,deadline,cancelled:callback()
+        obs.cancelled=lambda:True
+        with self.assertRaises(ValueError):obs.spawn(popen)
+        popen.assert_not_called()
+    def testSourceProtectionStillRejectsChangesToGenericDeadlineAndCleanup(self):
+        wrapper=(gate.ROOT/'Scripts/run_bounded.py').read_text();restored=restore_install_wrapper(wrapper)
+        self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'798a18065939c9787dcf27d42ab1917ee8d7dd4835d9ff48ef6b52e8b4cf1acd')
+        changed=wrapper.replace('min(started + args.seconds, args.deadline_monotonic)','started + args.seconds')
+        self.assertNotEqual(hashlib.sha256(restore_install_wrapper(changed).encode()).hexdigest(),hashlib.sha256(restored.encode()).hexdigest())
 
 if __name__=='__main__':
     # Actual native preflight executes both new control suites plus the unchanged

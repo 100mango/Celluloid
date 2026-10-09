@@ -17,6 +17,9 @@ EXPECTED_BINARY='e8a98ee62ee4df42bfaedc1d1e3b15c284231074237ee3dd1af48648d543940
 EXPECTED_BUNDLE='ac903681326cd5a38786d6942e8dca129302007a95d1373bde2ac4d614537f00'
 ADMISSION=ROOT/'build/install-diagnostic-source-before.json'
 OBSERVATIONS=OUT/'install-observation'
+INSTALL_PREPARATION_SECONDS=90
+INSTALL_NATIVE_SECONDS=120
+INSTALL_PHASE_SECONDS=INSTALL_PREPARATION_SECONDS+INSTALL_NATIVE_SECONDS
 
 def strict_json(path,limit=32768):
     fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
@@ -82,7 +85,7 @@ def bounded_admission(label,command,seconds):
     else:
         owner=strict_json(OUT/'owned-simulator.json');device=owner.get('device_id');require(type(device) is str and str(uuid.UUID(device)).upper()==device,'Malformed owned device')
         require(owner.get('source_sha')==os.environ['GITHUB_SHA'] and owner.get('run_id')==os.environ['GITHUB_RUN_ID'] and owner.get('run_attempt')=='1' and owner.get('created_by_this_job') is True and owner.get('absent_before_create') is True and owner.get('runtime_id')=='com.apple.CoreSimulator.SimRuntime.iOS-27-0','Wrong fresh device ownership')
-        dynamic={'boot':(60,['xcrun','simctl','boot',device]),'bootstatus':(300,['xcrun','simctl','bootstatus',device,'-b']),'install-owned-app':(120,['xcrun','simctl','install',device,str(DERIVED/'Build/Products/Debug-iphonesimulator/Celluloid.app')]),'cleanup-shutdown':(30,['xcrun','simctl','shutdown',device]),'cleanup-delete':(30,['xcrun','simctl','delete',device]),'build':(720,['xcodebuild','-project','Celluloid.xcodeproj','-scheme','Celluloid','-configuration','Debug','-destination','platform=iOS Simulator,id='+device,'-derivedDataPath',str(DERIVED),'CODE_SIGNING_ALLOWED=NO','CODE_SIGNING_REQUIRED=NO','COMPILER_INDEX_STORE_ENABLE=NO','-jobs','2','build-for-testing'])}
+        dynamic={'boot':(60,['xcrun','simctl','boot',device]),'bootstatus':(300,['xcrun','simctl','bootstatus',device,'-b']),'install-owned-app':(INSTALL_PHASE_SECONDS,['xcrun','simctl','install',device,str(DERIVED/'Build/Products/Debug-iphonesimulator/Celluloid.app')]),'cleanup-shutdown':(30,['xcrun','simctl','shutdown',device]),'cleanup-delete':(30,['xcrun','simctl','delete',device]),'build':(720,['xcodebuild','-project','Celluloid.xcodeproj','-scheme','Celluloid','-configuration','Debug','-destination','platform=iOS Simulator,id='+device,'-derivedDataPath',str(DERIVED),'CODE_SIGNING_ALLOWED=NO','CODE_SIGNING_REQUIRED=NO','COMPILER_INDEX_STORE_ENABLE=NO','-jobs','2','build-for-testing'])}
         require(label in dynamic,'Unknown diagnostic command');expected_cap,expected=dynamic[label]
     require(seconds==expected_cap and command==expected,'Command scope/cap mismatch')
     return dict(source_sha=receipt['source_sha'],run_id=receipt['run_id'],run_attempt='1')
@@ -106,16 +109,34 @@ class InstallObservation:
     """Same wrapper owns logger, exact install child and optional sampler."""
     def __init__(self,context,command,deadline,cancelled):
         from ios_install_observer import DeviceLog
-        self.context=context;self.deadline=deadline;self.cancelled=cancelled;self.finished=False
+        self.context=context;self.deadline=deadline;self.phase_deadline=deadline
+        self.preparation_deadline=deadline-INSTALL_NATIVE_SECONDS;self.native_dispatch=None
+        self.cancelled=cancelled;self.finished=False
         self.collector=DeviceLog(OBSERVATIONS,command[3],context['source_sha'],context['run_id'],context['run_attempt'],deadline)
         self.native=None;self.control_errors=[]
         context['device_log']=self.collector;context['cancelled']=cancelled
     def start(self):
-        require(not self.cancelled() and time.monotonic()<self.deadline,'Cancelled/expired before logger dispatch')
+        require(not self.cancelled() and time.monotonic()<self.preparation_deadline,'Cancelled/expired preparation before logger dispatch')
         start=self.collector.start()
         print('INSTALL_LOG_DISPATCH',json.dumps(start,sort_keys=True),flush=True)
     def spawn(self,callback):
-        return self.collector.spawn_if_certain(callback,self.deadline,self.cancelled)
+        def native_dispatch():
+            # This clock precedes receipt I/O and Popen. Slow Popen consumes the
+            # native allowance; preparation cannot restart after the parent cap.
+            now=time.monotonic()
+            require(now<self.preparation_deadline,'Install preparation deadline expired')
+            self.deadline=min(now+INSTALL_NATIVE_SECONDS,self.phase_deadline)
+            self.native_dispatch={'started_monotonic':now,'deadline_monotonic':self.deadline,
+                'native_limit_seconds':INSTALL_NATIVE_SECONDS,'preparation_deadline_monotonic':self.preparation_deadline,
+                'phase_deadline_monotonic':self.phase_deadline,'preparation_limit_seconds':INSTALL_PREPARATION_SECONDS,
+                'phase_limit_seconds':INSTALL_PHASE_SECONDS}
+            print('INSTALL_NATIVE_DISPATCH',json.dumps(self.native_dispatch,sort_keys=True),flush=True)
+            require(not self.collector.uncertain and not self.cancelled()
+                    and time.monotonic()<self.preparation_deadline and time.monotonic()<self.deadline,
+                    'Uncertain/cancelled/expired before install Popen')
+            return callback()
+        # Reuse the existing sticky uncertainty/cancellation dispatch fence.
+        return self.collector.spawn_if_certain(native_dispatch,self.preparation_deadline,self.cancelled)
     def observed(self,code,when=None):
         sample=self.context.get('sample_receipt')
         if when is None and type(sample) is dict and sample.get('install_returncode')==code and type(sample.get('install_return_monotonic')) in (float,int):when=sample['install_return_monotonic']
@@ -134,7 +155,7 @@ class InstallObservation:
         sample_safe=type(sample) is dict and sample.get('uncertain') is False
         uncertain=not log_safe or not sample_safe or bool(self.control_errors) or bool(self.cancelled())
         result={'schema':'Celluloid.InstallWrapperObservation.1',**{k:self.context[k] for k in ['source_sha','run_id','run_attempt']},
-                'native_install':self.native,'logger':logger,'sample':sample,'control_errors':self.control_errors,
+                'native_dispatch':self.native_dispatch,'native_install':self.native,'logger':logger,'sample':sample,'control_errors':self.control_errors,
                 'cancelled':bool(self.cancelled()),'prohibit_further_simctl':uncertain}
         print('INSTALL_WRAPPER_OBSERVATION',json.dumps(result,sort_keys=True),flush=True)
         if uncertain:print('BOUNDED_COMMAND_CLEANUP_UNCONFIRMED install observation/cancellation',flush=True)
@@ -208,10 +229,10 @@ class InstallDiagnostic(HostDiagnostic):
         self.command('boot',['xcrun','simctl','boot',device],60,simulator=True);self.command('bootstatus',['xcrun','simctl','bootstatus',device,'-b'],300,simulator=True)
         save(OUT/'owned-runtime.json',known_runtime_metadata(owner))
         self.pressure_before=pressure_snapshot();save(OUT/'install-pressure-before.json',self.pressure_before)
-        require(not self.uncertain and self.deadline-time.monotonic()>=255,'Collector/install/cleanup reserves do not fit')
+        require(not self.uncertain and self.deadline-time.monotonic()>=INSTALL_PHASE_SECONDS+135,'Collector/install/cleanup reserves do not fit')
         self.install_attempted=True
         try:
-            code,raw=self.command('install-owned-app',['xcrun','simctl','install',device,str(binary.parent)],120,simulator=True,allow_failure=True)
+            code,raw=self.command('install-owned-app',['xcrun','simctl','install',device,str(binary.parent)],INSTALL_PHASE_SECONDS,simulator=True,allow_failure=True)
             self.install_result={'returned_exit_code':code,'parent_dispatch':strict_json(OUT/'install-owned-app-dispatch-timing.json'),'outcome':'wrapper_passed' if code==0 else 'wrapper_failed','observation_or_simulator_uncertain':self.uncertain}
         finally:
             # Preserve any failed/unknown install before independently finalizing

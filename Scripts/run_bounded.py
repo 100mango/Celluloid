@@ -108,6 +108,7 @@ try:
         atexit.register(install_observation.finish)
         install_observation.start()
         process = install_observation.spawn(lambda: subprocess.Popen(args.command, start_new_session=True))
+        deadline = install_observation.deadline  # Native clock sampled before Popen; phase cap remains fixed.
     owner.started(process)
     photos_timing('spawn-return', child_pid=process.pid, child_pgid=process.pid, start_new_session=True)
 except BaseException as original:
