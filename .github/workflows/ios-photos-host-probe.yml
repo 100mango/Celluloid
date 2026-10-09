@@ -5,6 +5,8 @@ on:
     paths:
       - .github/ios-photos-host-final.json
       - .github/workflows/ios-photos-host-probe.yml
+      - Scripts/run_ios_photos_host_diagnostic.py
+      - Scripts/test_ios_photos_host.py
 permissions:
   contents: read
 concurrency:

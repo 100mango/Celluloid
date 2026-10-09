@@ -14,16 +14,25 @@ class FinalPhotosHostAdmissionTests(unittest.TestCase):
         return config,context,facts
 
     def testClosedFlagsStopBeforeGitOrNativeAndRuntimeEntryCannotBypass(self):
+        from functools import partial
         from unittest.mock import patch
-        config=json.loads((host.ROOT/host.PROBE_CONFIG).read_text())
-        for key in ['READY','sourceReady','nativeAuthorization']:self.assertIs(config[key],False)
-        with patch.object(host.subprocess,'check_output') as native,self.assertRaisesRegex(ValueError,'closed'):host.admit_probe()
-        native.assert_not_called()
-        with patch.object(host.subprocess,'check_output') as native,self.assertRaisesRegex(ValueError,'closed'):host.main()
-        native.assert_not_called()
         import run_ios_photos_host_diagnostic as driver
-        with patch.object(driver,'HostDiagnostic') as gate,self.assertRaisesRegex(ValueError,'closed'):driver.main()
-        gate.assert_not_called()
+        config=json.loads((host.ROOT/host.PROBE_CONFIG).read_text())
+        # Current reviewed source is active; exercise each closed guard using an
+        # explicit temporary config and the real admission implementation.
+        for key in ['READY','sourceReady','nativeAuthorization']:self.assertIs(config[key],True)
+        real_admit=host.admit_probe
+        for key in ['READY','sourceReady','nativeAuthorization']:
+            with self.subTest(closed_flag=key),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);path=root/host.PROBE_CONFIG;path.parent.mkdir(parents=True)
+                path.write_text(json.dumps(dict(config,**{key:False})))
+                closed_admit=partial(real_admit,root=root)
+                with patch.object(host.subprocess,'check_output') as native,self.assertRaisesRegex(ValueError,'closed'):closed_admit()
+                native.assert_not_called()
+                with patch.object(host,'admit_probe',closed_admit),patch.object(host.subprocess,'check_output') as native,self.assertRaisesRegex(ValueError,'closed'):host.main()
+                native.assert_not_called()
+                with patch.object(driver,'admit_probe',closed_admit),patch.object(driver,'HostDiagnostic') as gate,self.assertRaisesRegex(ValueError,'closed'):driver.main()
+                gate.assert_not_called()
 
     def testOnlyExactFinalSourceLinearControlAndExplicitAuthorityAdmit(self):
         c,e,f=self.values();result=host.validate_probe_admission(c,e,f)
@@ -62,18 +71,33 @@ class FinalPhotosHostAdmissionTests(unittest.TestCase):
                 path.write_bytes(plistlib.dumps(good))
             host.check_owned_versions(app)
 
-    def testWorkflowIsClosedSingleJobAndRealPortableEntryIsSiteFree(self):
+    def testWorkflowIsReviewedActiveSingleJobAndRealPortableEntryIsSiteFree(self):
         import hashlib,re
         text=(host.ROOT/host.PROBE_WORKFLOW).read_text()
-        self.assertEqual(hashlib.sha256(text.encode()).hexdigest(),'69f207e7a82e625b4a5bf14eb0af563228d0884ea5928865aef7342c6b3897bb')
+        self.assertEqual(hashlib.sha256(text.encode()).hexdigest(),'6bc5596c1565bdcbfa82e01b03279ba0802bea75dc5c5789890c209698c78519')
         self.assertEqual(re.findall(r'^  ([a-z][a-z0-9-]*):$',text.split('jobs:\n',1)[1],re.M),['actual-photos-host'])
-        self.assertIn('    if: ${{ false &&',text);self.assertIn('    runs-on: xcode-27\n    timeout-minutes: 45\n',text)
+        self.assertIn("    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/cell-ios-photos-host-final' }}",text);self.assertIn('    runs-on: xcode-27\n    timeout-minutes: 45\n',text)
         self.assertIn('    branches: [cell-ios-photos-host-final]',text)
         self.assertIn('python3 -S Scripts/run_ios_photos_host.py --admit-only',text)
         driver=(host.ROOT/'Scripts/run_ios_photos_host_diagnostic.py').read_text()
         self.assertIn("[sys.executable, '-S', 'Scripts/test_ios_photos_host.py']",driver)
         self.assertIn("self.command('actual-photos-host', command, 630",driver)
         self.assertIn("'work_budget_seconds': 2280",driver)
+
+    def testWorkflowPushIncludesActualControlsAndRejectsUnrelatedPathsOrBranches(self):
+        import re
+        text=(host.ROOT/host.PROBE_WORKFLOW).read_text()
+        branches=re.findall(r'^    branches: \[(.+)\]$',text,re.M)
+        paths=set(re.findall(r'^      - (.+)$',text.split('    paths:\n',1)[1].split('permissions:\n',1)[0],re.M))
+        expected={host.PROBE_CONFIG,host.PROBE_WORKFLOW,'Scripts/run_ios_photos_host_diagnostic.py','Scripts/test_ios_photos_host.py'}
+        self.assertEqual(branches,[host.PROBE_BRANCH]);self.assertEqual(paths,expected)
+        def triggers(branch,changed):return branch==host.PROBE_BRANCH and bool(paths&set(changed))
+        for path in expected:self.assertTrue(triggers(host.PROBE_BRANCH,[path]))
+        for branch,changed in [(host.PROBE_BRANCH,['Celluloid/Info.plist']),(host.PROBE_BRANCH,['Scripts/run_bounded.py']),(host.PROBE_BRANCH,['Scripts/test_final_ios_photos_host_admission.py']),('celluloid-release-preparation',[host.PROBE_WORKFLOW]),('celluloid-rendering-qualification',[host.PROBE_WORKFLOW]),('celluloid-platform-qualification',[host.PROBE_WORKFLOW]),('cell-ios-photos-host-probe',[host.PROBE_WORKFLOW])]:
+            with self.subTest(branch=branch,changed=changed):self.assertFalse(triggers(branch,changed))
+        # This current two-file correction includes the workflow, so its changed
+        # path intersects the exact filter. The prior scripts-only push did not.
+        self.assertTrue(triggers(host.PROBE_BRANCH,[host.PROBE_WORKFLOW,'Scripts/test_final_ios_photos_host_admission.py']))
 
 
 if __name__ == '__main__': unittest.main()
