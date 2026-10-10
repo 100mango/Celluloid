@@ -92,5 +92,19 @@ final class NativeVisionTests: XCTestCase {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         XCTAssertFalse(scenes.isEmpty)
         print("VISION_NATIVE_RUNTIME bundle=\(Bundle.main.bundleURL.path) scenes=\(scenes.count) platform=\(Bundle.main.infoDictionary?["DTPlatformName"] ?? "")")
+        // VISION_FILES_DATA_DIAG_BEGIN:owned-home-identity
+        // Only this host's own sandbox identity; no directory enumeration or data reads.
+        let dataHome = NSHomeDirectory()
+        let attributes = try FileManager.default.attributesOfItem(atPath: dataHome)
+        XCTAssertEqual(attributes[.type] as? FileAttributeType, .typeDirectory)
+        let device = try XCTUnwrap(attributes[.systemNumber] as? NSNumber)
+        let inode = try XCTUnwrap(attributes[.systemFileNumber] as? NSNumber)
+        let receipt: [String: Any] = ["schema": "Celluloid.VisionOwnedData.1",
+            "bundle_identifier": "Mango.Celluloid", "data_home": dataHome,
+            "device": device.uint64Value, "inode": inode.uint64Value]
+        let encoded = try JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys])
+        XCTAssertLessThanOrEqual(encoded.count, 4096)
+        print("VISION_NATIVE_DATA_JSON " + String(decoding: encoded, as: UTF8.self))
+        // VISION_FILES_DATA_DIAG_END:owned-home-identity
     }
 }

@@ -10,6 +10,7 @@ name: Final Celluloid Files test-only diagnostics
     - Scripts/qualify_final_vision_wave_source.py
     - Scripts/test_final_vision_wave.py
     - Platforms/VisionUITests/NativeVisionUITests.swift
+    - Platforms/VisionTests/NativeVisionTests.swift
 permissions:
   contents: read
 concurrency:
@@ -109,7 +110,7 @@ jobs:
         def packed(x):return (json.dumps(x,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
         e=os.environ;t=Path(e['RUNNER_TEMP']).resolve(strict=True)
         methods=('testNativeDocumentBrowserLaunchAndNewDocument','testRealFilesImportBubbleAndPNGExport','testSeededDocumentSequentialTextUndoRedoAndBrowserReopen','testSimplifiedChineseDocumentPrivacyAndLargeText')
-        stages={'xcode','validate_native_sources','validate_native_localization','test_native_process','test_native_evidence','test_native_release','icons','icon-proof','build','runtimes','device-types','create','boot','bootstatus','install','pretest-launch','pretest-process','pretest-screenshot','pretest-terminate','producer-tests','producer-summary','producer-container','png-container','ui-tests','shutdown','delete','ui-summary','attachments'}
+        stages={'xcode','validate_native_sources','validate_native_localization','test_native_process','test_native_evidence','test_native_release','icons','icon-proof','build','runtimes','device-types','create','boot','bootstatus','install','pretest-launch','pretest-process','pretest-screenshot','pretest-terminate','producer-tests','producer-summary','producer-container','deployment-tests','deployment-summary','ui-tests','shutdown','delete','ui-summary','attachments'}
         exceptions={'OSError','PermissionError','ProcessLookupError','FileNotFoundError','FileExistsError','NotADirectoryError','IsADirectoryError','BlockingIOError','InterruptedError','TimeoutError','BrokenPipeError','ValueError','TypeError','KeyError','RuntimeError','ImportError','ModuleNotFoundError','OverflowError','RecursionError','MemoryError','KeyboardInterrupt','SystemExit','TimeoutExpired','SubprocessError','CalledProcessError'}
         m=e['VISION_WAVE_METHOD'];sha=e['GITHUB_SHA'];run=e['GITHUB_RUN_ID'];attempt=e['GITHUB_RUN_ATTEMPT']
         need(m in methods and re.fullmatch('[0-9a-f]{40}',sha) and re.fullmatch('[0-9]+',run) and attempt=='1','identity')
@@ -123,7 +124,7 @@ jobs:
          name='combined-source-'+phase+'.json'
          try:
           v=decode(read(t/name,16384));need(type(v) is dict,'source-schema')
-          expected={'phase':phase,'source_sha':sha,'control_sha':sha,'product_parent_sha':fixed['product_sha'],'product_parent_tree':fixed['product_tree'],'run_id':run,'run_attempt':attempt,'selected_method':m,'file_count':961,'diagnostic_test_sha256':'7d0e9c3174e36ab34644d8e08cb7612578a6370974cd8c8ec6b7eb476e0b4c6e','diagnostic_test_inverse_sha256':'ad973878bf33ae77d634679d76af545d2d0c1206fe3d1dfebff55c172746677d','product_fingerprint':'e43b7f3e623cb7dc709900365fcb8cf0d6fc8316cd1fd4ee23c8d389e22638ca'}
+          expected={'phase':phase,'source_sha':sha,'control_sha':sha,'product_parent_sha':fixed['product_sha'],'product_parent_tree':fixed['product_tree'],'run_id':run,'run_attempt':attempt,'selected_method':m,'file_count':960,'hosted_diagnostic_test_sha256':'92c56ed2c018052f235f3fc64b9cf116ae361079aaa483af37d17a21ee4cbb5e','hosted_diagnostic_test_inverse_sha256':'7ab4d6811af3cff725aa08a0b52efc7dc7b5b02ede5589ae695c0930aa5a1ecc','diagnostic_test_sha256':'7d0e9c3174e36ab34644d8e08cb7612578a6370974cd8c8ec6b7eb476e0b4c6e','diagnostic_test_inverse_sha256':'ad973878bf33ae77d634679d76af545d2d0c1206fe3d1dfebff55c172746677d','product_fingerprint':'d729946e1a7806ff397b2da4ac47bc442f3081213d9c2260ab5eb5477c573ebe'}
           need(all(type(v.get(k)) is type(x) and v.get(k)==x for k,x in expected.items()),'source-identity')
           report['receipts'][name]={'state':'valid-shaped-unverified-receipt','projection':expected}
          except (OSError,ValueError,TypeError,KeyError,RecursionError):report['receipts'][name]={'state':'missing-or-invalid','qualification':False}

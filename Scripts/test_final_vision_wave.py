@@ -6,6 +6,7 @@ from unittest.mock import patch
 HERE=Path(__file__).resolve().parent
 SOURCE_ROOT=Path(os.environ.get('CELLULOID_QUALIFICATION_SOURCE_ROOT',HERE.parent)).resolve()
 sys.path.insert(0,str(SOURCE_ROOT/'Scripts'));sys.path.insert(0,str(HERE))
+import stat
 import final_vision_wave as w
 import qualify_final_vision_wave_source as g
 
@@ -236,9 +237,11 @@ class WaveTests(unittest.TestCase):
     (repo/'.github').mkdir();(repo/w.CONFIG).write_text(json.dumps(config(method)));e={**env(method),'RUNNER_TEMP':str(temp)}
     c=clock();c['selected_method']=method;(temp/w.CLOCK).write_text(json.dumps(c));called=[];owner=self
     uid='00000000-0000-0000-0000-000000000123'
+    container=root/'Library/Developer/CoreSimulator/Devices'/uid/'data/Containers/Data/Application/00000000-0000-0000-0000-000000000002';container.mkdir(parents=True)
     class FakeCommands:
      def __init__(self,folder):self.temp=folder;self.events=[];self.blocked=False
      def run(self,argv,label,**kwargs):
+      began=time.monotonic();end=min(kwargs['deadline'],began+kwargs['seconds'])
       argv=list(map(str,argv));called.append((argv,kwargs));out='';result={'return_code':0,'finalized':True,'timed_out':False,'overflow':False}
       if argv==['xcodebuild','-version']:out='Xcode 27.0\nBuild version 27A266a\n'
       elif argv[:4]==['xcrun','simctl','list','runtimes']:out=json.dumps({'runtimes':[{'isAvailable':True,'version':'27.0','name':'visionOS 27.0','identifier':'xros27'}]})
@@ -253,7 +256,8 @@ class WaveTests(unittest.TestCase):
        Path(argv[argv.index('-resultBundlePath')+1]).mkdir()
        if 'deployment-tests' in label:
         marker='VISION_NATIVE_RUNTIME bundle='+str(Path.home()/'Library/Developer/CoreSimulator/Devices'/uid/'data/Containers/Bundle/Application/00000000-0000-0000-0000-000000000001/CelluloidVision.app')+' scenes=1 platform=xrsimulator\n'
-        out=caselog(w.DEPLOYMENT_METHOD,kind='deployment').replace('\nTest Case','\n'+marker+'Test Case',1)
+        data={'schema':'Celluloid.VisionOwnedData.1','bundle_identifier':'Mango.Celluloid','data_home':str(container),'device':container.stat().st_dev,'inode':container.stat().st_ino}
+        out=caselog(w.DEPLOYMENT_METHOD,kind='deployment').replace('\nTest Case','\n'+marker+'VISION_NATIVE_DATA_JSON '+json.dumps(data)+'\nTest Case',1)
        elif 'producer-tests' in label:
         fixture=owner.fixture(container);out=caselog(w.PRODUCER,kind='producer')+'VISION_REMAINING_FIXTURE_JSON '+json.dumps(fixture)+'\n'
        else:
@@ -272,32 +276,32 @@ class WaveTests(unittest.TestCase):
         filename=str(i)+'.png';(folder/filename).write_bytes(b'\x89PNG\r\n\x1a\nfixture');items.append({'suggestedHumanReadableName':name+'_0_id.png','exportedFileName':filename})
        (folder/'manifest.json').write_text(json.dumps([{'testIdentifier':'NativeVisionUITests/'+method+'()','attachments':items}]))
       if 'deployment-tests' in label:self.deploy_finish=time.time()
-      raw=out.encode();path=self.temp/(label+'.log');path.write_bytes(raw);self.events.append({'label':label,'argv':argv,'log':path.name,'log_bytes':len(raw),'log_sha256':w.digest(raw),**result})
+      raw=out.encode();path=self.temp/(label+'.log');path.write_bytes(raw);self.events.append({'label':label,'argv':argv,'log':path.name,'log_bytes':len(raw),'log_sha256':w.digest(raw),'begin_monotonic':began,'command_deadline_monotonic':end-15,'cleanup_deadline_monotonic':end,'elapsed_seconds':time.monotonic()-began,**result})
       return out,result
     try:
-     with contextlib.redirect_stdout(io.StringIO()),patch.object(w,'ROOT',repo),patch.object(w,'VisionCommands',FakeCommands),patch.object(w,'validate_inventory',return_value={'synthetic':'source'}),patch.object(w.time,'sleep'),patch.object(w,'capture_initial_fixture',return_value={'synthetic':True}),patch.object(w,'read_fixture',return_value={'status':'captured','expected_layer_present':True,'expected_text_matches':True,'save_completion_proven':False}):report=w.execute(e)
+     with patch.object(Path,'home',return_value=root),contextlib.redirect_stdout(io.StringIO()),patch.object(w,'ROOT',repo),patch.object(w,'VisionCommands',FakeCommands),patch.object(w,'validate_inventory',return_value={'synthetic':'source'}),patch.object(w.time,'sleep'),patch.object(w,'capture_initial_fixture',return_value={'synthetic':True}),patch.object(w,'read_fixture',return_value={'status':'captured','expected_layer_present':True,'expected_text_matches':True,'save_completion_proven':False}):report=w.execute(e)
     finally:os.chdir(original_cwd)
     self.assertTrue(report['wave_qualified'],report['errors']);self.assertFalse(report['all_eight_qualified']);self.assertEqual(report['omitted_ui_methods'],[m for m in w.UI_METHODS if m!=method])
     tests=[(a,k) for a,k in called if 'test-without-building' in a];self.assertEqual(len(tests),2 if method in (w.UI_METHODS[2],w.FILES_METHOD) else 1)
     ui=[(a,k) for a,k in tests if w.selectors_for(method)['ui'][0] in a];self.assertEqual(len(ui),1);self.assertEqual(ui[0][1]['seconds'],735);self.assertTrue(ui[0][1]['full'])
     self.assertEqual((container/'Documents/VisionSynthetic.png').exists(),method==w.UI_METHODS[1]);self.assertEqual('producer_fixture' in report,method==w.UI_METHODS[2])
     self.assertFalse(any('archive' in a for a,k in called))
-    binding={'source_sha':e['GITHUB_SHA'],'product_parent_sha':w.SOURCE,'selected_method':method,'file_count':961}
+    binding={'source_sha':e['GITHUB_SHA'],'product_parent_sha':w.SOURCE,'selected_method':method,'file_count':960}
     for phase in ['before','after']:(temp/('combined-source-'+phase+'.json')).write_text(json.dumps({**binding,'phase':phase}))
     e['GITHUB_OUTPUT']=str(temp/'github-output')
-    with patch.dict(os.environ,e):retained=w.collect(e)
+    with patch.object(Path,'home',return_value=root),patch.dict(os.environ,e):retained=w.collect(e)
     self.assertTrue(retained['wave_qualified']);self.assertTrue((temp/'vision-wave-evidence/report.json').is_file());self.assertLessEqual(sum(p.stat().st_size for p in (temp/'vision-wave-evidence').iterdir()),w.MAX_EVIDENCE)
  def test_real_git_shallow_workflow_topology_and_separate_parent_trap(self):
   with tempfile.TemporaryDirectory() as t:
    root=Path(t).resolve();origin=root/'origin';origin.mkdir()
    def git(where,*args,input=None):return subprocess.check_output(['git',*args],cwd=where,input=input,text=True,stderr=subprocess.STDOUT).strip()
-   git(origin,'init','-q');git(origin,'config','user.name','Synthetic test');git(origin,'config','user.email','synthetic@invalid');(origin/'product.txt').write_text('fixed fixture product');original_test=origin/g.DIAGNOSTIC_TEST;original_test.parent.mkdir(parents=True);original_test.write_bytes(g.verify_diagnostic_test((HERE.parent/g.DIAGNOSTIC_TEST).read_bytes()));git(origin,'add','.');tree=git(origin,'write-tree');parent=None
+   git(origin,'init','-q');git(origin,'config','user.name','Synthetic test');git(origin,'config','user.email','synthetic@invalid');(origin/'product.txt').write_text('fixed fixture product');original_test=origin/g.DIAGNOSTIC_TEST;original_test.parent.mkdir(parents=True);original_test.write_bytes(g.verify_diagnostic_test((HERE.parent/g.DIAGNOSTIC_TEST).read_bytes()));original_hosted=origin/g.HOSTED_DIAGNOSTIC_TEST;original_hosted.parent.mkdir(parents=True);original_hosted.write_bytes(g.verify_hosted_diagnostic_test((HERE.parent/g.HOSTED_DIAGNOSTIC_TEST).read_bytes()));git(origin,'add','.');tree=git(origin,'write-tree');parent=None
    for n in range(66):
     args=['commit-tree',tree]+(['-p',parent] if parent else []);parent=git(origin,*args,input='synthetic ancestor '+str(n)+'\n')
    product=parent;git(origin,'update-ref','refs/heads/'+g.BRANCH,product);git(origin,'symbolic-ref','HEAD','refs/heads/'+g.BRANCH)
    for rel in g.QUALIFICATION_PATHS:
     dest=origin/rel;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(HERE.parent/rel,dest)
-   gatepath=origin/'Scripts/qualify_final_vision_wave_source.py';gatepath.write_text(gatepath.read_text().replace(g.SOURCE,product).replace(g.TREE,tree).replace('UNCHANGED_ORIGINAL_FILE_COUNT = 961','UNCHANGED_ORIGINAL_FILE_COUNT = 1'))
+   gatepath=origin/'Scripts/qualify_final_vision_wave_source.py';gatepath.write_text(gatepath.read_text().replace(g.SOURCE,product).replace(g.TREE,tree).replace('UNCHANGED_ORIGINAL_FILE_COUNT = 960','UNCHANGED_ORIGINAL_FILE_COUNT = 1'))
    fixture_config={**config(),'product_parent_sha':product,'product_parent_tree':tree};(origin/g.CONFIG).write_text(json.dumps(fixture_config));git(origin,'add','.');git(origin,'commit','-qm','synthetic control');head=git(origin,'rev-parse','HEAD')
    for depth,expect in [(64,True),(2,True),(1,False)]:
     clone=root/('depth'+str(depth));git(root,'clone','-q','--depth',str(depth),'--branch',g.BRANCH,origin.as_uri(),str(clone));self.assertEqual(git(clone,'rev-parse','--is-shallow-repository'),'true')
@@ -314,13 +318,13 @@ class WaveTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t:
    temp=Path(t).resolve();method=w.UI_METHODS[0];e={**env(method),'RUNNER_TEMP':str(temp),'GITHUB_OUTPUT':str(temp/'output')};c=clock();c['selected_method']=method
    folder=temp/'vision-wave-1-123-1-attachments';folder.mkdir();image=folder/'big.png';raw=b'\x89PNG\r\n\x1a\n'+b'x'*2400000;image.write_bytes(raw)
-   report={'schema':'Celluloid.FinalVisionSingleMethodWave.1','test_diagnostics':{'path':w.DIAGNOSTIC_TEST,'sha256':w.DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':w.ORIGINAL_TEST_SHA256,'unchanged_original_files':961,'product_compiled_inputs_unchanged':True},'control_sha':e['GITHUB_SHA'],'product_sha':w.SOURCE,'product_tree':w.TREE,'run_id':'123','run_attempt':'1','selected_method':method,'omitted_ui_methods':[m for m in w.UI_METHODS if m!=method],'original_hosted_inventory':list(w.HOSTED),'original_ui_inventory':list(w.UI_METHODS),'ui_limit_seconds':720,'all_eight_qualified':False,'archive_qualified':False,'clock':c,'screenshots':{'native-vision-launch':{'source':str(image),'bytes':len(raw),'sha256':w.digest(raw),'extension':'.png'}},'commands':[],'selected_method_passed':False,'wave_qualified':False,'errors':['synthetic failed method']}
+   report={'schema':'Celluloid.FinalVisionSingleMethodWave.1','test_diagnostics':{'path':w.DIAGNOSTIC_TEST,'sha256':w.DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':w.ORIGINAL_TEST_SHA256,'unchanged_original_files':960,'hosted_path':w.HOSTED_DIAGNOSTIC_TEST,'hosted_sha256':w.HOSTED_DIAGNOSTIC_TEST_SHA256,'hosted_inverse_original_sha256':w.HOSTED_ORIGINAL_TEST_SHA256,'product_compiled_inputs_unchanged':True},'control_sha':e['GITHUB_SHA'],'product_sha':w.SOURCE,'product_tree':w.TREE,'run_id':'123','run_attempt':'1','selected_method':method,'omitted_ui_methods':[m for m in w.UI_METHODS if m!=method],'original_hosted_inventory':list(w.HOSTED),'original_ui_inventory':list(w.UI_METHODS),'ui_limit_seconds':720,'all_eight_qualified':False,'archive_qualified':False,'clock':c,'screenshots':{'native-vision-launch':{'source':str(image),'bytes':len(raw),'sha256':w.digest(raw),'extension':'.png'}},'commands':[],'selected_method_passed':False,'wave_qualified':False,'errors':['synthetic failed method']}
    (temp/'vision-wave-report.json').write_text(json.dumps(report));binding={'source_sha':e['GITHUB_SHA'],'product_parent_sha':w.SOURCE,'selected_method':method}
    for phase in ['before','after']:(temp/('combined-source-'+phase+'.json')).write_text(json.dumps({**binding,'phase':phase}))
    result=w.collect(e);self.assertFalse(result['wave_qualified']);self.assertTrue(any('byte cap' in x for x in result['errors']));self.assertTrue((temp/'vision-wave-evidence/report.json').is_file());self.assertIn('evidence_ready=true',(temp/'output').read_text())
    self.assertLessEqual(sum(p.stat().st_size for p in (temp/'vision-wave-evidence').iterdir()),w.MAX_EVIDENCE)
  def test_report_identity_and_unsupported_success_fail_closed(self):
-  e=env();r={'schema':'Celluloid.FinalVisionSingleMethodWave.1','test_diagnostics':{'path':w.DIAGNOSTIC_TEST,'sha256':w.DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':w.ORIGINAL_TEST_SHA256,'unchanged_original_files':961,'product_compiled_inputs_unchanged':True},'control_sha':'wrong'}
+  e=env();r={'schema':'Celluloid.FinalVisionSingleMethodWave.1','test_diagnostics':{'path':w.DIAGNOSTIC_TEST,'sha256':w.DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':w.ORIGINAL_TEST_SHA256,'unchanged_original_files':960,'hosted_path':w.HOSTED_DIAGNOSTIC_TEST,'hosted_sha256':w.HOSTED_DIAGNOSTIC_TEST_SHA256,'hosted_inverse_original_sha256':w.HOSTED_ORIGINAL_TEST_SHA256,'product_compiled_inputs_unchanged':True},'control_sha':'wrong'}
   with self.assertRaises(ValueError):w.validate_report_identity(r,e)
  def test_command_stdout_begin_end_names_executable_without_environment_or_arguments(self):
   with tempfile.TemporaryDirectory() as t:
@@ -357,7 +361,8 @@ class WaveTests(unittest.TestCase):
  def deployment_receipts(self):
   uid='00000000-0000-0000-0000-000000000123';runtime={'version':'27.0','buildversion':'24M362'}
   marker='VISION_NATIVE_RUNTIME bundle='+str(Path.home()/'Library/Developer/CoreSimulator/Devices'/uid/'data/Containers/Bundle/Application/00000000-0000-0000-0000-000000000001/CelluloidVision.app')+' scenes=1 platform=xrsimulator'
-  log=caselog(w.DEPLOYMENT_METHOD,kind='deployment').replace('\nTest Case','\n'+marker+'\nTest Case',1)
+  data={'schema':'Celluloid.VisionOwnedData.1','bundle_identifier':'Mango.Celluloid','data_home':str(Path.home()/'Library/Developer/CoreSimulator/Devices'/uid/'data/Containers/Data/Application/00000000-0000-0000-0000-000000000002'),'device':1,'inode':2}
+  log=caselog(w.DEPLOYMENT_METHOD,kind='deployment').replace('\nTest Case','\n'+marker+'\nVISION_NATIVE_DATA_JSON '+json.dumps(data)+'\nTest Case',1)
   ss=summary();ss.update(result='Passed',startTime=11220.5,finishTime=11221.5,devicesAndConfigurations=[{'device':{'deviceId':uid,'osVersion':'27.0','osBuildNumber':'24M362','architecture':'arm64','platform':'visionOS Simulator'},'passedTests':1,'failedTests':0,'skippedTests':0}])
   return uid,runtime,log,ss
  def test_managed_host_marker_belongs_inside_exact_single_case_and_owned_device(self):
@@ -384,7 +389,7 @@ class WaveTests(unittest.TestCase):
     if mode=='cancel':raise KeyboardInterrupt()
     if mode=='permission-exception':raise PermissionError('controlled')
     if deployment:
-     now[0]+=284 if mode in ('slow-parse','last-summary-start') else 2
+     now[0]+=434 if mode in ('slow-parse','last-summary-start') else 2
      output=log.encode()
      if mode=='wrong-host':output=log.replace(uid,'11111111-1111-1111-1111-111111111111').encode()
     else:
@@ -406,7 +411,7 @@ class WaveTests(unittest.TestCase):
    original_verify=w.verify_managed_deployment
    def verify(*a):
     out=original_verify(*a)
-    if mode=='late-verification':now[0]=float(now_start)+315
+    if mode=='late-verification':now[0]=1685.0
     return out
    def receipt(phase,label,*a):
     if phase=='BEGIN' and label=='deployment-summary' and mode=='summary-begin-delay':now[0]+=1
@@ -420,29 +425,29 @@ class WaveTests(unittest.TestCase):
      with self.assertRaises(ValueError):commands.run(['fake'],'later',deadline=2000,seconds=60)
     later.assert_not_called()
   return report,calls,blocked,error
- def test_managed_pair_is_fixed_315_and_summary_has_full_30_without_renewal(self):
-  report,calls,blocked,error=self.run_managed_fixture();self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[0]['work'],1490);self.assertEqual(calls[0]['end'],1505);self.assertEqual(calls[1]['work'],1237);self.assertEqual(calls[1]['end'],1252);self.assertEqual(calls[1]['end']-calls[1]['work'],15);self.assertEqual(report['deployment_budget']['pair_deadline_monotonic'],1535);self.assertEqual(report['deployment_budget']['completed_monotonic'],1223);self.assertTrue(report['managed_deployment']['passed']);self.assertFalse(report['deployment_budget']['dispatch_proven'])
-  self.assertEqual((w.DEPLOYMENT_SECONDS,w.DEPLOYMENT_SUMMARY_SECONDS,w.DEPLOYMENT_PAIR_SECONDS,w.UI_SECONDS,w.NATIVE_SECONDS,w.FINAL_SECONDS),(270,30,315,720,1560,1740));self.assertEqual(report['deployment_budget']['process_cleanup_seconds'],15)
+ def test_managed_deadlines_use_first_wave_clock_and_full_summary_without_renewal(self):
+  report,calls,blocked,error=self.run_managed_fixture();self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[0]['work'],1640);self.assertEqual(calls[0]['end'],1655);self.assertEqual(calls[1]['work'],1237);self.assertEqual(calls[1]['end'],1252);self.assertEqual(calls[1]['end']-calls[1]['work'],15);self.assertEqual(report['deployment_budget']['summary_deadline_monotonic'],1685);self.assertEqual(report['deployment_budget']['completed_monotonic'],1223);self.assertTrue(report['managed_deployment']['passed']);self.assertFalse(report['deployment_budget']['dispatch_proven'])
+  self.assertEqual((w.DEPLOYMENT_SUMMARY_SECONDS,w.FILES_PREPARATION_SECONDS,w.UI_SECONDS,w.NATIVE_SECONDS,w.FINAL_SECONDS),(30,10,720,1560,1740));self.assertEqual(report['deployment_budget']['process_cleanup_seconds'],15)
   selected=[v for v in calls[0]['argv'] if v.startswith('-only-testing:')];self.assertEqual(selected,['-only-testing:CelluloidVisionTests/NativeVisionTests/'+w.DEPLOYMENT_METHOD]);self.assertNotIn('-skip-testing',str(calls[0]['argv']))
  def test_managed_slow_transcript_parse_refuses_summary_and_latches(self):
   report,calls,blocked,error=self.run_managed_fixture('slow-parse');self.assertIsInstance(error,ValueError);self.assertIn('full-command-window',str(error));self.assertTrue(blocked);self.assertEqual(len(calls),1);self.assertNotIn('managed_deployment',report)
- def test_managed_pair_budget_rejects_epsilon_before_any_command(self):
-  report,calls,blocked,error=self.run_managed_fixture(now_start=1380.0001);self.assertIsInstance(error,ValueError);self.assertIn('full-managed-deployment-pair',str(error));self.assertTrue(blocked);self.assertEqual(calls,[])
+ def test_managed_work_budget_rejects_exhaustion_before_any_command(self):
+  report,calls,blocked,error=self.run_managed_fixture(now_start=1639.91);self.assertIsInstance(error,ValueError);self.assertIn('managed-deployment-work-budget-exhausted',str(error));self.assertTrue(blocked);self.assertEqual(calls,[])
  def test_managed_failure_cancel_denial_and_warning_block_all_later_dispatch(self):
   for mode,count in [('uncertain',1),('exit65',1),('wrong-host',1),('cancel',1),('permission-exception',1),('warning',2)]:
    with self.subTest(mode=mode):
     report,calls,blocked,error=self.run_managed_fixture(mode);self.assertIsNotNone(error);self.assertTrue(blocked);self.assertEqual(len(calls),count);self.assertNotIn('managed_deployment',report)
 
- def test_managed_summary_last_full_30_fits_only_original_pair_end(self):
-  report,calls,blocked,error=self.run_managed_fixture('last-summary-start');self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[1]['work'],1520);self.assertEqual(calls[1]['end'],1535);self.assertEqual(report['deployment_budget']['completed_monotonic'],1507)
+ def test_managed_summary_last_full_30_fits_only_first_wave_absolute_end(self):
+  report,calls,blocked,error=self.run_managed_fixture('last-summary-start');self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[1]['work'],1670);self.assertEqual(calls[1]['end'],1685);self.assertEqual(report['deployment_budget']['completed_monotonic'],1657)
  def test_managed_summary_begin_output_consumes_work_without_new_deadline(self):
   report,calls,blocked,error=self.run_managed_fixture('summary-begin-delay');self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(calls[1]['work'],1237);self.assertEqual(calls[1]['end'],1252);self.assertEqual(report['deployment_budget']['completed_monotonic'],1224)
  def test_managed_summary_timeout_or_denial_stays_failed_and_blocked(self):
   for mode in ('summary-timeout','summary-denial'):
    with self.subTest(mode=mode):
     report,calls,blocked,error=self.run_managed_fixture(mode);self.assertIsInstance(error,ValueError);self.assertTrue(blocked);self.assertEqual(len(calls),2);self.assertNotIn('managed_deployment',report)
- def test_managed_verification_at_original_pair_end_never_qualifies(self):
-  report,calls,blocked,error=self.run_managed_fixture('late-verification');self.assertIsInstance(error,ValueError);self.assertIn('deployment-verification-after-pair-deadline',str(error));self.assertTrue(blocked);self.assertEqual(len(calls),2);self.assertNotIn('managed_deployment',report)
+ def test_managed_verification_at_first_wave_absolute_end_never_qualifies(self):
+  report,calls,blocked,error=self.run_managed_fixture('late-verification');self.assertIsInstance(error,ValueError);self.assertIn('deployment-verification-after-absolute-summary-deadline',str(error));self.assertTrue(blocked);self.assertEqual(len(calls),2);self.assertNotIn('managed_deployment',report)
 
  def test_exact_backlight_record_is_observed_and_original_log_identity_kept(self):
   uid,runtime,log,ss=self.deployment_receipts();raw=BACKLIGHT_SAMPLE+'\n'+log;out=w.inspect_deployment_transcript(raw,uid);obs=out['system_log_observations']
@@ -462,5 +467,128 @@ class WaveTests(unittest.TestCase):
   for value in [None,False,{},[{'message':'Publishing changes from within view updates is not allowed'}],[{'message':BACKLIGHT_SAMPLE}]]:
    bad=copy.deepcopy(ss);bad['runtimeWarnings']=value
    with self.assertRaises(ValueError):w.verify_managed_deployment(raw,bad,uid,runtime,window)
+
+ def test_owned_data_marker_requires_exact_case_position_path_identity_and_schema(self):
+  uid,runtime,log,ss=self.deployment_receipts();valid=w.inspect_deployment_transcript(log,uid)['data_home_receipt'];self.assertEqual(valid['inode'],2)
+  mutations=[{**valid,'data_home':valid['data_home'].replace(uid,'11111111-1111-1111-1111-111111111111')},{**valid,'data_home':valid['data_home']+'/..'},{**valid,'data_home':'/tmp/unrelated'},{**valid,'bundle_identifier':'Other'},{**valid,'device':True},{**valid,'inode':0},{**valid,'inode':2**64},{**valid,'extra':'secret'}]
+  for value in mutations:
+   with self.subTest(value=value),self.assertRaises(ValueError):w.validate_managed_data_identity(value,uid)
+  line=next(x for x in log.splitlines() if x.startswith('VISION_NATIVE_DATA_JSON '));without='\n'.join(x for x in log.splitlines() if x!=line)
+  for bad in (without,line+'\n'+without,without+'\n'+line,log+'\n'+line,log.replace(line,line+'x'),log.replace(line,'VISION_NATIVE_DATA_JSON '+('x'*4097))):
+   with self.assertRaises(ValueError):w.inspect_deployment_transcript(bad,uid)
+ def owned_setup(self,root):
+  uid='00000000-0000-0000-0000-000000000123';container=root/'Library/Developer/CoreSimulator/Devices'/uid/'data/Containers/Data/Application/00000000-0000-0000-0000-000000000002';container.mkdir(parents=True)
+  st=container.stat();data={'schema':'Celluloid.VisionOwnedData.1','bundle_identifier':'Mango.Celluloid','data_home':str(container),'device':st.st_dev,'inode':st.st_ino}
+  report={'managed_deployment':{'passed':True,'control_sha':'a'*40,'hosted_test_sha256':w.HOSTED_DIAGNOSTIC_TEST_SHA256,'host':{'data_home_receipt':data}}};c={'started_monotonic':1000,'control_sha':'a'*40};commands=w.VisionCommands(root)
+  return uid,container,report,c,commands
+ def test_owned_seed_matches_original_bytes_and_original_reader_initial_contract(self):
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t).resolve();uid,container,r,c,commands=self.owned_setup(root);original=root/'original';original.mkdir();legacy=w.seed_png(str(original))
+   with patch.object(Path,'home',return_value=root),patch.object(w.time,'monotonic',return_value=1001):
+    initial=w.prepare_managed_files(commands,c,r,uid)
+    replay=w.prepare_fixture_receipt(devices_root=str(root/'Library/Developer/CoreSimulator/Devices'),owned_udid=uid,container_path=str(container),png_fixture=r['png_fixture'],deadline=1011)
+   self.assertEqual(initial,replay);self.assertEqual((container/'Documents/VisionSynthetic.png').read_bytes(),(original/'Documents/VisionSynthetic.png').read_bytes());self.assertEqual(r['png_fixture']['sha256'],legacy['sha256']);self.assertEqual(r['png_fixture']['bytes'],8305);self.assertFalse(commands.blocked);self.assertEqual(commands.events,[]);self.assertEqual(r['files_preparation_budget']['deadline_monotonic'],1011)
+ def test_owned_seed_requires_finalized_managed_proof_before_any_filesystem_open(self):
+  for mutation in ('passed','source','blocked'):
+   with self.subTest(mutation=mutation),tempfile.TemporaryDirectory() as t:
+    root=Path(t).resolve();uid,container,r,c,commands=self.owned_setup(root)
+    if mutation=='passed':r['managed_deployment']['passed']=False
+    elif mutation=='source':r['managed_deployment']['hosted_test_sha256']='0'*64
+    else:commands.blocked=True
+    with patch.object(w.os,'open') as opened,self.assertRaises(ValueError):w.prepare_managed_files(commands,c,r,uid)
+    opened.assert_not_called();self.assertTrue(commands.blocked);self.assertFalse((container/'Documents').exists())
+ def test_owned_seed_identity_nonpristine_and_symlink_negatives_never_write_elsewhere(self):
+  for mode in ('inode','device','docs-symlink','container-symlink','nonpristine'):
+   with self.subTest(mode=mode),tempfile.TemporaryDirectory() as t:
+    root=Path(t).resolve();uid,container,r,c,commands=self.owned_setup(root);outside=root/'unrelated';outside.mkdir();(outside/'sentinel').write_text('unchanged')
+    if mode in ('inode','device'):r['managed_deployment']['host']['data_home_receipt'][mode]+=1
+    elif mode=='docs-symlink':(container/'Documents').symlink_to(outside,target_is_directory=True)
+    elif mode=='container-symlink':container.rmdir();container.symlink_to(outside,target_is_directory=True)
+    elif mode=='nonpristine':(container/'Documents').mkdir();(container/'Documents/existing').write_text('unchanged')
+    with patch.object(Path,'home',return_value=root),patch.object(w.time,'monotonic',return_value=1001),self.assertRaises((ValueError,OSError)):w.prepare_managed_files(commands,c,r,uid)
+    self.assertTrue(commands.blocked);self.assertNotIn('fixture_initial_receipt',r);self.assertFalse((outside/'VisionSynthetic.png').exists());self.assertEqual((outside/'sentinel').read_text(),'unchanged')
+ def test_owned_seed_10_second_window_covers_write_read_and_denial_cancel(self):
+  for mode in ('late-write','denial','cancel','system-exit','no-window'):
+   with self.subTest(mode=mode),tempfile.TemporaryDirectory() as t:
+    root=Path(t).resolve();uid,container,r,c,commands=self.owned_setup(root);now=[1685.001 if mode=='no-window' else 1001.0];write=w.os.write
+    def action(fd,data):
+     if mode=='denial':raise PermissionError('controlled')
+     if mode=='cancel':raise KeyboardInterrupt()
+     if mode=='system-exit':raise SystemExit()
+     n=write(fd,data);now[0]+=10.001;return n
+    with patch.object(Path,'home',return_value=root),patch.object(w.time,'monotonic',side_effect=lambda:now[0]),patch.object(w.os,'write',side_effect=action) as writes,self.assertRaises((ValueError,OSError,KeyboardInterrupt,SystemExit)):w.prepare_managed_files(commands,c,r,uid)
+    self.assertTrue(commands.blocked);self.assertNotIn('fixture_initial_receipt',r);self.assertNotIn('managed_files_preparation',r)
+    if mode=='no-window':writes.assert_not_called()
+    with patch.object(w,'bounded_optional_process') as native,self.assertRaises(ValueError):commands.run(['fake'],'later',deadline=3000,seconds=20)
+    native.assert_not_called()
+ def test_owned_seed_anchored_write_detects_replaced_documents_without_touching_replacement(self):
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t).resolve();uid,container,r,c,commands=self.owned_setup(root);write=w.os.write;swapped=[]
+   def action(fd,data):
+    n=write(fd,data)
+    if not swapped:
+     (container/'Documents').rename(container/'owned-original');(container/'Documents').mkdir();(container/'Documents/sentinel').write_text('replacement untouched');swapped.append(True)
+    return n
+   with patch.object(Path,'home',return_value=root),patch.object(w.time,'monotonic',return_value=1001),patch.object(w.os,'write',side_effect=action),self.assertRaises(ValueError):w.prepare_managed_files(commands,c,r,uid)
+   self.assertTrue(commands.blocked);self.assertFalse((container/'Documents/VisionSynthetic.png').exists());self.assertEqual((container/'Documents/sentinel').read_text(),'replacement untouched');self.assertNotIn('fixture_initial_receipt',r)
+ def test_hosted_test_narrow_inverse_preserves_original_assertions_and_history(self):
+  raw=(HERE.parent/g.HOSTED_DIAGNOSTIC_TEST).read_bytes();original=g.verify_hosted_diagnostic_test(raw);self.assertEqual(w.digest(original),g.HOSTED_ORIGINAL_TEST_SHA256)
+  self.assertEqual(raw.count(b'func test'),original.count(b'func test'));self.assertIn(b'NSHomeDirectory()',raw)
+  for bad in (raw+b'\n',raw.replace(b'XCTAssertFalse(scenes.isEmpty)',b'XCTAssertTrue(true)'),raw.replace(g.HOSTED_DIAGNOSTIC_ADDITION.encode(),b'')):
+   with self.assertRaises(ValueError):g.verify_hosted_diagnostic_test(bad)
+  chain=[{'sha':'new','parents':['old'],'changed_paths':[g.HOSTED_DIAGNOSTIC_TEST]}]
+  self.assertEqual(g.verify_hosted_diagnostic_history(chain,lambda revision,path:original if revision=='old' else raw),'new')
+  for bad in (original+b'changed',raw):
+   with self.assertRaises(ValueError):g.verify_hosted_diagnostic_history(chain,lambda revision,path:bad if revision=='old' else raw)
+  with self.assertRaises(ValueError):g.verify_hosted_diagnostic_history([],lambda *a:raw)
+
+ def test_owned_writer_rejects_foreign_uid_even_with_same_device_inode(self):
+  for mode in ('container','documents','new-png','after-write'):
+   with self.subTest(mode=mode),tempfile.TemporaryDirectory() as t:
+    root=Path(t).resolve();uid,container,r,c,commands=self.owned_setup(root);docs=container/'Documents';docs.mkdir();ci=container.stat().st_ino;di=docs.stat().st_ino;statcall=w.os.stat;fstatcall=w.os.fstat;write=w.os.write;wrote=[]
+    class Foreign:
+     def __init__(self,st):self.st=st;self.st_uid=st.st_uid+1
+     def __getattr__(self,key):return getattr(self.st,key)
+    def adjust(st):
+     change=(mode=='container' and st.st_ino==ci) or (mode=='documents' and st.st_ino==di) or (mode=='new-png' and stat.S_ISREG(st.st_mode)) or (mode=='after-write' and wrote and stat.S_ISREG(st.st_mode))
+     return Foreign(st) if change else st
+    def output(fd,data):n=write(fd,data);wrote.append(True);return n
+    with patch.object(Path,'home',return_value=root),patch.object(w.time,'monotonic',return_value=1001),patch.object(w.os,'stat',side_effect=lambda *a,**k:adjust(statcall(*a,**k))),patch.object(w.os,'fstat',side_effect=lambda *a,**k:adjust(fstatcall(*a,**k))),patch.object(w.os,'write',side_effect=output),self.assertRaises(ValueError):w.prepare_managed_files(commands,c,r,uid)
+    self.assertTrue(commands.blocked);self.assertNotIn('fixture_initial_receipt',r)
+    if mode!='after-write':self.assertEqual(wrote,[])
+ def test_owned_writer_at_exact_deadline_performs_no_next_mutation(self):
+  for mode in ('mkdir','create-png','write-png'):
+   with self.subTest(mode=mode),tempfile.TemporaryDirectory() as t:
+    root=Path(t).resolve();uid,container,r,c,commands=self.owned_setup(root);now=[1001.0];mkdir=w.os.mkdir;opener=w.os.open;inventory=w._inventory;deadline=w._deadline;writes=[];mutations=[]
+    def check(end):
+     if mode=='mkdir':now[0]=end
+     deadline(end)
+    def names(*a):
+     result=inventory(*a)
+     if mode=='create-png':now[0]=1011.0
+     return result
+    def create(name,*a,**k):
+     flags=a[0] if a else k.get('flags',0)
+     fd=opener(name,*a,**k)
+     if flags&w.os.O_CREAT:
+      mutations.append('create-png')
+      if mode=='write-png':now[0]=1011.0
+     return fd
+    def make(*a,**k):mutations.append('mkdir');return mkdir(*a,**k)
+    with patch.object(Path,'home',return_value=root),patch.object(w.time,'monotonic',side_effect=lambda:now[0]),patch.object(w,'_deadline',side_effect=check),patch.object(w,'_inventory',side_effect=names),patch.object(w.os,'open',side_effect=create),patch.object(w.os,'mkdir',side_effect=make),patch.object(w.os,'write',side_effect=lambda *a:writes.append(a)),self.assertRaises(ValueError):w.prepare_managed_files(commands,c,r,uid)
+    self.assertTrue(commands.blocked);self.assertEqual(writes,[])
+    self.assertEqual(mutations,[] if mode=='mkdir' else ['mkdir'] if mode=='create-png' else ['mkdir','create-png'])
+
+ def test_owned_preparation_replay_binds_report_to_actual_command_deadlines(self):
+  with tempfile.TemporaryDirectory() as t:
+   root=Path(t).resolve();uid,container,r,c,commands=self.owned_setup(root)
+   with patch.object(Path,'home',return_value=root),patch.object(w.time,'monotonic',return_value=1001):w.prepare_managed_files(commands,c,r,uid)
+   r.update(clock=c,udid=uid,deployment_budget={'started_monotonic':1100,'work_deadline_monotonic':1640,'cleanup_deadline_monotonic':1655,'summary_deadline_monotonic':1685,'latest_ui_start_monotonic':1695,'available_work_seconds':540,'process_cleanup_seconds':15,'summary_total_seconds':30,'files_preparation_seconds':10,'dispatch_proven':False,'completed_monotonic':1131},commands=[{'label':'vision-wave-2-123-1-deployment-tests','begin_monotonic':1100,'command_deadline_monotonic':1640,'cleanup_deadline_monotonic':1655,'elapsed_seconds':1},{'label':'vision-wave-2-123-1-deployment-summary','begin_monotonic':1101,'command_deadline_monotonic':1116,'cleanup_deadline_monotonic':1131,'elapsed_seconds':1}])
+   r['files_preparation_budget'].update(started_monotonic=1132,deadline_monotonic=1142,completed_monotonic=1133)
+   with patch.object(Path,'home',return_value=root):self.assertTrue(w.validate_managed_files_claim(r))
+   mutations=[lambda x:x['commands'][0].update(command_deadline_monotonic=1641),lambda x:x['commands'][0].update(cleanup_deadline_monotonic=1656),lambda x:x['commands'][1].update(command_deadline_monotonic=1117),lambda x:x['commands'][1].update(cleanup_deadline_monotonic=1132),lambda x:x['commands'][1].update(begin_monotonic=1670,command_deadline_monotonic=1685,cleanup_deadline_monotonic=1700),lambda x:x['commands'][1].update(begin_monotonic=1099),lambda x:x['deployment_budget'].update(completed_monotonic=1101),lambda x:x['files_preparation_budget'].update(deadline_monotonic=1143),lambda x:x['files_preparation_budget'].update(completed_monotonic=1142),lambda x:x['fixture_initial_receipt']['path_identity'][str(container)].update(inode=0),lambda x:x.update(pretest_launch_image={'fake':True})]
+   for mutation in mutations:
+    bad=copy.deepcopy(r);mutation(bad)
+    with patch.object(Path,'home',return_value=root),self.assertRaises(ValueError):w.validate_managed_files_claim(bad)
 
 if __name__=='__main__':unittest.main()

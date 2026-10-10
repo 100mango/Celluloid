@@ -2,7 +2,7 @@
 """One immutable-product Vision UI method; no matrix, retry, archive or signing."""
 from pathlib import Path
 import argparse,hashlib,json,math,os,re,selectors,signal,stat,struct,subprocess,sys,time,zlib
-from qualify_final_vision_wave_source import CONFIG,SOURCE,TREE,UI_METHODS,CONTROL_PATHS,DIAGNOSTIC_TEST,DIAGNOSTIC_TEST_SHA256,ORIGINAL_TEST_SHA256
+from qualify_final_vision_wave_source import CONFIG,SOURCE,TREE,UI_METHODS,CONTROL_PATHS,DIAGNOSTIC_TEST,DIAGNOSTIC_TEST_SHA256,ORIGINAL_TEST_SHA256,HOSTED_DIAGNOSTIC_TEST,HOSTED_DIAGNOSTIC_TEST_SHA256,HOSTED_ORIGINAL_TEST_SHA256
 ROOT=Path(__file__).resolve().parents[1]
 CLOCK='final-vision-wave-clock.json'
 UI_SECONDS=720
@@ -12,9 +12,8 @@ MAX_EVIDENCE=BUDGETS['vision']
 HOSTED=('testNativeVisionDocumentImportRenderSaveReopenAndExport','testSharedFieldMutationsRetainUnicodeAcrossBothOrdersUndoAndReopen','testPrepareVisionRemainingDocumentFixture','testNativeVisionExecutableAndSceneAreLive')
 PRODUCER='testPrepareVisionRemainingDocumentFixture'
 DEPLOYMENT_METHOD='testNativeVisionExecutableAndSceneAreLive'
-DEPLOYMENT_SECONDS=270
-DEPLOYMENT_SUMMARY_SECONDS=30
-DEPLOYMENT_PAIR_SECONDS=315 # 270 work +15 process cleanup +30 summary (including its cleanup).
+DEPLOYMENT_SUMMARY_SECONDS=30 # 15 work +15 cleanup, within the original wave clock.
+FILES_PREPARATION_SECONDS=10 # One shared validation/PNG write/read/initial-receipt window.
 SHOTS={UI_METHODS[0]:('native-vision-launch','native-vision-editor-ready'),UI_METHODS[1]:('vision-imported-editable-bubble','vision-png-export-verified','vision-saved-document-reopened'),UI_METHODS[2]:(),UI_METHODS[3]:('vision-zh-Hans-privacy',)}
 DEPENDENCIES={UI_METHODS[0]:'ui-created-document',UI_METHODS[1]:'own-generated-png',UI_METHODS[2]:'hosted-producer-package',UI_METHODS[3]:'ui-created-document'}
 def need(value,reason):
@@ -220,7 +219,7 @@ def inspect_deployment_transcript(log,udid):
  expected=str(Path.home()/'Library/Developer/CoreSimulator/Devices'/udid/'data/Containers/Bundle/Application')
  uuid=r'[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}'
  need(re.fullmatch(re.escape(expected)+'/'+uuid+r'/CelluloidVision\.app',marker[1]) is not None,'deployment-host-not-owned-device')
- return {'method':DEPLOYMENT_METHOD,'events':['started','passed'],'host_bundle':marker[1],'bundle_identifier':'Mango.Celluloid','scenes':int(marker[2]),'platform':'xrsimulator','owned_udid':udid,'system_log_observations':{'backlight_xpc_records':len(system_records),'classification':'system-subsystem-shaped record; not proven harmless or official runtime-warning evidence','decoded_transcript_sha256':digest(log.encode())}}
+ return {'method':DEPLOYMENT_METHOD,'events':['started','passed'],'host_bundle':marker[1],'bundle_identifier':'Mango.Celluloid','scenes':int(marker[2]),'platform':'xrsimulator','owned_udid':udid,'data_home_receipt':managed_data_identity(log,udid,events),'system_log_observations':{'backlight_xpc_records':len(system_records),'classification':'system-subsystem-shaped record; not proven harmless or official runtime-warning evidence','decoded_transcript_sha256':digest(log.encode())}}
 
 def verify_managed_deployment(log,summary,udid,runtime,window):
  host=inspect_deployment_transcript(log,udid)
@@ -234,27 +233,124 @@ def verify_managed_deployment(log,summary,udid,runtime,window):
 
 def run_managed_deployment(commands,call,clock,temp,udid,runtime,prefix,report):
  try:
-  # Replace only the Files route's old 315-second independent install envelope.
-  # All receipt/parsing/summary time consumes this one absolute pair window.
+  # Every deadline is anchored to the first workflow clock; no new pair window.
   started=time.monotonic();latest=sample_ui_admission(clock,started)['latest_start_monotonic']
-  need(started+DEPLOYMENT_PAIR_SECONDS<=latest,'full-managed-deployment-pair-before-ui-does-not-fit')
-  end=started+DEPLOYMENT_PAIR_SECONDS;bundle=temp/(prefix+'-deployment.xcresult')
-  report['deployment_budget']={'started_monotonic':started,'pair_deadline_monotonic':end,'latest_ui_start_monotonic':latest,'work_seconds':DEPLOYMENT_SECONDS,'process_cleanup_seconds':15,'summary_total_seconds':DEPLOYMENT_SUMMARY_SECONDS,'pair_total_seconds':DEPLOYMENT_PAIR_SECONDS,'dispatch_proven':False}
+  summary_end=latest-FILES_PREPARATION_SECONDS
+  cleanup_end=summary_end-DEPLOYMENT_SUMMARY_SECONDS;work_end=cleanup_end-15
+  need(work_end-started>0.1,'managed-deployment-work-budget-exhausted')
+  bundle=temp/(prefix+'-deployment.xcresult')
+  report['deployment_budget']={'started_monotonic':started,'work_deadline_monotonic':work_end,'cleanup_deadline_monotonic':cleanup_end,'summary_deadline_monotonic':summary_end,'latest_ui_start_monotonic':latest,'available_work_seconds':work_end-started,'process_cleanup_seconds':15,'summary_total_seconds':DEPLOYMENT_SUMMARY_SECONDS,'files_preparation_seconds':FILES_PREPARATION_SECONDS,'dispatch_proven':False}
   selection=['-only-testing:CelluloidVisionTests/NativeVisionTests/'+DEPLOYMENT_METHOD]
   call_started=time.time()
-  log,result=call(xctest_command(temp,udid,bundle,selection),'deployment-tests',DEPLOYMENT_SECONDS+15,deadline=end-DEPLOYMENT_SUMMARY_SECONDS)
+  log,result=call(xctest_command(temp,udid,bundle,selection),'deployment-tests',cleanup_end-started,deadline=cleanup_end)
   window={'started_unix':call_started,'finished_unix':time.time()};report['deployment_call_window']=window
   need(result.get('finalized') is True and result.get('return_code')==0 and not result.get('timed_out') and not result.get('overflow'),'deployment-process-not-successful')
   report['deployment_transcript']=inspect_deployment_transcript(log,udid)
-  # full=True requires the original pair to retain 30 (15 work + 15 cleanup).
-  raw,_=call(['xcrun','xcresulttool','get','test-results','summary','--path',bundle],'deployment-summary',DEPLOYMENT_SUMMARY_SECONDS,deadline=end,full=True)
+  raw,_=call(['xcrun','xcresulttool','get','test-results','summary','--path',bundle],'deployment-summary',DEPLOYMENT_SUMMARY_SECONDS,deadline=summary_end,full=True)
   summary=strict_json(raw);proof=verify_managed_deployment(log,summary,udid,runtime,window)
-  finished=time.monotonic();need(finished<end,'deployment-verification-after-pair-deadline')
-  report['deployment_summary']=summary;report['managed_deployment']={**proof,'control_sha':clock['control_sha'],'product_sha':SOURCE,'hosted_test_sha256':'7ab4d6811af3cff725aa08a0b52efc7dc7b5b02ede5589ae695c0930aa5a1ecc'}
+  finished=time.monotonic();need(finished<summary_end,'deployment-verification-after-absolute-summary-deadline')
+  report['deployment_summary']=summary;report['managed_deployment']={**proof,'control_sha':clock['control_sha'],'product_sha':SOURCE,'hosted_test_sha256':HOSTED_DIAGNOSTIC_TEST_SHA256}
   report['deployment_budget']['completed_monotonic']=finished
  except BaseException:
   commands.blocked=True
   raise
+
+
+def managed_data_identity(log,udid,events):
+ lines=log.splitlines();rows=[line for line in lines if line.startswith('VISION_NATIVE_DATA_JSON ')]
+ need(len(rows)==1 and len(rows[0].encode())<=4096,'deployment-one-bounded-data-marker')
+ need(lines.index(events[0])<lines.index(rows[0])<lines.index(events[1]),'deployment-data-marker-outside-case')
+ data=strict_json(rows[0][len('VISION_NATIVE_DATA_JSON '):]);validate_managed_data_identity(data,udid)
+ return data
+
+def validate_managed_data_identity(data,udid):
+ need(type(data) is dict and set(data)=={'schema','bundle_identifier','data_home','device','inode'},'deployment-data-fields')
+ need(data['schema']=='Celluloid.VisionOwnedData.1' and data['bundle_identifier']=='Mango.Celluloid','deployment-data-schema-or-bundle')
+ need(type(udid) is str and re.fullmatch(r'[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}',udid) is not None,'deployment-data-owned-udid')
+ prefix=str(Path.home()/'Library/Developer/CoreSimulator/Devices'/udid/'data/Containers/Data/Application')
+ need(type(data['data_home']) is str and re.fullmatch(re.escape(prefix)+r'/[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}',data['data_home']) is not None,'deployment-data-not-owned-container')
+ need(all(type(data[k]) is int and 0<data[k]<2**64 for k in ('device','inode')),'deployment-data-integer-identity')
+ return data
+
+def prepare_managed_files(commands,clock,report,udid):
+ try:
+  started=time.monotonic()
+  need(not commands.blocked,'managed-files-earlier-process-blocked')
+  proof=report.get('managed_deployment');need(type(proof) is dict and proof.get('passed') is True and proof.get('control_sha')==clock['control_sha'] and proof.get('hosted_test_sha256')==HOSTED_DIAGNOSTIC_TEST_SHA256,'managed-files-formal-proof-required')
+  latest=sample_ui_admission(clock,started)['latest_start_monotonic']
+  end=started+FILES_PREPARATION_SECONDS;need(end<=latest,'full-managed-files-preparation-window-does-not-fit')
+  report['files_preparation_budget']={'started_monotonic':started,'deadline_monotonic':end,'latest_ui_start_monotonic':latest,'seconds':FILES_PREPARATION_SECONDS,'native_dispatch':False}
+  owner_uid=os.geteuid()
+  data=validate_managed_data_identity(proof['host']['data_home_receipt'],udid);container=data['data_home'];docs=str(Path(container)/'Documents')
+  root=str(Path.home()/'Library/Developer/CoreSimulator/Devices');path_identity={}
+  with _directory(container,end,identities=path_identity) as cfd:
+   need(_identity(os.fstat(cfd))=={k:data[k] for k in ('device','inode')} and os.fstat(cfd).st_uid==owner_uid,'managed-data-directory-identity-or-owner')
+   need(os.fstat(cfd).st_uid==owner_uid,'managed-container-owner-before-mkdir')
+   need(time.monotonic()<end,'managed-write-deadline')
+   try:os.mkdir('Documents',mode=0o700,dir_fd=cfd)
+   except FileExistsError:pass
+   before=os.stat('Documents',dir_fd=cfd,follow_symlinks=False);need(stat.S_ISDIR(before.st_mode) and before.st_uid==owner_uid,'managed-documents-not-owned-directory')
+   fd=os.open('Documents',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=cfd)
+   try:
+    need(_identity(os.fstat(fd))==_identity(before) and os.fstat(fd).st_uid==owner_uid,'managed-documents-replaced-or-owner')
+    need(_inventory(fd,0,end)==[],'managed-documents-not-pristine')
+    # The original deterministic seed algorithm and exact PNG bytes are preserved.
+    def chunk(kind,payload):return struct.pack('>I',len(payload))+kind+payload+struct.pack('>I',zlib.crc32(kind+payload)&0xffffffff)
+    row=b''.join(bytes((240,40,30,255)) if x<600 else bytes((30,110,240,255)) for x in range(1200))
+    png=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',1200,800,8,6,0,0,0))+chunk(b'sRGB',b'\0')+chunk(b'IDAT',zlib.compress((b'\0'+row)*800))+chunk(b'IEND',b'')
+    need(os.fstat(cfd).st_uid==owner_uid and os.fstat(fd).st_uid==owner_uid,'managed-directory-owner-before-create')
+    need(time.monotonic()<end,'managed-write-deadline')
+    handle=os.open(PNG_NAME,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_NONBLOCK,0o600,dir_fd=fd)
+    try:
+     need(os.fstat(handle).st_uid==owner_uid and stat.S_ISREG(os.fstat(handle).st_mode) and os.fstat(handle).st_nlink==1,'managed-png-not-owned-regular')
+     offset=0
+     while offset<len(png):
+      need(os.fstat(cfd).st_uid==owner_uid and os.fstat(fd).st_uid==owner_uid and os.fstat(handle).st_uid==owner_uid,'managed-owner-before-write')
+      need(time.monotonic()<end,'managed-write-deadline')
+      written=os.write(handle,png[offset:]);need(written>0,'managed-png-short-write');offset+=written
+    finally:os.close(handle)
+    need(os.stat(PNG_NAME,dir_fd=fd,follow_symlinks=False).st_uid==owner_uid,'managed-png-owner-before-read')
+    raw,png_identity=_read(fd,PNG_NAME,MAX_PNG,end);need(raw==png,'managed-png-readback')
+    need(os.stat(PNG_NAME,dir_fd=fd,follow_symlinks=False).st_uid==owner_uid,'managed-png-owner-after-read')
+    need(_inventory(fd,1,end)==[PNG_NAME],'managed-documents-changed')
+    docs_identity=_identity(os.fstat(fd));need(_identity(os.stat('Documents',dir_fd=cfd,follow_symlinks=False))==docs_identity,'managed-documents-replaced')
+    need(stat.S_ISDIR(os.stat('Documents',dir_fd=cfd,follow_symlinks=False).st_mode) and os.stat('Documents',dir_fd=cfd,follow_symlinks=False).st_uid==owner_uid and os.fstat(fd).st_uid==owner_uid and os.fstat(cfd).st_uid==owner_uid and os.geteuid()==owner_uid,'managed-directory-owner-after-write')
+    initial={'schema':RECEIPT_SCHEMA,'devices_root':root,'owned_udid':udid,'normalized_udid':_uuid(udid),'container_path':container,'container_id':_uuid(Path(container).name),'documents_path':docs,'documents_identity':docs_identity,'path_identity':{**path_identity,docs:docs_identity},'initial_names':[PNG_NAME],'png':{'bytes':len(png),'sha256':digest(png),'identity':png_identity}}
+    fixture={'path':str(Path(docs)/PNG_NAME),'bytes':len(png),'sha256':digest(png),'width':1200,'height':800,'original_runner_algorithm_unchanged':True}
+   finally:os.close(fd)
+  need(time.monotonic()<end,'managed-files-preparation-after-deadline')
+  report['png_fixture']=fixture;report['fixture_initial_receipt']=initial
+  report['managed_files_preparation']={'completed':True,'data_home_receipt':data,'source':'exact hosted testcase plus strict official summary and nofollow directory identity','native_container_query':False}
+  report['pretest_replacement']={'identity':'strict managed host-bundle, scene and owned-container proof','optional_English_pretest_image':'not captured','required_XCTest_images':'unchanged'}
+  finished=time.monotonic();need(finished<end,'managed-files-preparation-after-deadline')
+  report['files_preparation_budget']['completed_monotonic']=finished
+  return initial
+ except BaseException:
+  commands.blocked=True
+  raise
+
+def validate_managed_files_claim(report):
+ proof=report.get('managed_deployment');need(type(proof) is dict and proof.get('passed') is True,'managed-files-claim-without-deployment')
+ claim=report.get('managed_files_preparation');need(type(claim) is dict and claim.get('completed') is True and claim.get('native_container_query') is False,'managed-files-claim-status')
+ data=validate_managed_data_identity(proof['host']['data_home_receipt'],report['udid']);need(claim['data_home_receipt']==data,'managed-files-data-replay')
+ initial=report['fixture_initial_receipt'];png=report['png_fixture'];container=data['data_home'];docs=str(Path(container)/'Documents')
+ need(initial['schema']==RECEIPT_SCHEMA and initial['container_path']==container and initial['owned_udid']==report['udid'] and initial['documents_path']==docs and initial['initial_names']==[PNG_NAME],'managed-files-initial-binding')
+ need(initial['path_identity'][container]=={k:data[k] for k in ('device','inode')} and initial['path_identity'][docs]==initial['documents_identity'],'managed-files-initial-directory-binding')
+ need(png['path']==str(Path(docs)/PNG_NAME) and png['bytes']==initial['png']['bytes']==8305 and png['sha256']==initial['png']['sha256']=='7a690cd2efee140bed38b96654a1fe2536c32c679fe3305816c59b968506b840' and png['width']==1200 and png['height']==800 and png['original_runner_algorithm_unchanged'] is True,'managed-files-exact-seed')
+ b=report['deployment_budget'];f=report['files_preparation_budget'];start=report['clock']['started_monotonic'];latest=start+695
+ need(b['work_deadline_monotonic']==start+640 and b['cleanup_deadline_monotonic']==start+655 and b['summary_deadline_monotonic']==start+685 and b['latest_ui_start_monotonic']==latest,'managed-absolute-budget-binding')
+ need(b['available_work_seconds']==b['work_deadline_monotonic']-b['started_monotonic'] and b['process_cleanup_seconds']==15 and b['summary_total_seconds']==30 and b['files_preparation_seconds']==10 and b['dispatch_proven'] is False,'managed-budget-reserves')
+ need(number(b.get('started_monotonic')) and start<=b['started_monotonic']<b['work_deadline_monotonic'] and number(b.get('completed_monotonic')) and b['started_monotonic']<=b['completed_monotonic']<b['summary_deadline_monotonic'],'managed-budget-time-range')
+ deployed=[e for e in report['commands'] if e.get('label','').endswith('-deployment-tests')];summaries=[e for e in report['commands'] if e.get('label','').endswith('-deployment-summary')]
+ need(len(deployed)==len(summaries)==1,'managed-budget-one-command-and-summary')
+ d,q=deployed[0],summaries[0]
+ need(d['command_deadline_monotonic']==b['work_deadline_monotonic'] and d['cleanup_deadline_monotonic']==b['cleanup_deadline_monotonic'] and b['started_monotonic']<=d['begin_monotonic']<d['command_deadline_monotonic'],'managed-deployment-command-absolute-deadlines')
+ need(q['cleanup_deadline_monotonic']==q['begin_monotonic']+30 and q['command_deadline_monotonic']==q['cleanup_deadline_monotonic']-15 and q['cleanup_deadline_monotonic']<=b['summary_deadline_monotonic'],'managed-summary-command-absolute-deadlines')
+ need(all(number(e.get('elapsed_seconds')) and e['elapsed_seconds']>=0 for e in (d,q)) and q['begin_monotonic']>=d['begin_monotonic']+d['elapsed_seconds'] and b['completed_monotonic']>=q['begin_monotonic']+q['elapsed_seconds'],'managed-command-observed-order')
+ need(all(number(f.get(k)) for k in ('started_monotonic','deadline_monotonic','completed_monotonic')) and f['started_monotonic']>=b['completed_monotonic'] and f['deadline_monotonic']==f['started_monotonic']+10 and f['deadline_monotonic']<=latest and f['started_monotonic']<=f['completed_monotonic']<f['deadline_monotonic'],'managed-files-single-deadline')
+ need(f['seconds']==10 and f['native_dispatch'] is False and f['latest_ui_start_monotonic']==latest,'managed-files-budget-schema')
+ need(report.get('pretest_replacement')=={'identity':'strict managed host-bundle, scene and owned-container proof','optional_English_pretest_image':'not captured','required_XCTest_images':'unchanged'} and 'pretest_launch_image' not in report and 'pretest_process' not in report,'managed-files-no-fabricated-pretest')
+ return True
 
 def verify_producer(log,container):
  lines=[line.split(' ',1)[1] for line in log.splitlines() if line.startswith('VISION_REMAINING_FIXTURE_JSON ')]
@@ -785,7 +881,7 @@ def execute(env):
  config=validate_config(strict_json(safe_read(ROOT/CONFIG,16384)),env);clock=validate_clock(strict_json(safe_read(temp/CLOCK,16384)),env)
  method=config['selected_method'];key=str(UI_METHODS.index(method)+1);prefix='vision-wave-'+key+'-'+env['GITHUB_RUN_ID']+'-'+env['GITHUB_RUN_ATTEMPT']
  commands=VisionCommands(temp);work=clock['started_monotonic']+NATIVE_SECONDS;final=clock['started_monotonic']+FINAL_SECONDS
- report={'schema':'Celluloid.FinalVisionSingleMethodWave.1','test_diagnostics':{'path':DIAGNOSTIC_TEST,'sha256':DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':ORIGINAL_TEST_SHA256,'unchanged_original_files':961,'product_compiled_inputs_unchanged':True},'control_sha':env['GITHUB_SHA'],'product_sha':SOURCE,'product_tree':TREE,'run_id':env['GITHUB_RUN_ID'],'run_attempt':env['GITHUB_RUN_ATTEMPT'],'selected_method':method,'omitted_ui_methods':[m for m in UI_METHODS if m!=method],'original_hosted_inventory':list(HOSTED),'original_ui_inventory':list(UI_METHODS),'retained_hosted_evidence':{'run_id':37909497562,'control_sha':'46fc7a5a41efea647dc27099ab9883187b8814ec','passed_methods':list(HOSTED),'new_execution_claim':False},'retained_release_evidence':{'run_id':37909497562,'binary_sha256':'a03d12bfb39b98a372bf9ea2f7bab01ecef13996fd8ef316e628cb1fcaf21e85','fresh_release_build':False},'fixture_dependency':DEPENDENCIES[method],'fixture_producer_selected':bool(selectors_for(method)['producer']),'clock':clock,'ui_limit_seconds':UI_SECONDS,'selected_method_passed':False,'wave_qualified':False,'all_eight_qualified':False,'archive_qualified':False,'required_screenshots':list(SHOTS[method]),'screenshots':{},'commands':commands.events,'errors':[],'omissions':[]}
+ report={'schema':'Celluloid.FinalVisionSingleMethodWave.1','test_diagnostics':{'path':DIAGNOSTIC_TEST,'sha256':DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':ORIGINAL_TEST_SHA256,'unchanged_original_files':960,'hosted_path':HOSTED_DIAGNOSTIC_TEST,'hosted_sha256':HOSTED_DIAGNOSTIC_TEST_SHA256,'hosted_inverse_original_sha256':HOSTED_ORIGINAL_TEST_SHA256,'product_compiled_inputs_unchanged':True},'control_sha':env['GITHUB_SHA'],'product_sha':SOURCE,'product_tree':TREE,'run_id':env['GITHUB_RUN_ID'],'run_attempt':env['GITHUB_RUN_ATTEMPT'],'selected_method':method,'omitted_ui_methods':[m for m in UI_METHODS if m!=method],'original_hosted_inventory':list(HOSTED),'original_ui_inventory':list(UI_METHODS),'retained_hosted_evidence':{'run_id':37909497562,'control_sha':'46fc7a5a41efea647dc27099ab9883187b8814ec','passed_methods':list(HOSTED),'new_execution_claim':False},'retained_release_evidence':{'run_id':37909497562,'binary_sha256':'a03d12bfb39b98a372bf9ea2f7bab01ecef13996fd8ef316e628cb1fcaf21e85','fresh_release_build':False},'fixture_dependency':DEPENDENCIES[method],'fixture_producer_selected':bool(selectors_for(method)['producer']),'clock':clock,'ui_limit_seconds':UI_SECONDS,'selected_method_passed':False,'wave_qualified':False,'all_eight_qualified':False,'archive_qualified':False,'required_screenshots':list(SHOTS[method]),'screenshots':{},'commands':commands.events,'errors':[],'omissions':[]}
  fixture_initial=None
  udid=None;bundle=temp/(prefix+'-ui.xcresult');ui_log=None;ui_result=None;summary=None
  def call(args,label,seconds,**kwargs):return commands.run(args,prefix+'-'+label,deadline=kwargs.pop('deadline',work-CLEANUP_RESERVE),seconds=seconds,**kwargs)
@@ -808,19 +904,22 @@ def execute(env):
   app=temp/'vision-wave-build/Build/Products/Debug-xrsimulator/CelluloidVision.app'
   if method==FILES_METHOD:run_managed_deployment(commands,call,clock,temp,udid,runtime,prefix,report)
   else:call(['xcrun','simctl','install',udid,app],'install',315)
-  # Preserve the existing separate pretest launch/PID/simctl capture. No
-  # Chinese XCTest screenshot is removed, replaced, suppressed or deduplicated.
-  raw,_=call(['xcrun','simctl','launch',udid,'Mango.Celluloid'],'pretest-launch',195)
-  pid=raw.strip().rsplit(':',1)[-1].strip();need(pid.isdigit(),'pretest-launch-pid');time.sleep(4)
-  raw,_=call(['ps','-p',pid,'-o','pid=,comm='],'pretest-process',35)
-  need('CelluloidVision.app/CelluloidVision' in raw and raw.strip().startswith(pid+' '),'pretest-process-identity');report['pretest_process']=raw
-  shot=temp/(prefix+'-native-vision-launch.jpg')
-  _,capture_result=call(['xcrun','simctl','io',udid,'screenshot','--type=jpeg',shot],'pretest-screenshot',60,check_code=False)
-  if capture_result['return_code']==0:
-   raw_image=safe_read(shot,5000000);need(raw_image.startswith(b'\xff\xd8\xff'),'pretest-image-type')
-   report['pretest_launch_image']={'path':str(shot),'sha256':digest(raw_image),'bytes':len(raw_image),'scope':'English pretest launch, never a substitute for the unchanged Chinese XCTest launch image'}
-  else:report['omissions'].append('Optional pretest simctl launch screenshot exited '+str(capture_result['return_code']))
-  call(['xcrun','simctl','terminate',udid,'Mango.Celluloid'],'pretest-terminate',45,check_code=False)
+  if method==FILES_METHOD:
+   fixture_initial=prepare_managed_files(commands,clock,report,udid)
+  else:
+   # Preserve the existing separate pretest launch/PID/simctl capture. No
+   # Chinese XCTest screenshot is removed, replaced, suppressed or deduplicated.
+   raw,_=call(['xcrun','simctl','launch',udid,'Mango.Celluloid'],'pretest-launch',195)
+   pid=raw.strip().rsplit(':',1)[-1].strip();need(pid.isdigit(),'pretest-launch-pid');time.sleep(4)
+   raw,_=call(['ps','-p',pid,'-o','pid=,comm='],'pretest-process',35)
+   need('CelluloidVision.app/CelluloidVision' in raw and raw.strip().startswith(pid+' '),'pretest-process-identity');report['pretest_process']=raw
+   shot=temp/(prefix+'-native-vision-launch.jpg')
+   _,capture_result=call(['xcrun','simctl','io',udid,'screenshot','--type=jpeg',shot],'pretest-screenshot',60,check_code=False)
+   if capture_result['return_code']==0:
+    raw_image=safe_read(shot,5000000);need(raw_image.startswith(b'\xff\xd8\xff'),'pretest-image-type')
+    report['pretest_launch_image']={'path':str(shot),'sha256':digest(raw_image),'bytes':len(raw_image),'scope':'English pretest launch, never a substitute for the unchanged Chinese XCTest launch image'}
+   else:report['omissions'].append('Optional pretest simctl launch screenshot exited '+str(capture_result['return_code']))
+   call(['xcrun','simctl','terminate',udid,'Mango.Celluloid'],'pretest-terminate',45,check_code=False)
   selection=selectors_for(method)
   if selection['producer']:
    producer_bundle=temp/(prefix+'-producer.xcresult')
@@ -829,17 +928,6 @@ def execute(env):
    report['producer_case']=inspect_case(producer_log,PRODUCER,strict_json(raw),'producer',udid,runtime['version'])
    raw,_=call(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data'],'producer-container',195)
    report['producer_fixture']=verify_producer(producer_log,raw.strip())
-  elif DEPENDENCIES[method]=='own-generated-png':
-   raw,_=call(['xcrun','simctl','get_app_container',udid,'Mango.Celluloid','data'],'png-container',195);report['png_fixture']=seed_png(raw.strip())
-   if method==FILES_METHOD:
-    try:
-     fixture_initial=capture_initial_fixture(raw.strip(),udid,report['png_fixture'],deadline=min(work-CLEANUP_RESERVE,time.monotonic()+FIXTURE_READ_SECONDS))
-     report['fixture_initial_receipt']=fixture_initial
-    except (ValueError,OSError,KeyError,TypeError) as e:
-     # Failed diagnostic ownership never permits a substitute read and does not
-     # erase execution of the original UI method under its unchanged admission.
-     report['errors'].append('initial owned fixture diagnostic unavailable: '+type(e).__name__+': '+str(e))
-     report['fixture_initial_diagnostic']={'status':'unavailable','save_completion_proven':False,'qualification_proven':False}
   deadline=record_ui_admission(report,clock,commands)
   ui_log,ui_result=call(xctest_command(temp,udid,bundle,selection['ui']),'ui-tests',UI_SECONDS+15,deadline=deadline,full=True,check_code=False)
  except BaseException as e:
@@ -895,7 +983,7 @@ def execute(env):
 def validate_report_identity(report,env):
  need(type(report) is dict and report.get('schema')=='Celluloid.FinalVisionSingleMethodWave.1','report-schema')
  for key,value in [('control_sha',env['GITHUB_SHA']),('product_sha',SOURCE),('product_tree',TREE),('run_id',env['GITHUB_RUN_ID']),('run_attempt',env['GITHUB_RUN_ATTEMPT']),('selected_method',env['VISION_WAVE_METHOD'])]:need(report.get(key)==value,'report-identity-'+key)
- need(report.get('test_diagnostics')=={'path':DIAGNOSTIC_TEST,'sha256':DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':ORIGINAL_TEST_SHA256,'unchanged_original_files':961,'product_compiled_inputs_unchanged':True},'report-test-diagnostic-provenance')
+ need(report.get('test_diagnostics')=={'path':DIAGNOSTIC_TEST,'sha256':DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':ORIGINAL_TEST_SHA256,'unchanged_original_files':960,'hosted_path':HOSTED_DIAGNOSTIC_TEST,'hosted_sha256':HOSTED_DIAGNOSTIC_TEST_SHA256,'hosted_inverse_original_sha256':HOSTED_ORIGINAL_TEST_SHA256,'product_compiled_inputs_unchanged':True},'report-test-diagnostic-provenance')
  method=report['selected_method'];need(method in UI_METHODS and report.get('omitted_ui_methods')==[m for m in UI_METHODS if m!=method],'report-scope')
  need(report.get('original_hosted_inventory')==list(HOSTED) and report.get('original_ui_inventory')==list(UI_METHODS),'report-inventory')
  need(report.get('ui_limit_seconds')==UI_SECONDS and report.get('all_eight_qualified') is False and report.get('archive_qualified') is False,'report-claim')
@@ -903,13 +991,13 @@ def validate_report_identity(report,env):
  need(type(report.get('selected_method_passed')) is bool and type(report.get('wave_qualified')) is bool and type(report.get('errors')) is list,'report-status')
  if report['wave_qualified']:
   need(report['selected_method_passed'] and not report['errors'] and set(report['screenshots'])==set(SHOTS[method]),'unsupported-wave-success')
-  if method==FILES_METHOD:need(report.get('managed_deployment',{}).get('passed') is True,'missing-managed-deployment-proof')
+  if method==FILES_METHOD:need(report.get('managed_deployment',{}).get('passed') is True and report.get('managed_files_preparation',{}).get('completed') is True,'missing-managed-deployment-or-files-preparation-proof')
  return validate_clock(report['clock'],env)
 
 
 # Public artifacts retain only bounded current-job diagnostics, never complete
 # host runtime/device-type discovery or unrelated attachment-enumeration output.
-PUBLIC_OPTIONAL_STAGES=frozenset(('xcode','validate_native_sources','validate_native_localization','test_native_process','test_native_evidence','test_native_release','icons','icon-proof','create','boot','bootstatus','install','pretest-launch','pretest-process','pretest-screenshot','pretest-terminate','png-container','shutdown','delete'))
+PUBLIC_OPTIONAL_STAGES=frozenset(('xcode','validate_native_sources','validate_native_localization','test_native_process','test_native_evidence','test_native_release','icons','icon-proof','create','boot','bootstatus','install','pretest-launch','pretest-process','pretest-screenshot','pretest-terminate','shutdown','delete'))
 
 def collect(env):
  temp=Path(env['RUNNER_TEMP']).resolve(strict=True);report=strict_json(safe_read(temp/'vision-wave-report.json',200000));clock=validate_report_identity(report,env)
@@ -940,10 +1028,14 @@ def collect(env):
     raw=safe_read(temp/event['log'],MAX_OUTPUT);need(len(raw)==event['log_bytes'] and digest(raw)==event['log_sha256'],'deployment-command-log-binding');raws.append(raw)
    actual=strict_json(raws[1]);need(actual==report['deployment_summary'],'deployment-summary-replay-mismatch')
    replay=verify_managed_deployment(raws[0].decode(),actual,report['udid'],report['runtime'],report['deployment_call_window'])
-   expected={**replay,'control_sha':env['GITHUB_SHA'],'product_sha':SOURCE,'hosted_test_sha256':'7ab4d6811af3cff725aa08a0b52efc7dc7b5b02ede5589ae695c0930aa5a1ecc'}
+   expected={**replay,'control_sha':env['GITHUB_SHA'],'product_sha':SOURCE,'hosted_test_sha256':HOSTED_DIAGNOSTIC_TEST_SHA256}
    need(expected==report['managed_deployment'],'deployment-proof-replay-mismatch')
   except (ValueError,OSError,KeyError,TypeError) as error:
    report['managed_deployment']['passed']=False;report['wave_qualified']=False;report['errors'].append('retained deployment replay: '+str(error))
+ if report.get('managed_files_preparation',{}).get('completed') is True:
+  try:validate_managed_files_claim(report)
+  except (ValueError,OSError,KeyError,TypeError) as error:
+   report['managed_files_preparation']['completed']=False;report['wave_qualified']=False;report['errors'].append('retained Files preparation replay: '+str(error))
  for name in ['combined-source-before.json','combined-source-after.json']:retain(name,safe_read(temp/name,16384))
  for event in report['commands']:
   if 'log' in event and ('ui-tests' in event['label'] or 'producer-tests' in event['label'] or 'deployment-tests' in event['label'] or 'summary' in event['label']):

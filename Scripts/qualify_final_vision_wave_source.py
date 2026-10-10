@@ -18,7 +18,12 @@ DIAGNOSTIC_TEST = 'Platforms/VisionUITests/NativeVisionUITests.swift'
 DIAGNOSTIC_TEST_SHA256 = '7d0e9c3174e36ab34644d8e08cb7612578a6370974cd8c8ec6b7eb476e0b4c6e'
 ORIGINAL_TEST_SHA256 = 'ad973878bf33ae77d634679d76af545d2d0c1206fe3d1dfebff55c172746677d'
 QUALIFICATION_PATHS = CONTROL_PATHS | {DIAGNOSTIC_TEST}
-UNCHANGED_ORIGINAL_FILE_COUNT = 961
+HOSTED_DIAGNOSTIC_TEST = 'Platforms/VisionTests/NativeVisionTests.swift'
+HOSTED_DIAGNOSTIC_TEST_SHA256 = '92c56ed2c018052f235f3fc64b9cf116ae361079aaa483af37d17a21ee4cbb5e'
+HOSTED_ORIGINAL_TEST_SHA256 = '7ab4d6811af3cff725aa08a0b52efc7dc7b5b02ede5589ae695c0930aa5a1ecc'
+HOSTED_DIAGNOSTIC_ADDITION = '        // VISION_FILES_DATA_DIAG_BEGIN:owned-home-identity\n        // Only this host\'s own sandbox identity; no directory enumeration or data reads.\n        let dataHome = NSHomeDirectory()\n        let attributes = try FileManager.default.attributesOfItem(atPath: dataHome)\n        XCTAssertEqual(attributes[.type] as? FileAttributeType, .typeDirectory)\n        let device = try XCTUnwrap(attributes[.systemNumber] as? NSNumber)\n        let inode = try XCTUnwrap(attributes[.systemFileNumber] as? NSNumber)\n        let receipt: [String: Any] = ["schema": "Celluloid.VisionOwnedData.1",\n            "bundle_identifier": "Mango.Celluloid", "data_home": dataHome,\n            "device": device.uint64Value, "inode": inode.uint64Value]\n        let encoded = try JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys])\n        XCTAssertLessThanOrEqual(encoded.count, 4096)\n        print("VISION_NATIVE_DATA_JSON " + String(decoding: encoded, as: UTF8.self))\n        // VISION_FILES_DATA_DIAG_END:owned-home-identity\n'
+QUALIFICATION_PATHS = QUALIFICATION_PATHS | {HOSTED_DIAGNOSTIC_TEST}
+UNCHANGED_ORIGINAL_FILE_COUNT = 960
 DIAGNOSTIC_REPLACEMENTS = [('        // VISION_FILES_DIAG_BEGIN:failure-receipts\n        // Diagnostics observe this same document and never replace its original assertions.\n        func filesDiagnosticFailure(_ stage: String) {\n            let full = app.debugDescription\n            let bytes = Array(full.utf8), cap = 65536\n            let complete = bytes.count <= cap\n            let bounded = complete ? full : String(decoding: bytes.prefix(cap / 2), as: UTF8.self)\n                + "\\n[bounded middle omission]\\n" + String(decoding: bytes.suffix(cap / 2), as: UTF8.self)\n            let attachment = XCTAttachment(string: bounded)\n            attachment.name = "vision-files-diag-" + stage + "-ax"\n            attachment.lifetime = .keepAlways; add(attachment)\n            print("VISION_FILES_DIAGNOSTIC_AX stage=\\(stage) complete=\\(complete) fullBytes=\\(bytes.count) retainedBytes=\\(bounded.utf8.count)")\n            capture(app, name: "vision-files-diag-" + stage + "-screen")\n        }\n        // VISION_FILES_DIAG_END:failure-receipts\n', ''), ('        // VISION_FILES_DIAG_BEGIN:fixture-identity\n        XCTAssertTrue(text.waitForExistence(timeout: 10))\n        let diagnosticLayers = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH \'layer.\'"))\n        if diagnosticLayers.count != 1 { filesDiagnosticFailure("identity") }\n        XCTAssertEqual(diagnosticLayers.count, 1, "A fresh Files document must identify exactly its inserted layer")\n        let diagnosticLayerIdentifier = diagnosticLayers.firstMatch.identifier\n        XCTAssertTrue(diagnosticLayerIdentifier.hasPrefix("layer."))\n        XCTAssertNotNil(UUID(uuidString: String(diagnosticLayerIdentifier.dropFirst(6))))\n        let fixtureReceipt: [String: Any] = ["schema": "Celluloid.VisionFilesFixture.1", "document_name": documentName, "layer_identifier": diagnosticLayerIdentifier]\n        let fixtureReceiptBytes = try JSONSerialization.data(withJSONObject: fixtureReceipt, options: [.sortedKeys])\n        print("VISION_FILES_FIXTURE_JSON " + String(decoding: fixtureReceiptBytes, as: UTF8.self))\n        text.tap()\n        // VISION_FILES_DIAG_END:fixture-identity\n', '        XCTAssertTrue(text.waitForExistence(timeout: 10)); text.tap()\n'), ('        // VISION_FILES_DIAG_BEGIN:post-redo-model\n        let diagnosticModelRow = app.buttons.matching(identifier: diagnosticLayerIdentifier).firstMatch\n        let diagnosticExpectedLabel = "Select layer: Vision 世界"\n        let diagnosticModelMatched = XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "exists == true AND label == %@", diagnosticExpectedLabel), evaluatedWith: diagnosticModelRow)], timeout: 10) == .completed\n        let modelReceipt: [String: Any] = ["schema": "Celluloid.VisionFilesModel.1", "stage": "post-redo", "document_name": documentName, "layer_identifier": diagnosticLayerIdentifier, "expected_text": "Vision 世界", "matched": diagnosticModelMatched, "actual_label": diagnosticModelRow.exists ? String(diagnosticModelRow.label.prefix(256)) : "missing layer"]\n        let modelReceiptBytes = try JSONSerialization.data(withJSONObject: modelReceipt, options: [.sortedKeys])\n        print("VISION_FILES_MODEL_JSON " + String(decoding: modelReceiptBytes, as: UTF8.self))\n        if !diagnosticModelMatched { filesDiagnosticFailure("post-redo") }\n        XCTAssertTrue(diagnosticModelMatched, "The same recipe-backed layer UUID must retain exact multilingual text after Redo")\n        // Documents exposes no observed disk-save completion. Keep the original\n        // navigation/termination below; do not add a delay or claim a save barrier.\n        // VISION_FILES_DIAG_END:post-redo-model\n', ''), ('        // VISION_FILES_DIAG_BEGIN:reopen-failure\n        let diagnosticReopenedMatched = layer.waitForExistence(timeout: 10)\n        if !diagnosticReopenedMatched { filesDiagnosticFailure("reopen-layer") }\n        XCTAssertTrue(diagnosticReopenedMatched)\n        if layer.identifier != diagnosticLayerIdentifier { filesDiagnosticFailure("reopen-identity") }\n        XCTAssertEqual(layer.identifier, diagnosticLayerIdentifier, "Reopen must retain the same document layer identity")\n        layer.tap()\n        // VISION_FILES_DIAG_END:reopen-failure\n', '        XCTAssertTrue(layer.waitForExistence(timeout: 10)); layer.tap()\n')]
 
 def verify_diagnostic_test(raw):
@@ -29,6 +34,14 @@ def verify_diagnostic_test(raw):
         source = source.replace(added, original)
     restored = source.encode('utf8')
     require(hashlib.sha256(restored).hexdigest() == ORIGINAL_TEST_SHA256, 'Diagnostic inverse does not restore fixed original test')
+    return restored
+
+def verify_hosted_diagnostic_test(raw):
+    require(hashlib.sha256(raw).hexdigest() == HOSTED_DIAGNOSTIC_TEST_SHA256, 'Unreviewed hosted diagnostic test bytes')
+    text = raw.decode('utf8')
+    require(text.count(HOSTED_DIAGNOSTIC_ADDITION) == 1, 'Hosted diagnostic block missing or duplicated')
+    restored = text.replace(HOSTED_DIAGNOSTIC_ADDITION, '').encode('utf8')
+    require(hashlib.sha256(restored).hexdigest() == HOSTED_ORIGINAL_TEST_SHA256, 'Hosted inverse does not restore fixed original test')
     return restored
 
 PLATFORMS = frozenset(('vision',))
@@ -71,7 +84,7 @@ def validate(context, facts, enabled=False):
         prior = commit['sha']
     require(prior == facts['head'], 'Control chain head mismatch')
     require(facts['parent_tree'] == context['product_parent_tree'], 'Product parent tree mismatch')
-    require(set(facts['changed_paths']) == QUALIFICATION_PATHS, 'Only five controls and one exact reversible diagnostic UI test may differ')
+    require(set(facts['changed_paths']) == QUALIFICATION_PATHS, 'Only five controls and two exact reversible diagnostic tests may differ')
     require(not facts['dirty'], 'Tracked or untracked checkout changed')
     return {'scope': 'Independent unsigned native platform validation',
             'platform': context['platform'], 'source_sha': facts['head'], 'tree': facts['tree'],
@@ -97,6 +110,19 @@ def verify_diagnostic_history(chain, read_blob):
     require(len(transitions) == 1, 'Exactly one original-to-reviewed diagnostic test transition required')
     return transitions[0]
 
+
+def verify_hosted_diagnostic_history(chain, read_blob):
+    transitions = []
+    for commit in chain:
+        if HOSTED_DIAGNOSTIC_TEST not in commit['changed_paths']:
+            continue
+        previous = read_blob(commit['parents'][0], HOSTED_DIAGNOSTIC_TEST)
+        current = read_blob(commit['sha'], HOSTED_DIAGNOSTIC_TEST)
+        require(hashlib.sha256(previous).hexdigest() == HOSTED_ORIGINAL_TEST_SHA256, 'Unreviewed earlier hosted test history')
+        require(hashlib.sha256(current).hexdigest() == HOSTED_DIAGNOSTIC_TEST_SHA256, 'Unreviewed hosted diagnostic transition')
+        transitions.append(commit['sha'])
+    require(len(transitions) == 1, 'Exactly one original-to-reviewed hosted diagnostic transition required')
+    return transitions[0]
 
 def main():
     parser = argparse.ArgumentParser()
@@ -132,6 +158,12 @@ def main():
     original = subprocess.check_output(['git', 'show', parent + ':' + DIAGNOSTIC_TEST], cwd=ROOT, timeout=20)
     require(original == restored, 'Inverse test differs from fixed product parent')
     require(git('ls-tree', 'HEAD', '--', DIAGNOSTIC_TEST).split()[0] == git('ls-tree', parent, '--', DIAGNOSTIC_TEST).split()[0] == '100644', 'Diagnostic test mode changed')
+    report['hosted_diagnostic_transition_commit'] = verify_hosted_diagnostic_history(chain, lambda revision, path: subprocess.check_output(['git', 'show', revision + ':' + path], cwd=ROOT, timeout=20))
+    hosted = (ROOT / HOSTED_DIAGNOSTIC_TEST).read_bytes()
+    hosted_restored = verify_hosted_diagnostic_test(hosted)
+    require(hosted_restored == subprocess.check_output(['git', 'show', parent + ':' + HOSTED_DIAGNOSTIC_TEST], cwd=ROOT, timeout=20), 'Hosted inverse differs from fixed original test')
+    require(git('ls-tree', 'HEAD', '--', HOSTED_DIAGNOSTIC_TEST).split()[0] == git('ls-tree', parent, '--', HOSTED_DIAGNOSTIC_TEST).split()[0] == '100644', 'Hosted diagnostic test mode changed')
+    report.update(hosted_diagnostic_test_path=HOSTED_DIAGNOSTIC_TEST, hosted_diagnostic_test_sha256=HOSTED_DIAGNOSTIC_TEST_SHA256, hosted_diagnostic_test_inverse_sha256=HOSTED_ORIGINAL_TEST_SHA256)
     paths = [p for p in git('ls-files', '-z').split('\0') if p and p not in QUALIFICATION_PATHS]
     require(len(paths) == UNCHANGED_ORIGINAL_FILE_COUNT, 'Unexpected unchanged original file count')
     rows = [[p, hashlib.sha256((ROOT / p).read_bytes()).hexdigest()] for p in paths]
