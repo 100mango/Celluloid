@@ -381,15 +381,16 @@ class WaveTests(unittest.TestCase):
    bad=copy.deepcopy(ss);mutation(bad)
    with self.assertRaises(ValueError):w.verify_managed_deployment(log,bad,uid,runtime,window)
  def run_managed_fixture(self,mode='healthy',now_start=1220):
-  uid,runtime,log,ss=self.deployment_receipts();now=[float(now_start)];calls=[];report={};error=None
+  uid,runtime,log,ss=self.deployment_receipts();now=[float(now_start)];calls=[];report={};error=None;original_helper=w.bounded_optional_process
   with tempfile.TemporaryDirectory() as t:
    commands=w.VisionCommands(Path(t))
    def helper(argv,work,end,**kwargs):
     calls.append({'argv':argv,'work':work,'end':end});deployment='test-without-building' in argv
+    if mode=='summary-begin-expired' and not deployment:return original_helper(argv,work,end,**kwargs)
     if mode=='cancel':raise KeyboardInterrupt()
     if mode=='permission-exception':raise PermissionError('controlled')
     if deployment:
-     now[0]+=434 if mode in ('slow-parse','last-summary-start') else 2
+     now[0]+=404 if mode in ('slow-parse','last-summary-start') else 2
      output=log.encode()
      if mode=='wrong-host':output=log.replace(uid,'11111111-1111-1111-1111-111111111111').encode()
     else:
@@ -399,12 +400,13 @@ class WaveTests(unittest.TestCase):
     r={'output':output,'return_code':0,'bytes_read':len(output),'pipe_eof':True,'child_reaped':True,'timed_out':False,'overflow':False,'cleanup_error':None,'finalized':True,'elapsed_seconds':2 if deployment else 1,'command_deadline_monotonic':work,'cleanup_deadline_monotonic':end}
     if mode=='uncertain':r.update(finalized=False,child_reaped=False,cleanup_error='PermissionError')
     if mode=='exit65':r['return_code']=65
-    if not deployment and mode=='summary-timeout':r.update(timed_out=True,elapsed_seconds=15.001)
+    if not deployment and mode=='summary-timeout':r.update(timed_out=True,elapsed_seconds=45.001)
     if not deployment and mode=='summary-denial':r.update(finalized=False,child_reaped=False,cleanup_error='PermissionError')
     return r
    original=w.inspect_deployment_transcript
    def inspect(*a):
     out=original(*a)
+    if mode=='old-last-summary-start':now[0]=1655.0
     if mode=='slow-parse':now[0]+=1.001
     if mode=='last-summary-start':now[0]+=1
     return out
@@ -415,6 +417,7 @@ class WaveTests(unittest.TestCase):
     return out
    def receipt(phase,label,*a):
     if phase=='BEGIN' and label=='deployment-summary' and mode=='summary-begin-delay':now[0]+=1
+    if phase=='BEGIN' and label=='deployment-summary' and mode=='summary-begin-expired':now[0]+=46
    def call(argv,label,seconds,**kwargs):return commands.run(argv,label,seconds=seconds,**kwargs)
    with contextlib.redirect_stdout(io.StringIO()),patch.object(w.time,'monotonic',side_effect=lambda:now[0]),patch.object(w.time,'time',side_effect=lambda:10000+now[0]),patch.object(w,'bounded_optional_process',side_effect=helper),patch.object(w,'inspect_deployment_transcript',side_effect=inspect),patch.object(w,'verify_managed_deployment',side_effect=verify),patch.object(w,'print_command_receipt',side_effect=receipt):
     try:w.run_managed_deployment(commands,call,{'started_monotonic':1000,'control_sha':'a'*40},Path(t),uid,runtime,'vision-wave-2-123-1',report)
@@ -426,28 +429,35 @@ class WaveTests(unittest.TestCase):
     later.assert_not_called()
   return report,calls,blocked,error
  def test_managed_deadlines_use_first_wave_clock_and_full_summary_without_renewal(self):
-  report,calls,blocked,error=self.run_managed_fixture();self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[0]['work'],1640);self.assertEqual(calls[0]['end'],1655);self.assertEqual(calls[1]['work'],1237);self.assertEqual(calls[1]['end'],1252);self.assertEqual(calls[1]['end']-calls[1]['work'],15);self.assertEqual(report['deployment_budget']['summary_deadline_monotonic'],1685);self.assertEqual(report['deployment_budget']['completed_monotonic'],1223);self.assertTrue(report['managed_deployment']['passed']);self.assertFalse(report['deployment_budget']['dispatch_proven'])
-  self.assertEqual((w.DEPLOYMENT_SUMMARY_SECONDS,w.FILES_PREPARATION_SECONDS,w.UI_SECONDS,w.NATIVE_SECONDS,w.FINAL_SECONDS),(30,10,720,1560,1740));self.assertEqual(report['deployment_budget']['process_cleanup_seconds'],15)
+  report,calls,blocked,error=self.run_managed_fixture();self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[0]['work'],1610);self.assertEqual(calls[0]['end'],1625);self.assertEqual(calls[1]['work'],1267);self.assertEqual(calls[1]['end'],1282);self.assertEqual(calls[1]['end']-calls[1]['work'],15);self.assertEqual(report['deployment_budget']['summary_deadline_monotonic'],1685);self.assertEqual(report['deployment_budget']['completed_monotonic'],1223);self.assertTrue(report['managed_deployment']['passed']);self.assertFalse(report['deployment_budget']['dispatch_proven'])
+  self.assertEqual((w.DEPLOYMENT_SUMMARY_SECONDS,w.FILES_PREPARATION_SECONDS,w.UI_SECONDS,w.NATIVE_SECONDS,w.FINAL_SECONDS),(60,10,720,1560,1740));self.assertEqual(report['deployment_budget']['process_cleanup_seconds'],15)
   selected=[v for v in calls[0]['argv'] if v.startswith('-only-testing:')];self.assertEqual(selected,['-only-testing:CelluloidVisionTests/NativeVisionTests/'+w.DEPLOYMENT_METHOD]);self.assertNotIn('-skip-testing',str(calls[0]['argv']))
  def test_managed_slow_transcript_parse_refuses_summary_and_latches(self):
   report,calls,blocked,error=self.run_managed_fixture('slow-parse');self.assertIsInstance(error,ValueError);self.assertIn('full-command-window',str(error));self.assertTrue(blocked);self.assertEqual(len(calls),1);self.assertNotIn('managed_deployment',report)
  def test_managed_work_budget_rejects_exhaustion_before_any_command(self):
-  report,calls,blocked,error=self.run_managed_fixture(now_start=1639.91);self.assertIsInstance(error,ValueError);self.assertIn('managed-deployment-work-budget-exhausted',str(error));self.assertTrue(blocked);self.assertEqual(calls,[])
+  report,calls,blocked,error=self.run_managed_fixture(now_start=1609.91);self.assertIsInstance(error,ValueError);self.assertIn('managed-deployment-work-budget-exhausted',str(error));self.assertTrue(blocked);self.assertEqual(calls,[])
  def test_managed_failure_cancel_denial_and_warning_block_all_later_dispatch(self):
   for mode,count in [('uncertain',1),('exit65',1),('wrong-host',1),('cancel',1),('permission-exception',1),('warning',2)]:
    with self.subTest(mode=mode):
     report,calls,blocked,error=self.run_managed_fixture(mode);self.assertIsNotNone(error);self.assertTrue(blocked);self.assertEqual(len(calls),count);self.assertNotIn('managed_deployment',report)
 
- def test_managed_summary_last_full_30_fits_only_first_wave_absolute_end(self):
-  report,calls,blocked,error=self.run_managed_fixture('last-summary-start');self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[1]['work'],1670);self.assertEqual(calls[1]['end'],1685);self.assertEqual(report['deployment_budget']['completed_monotonic'],1657)
+ def test_managed_summary_last_full_60_fits_only_first_wave_absolute_end(self):
+  report,calls,blocked,error=self.run_managed_fixture('last-summary-start');self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[1]['work'],1670);self.assertEqual(calls[1]['end'],1685);self.assertEqual(report['deployment_budget']['completed_monotonic'],1627)
  def test_managed_summary_begin_output_consumes_work_without_new_deadline(self):
-  report,calls,blocked,error=self.run_managed_fixture('summary-begin-delay');self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(calls[1]['work'],1237);self.assertEqual(calls[1]['end'],1252);self.assertEqual(report['deployment_budget']['completed_monotonic'],1224)
+  report,calls,blocked,error=self.run_managed_fixture('summary-begin-delay');self.assertIsNone(error);self.assertFalse(blocked);self.assertEqual(calls[1]['work'],1267);self.assertEqual(calls[1]['end'],1282);self.assertEqual(report['deployment_budget']['completed_monotonic'],1224)
  def test_managed_summary_timeout_or_denial_stays_failed_and_blocked(self):
   for mode in ('summary-timeout','summary-denial'):
    with self.subTest(mode=mode):
     report,calls,blocked,error=self.run_managed_fixture(mode);self.assertIsInstance(error,ValueError);self.assertTrue(blocked);self.assertEqual(len(calls),2);self.assertNotIn('managed_deployment',report)
  def test_managed_verification_at_first_wave_absolute_end_never_qualifies(self):
   report,calls,blocked,error=self.run_managed_fixture('late-verification');self.assertIsInstance(error,ValueError);self.assertIn('deployment-verification-after-absolute-summary-deadline',str(error));self.assertTrue(blocked);self.assertEqual(len(calls),2);self.assertNotIn('managed_deployment',report)
+
+ def test_summary_restored_full_window_rejects_old_30_second_remainder(self):
+  report,calls,blocked,error=self.run_managed_fixture('old-last-summary-start');self.assertIsInstance(error,ValueError);self.assertIn('full-command-window',str(error));self.assertTrue(blocked);self.assertEqual(len(calls),1);self.assertNotIn('managed_deployment',report)
+ def test_summary_delayed_BEGIN_never_resets_deadline_or_starts_child(self):
+  with patch.object(w.subprocess,'Popen') as child:
+   report,calls,blocked,error=self.run_managed_fixture('summary-begin-expired')
+  child.assert_not_called();self.assertIsInstance(error,ValueError);self.assertIn('Invalid/expired optional process deadlines',str(error));self.assertTrue(blocked);self.assertEqual(len(calls),2);self.assertEqual(calls[1]['work'],1267);self.assertEqual(calls[1]['end'],1282);self.assertNotIn('managed_deployment',report)
 
  def test_exact_backlight_record_is_observed_and_original_log_identity_kept(self):
   uid,runtime,log,ss=self.deployment_receipts();raw=BACKLIGHT_SAMPLE+'\n'+log;out=w.inspect_deployment_transcript(raw,uid);obs=out['system_log_observations']
@@ -583,10 +593,10 @@ class WaveTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t:
    root=Path(t).resolve();uid,container,r,c,commands=self.owned_setup(root)
    with patch.object(Path,'home',return_value=root),patch.object(w.time,'monotonic',return_value=1001):w.prepare_managed_files(commands,c,r,uid)
-   r.update(clock=c,udid=uid,deployment_budget={'started_monotonic':1100,'work_deadline_monotonic':1640,'cleanup_deadline_monotonic':1655,'summary_deadline_monotonic':1685,'latest_ui_start_monotonic':1695,'available_work_seconds':540,'process_cleanup_seconds':15,'summary_total_seconds':30,'files_preparation_seconds':10,'dispatch_proven':False,'completed_monotonic':1131},commands=[{'label':'vision-wave-2-123-1-deployment-tests','begin_monotonic':1100,'command_deadline_monotonic':1640,'cleanup_deadline_monotonic':1655,'elapsed_seconds':1},{'label':'vision-wave-2-123-1-deployment-summary','begin_monotonic':1101,'command_deadline_monotonic':1116,'cleanup_deadline_monotonic':1131,'elapsed_seconds':1}])
+   r.update(clock=c,udid=uid,deployment_budget={'started_monotonic':1100,'work_deadline_monotonic':1610,'cleanup_deadline_monotonic':1625,'summary_deadline_monotonic':1685,'latest_ui_start_monotonic':1695,'available_work_seconds':510,'process_cleanup_seconds':15,'summary_total_seconds':60,'files_preparation_seconds':10,'dispatch_proven':False,'completed_monotonic':1131},commands=[{'label':'vision-wave-2-123-1-deployment-tests','begin_monotonic':1100,'command_deadline_monotonic':1610,'cleanup_deadline_monotonic':1625,'elapsed_seconds':1},{'label':'vision-wave-2-123-1-deployment-summary','begin_monotonic':1101,'command_deadline_monotonic':1146,'cleanup_deadline_monotonic':1161,'elapsed_seconds':1}])
    r['files_preparation_budget'].update(started_monotonic=1132,deadline_monotonic=1142,completed_monotonic=1133)
    with patch.object(Path,'home',return_value=root):self.assertTrue(w.validate_managed_files_claim(r))
-   mutations=[lambda x:x['commands'][0].update(command_deadline_monotonic=1641),lambda x:x['commands'][0].update(cleanup_deadline_monotonic=1656),lambda x:x['commands'][1].update(command_deadline_monotonic=1117),lambda x:x['commands'][1].update(cleanup_deadline_monotonic=1132),lambda x:x['commands'][1].update(begin_monotonic=1670,command_deadline_monotonic=1685,cleanup_deadline_monotonic=1700),lambda x:x['commands'][1].update(begin_monotonic=1099),lambda x:x['deployment_budget'].update(completed_monotonic=1101),lambda x:x['files_preparation_budget'].update(deadline_monotonic=1143),lambda x:x['files_preparation_budget'].update(completed_monotonic=1142),lambda x:x['fixture_initial_receipt']['path_identity'][str(container)].update(inode=0),lambda x:x.update(pretest_launch_image={'fake':True})]
+   mutations=[lambda x:x['commands'][0].update(command_deadline_monotonic=1611),lambda x:x['commands'][0].update(cleanup_deadline_monotonic=1626),lambda x:x['commands'][1].update(command_deadline_monotonic=1147),lambda x:x['commands'][1].update(cleanup_deadline_monotonic=1162),lambda x:x['commands'][1].update(begin_monotonic=1670,command_deadline_monotonic=1685,cleanup_deadline_monotonic=1700),lambda x:x['commands'][1].update(begin_monotonic=1099),lambda x:x['deployment_budget'].update(completed_monotonic=1101),lambda x:x['files_preparation_budget'].update(deadline_monotonic=1143),lambda x:x['files_preparation_budget'].update(completed_monotonic=1142),lambda x:x['fixture_initial_receipt']['path_identity'][str(container)].update(inode=0),lambda x:x.update(pretest_launch_image={'fake':True})]
    for mutation in mutations:
     bad=copy.deepcopy(r);mutation(bad)
     with patch.object(Path,'home',return_value=root),self.assertRaises(ValueError):w.validate_managed_files_claim(bad)

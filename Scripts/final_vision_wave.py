@@ -12,7 +12,7 @@ MAX_EVIDENCE=BUDGETS['vision']
 HOSTED=('testNativeVisionDocumentImportRenderSaveReopenAndExport','testSharedFieldMutationsRetainUnicodeAcrossBothOrdersUndoAndReopen','testPrepareVisionRemainingDocumentFixture','testNativeVisionExecutableAndSceneAreLive')
 PRODUCER='testPrepareVisionRemainingDocumentFixture'
 DEPLOYMENT_METHOD='testNativeVisionExecutableAndSceneAreLive'
-DEPLOYMENT_SUMMARY_SECONDS=30 # 15 work +15 cleanup, within the original wave clock.
+DEPLOYMENT_SUMMARY_SECONDS=60 # 45 work +15 cleanup, within the original wave clock.
 FILES_PREPARATION_SECONDS=10 # One shared validation/PNG write/read/initial-receipt window.
 SHOTS={UI_METHODS[0]:('native-vision-launch','native-vision-editor-ready'),UI_METHODS[1]:('vision-imported-editable-bubble','vision-png-export-verified','vision-saved-document-reopened'),UI_METHODS[2]:(),UI_METHODS[3]:('vision-zh-Hans-privacy',)}
 DEPENDENCIES={UI_METHODS[0]:'ui-created-document',UI_METHODS[1]:'own-generated-png',UI_METHODS[2]:'hosted-producer-package',UI_METHODS[3]:'ui-created-document'}
@@ -338,14 +338,14 @@ def validate_managed_files_claim(report):
  need(initial['path_identity'][container]=={k:data[k] for k in ('device','inode')} and initial['path_identity'][docs]==initial['documents_identity'],'managed-files-initial-directory-binding')
  need(png['path']==str(Path(docs)/PNG_NAME) and png['bytes']==initial['png']['bytes']==8305 and png['sha256']==initial['png']['sha256']=='7a690cd2efee140bed38b96654a1fe2536c32c679fe3305816c59b968506b840' and png['width']==1200 and png['height']==800 and png['original_runner_algorithm_unchanged'] is True,'managed-files-exact-seed')
  b=report['deployment_budget'];f=report['files_preparation_budget'];start=report['clock']['started_monotonic'];latest=start+695
- need(b['work_deadline_monotonic']==start+640 and b['cleanup_deadline_monotonic']==start+655 and b['summary_deadline_monotonic']==start+685 and b['latest_ui_start_monotonic']==latest,'managed-absolute-budget-binding')
- need(b['available_work_seconds']==b['work_deadline_monotonic']-b['started_monotonic'] and b['process_cleanup_seconds']==15 and b['summary_total_seconds']==30 and b['files_preparation_seconds']==10 and b['dispatch_proven'] is False,'managed-budget-reserves')
+ need(b['work_deadline_monotonic']==start+610 and b['cleanup_deadline_monotonic']==start+625 and b['summary_deadline_monotonic']==start+685 and b['latest_ui_start_monotonic']==latest,'managed-absolute-budget-binding')
+ need(b['available_work_seconds']==b['work_deadline_monotonic']-b['started_monotonic'] and b['process_cleanup_seconds']==15 and b['summary_total_seconds']==60 and b['files_preparation_seconds']==10 and b['dispatch_proven'] is False,'managed-budget-reserves')
  need(number(b.get('started_monotonic')) and start<=b['started_monotonic']<b['work_deadline_monotonic'] and number(b.get('completed_monotonic')) and b['started_monotonic']<=b['completed_monotonic']<b['summary_deadline_monotonic'],'managed-budget-time-range')
  deployed=[e for e in report['commands'] if e.get('label','').endswith('-deployment-tests')];summaries=[e for e in report['commands'] if e.get('label','').endswith('-deployment-summary')]
  need(len(deployed)==len(summaries)==1,'managed-budget-one-command-and-summary')
  d,q=deployed[0],summaries[0]
  need(d['command_deadline_monotonic']==b['work_deadline_monotonic'] and d['cleanup_deadline_monotonic']==b['cleanup_deadline_monotonic'] and b['started_monotonic']<=d['begin_monotonic']<d['command_deadline_monotonic'],'managed-deployment-command-absolute-deadlines')
- need(q['cleanup_deadline_monotonic']==q['begin_monotonic']+30 and q['command_deadline_monotonic']==q['cleanup_deadline_monotonic']-15 and q['cleanup_deadline_monotonic']<=b['summary_deadline_monotonic'],'managed-summary-command-absolute-deadlines')
+ need(q['cleanup_deadline_monotonic']==q['begin_monotonic']+60 and q['command_deadline_monotonic']==q['cleanup_deadline_monotonic']-15 and q['cleanup_deadline_monotonic']<=b['summary_deadline_monotonic'],'managed-summary-command-absolute-deadlines')
  need(all(number(e.get('elapsed_seconds')) and e['elapsed_seconds']>=0 for e in (d,q)) and q['begin_monotonic']>=d['begin_monotonic']+d['elapsed_seconds'] and b['completed_monotonic']>=q['begin_monotonic']+q['elapsed_seconds'],'managed-command-observed-order')
  need(all(number(f.get(k)) for k in ('started_monotonic','deadline_monotonic','completed_monotonic')) and f['started_monotonic']>=b['completed_monotonic'] and f['deadline_monotonic']==f['started_monotonic']+10 and f['deadline_monotonic']<=latest and f['started_monotonic']<=f['completed_monotonic']<f['deadline_monotonic'],'managed-files-single-deadline')
  need(f['seconds']==10 and f['native_dispatch'] is False and f['latest_ui_start_monotonic']==latest,'managed-files-budget-schema')
