@@ -12,6 +12,8 @@ final class IOSPhotosHostUITests: XCTestCase {
     private var recordedFailure = false
     private var didLaunchOwnedPhotos = false
     private var didAttemptObservedWhatsNew = false
+    private var didCompleteLateObservedWhatsNew = false
+    private var didAttemptObservedNotificationDenial = false
 
     override func setUpWithError() throws {
         try super.setUpWithError(); continueAfterFailure = false
@@ -139,6 +141,7 @@ final class IOSPhotosHostUITests: XCTestCase {
         try dismissObservedWhatsNewIfPresent()
         try declineObservedPhotosNotificationsIfPresent()
         try selectObservedCollections()
+        try declineLateObservedNotificationsIfNeeded()
         stage = "open-albums"
         try tap(photos.buttons.matching(identifier: "Albums"))
         checkpoint("albums")
@@ -291,14 +294,48 @@ final class IOSPhotosHostUITests: XCTestCase {
         // still verifies the exact public fixture filename before editing.
         return try unique(items)
     }
-    private func declineObservedPhotosNotificationsIfPresent() throws {
+    private func declineObservedPhotosNotificationsIfPresent(appearanceDeadline: TimeInterval? = nil, wallDeadline: TimeInterval? = nil) throws {
         // Run37912970403 screenshot after the introduction: only this exact
         // Photos notification request may be denied. Never grant notifications.
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let alerts = springboard.alerts
-        guard alerts.firstMatch.waitForExistence(timeout: 2) else {
+        var actionDeadline = started + 120
+        func remaining() throws -> TimeInterval {
+            try withinBudget()
+            guard didLaunchOwnedPhotos, photos.state == .runningForeground else {
+                throw failure("Owned Photos notification context lost foreground")
+            }
+            let available = min(actionDeadline, started + 120) - ProcessInfo.processInfo.systemUptime
+            guard available > 0 else { throw failure("Photos notification handling deadline reached") }
+            return min(8, available)
+        }
+        let appearanceTimeout: TimeInterval
+        if let appearanceDeadline = appearanceDeadline {
+            guard let wallDeadline = wallDeadline, appearanceDeadline <= wallDeadline,
+                  ProcessInfo.processInfo.systemUptime < appearanceDeadline else {
+                throw failure("Invalid or expired late notification appearance window")
+            }
+            appearanceTimeout = min(8, appearanceDeadline - ProcessInfo.processInfo.systemUptime)
+            guard appearanceTimeout > 0 else { throw failure("Late notification appearance window expired") }
+        } else { appearanceTimeout = 2 }
+        guard alerts.firstMatch.waitForExistence(timeout: appearanceTimeout) else {
             guard photos.alerts.count == 0 else { throw failure("Unknown Photos alert; no action taken") }
+            if let wallDeadline = wallDeadline {
+                guard alerts.count == 0, ProcessInfo.processInfo.systemUptime < min(wallDeadline, started + 120) else {
+                    throw failure("Late notification absence observation became uncertain")
+                }
+                print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=absent observed=\(ProcessInfo.processInfo.systemUptime) wallDeadline=\(wallDeadline)")
+            }
             return
+        }
+        guard !didAttemptObservedNotificationDenial else { throw failure("Repeated notification denial; no action taken") }
+        let observedAt = ProcessInfo.processInfo.systemUptime
+        if let appearanceDeadline = appearanceDeadline {
+            guard let wallDeadline = wallDeadline, observedAt < appearanceDeadline else {
+                throw failure("Photos notification appeared after its authorized window")
+            }
+            actionDeadline = min(min(observedAt + 12, wallDeadline), started + 120)
+            print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=appeared observed=\(observedAt) appearanceDeadline=\(appearanceDeadline) handlingDeadline=\(actionDeadline) wallDeadline=\(wallDeadline)")
         }
         stage = "decline-observed-photos-notifications"
         try withinBudget()
@@ -321,21 +358,68 @@ final class IOSPhotosHostUITests: XCTestCase {
               alert.buttons.count == 2, title.element.isHittable, body.element.isHittable else {
             throw failure("Notification prompt differs from observed Photos request; no action taken")
         }
-        let decline = try unique(deny)
-        _ = try unique(allow)
+        let decline = try unique(deny, timeout: remaining())
+        _ = try unique(allow, timeout: remaining())
         // Retain one prompt screenshot and the alert AX above; avoid a second
         // full Photos AX traversal on this 120-second critical path.
         let screenshot = XCTAttachment(screenshot: photos.screenshot())
         screenshot.name = "ios-photos-host-observed-photos-notifications"; screenshot.lifetime = .keepAlways; add(screenshot)
         print("IOS_PHOTOS_HOST_CHECKPOINT observed-photos-notifications stage=\(stage)")
         print("IOS_PHOTOS_HOST_ACTION stage=\(stage) label=\(decline.label) identifier=\(decline.identifier)")
+        // The exact owner-scoped prompt may change while evidence is saved.
+        // Revalidate every observed field, then spend the same absolute clock.
+        if appearanceDeadline != nil {
+            let tabs = photos.buttons.matching(identifier: "CollectionsTab").matching(NSPredicate(format: "label == %@", "Collections"))
+            guard didCompleteLateObservedWhatsNew, tabs.count == 1, tabs.element.isSelected else {
+                throw failure("Late notification stage changed before denial; no action taken")
+            }
+        }
+        guard alerts.count == 1, photos.alerts.count == 0, observed.count == 1,
+              title.count == 1, body.count == 1, deny.count == 1, allow.count == 1,
+              alert.buttons.count == 2,
+              title.element.label == "“Photos” Would Like to Send You Notifications",
+              body.element.label == "Notifications may include alerts, sounds, and icon badges. These can be configured in Settings.",
+              title.element.isHittable, body.element.isHittable,
+              decline.label == "Don’t Allow", decline.isHittable, decline.isEnabled,
+              allow.element.label == "Allow", allow.element.isHittable, allow.element.isEnabled,
+              !didAttemptObservedNotificationDenial else {
+            throw failure("Observed notification changed before denial; no action taken")
+        }
+        _ = try remaining()
+        didAttemptObservedNotificationDenial = true
         decline.tap()
         guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
-                    object: alert)], timeout: 8) == .completed,
+                    object: alert)], timeout: try remaining()) == .completed,
               springboard.alerts.count == 0, photos.alerts.count == 0 else {
             throw failure("Observed notification denial did not close the sole prompt")
         }
+        _ = try remaining()
         print("IOS_PHOTOS_HOST_CHECKPOINT observed-photos-notifications-declined stage=\(stage)")
+        if appearanceDeadline != nil {
+            print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=denied elapsed=\(ProcessInfo.processInfo.systemUptime - observedAt) handlingDeadline=\(actionDeadline)")
+        }
+        _ = try remaining()
+    }
+    private func declineLateObservedNotificationsIfNeeded() throws {
+        guard didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial else { return }
+        // Only the observed post-introduction, selected-Collections stage.
+        // No notification is required; absence after eight seconds continues
+        // the original Albums action, whose generic monitor remains active.
+        let windowStarted = ProcessInfo.processInfo.systemUptime
+        let wallDeadline = min(windowStarted + 20, started + 120)
+        let appearanceDeadline = min(windowStarted + 8, wallDeadline)
+        try withinBudget()
+        let tabs = photos.buttons.matching(identifier: "CollectionsTab").matching(NSPredicate(format: "label == %@", "Collections"))
+        guard didLaunchOwnedPhotos, photos.state == .runningForeground,
+              tabs.count == 1, tabs.element.isSelected, photos.alerts.count == 0 else {
+            throw failure("Late notification route lacks completed introduction or selected Collections")
+        }
+        print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=window started=\(windowStarted) appearanceDeadline=\(appearanceDeadline) wallDeadline=\(wallDeadline)")
+        try declineObservedPhotosNotificationsIfPresent(appearanceDeadline: appearanceDeadline, wallDeadline: wallDeadline)
+        try withinBudget()
+        guard ProcessInfo.processInfo.systemUptime < wallDeadline else {
+            throw failure("Late notification window exhausted")
+        }
     }
     private func observedCollectionsWithinOriginalWait(_ query: XCUIElementQuery) throws -> XCUIElement {
         // Run37959948655: the exact introduction appeared after the first
@@ -355,6 +439,7 @@ final class IOSPhotosHostUITests: XCTestCase {
                     throw failure("Repeated Photos introduction handling allocation")
                 }
                 handlingElapsed = handled
+                didCompleteLateObservedWhatsNew = true
                 // Restore only the time actually spent handling the known
                 // page; recognition and all other observations spend the 8 seconds.
                 deadline = min(deadline + handled, wallDeadline)
