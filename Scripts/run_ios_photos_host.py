@@ -33,7 +33,7 @@ PROBE_BRANCH = 'cell-ios-photos-host-final'
 PROBE_CONFIG = '.github/ios-photos-host-final.json'
 PROBE_WORKFLOW = '.github/workflows/ios-photos-host-probe.yml'
 PROBE_PATHS = frozenset(['Scripts/run_bounded.py','Scripts/test_final_ios_photos_host_admission.py', '.github/ios-photos-host-final.json', '.github/workflows/ios-photos-host-probe.yml', 'Celluloid.xcodeproj/project.pbxproj', 'CelluloidTests/IOSPhotosHostFixtureTests.swift', 'CelluloidUITests/IOSPhotosHostUITests.swift', 'Scripts/run_ios_photos_host.py', 'Scripts/run_ios_photos_host_diagnostic.py', 'Scripts/run_swiftui_photos_gate.sh', 'Scripts/swiftui_photos_gate.py', 'Scripts/test_ios_photos_host.py'])
-PROBE_FIXED_FILES = {'Celluloid.xcodeproj/project.pbxproj': '34b764ed594db19cba375cf9e99a5f2e25d28c83718942cbf8b2bb9e21dfa6dc', 'CelluloidTests/IOSPhotosHostFixtureTests.swift': '1342f6435ea770cae23b6889e3ddd85ff1cec929c63b209d5623f13e387eb632', 'CelluloidUITests/IOSPhotosHostUITests.swift': 'e12bd10e98f15c8e7b001ff8606b969b821dd610232bd8596b1c45c85d862436'}
+PROBE_FIXED_FILES = {'Celluloid.xcodeproj/project.pbxproj': '34b764ed594db19cba375cf9e99a5f2e25d28c83718942cbf8b2bb9e21dfa6dc', 'CelluloidTests/IOSPhotosHostFixtureTests.swift': '1342f6435ea770cae23b6889e3ddd85ff1cec929c63b209d5623f13e387eb632', 'CelluloidUITests/IOSPhotosHostUITests.swift': '46661053de21edfedef281385c6325d5ca18e72e908843dfd9c16043d5f10c39'}
 
 def validate_probe_admission(config, context, facts):
     require(set(config) == {'schema','READY','sourceReady','nativeAuthorization','product_sha','product_tree','maximum_additional_spend_usd'}, 'Unknown final host admission fields')
@@ -48,7 +48,7 @@ def validate_probe_admission(config, context, facts):
     require(re.fullmatch('[0-9a-f]{40}',facts['head']) and re.fullmatch('[0-9a-f]{40}',facts['tree']), 'Malformed control identity')
     require(context.get('GITHUB_SHA')==context.get('GITHUB_WORKFLOW_SHA')==facts['head'], 'Mismatched exact workflow/source')
     require(facts['product_tree']==PRODUCT_CONTROL_TREE and not facts['dirty'], 'Wrong product tree or dirty source')
-    require(0 < len(facts['chain']) <= 16, 'Final host control history is not bounded and linear')
+    require(0 < len(facts['chain']) <= 17, 'Final host control history is not bounded and linear')
     prior=PRODUCT_SHA
     for commit in facts['chain']:
         require(commit['parents']==[prior] and commit['paths'] and set(commit['paths']) <= PROBE_PATHS, 'Product mutation or merge in host control chain')

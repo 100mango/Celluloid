@@ -14,6 +14,7 @@ final class IOSPhotosHostUITests: XCTestCase {
     private var didAttemptObservedWhatsNew = false
     private var didCompleteLateObservedWhatsNew = false
     private var didAttemptObservedNotificationDenial = false
+    private var didUseLateObservedNotificationWindow = false
 
     override func setUpWithError() throws {
         try super.setUpWithError(); continueAfterFailure = false
@@ -141,7 +142,7 @@ final class IOSPhotosHostUITests: XCTestCase {
         try dismissObservedWhatsNewIfPresent()
         try declineObservedPhotosNotificationsIfPresent()
         try selectObservedCollections()
-        try declineLateObservedNotificationsIfNeeded()
+        _ = try declineLateObservedNotificationsIfNeeded()
         stage = "open-albums"
         try tap(photos.buttons.matching(identifier: "Albums"))
         checkpoint("albums")
@@ -400,14 +401,18 @@ final class IOSPhotosHostUITests: XCTestCase {
         }
         _ = try remaining()
     }
-    private func declineLateObservedNotificationsIfNeeded() throws {
-        guard didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial else { return }
+    private func declineLateObservedNotificationsIfNeeded() throws -> TimeInterval {
+        guard didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial,
+              !didUseLateObservedNotificationWindow else { return 0 }
         // Only the observed post-introduction, selected-Collections stage.
         // No notification is required; absence after eight seconds continues
         // the original Albums action, whose generic monitor remains active.
         let windowStarted = ProcessInfo.processInfo.systemUptime
         let wallDeadline = min(windowStarted + 20, started + 120)
         let appearanceDeadline = min(windowStarted + 8, wallDeadline)
+        // Consume this one route-wide window even when the prompt is absent.
+        // The readiness and pre-Albums call sites must never renew it.
+        didUseLateObservedNotificationWindow = true
         try withinBudget()
         let tabs = photos.buttons.matching(identifier: "CollectionsTab").matching(NSPredicate(format: "label == %@", "Collections"))
         guard didLaunchOwnedPhotos, photos.state == .runningForeground,
@@ -420,12 +425,17 @@ final class IOSPhotosHostUITests: XCTestCase {
         guard ProcessInfo.processInfo.systemUptime < wallDeadline else {
             throw failure("Late notification window exhausted")
         }
+        return ProcessInfo.processInfo.systemUptime - windowStarted
     }
     private func observedCollectionsWithinOriginalWait(_ query: XCUIElementQuery) throws -> XCUIElement {
         // Run37959948655: the exact introduction appeared after the first
         // title check and occluded an already-selected Collections tab.
         let waitingStarted = ProcessInfo.processInfo.systemUptime
         let wallDeadline = min(waitingStarted + 32, started + 120)
+        // Relocate the existing single 20-second post-Collections notification
+        // allocation here when its selected-tab identity is already observed.
+        // The introduction keeps its original 32-second wall; combined readiness is 52 seconds.
+        let readinessWallDeadline = min(waitingStarted + 52, started + 120)
         var deadline = min(waitingStarted + 8, wallDeadline)
         var handlingElapsed: TimeInterval = 0
         while ProcessInfo.processInfo.systemUptime < deadline {
@@ -444,6 +454,23 @@ final class IOSPhotosHostUITests: XCTestCase {
                 // page; recognition and all other observations spend the 8 seconds.
                 deadline = min(deadline + handled, wallDeadline)
                 print("IOS_PHOTOS_HOST_INTRO_TIMING phase=resume readinessElapsed=\(ProcessInfo.processInfo.systemUptime - waitingStarted - handlingElapsed) handlingElapsed=\(handlingElapsed) readinessDeadline=\(deadline) wallDeadline=\(wallDeadline)")
+            }
+            if didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial,
+               !didUseLateObservedNotificationWindow {
+                guard query.count == 1 else { throw failure("Observed Collections identity changed before notification") }
+                if query.element.isSelected {
+                    guard ProcessInfo.processInfo.systemUptime < deadline else {
+                        throw failure("Original Collections wait expired before notification window")
+                    }
+                    let notificationElapsed = try declineLateObservedNotificationsIfNeeded()
+                    guard notificationElapsed.isFinite, notificationElapsed >= 0, notificationElapsed <= 20 else {
+                        throw failure("Photos notification allocation exceeded")
+                    }
+                    // Resume the original effective 8 seconds with only actual handling
+                    // time restored. Absence also consumes the once-only window.
+                    deadline = min(deadline + notificationElapsed, readinessWallDeadline)
+                    print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=readiness-resume elapsed=\(notificationElapsed) readinessDeadline=\(deadline) wallDeadline=\(readinessWallDeadline)")
+                }
             }
             stage = "select-observed-collections"
             guard didLaunchOwnedPhotos, photos.state == .runningForeground,

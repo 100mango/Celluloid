@@ -157,7 +157,7 @@ def validate_observed_notice_source(source):
 
 class IOSPhotosObservedNoticeSourceTests(unittest.TestCase):
     def setUp(self):
-        self.source =restore_late_intro_delta(restore_late_notification_delta( (Path(__file__).resolve().parents[1] / 'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()))
+        self.source =restore_late_intro_delta(restore_late_notification_delta( restore_readiness_notification_delta((Path(__file__).resolve().parents[1] / 'CelluloidUITests/IOSPhotosHostUITests.swift').read_text())))
 
     def testExactObservedNoticeIsTheOnlyAllowedIntroduction(self):
         validate_observed_notice_source(self.source)
@@ -572,7 +572,7 @@ def validate_observed_notification_navigation_source(source):
     if hashlib.sha256(restored.encode()).hexdigest()!='1bc8de8517c0e522f42322d98861e557c010b82531a46991f9242b13f92ce1c1':raise ValueError('Original host assertions, introduction, unknown-alert monitor or budgets changed')
 
 class ObservedNotificationNavigationTests(unittest.TestCase):
-    def setUp(self):self.source=restore_late_intro_delta(restore_late_notification_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()))
+    def setUp(self):self.source=restore_late_intro_delta(restore_late_notification_delta(restore_readiness_notification_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text())))
     def testObservedDenialAndSelectionPreserveAllOriginalHostBytes(self):
         validate_observed_notification_navigation_source(self.source)
         self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45]);self.assertEqual(len(host.STEPS),5)
@@ -624,7 +624,7 @@ def restore_observed_album_delta(source):
     return (source[:start]+source[end:]).replace(ALBUM_NEW_BLOCK,ALBUM_OLD_BLOCK)
 
 class ObservedOwnedAlbumSourceTests(unittest.TestCase):
-    def setUp(self):self.source=restore_late_intro_delta(restore_late_notification_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()))
+    def setUp(self):self.source=restore_late_intro_delta(restore_late_notification_delta(restore_readiness_notification_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text())))
     def testObservedContainerIdentityAndSingleGridPhotoRestoreExactPriorSource(self):
         import hashlib
         restored=restore_observed_album_delta(self.source)
@@ -659,7 +659,7 @@ def restore_observed_filename_delta(source):
     return source.replace(FILENAME_NEW_BLOCK,FILENAME_OLD_BLOCK)
 
 class ObservedFilenameValueTests(unittest.TestCase):
-    def setUp(self):self.source=restore_late_intro_delta(restore_late_notification_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()))
+    def setUp(self):self.source=restore_late_intro_delta(restore_late_notification_delta(restore_readiness_notification_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text())))
     def testObservedValueRestoresExactPublishedParentAndAllFunctionalChecks(self):
         import hashlib
         self.assertEqual(hashlib.sha256(restore_observed_filename_delta(self.source).encode()).hexdigest(),'76d1c73a4103e9748d40a3599b90238a34e044d23e27e3ff34af1049d73cccf0')
@@ -1008,7 +1008,7 @@ def restore_observed_extensions_delta(source):
     return restored
 
 class ObservedExtensionsMenuTests(unittest.TestCase):
-    def setUp(self):self.source=restore_late_intro_delta(restore_late_notification_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()))
+    def setUp(self):self.source=restore_late_intro_delta(restore_late_notification_delta(restore_readiness_notification_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text())))
     def testSingleObservedBranchRestoresEveryPublishedParentByte(self):
         import hashlib
         self.assertEqual(hashlib.sha256(restore_observed_extensions_delta(self.source).encode()).hexdigest(), 'a60ced7ebf2460013d7686fd326efe392e2e9426f688e7e7866b2fddadd1fc23')
@@ -1050,7 +1050,7 @@ def restore_late_intro_delta(source):
     return source
 
 class LateIntroductionSourceTests(unittest.TestCase):
-    def setUp(self):self.source=restore_late_notification_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text())
+    def setUp(self):self.source=restore_late_notification_delta(restore_readiness_notification_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()))
     def testExactInversePreservesEntirePublishedUIAndAllFiveMethods(self):
         import hashlib
         restored=restore_late_intro_delta(self.source)
@@ -1120,7 +1120,7 @@ def restore_late_notification_delta(source):
     return source
 
 class LateNotificationSourceTests(unittest.TestCase):
-    def setUp(self):self.source=(Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+    def setUp(self):self.source=restore_readiness_notification_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text())
     def testEntireParentRecoveredAndFiveMethodsBudgetsRetained(self):
         import hashlib
         restored=restore_late_notification_delta(self.source)
@@ -1166,5 +1166,78 @@ class LateNotificationSourceTests(unittest.TestCase):
         handler=LATE_NOTIFICATION_REPLACEMENTS[2][1]
         self.assertIn('min(min(observedAt + 12, wallDeadline), started + 120)',handler)
         self.assertTrue(handler.rstrip().endswith('_ = try remaining()\n    }'))
+
+
+# Exact inverse for this one readiness-stage relocation. No earlier assertion changes.
+READINESS_NOTIFICATION_REPLACEMENTS = [('    private var didAttemptObservedNotificationDenial = false\n', '    private var didAttemptObservedNotificationDenial = false\n    private var didUseLateObservedNotificationWindow = false\n'), ('        try declineLateObservedNotificationsIfNeeded()\n', '        _ = try declineLateObservedNotificationsIfNeeded()\n'), ('    private func declineLateObservedNotificationsIfNeeded() throws {\n        guard didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial else { return }\n', '    private func declineLateObservedNotificationsIfNeeded() throws -> TimeInterval {\n        guard didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial,\n              !didUseLateObservedNotificationWindow else { return 0 }\n'), ('        let appearanceDeadline = min(windowStarted + 8, wallDeadline)\n        try withinBudget()\n', '        let appearanceDeadline = min(windowStarted + 8, wallDeadline)\n        // Consume this one route-wide window even when the prompt is absent.\n        // The readiness and pre-Albums call sites must never renew it.\n        didUseLateObservedNotificationWindow = true\n        try withinBudget()\n'), ('            throw failure("Late notification window exhausted")\n        }\n    }\n', '            throw failure("Late notification window exhausted")\n        }\n        return ProcessInfo.processInfo.systemUptime - windowStarted\n    }\n'), ('        let wallDeadline = min(waitingStarted + 32, started + 120)\n        var deadline = min(waitingStarted + 8, wallDeadline)\n', '        let wallDeadline = min(waitingStarted + 32, started + 120)\n        // Relocate the existing single 20-second post-Collections notification\n        // allocation here when its selected-tab identity is already observed.\n        // The introduction keeps its original 32-second wall; combined readiness is 52 seconds.\n        let readinessWallDeadline = min(waitingStarted + 52, started + 120)\n        var deadline = min(waitingStarted + 8, wallDeadline)\n'), ('            stage = "select-observed-collections"\n            guard didLaunchOwnedPhotos, photos.state == .runningForeground,\n', '            if didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial,\n               !didUseLateObservedNotificationWindow {\n                guard query.count == 1 else { throw failure("Observed Collections identity changed before notification") }\n                if query.element.isSelected {\n                    guard ProcessInfo.processInfo.systemUptime < deadline else {\n                        throw failure("Original Collections wait expired before notification window")\n                    }\n                    let notificationElapsed = try declineLateObservedNotificationsIfNeeded()\n                    guard notificationElapsed.isFinite, notificationElapsed >= 0, notificationElapsed <= 20 else {\n                        throw failure("Photos notification allocation exceeded")\n                    }\n                    // Resume the original effective 8 seconds with only actual handling\n                    // time restored. Absence also consumes the once-only window.\n                    deadline = min(deadline + notificationElapsed, readinessWallDeadline)\n                    print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=readiness-resume elapsed=\\(notificationElapsed) readinessDeadline=\\(deadline) wallDeadline=\\(readinessWallDeadline)")\n                }\n            }\n            stage = "select-observed-collections"\n            guard didLaunchOwnedPhotos, photos.state == .runningForeground,\n')]
+
+def restore_readiness_notification_delta(source):
+    for old,new in reversed(READINESS_NOTIFICATION_REPLACEMENTS):
+        if source.count(new)!=1:raise ValueError('Missing/changed/duplicated readiness notification delta')
+        source=source.replace(new,old)
+    return source
+
+class ReadinessNotificationSourceTests(unittest.TestCase):
+    def setUp(self):self.source=(Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+    def reject(self,pairs):
+        for old,new in pairs:
+            self.assertIn(old,self.source)
+            with self.subTest(token=old),self.assertRaises(ValueError):restore_readiness_notification_delta(self.source.replace(old,new))
+    def testEntirePublishedParentRecoveredAndExistingExactHandlerPreserved(self):
+        import hashlib
+        restored=restore_readiness_notification_delta(self.source)
+        self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'e12bd10e98f15c8e7b001ff8606b969b821dd610232bd8596b1c45c85d862436')
+        # Every original denial predicate/action and all business/pixel assertions
+        # are outside these seven edits and recovered byte-for-byte.
+        self.assertEqual(self.source.count('decline.tap()'),1)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45])
+    def testOnlyCompletedIntroductionAndCurrentUniqueSelectedTabMayEnterEarly(self):
+        self.reject([('if didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial,','if true,'),('guard query.count == 1 else { throw failure("Observed Collections identity changed before notification") }',''),('if query.element.isSelected {','if true {'),('guard ProcessInfo.processInfo.systemUptime < deadline else {','guard true else {')])
+    def testReadinessAndPreAlbumsShareSingleWindowEvenWhenAbsent(self):
+        window=self.source.split('    private func declineLateObservedNotificationsIfNeeded()',1)[1].split('    private func observedCollectionsWithinOriginalWait',1)[0]
+        self.assertEqual(window.count('let windowStarted ='),1)
+        self.assertEqual(window.count('didUseLateObservedNotificationWindow = true'),1)
+        self.assertLess(window.index('didUseLateObservedNotificationWindow = true'),window.index('let tabs ='))
+        self.assertEqual(self.source.count('try declineLateObservedNotificationsIfNeeded()'),2)
+        self.assertIn('try selectObservedCollections()\n        _ = try declineLateObservedNotificationsIfNeeded()\n        stage = "open-albums"',self.source)
+        self.reject([('!didUseLateObservedNotificationWindow','true'),('didUseLateObservedNotificationWindow = true','didUseLateObservedNotificationWindow = false'),('else { return 0 }\n        // Only the observed post-introduction','else { return 20 }\n        // Only the observed post-introduction')])
+    def testOriginalIntro32Combined52AndCase120RemainFixed(self):
+        self.reject([('waitingStarted + 52','waitingStarted + 72'),('waitingStarted + 32','waitingStarted + 52'),('min(waitingStarted + 52, started + 120)','waitingStarted + 52'),('min(deadline + notificationElapsed, readinessWallDeadline)','ProcessInfo.processInfo.systemUptime + 8'),('deadline + notificationElapsed','deadline + 20'),('notificationElapsed.isFinite','true'),('notificationElapsed >= 0','true'),('notificationElapsed <= 20','true')])
+        self.assertEqual(self.source.count('let readinessWallDeadline ='),1)
+        self.assertIn('deadline = min(deadline + handled, wallDeadline)',self.source)
+    def testOriginalUnknownAlertGuardStillRunsAfterSharedWindow(self):
+        block=READINESS_NOTIFICATION_REPLACEMENTS[-1][1]
+        self.assertLess(block.index('try declineLateObservedNotificationsIfNeeded()'),block.index('stage = "select-observed-collections"'))
+        restored=restore_readiness_notification_delta(self.source)
+        marker='throw failure("Unexpected Photos interruption during Collections wait; no action taken")'
+        self.assertEqual(self.source.count(marker),1);self.assertEqual(restored.count(marker),1)
+        self.assertIn('fatalError("IOS_PHOTOS_HOST_UNKNOWN_ALERT no action taken")',self.source)
+        self.assertNotIn('allow.element.tap()',self.source)
+    def testNoSecondWindowAfterAbsenceDenialOrNewLoopIteration(self):
+        # State model tied above to exact Swift latch/call sites; not AX proof.
+        def enter(done,denied,used):return done and not denied and not used
+        self.assertTrue(enter(True,False,False))
+        for done,denied,used in [(False,False,False),(True,True,False),(True,False,True),(True,True,True)]:self.assertFalse(enter(done,denied,used))
+        used=False;dispatches=0
+        for present in [False,True,True]:
+            if enter(True,False,used):used=True;dispatches+=1
+        self.assertEqual(dispatches,1)
+    def testActualElapsedRelocationDoesNotRestartEffectiveEight(self):
+        def resume(recognition,intro,observation,case_remaining=120):
+            intro_wall=min(32,case_remaining);deadline=min(8,intro_wall)
+            if not 0<=recognition<deadline or not 0<=intro<24:raise ValueError('intro')
+            now=recognition+intro;deadline=min(deadline+intro,intro_wall)
+            if now>=deadline or not 0<=observation<20:raise ValueError('notification')
+            now+=observation;deadline=min(deadline+observation,52,case_remaining)
+            if now>=deadline:raise ValueError('overrun')
+            return now,deadline-now
+        now,remaining=resume(3.744413708332104,4.774757666667028,8.1)
+        self.assertAlmostEqual(remaining,4.255586291667896);self.assertLess(now,52)
+        for args in [(8,1,1),(3,24,1),(3,4,20),(3,4,-1),(3,4,float('inf')),(3,4,8,10)]:
+            with self.subTest(args=args),self.assertRaises(ValueError):resume(*args)
+    def testMissingDuplicatedRelocationOrExtraActionFailsSourceAdmission(self):
+        old,new=READINESS_NOTIFICATION_REPLACEMENTS[-1]
+        for changed in [self.source.replace(new,old),self.source.replace(new,new+new),self.source.replace(new,new.replace('let notificationElapsed = try declineLateObservedNotificationsIfNeeded()','let notificationElapsed = try declineLateObservedNotificationsIfNeeded()\n                    photos.buttons["Allow"].tap()'))]:
+            with self.assertRaises(ValueError):restore_readiness_notification_delta(changed)
 
 if __name__ == '__main__': unittest.main()
