@@ -84,7 +84,7 @@ def validate_hosted_deployment(summary, log, device, dispatched_wall, returned_w
 class Acceptance:
     def __init__(self):
         self.preview_only = continuation_scope(os.environ)
-        self.work_seconds = 1320 if self.preview_only else 2280
+        self.work_seconds = 2280
         self.started = time.monotonic(); self.deadline = self.started + self.work_seconds
         self.device = None; self.uncertain = False; self.events = []; self.failures = []
         self.source = os.environ.get('GITHUB_SHA', ''); self.source_tree = ''

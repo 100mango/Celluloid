@@ -85,15 +85,15 @@ class AcceptanceTests(unittest.TestCase):
             gate = main.Acceptance(); gate.deadline += 1000
             with self.assertRaises(KeyboardInterrupt): gate.command('fixture', ['false'], 1, simulator=True)
             self.assertTrue(gate.uncertain)
-    def test_continuation_requires_exact_historical_identity_and_smaller_budget(self):
+    def test_continuation_requires_exact_historical_identity_and_independent_full_budget(self):
         self.assertFalse(main.continuation_scope({}))
         self.assertTrue(main.continuation_scope({'CELLULOID_PREVIEW_CONTINUATION': main.PREVIEW_CONTINUATION}))
         with self.assertRaises(ValueError): main.continuation_scope({'CELLULOID_PREVIEW_CONTINUATION': 'anything'})
         with tempfile.TemporaryDirectory() as tmp, patch.object(main, 'OUT', Path(tmp)), patch.dict(main.os.environ,
                 {'CELLULOID_PREVIEW_CONTINUATION': main.PREVIEW_CONTINUATION}):
             gate = main.Acceptance()
-            self.assertEqual(gate.work_seconds, 1320)
-            self.assertEqual(gate.deadline - gate.started, 1320)
+            self.assertEqual(gate.work_seconds, 2280)
+            self.assertAlmostEqual(gate.deadline - gate.started, 2280, places=6)
 
     def test_continuation_has_fresh_build_install_bootstrap_pristine_and_seeded(self):
         source = 'a' * 40; tree = 'b' * 40; phases = []
