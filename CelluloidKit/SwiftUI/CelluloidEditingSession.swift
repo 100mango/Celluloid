@@ -34,6 +34,13 @@ public final class CelluloidEditingSession: ObservableObject {
     private var activeExport: PhotoExportTask?
     private static let decodeQueue = DispatchQueue(label: "Mango.Celluloid.swiftui.adjustment", qos: .userInitiated)
 
+    #if DEBUG
+    public var firstFrameTraceID: String?
+    public var firstFrameSourcePixels: CGSize = .zero
+    public var firstFrameEvent: ((String, UUID, UUID) -> Void)?
+    private(set) var completedPreviewForObservation: UUID?
+    #endif
+
     public init() {}
     public var isReadOnly: Bool { phase == .readOnly }
     public var canEdit: Bool { phase == .ready && !isExporting }
@@ -167,13 +174,22 @@ public final class CelluloidEditingSession: ObservableObject {
     private func renderPreview() {
         guard let source = sourceImage, phase == .ready else { return }
         let token = generation, request = UUID(), filter = adjustment.filterType
+        #if DEBUG
+        completedPreviewForObservation = nil
+        canvas.clearFirstFrameCandidate()
+        #endif
         previewGeneration = request; previewIsLoading = true
         previewPipeline.render(source: source, filter: filter) { [weak self] result in
             guard let self = self, self.generation == token, self.previewGeneration == request,
                   self.phase == .ready else { return }
             self.previewIsLoading = false
             switch result {
-            case .success(let image): self.previewImage = image
+            case .success(let image):
+                #if DEBUG
+                self.completedPreviewForObservation = request
+                self.firstFrameEvent?("preview-render-completed", token, request)
+                #endif
+                self.previewImage = image
             case .failure: self.notice = NSLocalizedString("The preview could not be rendered. Try the filter again.", comment: "")
             }
         }
@@ -210,6 +226,10 @@ public final class CelluloidEditingSession: ObservableObject {
     public func cancelExport() { exportGeneration = UUID(); activeExport?.cancel(); activeExport = nil; exporter.cancel(); isExporting = false }
     public func cancel() { reset() }
     private func reset() {
+        #if DEBUG
+        completedPreviewForObservation = nil
+        canvas.clearFirstFrameCandidate()
+        #endif
         generation = UUID(); canvasIdentity = UUID(); previewGeneration = UUID(); cancelExport(); previewPipeline.cancel()
         input = nil; pendingReadOnlyPreview = nil; sourceImage = nil; previewImage = nil; preservedAdjustmentData = nil
         adjustment = AdjustmentData(); selectedLayer = nil; notice = nil

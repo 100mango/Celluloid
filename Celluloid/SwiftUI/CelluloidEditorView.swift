@@ -6,10 +6,11 @@ import SwiftUI
 @MainActor
 struct CelluloidEditorView: View {
     let assets: [PHAsset]
+    var traceID: String? = nil
     var body: some View {
         Group {
             if assets.count == 1, let asset = assets.first {
-                CelluloidOriginalPhotoEditor(asset: asset)
+                CelluloidOriginalPhotoEditor(asset: asset, traceID: traceID)
             } else if (2...4).contains(assets.count) {
                 CelluloidCollageEditorView(assets: assets)
             } else {
@@ -22,6 +23,7 @@ struct CelluloidEditorView: View {
 @MainActor
 private struct CelluloidOriginalPhotoEditor: View {
     let asset: PHAsset
+    let traceID: String?
     @Environment(\.dismiss) private var dismiss
     @StateObject private var session = CelluloidEditingSession()
     @State private var requestID: PHContentEditingInputRequestID?
@@ -83,6 +85,17 @@ private struct CelluloidOriginalPhotoEditor: View {
         let options = PHContentEditingInputRequestOptions()
         options.isNetworkAccessAllowed = true
         options.canHandleAdjustmentData = { AdjustmentData.supportIdentifier($0.formatIdentifier, version: $0.formatVersion) }
+        #if DEBUG
+        if let traceID, PickerEntryDiagnostics.firstFrameObservationEnabled {
+            session.firstFrameTraceID = traceID
+            session.firstFrameSourcePixels = CGSize(width: asset.pixelWidth, height: asset.pixelHeight)
+            session.firstFrameEvent = { event, editorSession, preview in
+                PickerEntryDiagnostics.record(event, instance: traceID,
+                    details: "editor_session=\(editorSession) preview=\(preview)")
+            }
+            PickerEntryDiagnostics.record("photokit-input-request-begin", instance: traceID)
+        }
+        #endif
         requestID = asset.requestContentEditingInput(with: options) { input, _ in
             DispatchQueue.main.async {
                 guard requestGeneration == token else { return }
@@ -93,6 +106,11 @@ private struct CelluloidOriginalPhotoEditor: View {
                 }
                 // Request the current rendered preview for opaque recipes. It
                 // must never be borrowed from a different selected PHAsset.
+                #if DEBUG
+                if let traceID, PickerEntryDiagnostics.firstFrameObservationEnabled {
+                    PickerEntryDiagnostics.record("photokit-input-received", instance: traceID)
+                }
+                #endif
                 session.start(input: input, placeholder: nil)
                 if input.adjustmentData != nil {
                     let imageOptions = PHImageRequestOptions()

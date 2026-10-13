@@ -34,7 +34,7 @@ import CelluloidKit
                     allowAccess: session.requestAccess, manageAccess: showAccessManagement,
                     retry: session.resolveOriginals, chooseAgain: session.chooseAgain, cancel: cancel)
             case .editing(let assets):
-                CelluloidEditorView(assets: assets).ignoresSafeArea()
+                CelluloidEditorView(assets: assets, traceID: traceID).ignoresSafeArea()
                     .onAppear {
                         PickerEntryDiagnostics.selected("resolved-original-identities", instance: traceID,
                             identifiers: assets.map { $0.localIdentifier })

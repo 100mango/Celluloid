@@ -161,7 +161,7 @@ class Acceptance:
         if summary_code == 0:
             summary = extract_json(raw, 'totalTestCount'); save(OUT / 'units-summary.json', summary)
             save(OUT / 'units-runtime-warnings.json', runtime_warning_report(summary))
-            if code == 0: qualify_summary(summary, 65, device)
+            if code == 0: qualify_summary(summary, 67, device)
         # A completed failed assertion stays failed, while independent evidence may continue.
         # A timeout/uncertain simulator state blocks all subsequent native work.
         self.picker('stock')
