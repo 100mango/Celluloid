@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 import swiftui_photos_gate as gate
 
 
@@ -92,6 +93,52 @@ class ContractTests(unittest.TestCase):
         for phase, status, log in [('legacy', 124, ''), ('pristine', 1, 'BOUNDED_COMMAND_CLEANUP_UNCONFIRMED'), ('bootstrap', 1, 'failure')]:
             self.assertTrue(gate.safety_record(phase, status, log)['prohibit_further_simctl'])
         self.assertFalse(gate.safety_record('legacy', 65, 'ordinary XCTest assertion failure')['prohibit_further_simctl'])
+
+    def test_admitted_phase_clock_includes_ownership_query_and_cannot_expand(self):
+        receipt = {**self.binding, 'job_started_monotonic': 100, 'work_deadline_monotonic': 1420}
+        admission = {**self.binding, 'stage': 'bootstrap', 'phase_started_monotonic': 100, 'phase_deadline_monotonic': 820}
+        self.assertEqual(gate.admitted_budget('bootstrap', receipt, admission, now=150), 670)
+        self.assertEqual(gate.admitted_budget('bootstrap', receipt, admission, now=750), 70)
+        for change in [{'phase_deadline_monotonic': 150}, {'phase_deadline_monotonic': 1420},
+                       {'phase_deadline_monotonic': True}, {'source_sha': 'b'*40}, {'stage': 'pristine'}]:
+            with self.assertRaises(ValueError): gate.admitted_budget('bootstrap', receipt, {**admission, **change}, now=150)
+
+    def bounded_admission_failure(self, late_zero=False):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); out = root/'build/photos'; owner = root/'owner.json'
+            owner.write_text(json.dumps({**self.binding, 'job_started_monotonic': 100, 'work_deadline_monotonic': 1420,
+                'schema': 'celluloid.swiftui.owned-simulator.v1', 'device_name': 'Celluloid iOS27 iPhone SE (3rd generation)',
+                'runtime_id': 'com.apple.CoreSimulator.SimRuntime.iOS-27-0', 'created_by_this_job': True, 'absent_before_create': True}))
+            calls = []
+            def command(args, **kw):
+                calls.append(args)
+                if args[0] == 'git': return gate.subprocess.CompletedProcess(args, 0)
+                kw['stdout'].write(b'{}' if late_zero else b'BOUNDED_COMMAND_TIMEOUT owned-inventory\n')
+                return gate.subprocess.CompletedProcess(args, 0 if late_zero else 124)
+            with patch.object(gate.Path, 'cwd', return_value=root), \
+                    patch.object(gate.time, 'monotonic', side_effect=[100, 100, 100, 186, 186] if late_zero else [100]*12), \
+                    patch.dict(gate.os.environ, {'GITHUB_SHA': self.binding['source_sha'],
+                        'GITHUB_WORKFLOW_SHA': self.binding['source_sha'], 'GITHUB_REPOSITORY': '100mango/Celluloid',
+                        'GITHUB_REF': 'refs/heads/swiftui-first-native', 'GITHUB_EVENT_NAME': 'push',
+                        'GITHUB_RUN_ID': '123', 'GITHUB_RUN_ATTEMPT': '1',
+                        'CELLULOID_PREVIEW_CONTINUATION': '38409908167:1:7c0c4e01537ab46771875d58f9d0a579a759e932'}), \
+                    patch.object(gate.subprocess, 'check_output', return_value=self.binding['source_sha']), \
+                    patch.object(gate.subprocess, 'run', side_effect=command):
+                with self.assertRaisesRegex(ValueError, 'outer limit' if late_zero else 'Bounded ownership query failed: 124'):
+                    gate.admission('bootstrap', self.binding['device_id'], root/'.build/ios', out, owner)
+            safety = json.loads((out/'bootstrap-safety.json').read_text())
+            self.assertTrue(safety['prohibit_further_simctl']); self.assertTrue(safety['timeout_observed'])
+            self.assertTrue(safety['cleanup_uncertain_observed'])
+            self.assertFalse((out/'bootstrap-admission.json').exists())
+            inventory = [args for args in calls if 'Scripts/run_bounded.py' in args]
+            self.assertEqual(len(inventory), 1)
+            self.assertEqual(inventory[0][inventory[0].index('--seconds') + 1], '60')
+
+    def test_failed_bounded_admission_writes_uncertain_receipt_and_never_retries(self):
+        self.bounded_admission_failure()
+
+    def test_late_zero_inventory_is_still_unknown_and_stops(self):
+        self.bounded_admission_failure(late_zero=True)
 
     def test_legacy_bootstrap_default_and_explicit_build_path(self):
         source = Path(__file__).with_name('probe_photos_bootstrap.py')

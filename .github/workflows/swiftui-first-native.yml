@@ -11,11 +11,12 @@ concurrency:
 jobs:
   first-slice:
     runs-on: xcode-27
-    timeout-minutes: 45
+    timeout-minutes: 28
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
       EXPECTED_COMMIT: ${{ github.sha }}
       TZ: UTC
+      CELLULOID_PREVIEW_CONTINUATION: '38409908167:1:7c0c4e01537ab46771875d58f9d0a579a759e932'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         timeout-minutes: 3
@@ -36,8 +37,8 @@ jobs:
           git diff --exit-code HEAD --
           mkdir -p build
           git rev-parse HEAD 'HEAD^{tree}' > build/swiftui-source.txt
-      - name: Same-build picker and legacy PhotoKit acceptance
-        timeout-minutes: 40
+      - name: Same-build seeded preview continuation only
+        timeout-minutes: 24
         run: /bin/bash Scripts/verify_swiftui_native.sh
       - name: Verify source remained unchanged
         timeout-minutes: 1

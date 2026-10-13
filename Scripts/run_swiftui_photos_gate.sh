@@ -19,7 +19,7 @@ finish() {
 trap finish EXIT
 
 if [[ "$phase" = bootstrap ]]; then
-  bootstrap_deadline=$(python3 Scripts/swiftui_photos_gate.py budget bootstrap "$owner" deadline)
+  bootstrap_deadline=$(python3 Scripts/swiftui_photos_gate.py budget bootstrap "$owner" deadline "$out")
   python3 Scripts/run_bounded.py --seconds 45 --label seeded-fixture-generation \
     python3 Scripts/create_fixture.py > "$out/fixture-generation.log" 2>&1
   # Refuse unexpected leftover fixture files before any library mutation.
@@ -58,7 +58,7 @@ if [[ "$phase" = preservation ]]; then
              "TEST_RUNNER_CELLULOID_SYNTHETIC_PROBE=1"
              "TEST_RUNNER_CELLULOID_PROBE_SOURCE_SHA=$GITHUB_SHA")
 fi
-phase_seconds=$(python3 Scripts/swiftui_photos_gate.py budget "$phase" "$owner" seconds)
+phase_seconds=$(python3 Scripts/swiftui_photos_gate.py budget "$phase" "$owner" seconds "$out")
 set +e
 env "${forwarded[@]}" python3 Scripts/run_bounded.py --seconds "$phase_seconds" --label "swiftui-photos-$phase" \
   xcodebuild "${base[@]}" -resultBundlePath "$out/$phase.xcresult" \
