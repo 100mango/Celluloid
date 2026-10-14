@@ -191,6 +191,65 @@ final class CelluloidUITests: XCTestCase {
         return success ? bytes.prefix(3).map(Int.init) : nil
     }
 
+    /// Seeded observation only: keep the existing first dated candidate, but do
+    /// not ask six elements for hit points inside a nested predicate waiter.
+    /// A dated label is not fixture identity. The existing receipt must still
+    /// match the selected original UUID to the manifest and verify preview pixels.
+    private func selectSeededSystemPhoto(_ app: XCUIApplication) -> Bool {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "MMMM d"
+        let date = formatter.string(from: Date())
+        formatter.dateFormat = "MMMM dd"
+        let paddedDate = formatter.string(from: Date())
+        let candidates = app.images.matching(NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@ OR label CONTAINS[c] %@", date, paddedDate, "Today"))
+        let deadline = ProcessInfo.processInfo.systemUptime + 15
+        func inTime() -> Bool { ProcessInfo.processInfo.systemUptime < deadline }
+        repeat {
+            let photo = candidates.element(boundBy: 0)
+            let exists = photo.exists
+            guard inTime() else { break }
+            if exists {
+                let frame = photo.frame
+                guard inTime() else { break }
+                guard frame.minX.isFinite, frame.minY.isFinite,
+                      frame.width.isFinite, frame.height.isFinite,
+                      frame.width >= 40, frame.height >= 40 else {
+                    XCTFail("First dated picker target has no valid image frame"); return false
+                }
+                let hittable = photo.isHittable
+                guard inTime() else { break }
+                guard hittable else {
+                    XCTFail("The first dated picker target is not hittable"); return false
+                }
+                let foreground = app.state == .runningForeground
+                guard inTime() else { break }
+                let hasAlert = app.alerts.firstMatch.exists
+                guard inTime() else { break }
+                guard foreground, !hasAlert else {
+                    XCTFail("Seeded picker foreground changed or an unexpected alert appeared"); return false
+                }
+                guard inTime() else { break }
+                photo.tap()
+                // Preserve the original single/multiple-selection public
+                // confirmation path and its existing ten-second bound.
+                let transitioned = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                    if app.buttons["editor-done"].exists || app.buttons["collage-done"].exists || app.staticTexts["photos-state"].exists { return true }
+                    let done = app.navigationBars.buttons.matching(NSPredicate(format: "label == 'Done' OR label == 'Add' OR label BEGINSWITH 'Add ('"))
+                    if done.count == 1, done.element.isEnabled, done.element.isHittable { done.element.tap(); return true }
+                    return false
+                }, object: nil)
+                let outcome = XCTWaiter.wait(for: [transitioned], timeout: 10)
+                XCTAssertEqual(outcome, .completed)
+                return outcome == .completed
+            }
+            let remaining = deadline - ProcessInfo.processInfo.systemUptime
+            if remaining > 0 { RunLoop.current.run(until: Date(timeIntervalSinceNow: min(0.05, remaining))) }
+        } while inTime()
+        XCTFail("The first dated picker target was not safely selectable within the original 15-second bound")
+        return false
+    }
+
     func testBeautifyOpensSystemPickerAndCancelsRepeatedly() {
         observeSystemPicker(phase: "stock", selectLast: false)
     }
@@ -289,7 +348,7 @@ final class CelluloidUITests: XCTestCase {
             let selecting = selectLast && iteration == 3
             if selecting {
                 trace("selection-command-start", iteration: iteration)
-                selectSystemPhotos(app, indices: [0])
+                guard selectSeededSystemPhoto(app) else { return }
                 // The renderer candidate is never sufficient. Confirm known
                 // synthetic pixels in a genuine compositor screenshot first.
                 guard let pixelEvidence = confirmDisplayedPreviewPixels() else { return }
