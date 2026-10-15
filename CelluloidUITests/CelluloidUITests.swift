@@ -250,6 +250,72 @@ final class CelluloidUITests: XCTestCase {
         return false
     }
 
+    /// OFFLINE CANDIDATE ONLY. Supplementary behavioural evidence, not the
+    /// existing stock gate. A receipt must bind genuine runner synthesis to
+    /// this action and accept ONLY open-input -> real home <= 3 seconds.
+    /// XCTest tap() may block on lookup or event scheduling; that time is never
+    /// subtracted. No coordinates, snapshot substitution or delegate calls.
+    func testStockPickerEarlyCancelCompletesWithinOpeningWindow() {
+        let run = UUID().uuidString
+        app.launchEnvironment["CELLULOID_PICKER_TRACE_RUN"] = run
+        launch(["--picker-entry-observation"], diagnostics: false)
+        func trace(_ event: String, iteration: Int, details: String = "") {
+            let uptime = ProcessInfo.processInfo.systemUptime
+            let wall = Date().timeIntervalSince1970
+            NSLog("%@", "PICKER_CANCEL_CYCLE_UI run=\(run) iteration=\(iteration) event=\(event) uptime_seconds=\(uptime) wall_seconds=\(wall) \(details)")
+        }
+        trace("run-begin", iteration: 0)
+        defer { trace("run-end", iteration: 0) }
+        for iteration in 1...3 {
+            let home = app.buttons["edit-photo"]
+            // The exact public label is verified for the existing English test
+            // locale. .element fails on ambiguity; never use firstMatch.
+            let cancel = app.buttons.matching(NSPredicate(format: "label == %@", "Cancel")).element
+            XCTAssertTrue(home.isHittable)
+            XCTAssertFalse(cancel.exists)
+            let commandStarted = ProcessInfo.processInfo.systemUptime
+            trace("open-command-start", iteration: iteration)
+            XCTContext.runActivity(named: "EARLY_CANCEL_OPEN_\(run)_\(iteration)") { _ in
+                home.tap()
+            }
+            trace("open-command-returned", iteration: iteration)
+            // The element action resolves a real hittable system control. Do
+            // not front-load three separate property queries, screenshots,
+            // waits, or a fabricated app-owned cancellation callback.
+            trace("cancel-command-start", iteration: iteration)
+            XCTContext.runActivity(named: "EARLY_CANCEL_NATIVE_TAP_\(run)_\(iteration)") { _ in
+                cancel.tap()
+            }
+            trace("cancel-command-returned", iteration: iteration)
+            // Query actual post-action state. These query costs are included
+            // in the strict receipt's endpoint, never backdated to tap return.
+            var homeExists = false, homeEnabled = false, homeHittable = false
+            var pickerExists = true
+            repeat {
+                let began = ProcessInfo.processInfo.systemUptime
+                homeExists = home.exists
+                homeEnabled = homeExists && home.isEnabled
+                homeHittable = homeEnabled && home.isHittable
+                pickerExists = cancel.exists
+                trace("home-observation", iteration: iteration,
+                      details: "home_exists=\(homeExists) home_enabled=\(homeEnabled) home_hittable=\(homeHittable) picker_exists=\(pickerExists) query_started_uptime=\(began)")
+                if homeExists && homeEnabled && homeHittable && !pickerExists { break }
+                // A conservative local stop, not the authoritative origin.
+                // The receipt uses actual OPEN input synthesis from xcresult.
+                if ProcessInfo.processInfo.systemUptime >= commandStarted + 3 { break }
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+            } while true
+            guard homeExists && homeEnabled && homeHittable && !pickerExists else {
+                XCTFail("The actual home was not observed after the real system Cancel; no retry or alternate cancel")
+                return
+            }
+            // This records functional completion only. No local marker can
+            // declare timing success: only raw activity/delegate/return proof
+            // within the original opening-input deadline can do that.
+            trace("cycle-observed", iteration: iteration)
+        }
+    }
+
     func testBeautifyOpensSystemPickerAndCancelsRepeatedly() {
         observeSystemPicker(phase: "stock", selectLast: false)
     }
