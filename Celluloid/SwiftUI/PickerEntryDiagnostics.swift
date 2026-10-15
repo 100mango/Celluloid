@@ -21,7 +21,7 @@ enum PickerEntryDiagnostics {
               UUID(uuidString: run) != nil else { return }
         let uptime = ProcessInfo.processInfo.systemUptime
         let wall = Date().timeIntervalSince1970
-        print("PICKER_APP_TRACE run=\(run) event=\(event) instance=\(instance) picker=\(picker) pid=\(ProcessInfo.processInfo.processIdentifier) uptime_seconds=\(uptime) wall_seconds=\(wall) \(details)")
+        NSLog("%@", "PICKER_APP_TRACE run=\(run) event=\(event) instance=\(instance) picker=\(picker) pid=\(ProcessInfo.processInfo.processIdentifier) uptime_seconds=\(uptime) wall_seconds=\(wall) \(details)")
         #endif
     }
 
