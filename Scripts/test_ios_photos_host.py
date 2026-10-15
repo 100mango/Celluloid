@@ -1,0 +1,1545 @@
+import copy
+import json
+import unittest
+import tempfile
+from pathlib import Path
+import run_ios_photos_host as host
+
+class IOSPhotosHostContractTests(unittest.TestCase):
+    def setUp(self):
+        self.owner = dict(source_sha='a' * 40, device_id='owned-device', run_id='123', run_attempt='1')
+        fixtures = [dict(identifier='fixture-' + str(i), filename=('celluloid-fixture-2.png' if i == 1 else 'fixture-' + str(i) + '.png'),
+                         width=640, height=480, sha256='b' * 64) for i in range(6)]
+        self.manifest = dict(schema='celluloid.swiftui.seeded-library.v1', **self.owner,
+            authorization_read_write='authorized', fixture_count=6, fixtures=fixtures,
+            baseline_asset_ids=['stock-a', 'stock-b'], added_asset_ids=[f['identifier'] for f in fixtures],
+            seeded_asset_ids=['stock-a', 'stock-b'] + [f['identifier'] for f in fixtures],
+            baseline_asset_count=2, seeded_asset_count=8)
+
+    def testExactExistingFixtureIsBoundAndStockIsNeverSelected(self):
+        context = host.make_context(self.manifest, self.owner)
+        self.assertEqual(context['asset_identifier'], 'fixture-1')
+        self.assertNotIn(context['asset_identifier'], self.manifest['baseline_asset_ids'])
+        self.assertEqual(context['fixture_sha256'], 'b' * 64)
+        self.assertTrue(context['album_title'].startswith('Celluloid Host '))
+
+    def testWrongSourceDeviceOrRunFailsBeforeHost(self):
+        for key in ['source_sha', 'device_id', 'run_id', 'run_attempt']:
+            value = copy.deepcopy(self.manifest); value[key] = 'different'
+            with self.assertRaises(ValueError): host.make_context(value, self.owner)
+
+    def testMissingGrantAndWrongSchemaFailBeforeHost(self):
+        for key, value in [('authorization_read_write', 'limited'), ('schema', 'unknown')]:
+            item = copy.deepcopy(self.manifest); item[key] = value
+            with self.assertRaises(ValueError): host.make_context(item, self.owner)
+
+    def testStockDeletionOrUnexpectedAdditionalAssetFails(self):
+        for identifiers in [self.manifest['seeded_asset_ids'][1:], self.manifest['seeded_asset_ids'] + ['unexpected']]:
+            value = copy.deepcopy(self.manifest); value['seeded_asset_ids'] = identifiers
+            with self.assertRaises(ValueError): host.make_context(value, self.owner)
+
+    def testDuplicateTargetFilenameOrWrongHashFails(self):
+        value = copy.deepcopy(self.manifest); value['fixtures'][2]['filename'] = 'celluloid-fixture-2.png'
+        with self.assertRaises(ValueError): host.make_context(value, self.owner)
+        value = copy.deepcopy(self.manifest); value['fixtures'][1]['sha256'] = 'not-a-digest'
+        with self.assertRaises(ValueError): host.make_context(value, self.owner)
+
+    def testChangedCountOrFixtureIdentityFails(self):
+        value = copy.deepcopy(self.manifest); value['baseline_asset_count'] = 0
+        with self.assertRaises(ValueError): host.make_context(value, self.owner)
+        value = copy.deepcopy(self.manifest); value['fixtures'][1]['identifier'] = 'stock-a'
+        with self.assertRaises(ValueError): host.make_context(value, self.owner)
+
+    def testPhaseContextCannotChangeOriginalOrIdentity(self):
+        expected = host.make_context(self.manifest, self.owner)
+        host.check_context(dict(expected, before={}), expected)
+        for key in ['asset_identifier', 'source_sha', 'context_token', 'fixture_sha256']:
+            actual = dict(expected); actual[key] = 'changed'
+            with self.assertRaises(ValueError): host.check_context(actual, expected)
+
+    def testMissingOrDuplicateNativeEventCannotPass(self):
+        prefix = 'IOS_PHOTOS_HOST_UI '
+        self.assertEqual(host.record(prefix + '{"event":"save"}', prefix), {'event': 'save'})
+        for log in ['', prefix + '{}\n' + prefix + '{}']:
+            with self.assertRaises(ValueError): host.record(log, prefix)
+
+    def testRealSummaryParsingRejectsMissingOrDuplicateResult(self):
+        summary = dict(totalTestCount=1, result='Passed')
+        self.assertEqual(host.summary_json('preamble\n' + json.dumps(summary, indent=2)), summary)
+        for log in ['{}', json.dumps(summary) + '\n' + json.dumps(summary)]:
+            with self.assertRaises(ValueError): host.summary_json(log)
+
+    def testFiveExplicitNativeMethodsWithinCommandCeilings(self):
+        self.assertEqual(len(host.STEPS), 5)
+        self.assertEqual(sum('/IOSPhotosHostUITests/' in row[1] for row in host.STEPS), 2)
+        self.assertTrue(all(0 < row[2] <= 180 for row in host.STEPS))
+        self.assertLessEqual(sum(row[2] + 15 for row in host.STEPS) + 15, 600)
+
+    def testProductControlBindsBothFileNamesAndExactContents(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); (root / 'Celluloid').mkdir()
+            path = root / 'Celluloid/View.swift'; path.write_text('original')
+            before = host.product_control(root)
+            path.write_text('changed'); self.assertNotEqual(host.product_control(root), before)
+            path.write_text('original'); self.assertEqual(host.product_control(root), before)
+            path.rename(root / 'Celluloid/Other.swift'); self.assertNotEqual(host.product_control(root), before)
+
+    def testNativeWatchdogAndOwnedProcessTimeoutBothBlockFurtherSimulatorWork(self):
+        for code, log in [(124, ''), (65, 'Test exceeded execution time allowance'),
+                          (65, 'Test execution timed out'), (1, 'CLEANUP_UNCONFIRMED')]:
+            self.assertTrue(host.native_uncertain(code, log))
+        self.assertFalse(host.native_uncertain(65, 'Assertion failed: expected public control missing'))
+
+    def testDedicatedBranchRequiresExplicitOwnerRouteWithoutChangingOldDefault(self):
+        from swiftui_photos_gate import validate_owner
+        identifier = '12345678-1234-1234-1234-123456789AB0'
+        runtime = 'com.apple.CoreSimulator.SimRuntime.iOS-27-0'
+        receipt = dict(self.owner, device_id=identifier, schema='celluloid.swiftui.owned-simulator.v1',
+            device_name='Celluloid iOS27 test', runtime_id=runtime, created_by_this_job=True, absent_before_create=True)
+        environment = dict(GITHUB_SHA=self.owner['source_sha'], GITHUB_WORKFLOW_SHA=self.owner['source_sha'],
+            GITHUB_REPOSITORY='100mango/Celluloid', GITHUB_REF='refs/heads/cell-ios-photos-readiness-deadline-20261015',
+            GITHUB_EVENT_NAME='push', GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='1')
+        observed = {'devices': {runtime: [dict(udid=identifier, name=receipt['device_name'], state='Booted', isAvailable=True)]}}
+        with self.assertRaises(ValueError): validate_owner(receipt, identifier, environment, observed)
+        validate_owner(receipt, identifier, environment, observed, expected_ref=environment['GITHUB_REF'])
+        for route in ['refs/heads/unknown', 'refs/heads/swiftui-first-native']:
+            with self.assertRaises(ValueError): validate_owner(receipt, identifier, environment, observed, expected_ref=route)
+        environment['GITHUB_REF'] = 'refs/heads/swiftui-first-native'
+        validate_owner(receipt, identifier, environment, observed)
+
+
+# Source contract for the narrowly observed iOS 27 informational sheet. These
+# portable checks reject broadening the test automation; they do not replace
+# the pending native Photos-host run or establish XCTest hittability.
+NOTICE_TITLE = "What’s New in Photos"
+NOTICE_SECTIONS = [
+    "Improved Shared Albums, Share photos and videos in their original resolution with all of your friends and family, even if they don’t have an Apple device.",
+    "New Ways to Organize, Quickly locate photos with Captured by Me and Identity Documents in Utilities. Use star ratings and keywords to mark your best shots.",
+    "New Ways to Enjoy, Play a selection of photos and videos as a slideshow, and save the best frame of a video as a still photo."
+]
+
+def validate_observed_notice_source(source):
+    begin = source.index('    private func dismissObservedWhatsNewIfPresent() throws {')
+    end = source.index('    private func verifyPublicFilename() throws {', begin)
+    helper = source[begin:end]
+    required = [
+        'let title = photos.staticTexts.matching(NSPredicate(format: "label == %@", "' + NOTICE_TITLE + '"))',
+        'guard title.count > 0 else { return }',
+        'guard photos.alerts.count == 0,',
+        'XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {',
+        '_ = try unique(title)',
+        *['"' + section + '"' for section in NOTICE_SECTIONS],
+        'let section = photos.otherElements.matching(NSPredicate(format: "label == %@", label))',
+        'guard section.count == 1, section.element.isHittable else {',
+        'let proceed = try unique(photos.buttons.matching(NSPredicate(format: "label == %@", "Continue")))',
+        'checkpoint("observed-photos-whats-new")',
+        'proceed.tap()',
+        'object: title.element)], timeout: 8) == .completed else {'
+    ]
+    previous = -1
+    for fragment in required:
+        if helper.count(fragment) != 1:
+            raise ValueError('Missing or repeated observed-page guard: ' + fragment)
+        index = helper.index(fragment)
+        if index <= previous:
+            raise ValueError('An action or check precedes its required guard')
+        previous = index
+    if helper.count('.tap()') != 1:
+        raise ValueError('Unexpected additional introduction action')
+    if source.count('        try dismissObservedWhatsNewIfPresent()') != 1:
+        raise ValueError('Observed introduction may only be handled after Collections')
+    sequence = 'checkpoint("collections")\n        try dismissObservedWhatsNewIfPresent()\n        try declineObservedPhotosNotificationsIfPresent()\n        try selectObservedCollections()\n        stage = "open-albums"'
+    if sequence not in source:
+        raise ValueError('Observed introduction handler moved out of the observed route')
+    for required_budget in ['executionTimeAllowance = 120', 'systemUptime - started < 120']:
+        if required_budget not in source:
+            raise ValueError('Original UI case budget changed')
+
+class IOSPhotosObservedNoticeSourceTests(unittest.TestCase):
+    def setUp(self):
+        self.source =restore_late_intro_delta(restore_late_notification_delta( restore_readiness_notification_delta(read_prior_reviewed_ui_source())))
+
+    def testExactObservedNoticeIsTheOnlyAllowedIntroduction(self):
+        validate_observed_notice_source(self.source)
+
+    def testTitleEveryBodySectionOrContinueMismatchCannotAuthorizeTap(self):
+        for label in [NOTICE_TITLE, *NOTICE_SECTIONS, 'Continue']:
+            with self.subTest(label=label):
+                changed = self.source.replace('"' + label + '"', '"unrecognized page content"')
+                with self.assertRaises(ValueError): validate_observed_notice_source(changed)
+
+    def testPhotosOrSpringBoardAlertCannotAuthorizeTap(self):
+        for guard in ['guard photos.alerts.count == 0,',
+                      'XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {']:
+            with self.subTest(guard=guard):
+                with self.assertRaises(ValueError):
+                    validate_observed_notice_source(self.source.replace(guard, guard.replace('== 0', '>= 0')))
+
+    def testTapCannotPrecedeIdentityChecksOrAcceptAmbiguousControls(self):
+        mutants = [
+            self.source.replace('        proceed.tap()\n', '').replace('        let observedSections = [', '        proceed.tap()\n        let observedSections = ['),
+            self.source.replace('guard section.count == 1,', 'guard section.count > 0,'),
+            self.source.replace('let proceed = try unique(photos.buttons.matching', 'let proceed = photos.buttons.matching'),
+            self.source.replace('        proceed.tap()\n', '        proceed.tap()\n        proceed.tap()\n')
+        ]
+        for changed in mutants:
+            with self.assertRaises(ValueError): validate_observed_notice_source(changed)
+
+
+class PhotosParentDeadlineTests(unittest.TestCase):
+    def bounded(self, mode, expired=False, wrong_route=False):
+        import contextlib,io,os,runpy,subprocess,sys
+        from unittest.mock import MagicMock,patch
+        root=Path(__file__).resolve().parents[1];clock=[3.0 if expired else 1.0]
+        process=MagicMock(pid=12345,returncode=None if mode=='denied' or mode.startswith('slow-cleanup') else 0)
+        def create(*args,**kwargs):
+            if mode=='slow-start':clock[0]=3.0
+            return process
+        def wait(*args,**kwargs):
+            if mode=='slow-cleanup-second-signal' and process.wait.call_count==2:clock[0]+=5.0
+            if mode=='denied' or mode.startswith('slow-cleanup'):raise subprocess.TimeoutExpired('owned',1)
+            if mode=='late-zero':clock[0]=3.0
+            return 0
+        process.wait.side_effect=wait;process.poll.return_value=process.returncode
+        argv=['run_bounded.py','--seconds','20','--label','photos-unit','--deadline-monotonic','2','owned-fake-command']
+        env={'GITHUB_REF':'refs/heads/wrong' if wrong_route else 'refs/heads/cell-ios-photos-readiness-deadline-20261015','GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1'}
+        class TimingOutput(io.StringIO):
+            def write(self,value):
+                if mode=='slow-spawn-receipt' and '"phase": "spawn-begin"' in value:clock[0]=3.0
+                if mode=='slow-wait-receipt' and '"phase": "wait-begin"' in value:clock[0]=3.0
+                if mode=='slow-cleanup-signal' and '"phase": "cleanup-signal-attempt"' in value:clock[0]=12.0
+                if mode=='slow-cleanup-wait' and '"phase": "cleanup-wait-begin"' in value:clock[0]=12.0
+                if mode=='slow-cleanup-second-signal' and '"phase": "cleanup-signal-attempt"' in value and '"signal_name": "SIGKILL"' in value:clock[0]=12.0
+                return super().write(value)
+        out=TimingOutput()
+        with patch.dict(os.environ,env),patch.object(sys,'argv',argv),patch('time.monotonic',side_effect=lambda:clock[0]),patch('subprocess.Popen',side_effect=create) as opened,patch('subprocess.run',side_effect=AssertionError('unexpected native query')),patch('os.getpgid',side_effect=AssertionError('unexpected group query')),patch('os.killpg',side_effect=PermissionError('synthetic denial') if mode=='denied' else None) as killed,contextlib.redirect_stdout(out),contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:runpy.run_path(str(root/'Scripts/run_bounded.py'),run_name='__main__')
+        return caught.exception.code,out.getvalue(),opened,process,killed
+    def testTimelyOwnedChildSucceedsWithRemainingParentBudget(self):
+        code,log,opened,process,killed=self.bounded('timely')
+        self.assertEqual(code,0);self.assertEqual(process.wait.call_args.kwargs['timeout'],1)
+        self.assertTrue(opened.call_args.kwargs['start_new_session']);killed.assert_not_called()
+    def testExpiredParentNeverStartsChildAndWrongRouteCannotUseFlag(self):
+        for expired,wrong in [(True,False),(False,True)]:
+            code,log,opened,process,killed=self.bounded('timely',expired=expired,wrong_route=wrong)
+            self.assertEqual(code,2 if wrong else 124);opened.assert_not_called();killed.assert_not_called()
+    def testProcessCreationDelayAndLateExitZeroBothRemainTimeout(self):
+        for mode in ['slow-start','late-zero']:
+            code,log,opened,process,killed=self.bounded(mode)
+            self.assertEqual(code,124);self.assertIn('BOUNDED_COMMAND_TIMEOUT',log)
+            self.assertIn('"exit_code": 124',log);killed.assert_not_called()
+            if mode=='slow-start':process.wait.assert_not_called()
+    def testDeniedOwnedCleanupNeverEscalatesSignalsOrWaitsAgain(self):
+        import signal
+        code,log,opened,process,killed=self.bounded('denied')
+        self.assertEqual(code,124);killed.assert_called_once_with(12345,signal.SIGTERM)
+        self.assertEqual(process.wait.call_count,1);self.assertIn('CLEANUP_UNCONFIRMED',log)
+    def testFreshQueryKeepsExactCommandAndRejectsLateZeroWithoutRetry(self):
+        import os
+        from unittest.mock import patch
+        import swiftui_photos_gate as gate
+        for late in [False,True]:
+            with tempfile.TemporaryDirectory() as folder:
+                clock=[100.0];calls=[]
+                def invoke(command,stdout,stderr):
+                    calls.append(command);stdout.write(b'BOUNDED_COMMAND_BEGIN {}\n{"devices": {}}\nBOUNDED_COMMAND_END {}\n');clock[0]+=21 if late else 1;return 0
+                with patch.object(gate.time,'monotonic',side_effect=lambda:clock[0]),patch.object(gate.subprocess,'call',side_effect=invoke):
+                    if late:
+                        with self.assertRaises(ValueError):gate.fresh_owned_device_observation(Path(folder))
+                    else:self.assertEqual(gate.fresh_owned_device_observation(Path(folder)),{'devices':{}})
+                self.assertEqual(len(calls),1);self.assertEqual(calls[0][-6:],['xcrun','simctl','list','devices','available','-j'])
+                self.assertIn('--deadline-monotonic',calls[0]);self.assertEqual(calls[0][calls[0].index('--seconds')+1],'20')
+                receipt=json.loads((Path(folder)/'owned-device-observation.json').read_text());self.assertIs(receipt['late_completion'],late);self.assertIs(receipt['prohibit_further_native'],late)
+                with self.assertRaisesRegex(ValueError,'stale'):gate.fresh_owned_device_observation(Path(folder))
+    def testMissingDuplicateOrFailedFreshQueryCannotSupplyState(self):
+        from unittest.mock import patch
+        import swiftui_photos_gate as gate
+        for raw,code in [(b'{"wrong":{}}',0),(b'{"devices":{}}\n{"devices":{}}',0),(b'BOUNDED_COMMAND_TIMEOUT query',124),(b'BOUNDED_COMMAND_CLEANUP_UNCONFIRMED',0)]:
+            with tempfile.TemporaryDirectory() as folder:
+                def invoke(command,stdout,stderr):stdout.write(raw);return code
+                with patch.object(gate.subprocess,'call',side_effect=invoke) as called,self.assertRaises(ValueError):gate.fresh_owned_device_observation(Path(folder))
+                self.assertEqual(called.call_count,1)
+    def testLateParentPhaseBlocksEveryFollowingDispatch(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        with tempfile.TemporaryDirectory() as folder:
+            clock=[100.0];gate=object.__new__(diagnostic.HostDiagnostic);gate.uncertain=False;gate.failures=[];calls=[]
+            def invoke(self,*args,**kwargs):calls.append((args,kwargs));clock[0]=177.0164555;return 0,'inner exited0 after60.268 seconds'
+            with patch.object(diagnostic,'OUT',Path(folder)),patch.object(diagnostic.time,'monotonic',side_effect=lambda:clock[0]),patch.object(diagnostic.Acceptance,'command',invoke):
+                with self.assertRaisesRegex(ValueError,'deadline exceeded'):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],60,simulator=True)
+                self.assertTrue(gate.uncertain)
+                with self.assertRaisesRegex(ValueError,'blocks further'):gate.command('photos-bootstrap',['unsafe-following-command'],750,simulator=True)
+            self.assertEqual(len(calls),1);self.assertEqual(gate.failures,[{'phase':'install-owned-app','exit_code':124}])
+            wrapped=calls[0][0][1];self.assertEqual(wrapped[wrapped.index('--deadline-monotonic')+1],'160.0')
+            record=json.loads((Path(folder)/'install-owned-app-dispatch-timing.json').read_text());self.assertEqual(record['returned_exit_code'],0);self.assertTrue(record['late_completion']);self.assertTrue(record['prohibit_further_native'])
+    def testOriginalHostStagesAndBudgetsRemainWhileChildHasPreDispatchFence(self):
+        root=Path(__file__).resolve().parents[1];source=(root/'Scripts/run_ios_photos_host.py').read_text();driver=(root/'Scripts/run_ios_photos_host_diagnostic.py').read_text()
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45]);self.assertEqual(len(host.STEPS),5)
+        self.assertIn("'photos-bootstrap', command, 750",driver);self.assertIn("'work_budget_seconds': 2280",driver)
+        start=source.index('    def run(label, command, seconds, simulator=False):');end=source.index('    try:\n        for stage, selector, seconds in STEPS:',start);body=source[start:end]
+        self.assertLess(body.index('require(not uncertain'),body.index('subprocess.call('))
+        self.assertIn("'--deadline-monotonic', str(dispatched+seconds)",body);self.assertIn('if late:uncertain=True;code=124',body)
+        self.assertIn('observed = fresh_owned_device_observation(output)',source)
+        self.assertIn("validate_owner(owner, args.device, os.environ, observed, expected_ref='refs/heads/cell-ios-photos-readiness-deadline-20261015')",source)
+
+    def testLateCleanupZeroDoesNotDispatchDeleteOrClaimDeviceGone(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        with tempfile.TemporaryDirectory() as folder:
+            clock=[100.0];gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.device='owned-device';gate.uncertain=False
+            def invoke(command,**kwargs):clock[0]=131.0;return 0
+            with patch.object(diagnostic,'OUT',Path(folder)),patch.object(diagnostic.time,'monotonic',side_effect=lambda:clock[0]),patch.object(diagnostic.subprocess,'call',side_effect=invoke) as called:
+                gate.cleanup();self.assertEqual(called.call_count,1);self.assertTrue(gate.uncertain);self.assertEqual(gate.device,'owned-device')
+                gate.cleanup();self.assertEqual(called.call_count,1)
+
+    def testHostedParentIs300AndLegacySplitInstallStillRejectsLateWork(self):
+        import ast,inspect
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        source=inspect.getsource(diagnostic);calls=[n for n in ast.walk(ast.parse(source)) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='command' and n.args and isinstance(n.args[0],ast.Constant) and n.args[0].value=='deploy-hosted-app']
+        self.assertEqual(len(calls),1);self.assertEqual(calls[0].args[2].value,300)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45])
+        for duration in [77.0164555,209.0,210.001]:
+            with self.subTest(duration=duration),tempfile.TemporaryDirectory() as folder:
+                clock=[100.0];gate=object.__new__(diagnostic.HostDiagnostic);gate.uncertain=False;gate.failures=[];seen=[]
+                def invoke(self,*args,**kwargs):seen.append(args);clock[0]+=duration;return 0,'synthetic completion'
+                with patch.object(diagnostic,'OUT',Path(folder)),patch.object(diagnostic.time,'monotonic',side_effect=lambda:clock[0]),patch.object(diagnostic.Acceptance,'command',invoke):
+                    if duration>210:
+                        with self.assertRaisesRegex(ValueError,'deadline exceeded'):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],210,simulator=True)
+                        with self.assertRaisesRegex(ValueError,'blocks further'):gate.command('photos-bootstrap',['must-not-dispatch'],750,simulator=True)
+                    else:self.assertEqual(gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],210,simulator=True),(0,'synthetic completion'))
+                self.assertEqual(len(seen),1);wrapped=seen[0][1];self.assertEqual(wrapped[wrapped.index('--seconds')+1],'210');self.assertEqual(wrapped[wrapped.index('--deadline-monotonic')+1],'310.0');self.assertIs(gate.uncertain,duration>210)
+        with tempfile.TemporaryDirectory() as folder:
+            gate=object.__new__(diagnostic.HostDiagnostic);gate.uncertain=False;gate.failures=[];gate.deadline=320.0
+            with patch.object(diagnostic,'OUT',Path(folder)),patch.object(diagnostic.time,'monotonic',return_value=100.0),patch.object(diagnostic.subprocess,'call') as called:
+                with self.assertRaisesRegex(ValueError,'full phase and cleanup allowance do not fit'):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],210,simulator=True)
+                called.assert_not_called()
+
+
+    def testPhotosTimingRecordsOnlyExistingStagesAndKeepsTimeoutReapedFailure(self):
+        for mode in ['timely','late-zero','slow-start','denied']:
+            with self.subTest(mode=mode):
+                code,log,opened,process,killed=self.bounded(mode)
+                rows=[json.loads(line.split('PHOTOS_BOUNDED_TIMING ',1)[1]) for line in log.splitlines() if line.startswith('PHOTOS_BOUNDED_TIMING ')]
+                self.assertTrue(rows);self.assertEqual(rows[0]['phase'],'wrapper-ready');self.assertEqual(rows[-1]['phase'],'wrapper-end')
+                self.assertTrue(all(r['schema']=='Celluloid.PhotosBoundedTiming.1' and r['source_sha']=='a'*40 and r['run_id']=='123' and r['run_attempt']=='1' for r in rows))
+                self.assertTrue(all(r['wrapper_entry_monotonic']<=r['monotonic'] and r['parent_deadline_monotonic']==2 for r in rows))
+                spawn=next(r for r in rows if r['phase']=='spawn-return');self.assertEqual((spawn['child_pid'],spawn['child_pgid'],spawn['start_new_session']),(12345,12345,True))
+                if mode=='timely':
+                    self.assertEqual(code,0);self.assertEqual(next(r for r in rows if r['phase']=='wait-begin')['remaining_seconds'],1)
+                    self.assertFalse(any(r['phase']=='cleanup-result' for r in rows))
+                else:
+                    self.assertEqual(code,124);cleanup=[r for r in rows if r['phase']=='cleanup-result'];self.assertTrue(cleanup);self.assertTrue(all(r['group_exit_confirmed'] is False for r in cleanup))
+                    if mode=='denied':self.assertEqual(cleanup[-1]['status'],'signal_denied');self.assertEqual([r['signal_name'] for r in rows if r['phase']=='cleanup-signal-attempt'],['SIGTERM'])
+                    else:self.assertEqual(cleanup[-1]['status'],'child_reaped');self.assertEqual(cleanup[-1]['child_returncode'],0)
+        code,log,opened,process,killed=self.bounded('timely',expired=True)
+        self.assertEqual(code,124);self.assertIn('"phase": "expired-before-spawn"',log);self.assertNotIn('"phase": "spawn-begin"',log);opened.assert_not_called()
+
+    def testTimingReceiptDelayCannotPermitLateSpawnOrExtendActualWait(self):
+        for mode in ['slow-spawn-receipt','slow-wait-receipt']:
+            code,log,opened,process,killed=self.bounded(mode)
+            self.assertEqual(code,124);process.wait.assert_not_called();killed.assert_not_called()
+            if mode=='slow-spawn-receipt':opened.assert_not_called();self.assertIn('"child_started": false',log)
+            else:opened.assert_called_once();self.assertIn('"status": "child_reaped"',log)
+
+    def testCleanupReceiptDelayCannotWaitOrEscalatePastFixedTenSeconds(self):
+        import signal
+        for mode in ['slow-cleanup-signal','slow-cleanup-wait','slow-cleanup-second-signal']:
+            with self.subTest(mode=mode):
+                code,log,opened,process,killed=self.bounded(mode);self.assertEqual(code,124)
+                rows=[json.loads(line.split('PHOTOS_BOUNDED_TIMING ',1)[1]) for line in log.splitlines() if line.startswith('PHOTOS_BOUNDED_TIMING ')]
+                timeout=next(r for r in rows if r['phase']=='timeout-observed');self.assertEqual(timeout['cleanup_deadline_monotonic'],timeout['cleanup_started_monotonic']+10)
+                cleanup=[r for r in rows if r['phase']=='cleanup-result'];self.assertEqual(cleanup[-1]['status'],'bounded_cleanup_expired');self.assertTrue(all(r['group_exit_confirmed'] is False for r in cleanup))
+                if mode=='slow-cleanup-signal':killed.assert_not_called();self.assertEqual(process.wait.call_count,1)
+                else:killed.assert_called_once_with(12345,signal.SIGTERM);self.assertEqual(process.wait.call_count,2 if mode=='slow-cleanup-second-signal' else 1)
+
+    def testOtherRoutesDoNotEmitPhotosTimingOrUseNewNativeQueries(self):
+        import contextlib,io,os,runpy,sys
+        from unittest.mock import MagicMock,patch
+        root=Path(__file__).resolve().parents[1];process=MagicMock(pid=12345,returncode=0);process.wait.return_value=0;out=io.StringIO()
+        argv=['run_bounded.py','--seconds','20','--label','original-scope','owned-fake-command']
+        with patch.dict(os.environ,{'GITHUB_REF':'refs/heads/swiftui-first-native','GITHUB_REPOSITORY':'100mango/Celluloid'},clear=True),patch.object(sys,'argv',argv),patch('subprocess.Popen',return_value=process),patch('subprocess.run',side_effect=AssertionError('new native query')),patch('os.getpgid',side_effect=AssertionError('new group query')),contextlib.redirect_stdout(out),self.assertRaises(SystemExit) as caught:
+            runpy.run_path(str(root/'Scripts/run_bounded.py'),run_name='__main__')
+        self.assertEqual(caught.exception.code,0);self.assertNotIn('PHOTOS_BOUNDED_TIMING',out.getvalue());process.wait.assert_called_once_with(timeout=20)
+
+    def testOnlyExistingPhotosAbsoluteWrappersUseSiteFreeAndRetainedLogs(self):
+        import ast
+        root=Path(__file__).resolve().parents[1];count=0
+        for name,expected in [('run_ios_photos_host_diagnostic.py',2),('swiftui_photos_gate.py',1),('run_ios_photos_host.py',1)]:
+            source=(root/'Scripts'/name).read_text();lists=[n for n in ast.walk(ast.parse(source)) if isinstance(n,ast.List) and n.elts and isinstance(n.elts[0],ast.Attribute) and isinstance(n.elts[0].value,ast.Name) and n.elts[0].value.id=='sys' and n.elts[0].attr=='executable' and any(isinstance(e,ast.Constant) and e.value=='Scripts/run_bounded.py' for e in n.elts)]
+            self.assertEqual(len(lists),expected)
+            for node in lists:
+                self.assertEqual(node.elts[1].value,'-S');self.assertEqual(node.elts[2].value,'Scripts/run_bounded.py');self.assertTrue(any(isinstance(e,ast.Constant) and e.value=='--deadline-monotonic' for e in node.elts))
+            count+=len(lists)
+        self.assertEqual(count,4)
+        gate=(root/'Scripts/swiftui_photos_gate.py').read_text();self.assertIn("if expected_ref == 'refs/heads/cell-ios-photos-readiness-deadline-20261015':\n        if stage != 'bootstrap':raise ValueError('Dedicated host route may only reuse the fixture bootstrap')\n        observed = fresh_owned_device_observation(output, bootstrap_parent=photos_bootstrap_parent_deadline(receipt_path))\n    else:\n        observed = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], text=True, timeout=20))",gate)
+        wrapper=(root/'Scripts/run_bounded.py').read_text();self.assertIn("import time\n_wrapper_entry_monotonic = time.monotonic()\n\nimport argparse",wrapper)
+        self.assertLess(wrapper.index("parser.error('Invalid reviewed Photos-host parent deadline')"),wrapper.index("photos_timing('wrapper-ready')"))
+        self.assertIn('            build/swiftui-acceptance/',(root/host.PROBE_WORKFLOW).read_text())
+
+
+
+class BootstrapQueryBudgetTests(unittest.TestCase):
+    def context(self, root):
+        source='a'*40
+        env={'GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_EVENT_NAME':'push','GITHUB_REF':'refs/heads/cell-ios-photos-readiness-deadline-20261015',
+             'GITHUB_WORKFLOW_REF':'100mango/Celluloid/.github/workflows/ios-photos-readiness-deadline-20261015.yml@refs/heads/cell-ios-photos-readiness-deadline-20261015',
+             'GITHUB_SHA':source,'GITHUB_WORKFLOW_SHA':source,'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1'}
+        owner={'schema':'celluloid.swiftui.owned-simulator.v1','source_sha':source,'run_id':'123','run_attempt':'1',
+               'device_id':'12345678-1234-1234-1234-123456789AB0','device_name':'Celluloid iOS27 iPhone SE (3rd generation)',
+               'runtime_id':'com.apple.CoreSimulator.SimRuntime.iOS-27-0','created_by_this_job':True,'absent_before_create':True,
+               'job_started_monotonic':100.0,'work_deadline_monotonic':2380.0}
+        parent={'phase':'photos-bootstrap','dispatch_started_monotonic':100.0,'deadline_monotonic':850.0,'limit_seconds':750,
+                **{key:owner[key] for key in ['source_sha','run_id','run_attempt','device_id']},'state':'dispatched'}
+        path=root/'build/owned-simulator.json';path.parent.mkdir(parents=True);path.write_text(json.dumps(owner))
+        timing=path.parent/'photos-bootstrap-dispatch-timing.json';timing.write_text(json.dumps(parent))
+        return env,owner,parent,path,timing
+
+    def testOnlyAdmittedBootstrapGetsSixtyAndHostDefaultStaysTwenty(self):
+        import os
+        from unittest.mock import patch
+        import swiftui_photos_gate as gate
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);env,owner,parent,path,timing=self.context(root);calls=[];clock=[110.0]
+            observed={'devices':{owner['runtime_id']:[{'udid':owner['device_id'],'name':owner['device_name'],'state':'Booted','isAvailable':True}]}}
+            def invoke(command,stdout,stderr):calls.append(command);stdout.write(json.dumps(observed).encode());clock[0]+=1;return 0
+            with patch.dict(os.environ,env),patch.object(gate.Path,'cwd',return_value=root),patch.object(gate.time,'monotonic',side_effect=lambda:clock[0]),patch.object(gate.subprocess,'check_output',return_value=owner['source_sha']),patch.object(gate.subprocess,'run'),patch.object(gate.subprocess,'call',side_effect=invoke):
+                gate.admission('bootstrap',owner['device_id'],root/'.build/ios',root/'build/photos',path,env['GITHUB_REF'])
+                self.assertEqual(calls[-1][calls[-1].index('--seconds')+1],'60')
+                self.assertEqual(calls[-1][calls[-1].index('--deadline-monotonic')+1],'170.0')
+                for stage in ['legacy','pristine','preservation']:
+                    with self.subTest(stage=stage),self.assertRaisesRegex(ValueError,'only reuse'):gate.admission(stage,owner['device_id'],root/'.build/ios',root/'build/photos',path,env['GITHUB_REF'])
+                self.assertEqual(len(calls),1)
+                gate.fresh_owned_device_observation(root/'build/actual-host')
+                self.assertEqual(calls[-1][calls[-1].index('--seconds')+1],'20')
+                self.assertEqual(calls[-1][-6:],['xcrun','simctl','list','devices','available','-j'])
+            self.assertEqual(json.loads((root/'build/photos/owned-device-observation.json').read_text())['limit_seconds'],60)
+            self.assertEqual(json.loads((root/'build/actual-host/owned-device-observation.json').read_text())['limit_seconds'],20)
+
+    def testQueryAndInterpreterDelayConsumeOriginalParentWithoutExtending720(self):
+        import contextlib,io,os,sys
+        from unittest.mock import patch
+        import swiftui_photos_gate as gate
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);env,owner,parent,path,timing=self.context(root)
+            for now,expected in [(110.0,830.0),(170.0,850.0),(230.0,850.0)]:
+                with self.subTest(now=now),patch.dict(os.environ,env),patch.object(gate.time,'monotonic',return_value=now),patch.object(sys,'argv',['swiftui_photos_gate.py','budget','bootstrap',str(path),'deadline']),contextlib.redirect_stdout(io.StringIO()) as output:gate.main()
+                deadline=float(output.getvalue());self.assertEqual(deadline,expected);self.assertLessEqual(deadline-now,720);self.assertLessEqual(deadline,parent['deadline_monotonic'])
+            # The historical route still uses its original independently started720.
+            with patch.dict(os.environ,dict(env,GITHUB_REF='refs/heads/swiftui-first-native')),patch.object(gate.time,'monotonic',return_value=170.0),patch.object(sys,'argv',['swiftui_photos_gate.py','budget','bootstrap',str(path),'deadline']),contextlib.redirect_stdout(io.StringIO()) as output:gate.main()
+            self.assertEqual(float(output.getvalue()),890.0)
+
+    def testMissingForgedExpiredOrCompletedParentRejectsBeforeFreshQuery(self):
+        import os
+        from unittest.mock import patch
+        import swiftui_photos_gate as gate
+        changes=[None,{'source_sha':'b'*40},{'run_id':'124'},{'run_attempt':'2'},{'device_id':'other'},
+                 {'deadline_monotonic':851.0},{'limit_seconds':751},{'limit_seconds':True},{'dispatch_started_monotonic':111.0},
+                 {'deadline_monotonic':float('nan')},{'state':'completed'},{'extra':1}]
+        for changed in changes:
+            with self.subTest(changed=changed),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);env,owner,parent,path,timing=self.context(root)
+                if changed is None:timing.unlink()
+                else:timing.write_text(json.dumps(dict(parent,**changed)))
+                with patch.dict(os.environ,env),patch.object(gate.Path,'cwd',return_value=root),patch.object(gate.time,'monotonic',return_value=110.0),patch.object(gate.subprocess,'check_output',return_value=owner['source_sha']),patch.object(gate.subprocess,'run'),patch.object(gate.subprocess,'call') as native:
+                    with self.assertRaises(ValueError):gate.admission('bootstrap',owner['device_id'],root/'.build/ios',root/'build/photos',path,env['GITHUB_REF'])
+                    native.assert_not_called()
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);env,owner,parent,path,timing=self.context(root)
+            for now in [850.0,851.0]:
+                with patch.dict(os.environ,env),self.assertRaises(ValueError):gate.photos_bootstrap_parent_deadline(path,now=now)
+            for key,value in [('GITHUB_REF','refs/heads/swiftui-first-native'),('GITHUB_WORKFLOW_SHA','b'*40),('GITHUB_RUN_ATTEMPT','2')]:
+                with patch.dict(os.environ,dict(env,**{key:value})),self.assertRaises(ValueError):gate.photos_bootstrap_parent_deadline(path,now=110.0)
+            with patch.dict(os.environ,env),patch.object(gate.time,'monotonic',return_value=781.0),patch.object(gate.subprocess,'call') as native,self.assertRaisesRegex(ValueError,'cannot fit'):gate.fresh_owned_device_observation(root/'build/photos',bootstrap_parent=850.0)
+            native.assert_not_called()
+
+    def testSixtySecondLateZeroStillRejectsOneFreshQueryWithoutRetry(self):
+        from unittest.mock import patch
+        import swiftui_photos_gate as gate
+        for duration in [59.0,61.0]:
+            with self.subTest(duration=duration),tempfile.TemporaryDirectory() as folder:
+                clock=[100.0];calls=[]
+                def invoke(command,stdout,stderr):calls.append(command);stdout.write(b'{"devices":{}}');clock[0]+=duration;return 0
+                with patch.object(gate.time,'monotonic',side_effect=lambda:clock[0]),patch.object(gate.subprocess,'call',side_effect=invoke):
+                    if duration>60:
+                        with self.assertRaisesRegex(ValueError,'parent deadline'):gate.fresh_owned_device_observation(Path(folder),bootstrap_parent=850.0)
+                    else:self.assertEqual(gate.fresh_owned_device_observation(Path(folder),bootstrap_parent=850.0),{'devices':{}})
+                self.assertEqual(len(calls),1);receipt=json.loads((Path(folder)/'owned-device-observation.json').read_text());self.assertEqual(receipt['limit_seconds'],60);self.assertIs(receipt['prohibit_further_native'],duration>60)
+
+    def testDriverPublishesBoundParentBeforeNestedDispatchAtIdenticalClock(self):
+        import os
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as driver
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);env,owner,parent,path,timing=self.context(root);timing.unlink();clock=[100.0]
+            diagnostic=object.__new__(driver.HostDiagnostic);diagnostic.source=owner['source_sha'];diagnostic.device=owner['device_id'];diagnostic.uncertain=False;diagnostic.failures=[]
+            def invoke(self,*args,**kwargs):
+                receipt=json.loads(timing.read_text());self_test.assertEqual(receipt,parent);clock[0]=111.0;return 0,'ok'
+            self_test=self
+            with patch.dict(os.environ,env),patch.object(driver,'OUT',path.parent),patch.object(driver.time,'monotonic',side_effect=lambda:clock[0]),patch.object(driver.Acceptance,'command',invoke):
+                self.assertEqual(diagnostic.command('photos-bootstrap',['owned-nested-command'],750,simulator=True,nested_owned=True),(0,'ok'))
+                final=json.loads(timing.read_text());self.assertEqual(final['deadline_monotonic'],850.0);self.assertEqual(final['elapsed_seconds'],11.0)
+                with self.assertRaisesRegex(ValueError,'stale'):diagnostic.command('photos-bootstrap',['must-not-run'],750,simulator=True,nested_owned=True)
+
+
+    def testSetupCommandDeadlinesRemainInsideParentAndHistoricalArgvIsUnchanged(self):
+        import contextlib,io,re,sys,subprocess,time
+        from unittest.mock import patch
+        root=Path(__file__).resolve().parents[1];shell=(root/'Scripts/run_swiftui_photos_gate.sh').read_text()
+        code=re.search(r"command_deadline=\$\(python3 -S -c '(.*?)' \"\$seconds\" \"\$bootstrap_deadline\"\)",shell,re.S).group(1)
+        for seconds in [45,60]:
+            for now,ok in [(110.0,True),(850.0-seconds-10,True),(851.0-seconds-10,False),(851.0,False)]:
+                with self.subTest(seconds=seconds,now=now),patch.object(sys,'argv',['-c',str(seconds),'850.0']),patch.object(time,'monotonic',return_value=now),contextlib.redirect_stdout(io.StringIO()) as out:
+                    if ok:exec(compile(code,'exact-setup-deadline','exec'),{})
+                    else:
+                        with self.assertRaisesRegex(SystemExit,'no dispatch'):exec(compile(code,'exact-setup-deadline','exec'),{})
+                if ok:self.assertEqual(float(out.getvalue()),now+seconds);self.assertLessEqual(float(out.getvalue())+10,850.0)
+        calls=re.findall(r'^  bootstrap_setup (\d+) ([a-z-]+) \\$',shell,re.M)
+        self.assertEqual(calls,[('45','seeded-fixture-generation'),('45','seeded-owned-registration'),('60','seeded-owned-photos-grant')])
+        body=shell[shell.index('  bootstrap_setup() {'):shell.index('  bootstrap_setup 45 seeded-fixture-generation')]
+        for ref in ['refs/heads/swiftui-first-native','refs/heads/other']:
+            # Execute only the exact extracted shell function with a harmless
+            # python3 recorder; no native tool or real wrapper is dispatched.
+            script='set -euo pipefail\nsource_ref='+ref+'\nbootstrap_deadline=850\npython3() { printf "<%s>\\n" "$@"; }\n'+body+'\nbootstrap_setup 45 old-label owned-command arg\n'
+            result=subprocess.run(['/bin/bash','-c',script],text=True,capture_output=True,timeout=5)
+            self.assertEqual(result.returncode,0,result.stderr);self.assertEqual(result.stdout.splitlines(),['<Scripts/run_bounded.py>','<--seconds>','<45>','<--label>','<old-label>','<owned-command>','<arg>'])
+        self.assertIn('if [[ "$source_ref" = refs/heads/cell-ios-photos-readiness-deadline-20261015 ]]; then',body)
+        self.assertIn('--deadline-monotonic "$command_deadline" "$@"',body)
+        self.assertIn('|| return $?',body)
+        for status in [0,9]:
+            # A refused/expired deadline calculation must not reach the wrapper.
+            fake='python3() { if [[ "$1" = -S ]]; then '
+            fake+=('printf "155.0\\n"; return 0;' if status==0 else 'return 9;')
+            fake+=' fi; printf "<%s>\\n" "$@"; }\n'
+            script='set -euo pipefail\nsource_ref=refs/heads/cell-ios-photos-readiness-deadline-20261015\nbootstrap_deadline=850\n'+fake+body+'\nbootstrap_setup 45 current-label owned-command arg\n'
+            result=subprocess.run(['/bin/bash','-c',script],text=True,capture_output=True,timeout=5)
+            self.assertEqual(result.returncode,status,result.stderr)
+            self.assertEqual(result.stdout.splitlines(),['<Scripts/run_bounded.py>','<--seconds>','<45>','<--label>','<current-label>','<--deadline-monotonic>','<155.0>','<owned-command>','<arg>'] if status==0 else [])
+
+
+NOTIFICATION_TITLE = '“Photos” Would Like to Send You Notifications'
+NOTIFICATION_BODY = 'Notifications may include alerts, sounds, and icon badges. These can be configured in Settings.'
+
+def validate_observed_notification_navigation_source(source):
+    import hashlib
+    start=source.index('    private func declineObservedPhotosNotificationsIfPresent() throws {')
+    middle=source.index('    private func selectObservedCollections() throws {',start)
+    end=source.index('    private func openCelluloidExtension() throws {',middle)
+    denial=source[start:middle];navigation=source[middle:end]
+    required=[
+        'let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")',
+        'let alerts = springboard.alerts',
+        'guard alerts.firstMatch.waitForExistence(timeout: 2) else {',
+        'guard photos.alerts.count == 0 else { throw failure("Unknown Photos alert; no action taken") }',
+        'try withinBudget()',
+        'guard alerts.count == 1, photos.alerts.count == 0 else {',
+        'let observed = alerts.containing(.staticText, identifier: "'+NOTIFICATION_TITLE+'")',
+        '.containing(.staticText, identifier: "'+NOTIFICATION_BODY+'")',
+        'guard observed.count == 1 else {',
+        'let alert = observed.element',
+        'let title = alert.staticTexts.matching(NSPredicate(format: "label == %@", "'+NOTIFICATION_TITLE+'"))',
+        'let body = alert.staticTexts.matching(NSPredicate(format: "label == %@", "'+NOTIFICATION_BODY+'"))',
+        'let deny = alert.buttons.matching(NSPredicate(format: "label == %@", "Don’t Allow"))',
+        'let allow = alert.buttons.matching(NSPredicate(format: "label == %@", "Allow"))',
+        'guard title.count == 1, body.count == 1, deny.count == 1, allow.count == 1,',
+        'alert.buttons.count == 2, title.element.isHittable, body.element.isHittable else {',
+        'let decline = try unique(deny)', '_ = try unique(allow)', 'decline.tap()',
+        'object: alert)], timeout: 8) == .completed,',
+        'springboard.alerts.count == 0, photos.alerts.count == 0 else {'
+    ]
+    previous=-1
+    for fragment in required:
+        if denial.count(fragment)!=1 or denial.index(fragment)<=previous:raise ValueError('Missing/changed/out-of-order notification guard: '+fragment)
+        previous=denial.index(fragment)
+    if denial.count('.tap()')!=1:raise ValueError('Only one explicit notification denial may be tapped')
+    if denial.count('.debugDescription')!=1 or denial.count('photos.screenshot()')!=1 or 'photos.debugDescription' in denial:raise ValueError('Prompt evidence must stay bounded without duplicate Photos AX traversal')
+    ordered=['try withinBudget()', 'guard photos.alerts.count == 0,',
+        'XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {',
+        'let query = photos.buttons.matching(identifier: "CollectionsTab").matching(NSPredicate(format: "label == %@", "Collections"))',
+        'let library = photos.buttons.matching(identifier: "LibraryTab").matching(NSPredicate(format: "label == %@", "Library"))',
+        'guard query.count == 1, library.count == 1 else {', 'let collections = try unique(query)',
+        'if !collections.isSelected {', 'guard try unique(library).isSelected else {', 'collections.tap()',
+        'XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in collections.isSelected },',
+        'object: nil)], timeout: 8) == .completed else {', 'checkpoint("observed-collections-selected")']
+    previous=-1
+    for fragment in ordered:
+        if navigation.count(fragment)!=1 or navigation.index(fragment)<=previous:raise ValueError('Missing/changed/out-of-order Collections guard: '+fragment)
+        previous=navigation.index(fragment)
+    if navigation.count('.tap()')!=1:raise ValueError('Only one observed Collections reselection is permitted')
+    calls='        try declineObservedPhotosNotificationsIfPresent()\n        try selectObservedCollections()\n'
+    if source.count(calls)!=1 or ('try dismissObservedWhatsNewIfPresent()\n'+calls+'        stage = "open-albums"') not in source:raise ValueError('Notification denial must precede observed reselection and original Albums route')
+    restored=restore_observed_album_delta((source[:start]+source[end:]).replace(calls,''))
+    if hashlib.sha256(restored.encode()).hexdigest()!='1bc8de8517c0e522f42322d98861e557c010b82531a46991f9242b13f92ce1c1':raise ValueError('Original host assertions, introduction, unknown-alert monitor or budgets changed')
+
+class ObservedNotificationNavigationTests(unittest.TestCase):
+    def setUp(self):self.source=restore_late_intro_delta(restore_late_notification_delta(restore_readiness_notification_delta(read_prior_reviewed_ui_source())))
+    def testObservedDenialAndSelectionPreserveAllOriginalHostBytes(self):
+        validate_observed_notification_navigation_source(self.source)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45]);self.assertEqual(len(host.STEPS),5)
+    def testChangedPromptAmbiguousButtonsOrGrantCannotAuthorizeAction(self):
+        mutations=[self.source.replace('"'+text+'"','"Unknown"') for text in [NOTIFICATION_TITLE,NOTIFICATION_BODY,'Don’t Allow','Allow']]
+        for token in ['alerts.count == 1','observed.count == 1','photos.alerts.count == 0','title.count == 1','body.count == 1','deny.count == 1','allow.count == 1','alert.buttons.count == 2','title.element.isHittable','body.element.isHittable']:
+            mutations.append(self.source.replace(token,'true'))
+        mutations += [self.source.replace('decline.tap()','allow.element.tap()'),self.source.replace('decline.tap()','decline.tap()\n        decline.tap()'),self.source.replace('let decline = try unique(deny)','let decline = deny.element')]
+        for value in mutations:
+            with self.assertRaises(ValueError):validate_observed_notification_navigation_source(value)
+    def testUnknownTabUnselectedOutcomeOrActionBeforeDenialRejects(self):
+        for old,new in [('"CollectionsTab"','"GuessedTab"'),('"LibraryTab"','"GuessedTab"'),('query.count == 1','query.count > 0'),('library.count == 1','library.count > 0'),('guard try unique(library).isSelected else','guard true else'),('collections.isSelected },','true },'),('collections.tap()','collections.tap()\n            collections.tap()')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):validate_observed_notification_navigation_source(self.source.replace(old,new))
+        calls='        try declineObservedPhotosNotificationsIfPresent()\n        try selectObservedCollections()\n'
+        with self.assertRaises(ValueError):validate_observed_notification_navigation_source(self.source.replace(calls,'        try selectObservedCollections()\n        try declineObservedPhotosNotificationsIfPresent()\n'))
+    def testOwnedAlbumFilenameAndFunctionalAssertionsCannotBeRelaxed(self):
+        for old,new in [('let titleNode = try unique(','let titleNode = '),('let cell = try observedOwnedAlbumItem(title: title)','let cell = photos.images.firstMatch'),('try verifyPublicFilename()','try withinBudget()'),('"filter-Sepia"','"filter-None"'),('changed != original','changed == original'),('executionTimeAllowance = 120','executionTimeAllowance = 180'),('fatalError("IOS_PHOTOS_HOST_UNKNOWN_ALERT no action taken")','return true')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):validate_observed_notification_navigation_source(self.source.replace(old,new))
+
+
+ALBUM_PAGE = 'PhotosUICore.PhotosPageContainerView_AX'
+ALBUM_OLD_BLOCK = '        _ = try unique(photos.navigationBars.matching(identifier: title))\n        let cells = photos.collectionViews.cells\n        let cell = try unique(cells)\n'
+ALBUM_NEW_BLOCK = '        let cell = try observedOwnedAlbumItem(title: title)\n'
+
+def restore_observed_album_delta(source):
+    source=restore_observed_filename_delta(source)
+    start=source.index('    private func observedOwnedAlbumItem(title: String) throws -> XCUIElement {')
+    end=source.index('    private func ',start+len('    private func '))
+    helper=source[start:end]
+    required=['try withinBudget()',
+        'let pages = photos.otherElements.matching(identifier: "'+ALBUM_PAGE+'")',
+        'pages.count == 1 && pages.element.exists',
+        'guard XCTWaiter.wait(for: [ready], timeout: 8) == .completed else {',
+        'let page = pages.element',
+        'let heading = page.staticTexts.matching(identifier: "collectionTitle")',
+        'let count = page.staticTexts.matching(identifier: "collectionAssetCount")',
+        'let items = page.images.matching(identifier: "PXGGridLayout-Info")',
+        'guard heading.count == 1, count.count == 1, items.count == 1,',
+        'heading.element.label == title, count.element.label == "1 Item" else {',
+        '_ = try unique(heading)', '_ = try unique(count)', 'return try unique(items)']
+    previous=-1
+    for fragment in required:
+        if helper.count(fragment)!=1 or helper.index(fragment)<=previous:raise ValueError('Missing/changed/out-of-order owned album guard: '+fragment)
+        previous=helper.index(fragment)
+    if any(token in helper for token in ['.firstMatch','.element(boundBy:','.tap()','PhotosGridAddButton','BEGINSWITH','CONTAINS','label IN','coordinate(']):raise ValueError('Unreviewed album selection fallback')
+    if source.count(ALBUM_NEW_BLOCK)!=1:raise ValueError('Missing/duplicate observed album selection')
+    sequence='        titleNode.tap()\n'+ALBUM_NEW_BLOCK+'        checkpoint("single-owned-album-item")\n        stage = "open-single-owned-photo"\n        cell.tap()\n        _ = try unique(photos.buttons.matching(identifier: "Edit"))\n        try verifyPublicFilename()'
+    if sequence not in source:raise ValueError('Owned album/photo identity or exact filename validation moved')
+    return (source[:start]+source[end:]).replace(ALBUM_NEW_BLOCK,ALBUM_OLD_BLOCK)
+
+class ObservedOwnedAlbumSourceTests(unittest.TestCase):
+    def setUp(self):self.source=restore_late_intro_delta(restore_late_notification_delta(restore_readiness_notification_delta(read_prior_reviewed_ui_source())))
+    def testObservedContainerIdentityAndSingleGridPhotoRestoreExactPriorSource(self):
+        import hashlib
+        restored=restore_observed_album_delta(self.source)
+        self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'2ed6da31ecbf86d82d79167d04051c06ab4b6c585661272b7694601a7b9a5d50')
+        validate_observed_notification_navigation_source(self.source)
+    def testMissingDuplicateContainerHeadingCountOrPhotoCannotAuthorizeSelection(self):
+        for guard in ['pages.count == 1 && pages.element.exists','heading.count == 1','count.count == 1','items.count == 1']:
+            for changed in ['true',guard.replace('== 1','> 0')]:
+                with self.subTest(guard=guard,changed=changed),self.assertRaises(ValueError):restore_observed_album_delta(self.source.replace(guard,changed))
+        for identifier in [ALBUM_PAGE,'collectionTitle','collectionAssetCount','PXGGridLayout-Info']:
+            with self.subTest(identifier=identifier),self.assertRaises(ValueError):restore_observed_album_delta(self.source.replace('"'+identifier+'"','"Missing"'))
+    def testWrongOwnerCountOrAddTileAndIndexFallbackReject(self):
+        mutants=[self.source.replace('heading.element.label == title','heading.element.label.hasPrefix(title)'),
+            self.source.replace('heading.element.label == title','heading.element.label == "Other album"'),
+            self.source.replace('"1 Item"','"2 Items"'),self.source.replace('page.images.matching(identifier: "PXGGridLayout-Info")','page.buttons.matching(identifier: "PhotosGridAddButton")'),
+            self.source.replace('return try unique(items)','return items.firstMatch'),self.source.replace('return try unique(items)','return items.element(boundBy: 0)'),
+            self.source.replace('_ = try unique(heading)','_ = heading.element'),self.source.replace('_ = try unique(count)','_ = count.element'),
+            self.source.replace('try verifyPublicFilename()','try withinBudget()')]
+        for source in mutants:
+            with self.assertRaises(ValueError):restore_observed_album_delta(source)
+
+
+
+# Preserve the already allowed exact filename-or-basename identity. Only the
+# observed AX attribute changes from label to this unique field's String value.
+FILENAME_OLD_BLOCK = '        _ = try unique(photos.staticTexts.matching(NSPredicate(format: "label IN %@", [filename, basename])))\n'
+FILENAME_NEW_BLOCK = '        // Run37918693951: Photos exposes the public filename as this field\'s\n        // String value. Its label is "Filename", never the filename itself.\n        let fields = photos.staticTexts.matching(identifier: "com.apple.photos.infoPanel.filename")\n        let field = try unique(fields)\n        guard fields.count == 1, field.label == "Filename",\n              let publicFilename = field.value as? String,\n              [filename, basename].contains(publicFilename) else {\n            throw failure("Observed public filename differs from the exact owned fixture")\n        }\n'
+
+def restore_observed_filename_delta(source):
+    source=restore_observed_extensions_delta(source)
+    if source.count(FILENAME_NEW_BLOCK)!=1:raise ValueError('Missing/changed/duplicate observed filename value contract')
+    return source.replace(FILENAME_NEW_BLOCK,FILENAME_OLD_BLOCK)
+
+class ObservedFilenameValueTests(unittest.TestCase):
+    def setUp(self):self.source=restore_late_intro_delta(restore_late_notification_delta(restore_readiness_notification_delta(read_prior_reviewed_ui_source())))
+    def testObservedValueRestoresExactPublishedParentAndAllFunctionalChecks(self):
+        import hashlib
+        self.assertEqual(hashlib.sha256(restore_observed_filename_delta(self.source).encode()).hexdigest(),'76d1c73a4103e9748d40a3599b90238a34e044d23e27e3ff34af1049d73cccf0')
+        validate_observed_notification_navigation_source(self.source)
+    def testMissingNonStringOrDefaultFilenameValueCannotPass(self):
+        for old,new in [('let publicFilename = field.value as? String','let publicFilename = field.value'),('let publicFilename = field.value as? String','let publicFilename = String(describing: field.value)'),('let publicFilename = field.value as? String','let publicFilename = (field.value as? String) ?? basename'),('[filename, basename].contains(publicFilename)','publicFilename.hasPrefix(basename)'),('[filename, basename].contains(publicFilename)','true')]:
+            with self.subTest(old=old,new=new),self.assertRaises(ValueError):restore_observed_filename_delta(self.source.replace(old,new))
+    def testDuplicateIdentifierWrongLabelOrWrongCompleteNameCannotPass(self):
+        for old,new in [('fields.count == 1','fields.count > 0'),('fields.count == 1','true'),('field.label == "Filename"','true'),('"com.apple.photos.infoPanel.filename"','"Unknown"'),('[filename, basename].contains(publicFilename)','["other.png", basename].contains(publicFilename)'),('let field = try unique(fields)','let field = fields.firstMatch'),('let field = try unique(fields)','let field = fields.element(boundBy: 0)'),('try tap(photos.buttons.matching(identifier: "Info"))','try withinBudget()')]:
+            with self.subTest(old=old,new=new),self.assertRaises(ValueError):validate_observed_notification_navigation_source(self.source.replace(old,new))
+
+
+
+PHOTOS_INSTALL_SPLIT_PREFIX = "# Only the exact final Photos install command gets the split phase budget.\n# Source/owner/build admission remains in the unchanged parent host controller.\nphotos_install_split = (os.environ.get('GITHUB_REF') == 'refs/heads/cell-ios-photos-readiness-deadline-20261015'\n                        and args.label == 'install-owned-app')\nif photos_install_split:\n    import re\n    expected_app = os.path.join(os.getcwd(), '.build/swiftui-ios/Build/Products/Debug-iphonesimulator/Celluloid.app')\n    if (not absolute_deadline or args.seconds != 210 or len(args.command) != 5\n            or args.command[:3] != ['xcrun', 'simctl', 'install']\n            or re.fullmatch(r'[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}', args.command[3]) is None\n            or args.command[4] != expected_app):\n        parser.error('Invalid exact Photos install preparation/native split')\n"
+PHOTOS_INSTALL_SPLIT_HELPER = "def refuse_expired_install_preparation():\n    if time.monotonic() >= args.deadline_monotonic - 120:\n        photos_timing('install-preparation-expired', child_started=False, preparation_limit_seconds=90)\n        print('BOUNDED_COMMAND_TIMEOUT', args.label, 'preparation deadline expired; no install dispatch', flush=True)\n        photos_timing('wrapper-end', exit_code=124, child_started=False)\n        sys.exit(124)\n\n\n"
+PHOTOS_INSTALL_SPLIT_NATIVE = "refuse_expired_parent()\nif photos_install_split:\n    refuse_expired_install_preparation()\n    # Sample before receipt I/O and Popen. Neither can earn a new120s window.\n    native_dispatch_started = time.monotonic()\n    deadline = min(native_dispatch_started + 120, args.deadline_monotonic)\n    photos_timing('install-native-dispatch', native_dispatch_started_monotonic=native_dispatch_started,\n                  native_deadline_monotonic=deadline, native_limit_seconds=120,\n                  preparation_deadline_monotonic=args.deadline_monotonic - 120,\n                  preparation_limit_seconds=90, phase_limit_seconds=210)\n    refuse_expired_install_preparation()\n    refuse_expired_parent()\ntry:\n"
+
+class PhotosInstallSplitClockTests(unittest.TestCase):
+    def exercise(self,mode='timely',cap=210,parent=211,absolute=True,command_change=None,route='cell-ios-photos-readiness-deadline-20261015'):
+        import contextlib,io,os,runpy,signal,subprocess,sys
+        from unittest.mock import MagicMock,patch
+        root=Path(__file__).resolve().parents[1];clock=[50.0]
+        process=MagicMock(pid=12345,returncode=0);process.poll.return_value=0
+        command=['xcrun','simctl','install','12345678-1234-1234-1234-123456789AB0',str(root/'.build/swiftui-ios/Build/Products/Debug-iphonesimulator/Celluloid.app')]
+        if command_change:command_change(command)
+        argv=['run_bounded.py','--seconds',str(cap),'--label','install-owned-app']
+        if absolute:argv+=['--deadline-monotonic',str(parent)]
+        argv+=command;output=io.StringIO();real_print=print
+        if mode=='expired-preparation':clock[0]=92
+        if mode=='expired-parent':clock[0]=212
+        def emitted(*args,**kwargs):
+            real_print(*args,**kwargs)
+            if mode=='slow-native-receipt' and args and args[0]=='PHOTOS_BOUNDED_TIMING' and '"phase": "install-native-dispatch"' in args[1]:clock[0]=92
+        def popen(*args,**kwargs):
+            self.assertTrue(kwargs['start_new_session'])
+            if mode=='slow-popen':clock[0]+=6
+            elif mode=='late-popen':clock[0]=171
+            return process
+        def wait(timeout):
+            if mode=='late-zero':clock[0]=171;return 0
+            if mode=='denied':clock[0]=171;raise subprocess.TimeoutExpired(command,timeout)
+            clock[0]+=20;return 0
+        process.wait.side_effect=wait
+        if mode=='denied':process.poll.return_value=None
+        env={'GITHUB_REF':'refs/heads/'+route,'GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_SHA':'a'*40,'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1'}
+        with patch.dict(os.environ,env,clear=True),patch.object(os,'getcwd',return_value=str(root)),patch.object(sys,'argv',argv),patch('time.monotonic',side_effect=lambda:clock[0]),patch('builtins.print',side_effect=emitted),patch('subprocess.Popen',side_effect=popen) as opened,patch('subprocess.run',side_effect=AssertionError('new query')),patch('os.killpg',side_effect=PermissionError('denied') if mode=='denied' else None) as killed,contextlib.redirect_stdout(output),contextlib.redirect_stderr(output),self.assertRaises(SystemExit) as caught:
+            runpy.run_path(str(root/'Scripts/run_bounded.py'),run_name='__main__')
+        events=[json.loads(x.split(' ',1)[1]) for x in output.getvalue().splitlines() if x.startswith('PHOTOS_BOUNDED_TIMING ')]
+        return caught.exception.code,events,opened,process,killed,output.getvalue()
+    def testPreparationAndNativeClocksKeepOriginalParentAbsoluteOrigin(self):
+        code,events,opened,process,killed,text=self.exercise();self.assertEqual(code,0);opened.assert_called_once();killed.assert_not_called()
+        native=next(x for x in events if x['phase']=='install-native-dispatch')
+        self.assertEqual((native['preparation_deadline_monotonic'],native['native_dispatch_started_monotonic'],native['native_deadline_monotonic'],native['parent_deadline_monotonic']),(91,50,170,211))
+        self.assertEqual((native['preparation_limit_seconds'],native['native_limit_seconds'],native['phase_limit_seconds']),(90,120,210));process.wait.assert_called_once_with(timeout=120)
+    def testSlowPopenConsumesNative120RatherThanReceivingFreshWait(self):
+        code,events,opened,process,killed,text=self.exercise('slow-popen');self.assertEqual(code,0);process.wait.assert_called_once_with(timeout=114)
+        self.assertEqual(next(x for x in events if x['phase']=='install-native-dispatch')['native_deadline_monotonic'],170)
+        code,events,opened,process,killed,text=self.exercise('late-popen');self.assertEqual(code,124);opened.assert_called_once();process.wait.assert_not_called()
+    def testPreparationExpiryAndSlowDispatchReceiptNeverStartInstall(self):
+        for mode in ['expired-preparation','slow-native-receipt','expired-parent']:
+            with self.subTest(mode=mode):
+                code,events,opened,process,killed,text=self.exercise(mode);self.assertEqual(code,124);opened.assert_not_called();process.wait.assert_not_called();killed.assert_not_called()
+    def testNativeLateZeroFailsEvenWithFortySecondsLeftInParentPhase(self):
+        code,events,opened,process,killed,text=self.exercise('late-zero');self.assertEqual(code,124);self.assertIn('BOUNDED_COMMAND_TIMEOUT',text);killed.assert_not_called()
+        self.assertEqual(next(x for x in events if x['phase']=='timeout-observed')['monotonic'],171)
+        self.assertTrue(any(x['phase']=='cleanup-result' and x['status']=='child_reaped' and x['child_returncode']==0 and x['group_exit_confirmed'] is False for x in events))
+    def testMissingWrongNonfiniteParentCapAndWrongExactArgumentsReject(self):
+        variants=[dict(absolute=False),dict(cap=120),dict(cap=211),dict(parent=999),dict(parent=float('nan')),dict(parent=float('inf')),dict(command_change=lambda c:c.__setitem__(2,'uninstall')),dict(command_change=lambda c:c.__setitem__(3,'unowned')),dict(command_change=lambda c:c.__setitem__(4,'/other.app')),dict(command_change=lambda c:c.append('--extra')),dict(route='cell-ios-install-diagnostic')]
+        for kwargs in variants:
+            with self.subTest(kwargs=kwargs):
+                code,events,opened,process,killed,text=self.exercise(**kwargs);self.assertEqual(code,2);opened.assert_not_called();killed.assert_not_called()
+    def testOriginalSignalDenialStopsEscalationAndKeepsTenSecondCleanup(self):
+        import signal
+        code,events,opened,process,killed,text=self.exercise('denied');self.assertEqual(code,124);killed.assert_called_once_with(12345,signal.SIGTERM);self.assertEqual(process.wait.call_count,1)
+        timeout=next(x for x in events if x['phase']=='timeout-observed');self.assertEqual(timeout['cleanup_deadline_monotonic']-timeout['cleanup_started_monotonic'],10)
+        self.assertTrue(any(x['phase']=='cleanup-result' and x['status']=='signal_denied' for x in events))
+    def testParentCancellationMarksUncertainAndBlocksBootstrapAndCleanup(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        with tempfile.TemporaryDirectory() as folder:
+            gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+            gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+            with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',side_effect=KeyboardInterrupt('cancelled')) as called:
+                with self.assertRaises(KeyboardInterrupt):gate.command('install-owned-app',['xcrun','simctl','install','owned','app'],210,simulator=True)
+                self.assertTrue(gate.uncertain);self.assertEqual(called.call_count,1)
+                with self.assertRaisesRegex(ValueError,'blocks further'):gate.bootstrap()
+                gate.cleanup();self.assertEqual(called.call_count,1);self.assertEqual(gate.device,'owned')
+
+    def testSignalledWrapperExitBlocksAllFurtherNativeForBothFailureModes(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        for code in [-15,-2,-9,128,129,130,134,137,139,143,255]:
+            for allow_failure in [False,True]:
+                with self.subTest(code=code,allow_failure=allow_failure),tempfile.TemporaryDirectory() as folder:
+                    gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+                    gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+                    with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=code) as called:
+                        if allow_failure:self.assertEqual(gate.command('install-owned-app',['owned-command'],210,simulator=True,allow_failure=True)[0],code)
+                        else:
+                            with self.assertRaises(ValueError):gate.command('install-owned-app',['owned-command'],210,simulator=True)
+                        self.assertTrue(gate.uncertain);self.assertEqual(called.call_count,1)
+                        with self.assertRaisesRegex(ValueError,'blocks further'):gate.bootstrap()
+                        gate.cleanup();self.assertEqual(called.call_count,1);self.assertEqual(gate.device,'owned')
+    def testKilledBuildWrapperAlsoBlocksOwnedDeviceCleanup(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        for code in [-15,-9,128,130,134,137,139,143,255]:
+            with self.subTest(code=code),tempfile.TemporaryDirectory() as folder:
+                gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+                gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+                with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=code) as called:
+                    with self.assertRaises(ValueError):gate.command('build',['owned-build-command'],720,simulator=False)
+                    self.assertTrue(gate.uncertain);gate.cleanup();self.assertEqual(called.call_count,1)
+                    with self.assertRaisesRegex(ValueError,'blocks further'):gate.command('boot',['must-not-dispatch'],60,simulator=True)
+
+    def testSignalUncertaintyPrecedesReceiptFailureAndOrdinaryCodeIsNotReclassified(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        for code in [-15,130,1]:
+            with self.subTest(code=code),tempfile.TemporaryDirectory() as folder:
+                gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+                gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+                def retain(path,value):
+                    self.assertEqual(gate.uncertain,code in [-15,130]);raise OSError('timing retention failure')
+                with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=code) as called,patch.object(diagnostic,'save',side_effect=retain):
+                    with self.assertRaises(OSError):gate.command('install-owned-app',['owned-command'],210,simulator=True,allow_failure=True)
+                    self.assertEqual(gate.uncertain,code in [-15,130])
+                    if code in [-15,130]:gate.cleanup();self.assertEqual(called.call_count,1)
+
+    def testUnknownWrapperOutcomeFromLogReadFailureOrBuildInterruptionStopsCleanup(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        real_read=Path.read_text
+        def unreadable(path,*args,**kwargs):
+            if path.name=='build.log':raise OSError('owned wrapper log unreadable')
+            return real_read(path,*args,**kwargs)
+        for code in [0,-15,139]:
+            with self.subTest(code=code),tempfile.TemporaryDirectory() as folder:
+                gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+                gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+                with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=code) as called,patch.object(Path,'read_text',unreadable):
+                    with self.assertRaises(OSError):gate.command('build',['owned-build'],720,simulator=False)
+                    self.assertEqual(gate.events,[]);self.assertTrue(gate.uncertain);gate.cleanup();self.assertEqual(called.call_count,1)
+                    with self.assertRaisesRegex(ValueError,'blocks further'):gate.bootstrap()
+        with tempfile.TemporaryDirectory() as folder:
+            gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+            gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+            with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',side_effect=KeyboardInterrupt('build cancelled')) as called:
+                with self.assertRaises(KeyboardInterrupt):gate.command('build',['owned-build'],720,simulator=False)
+                self.assertTrue(gate.uncertain);gate.cleanup();self.assertEqual(called.call_count,1)
+
+    def testCancellationAfterKnownChildExitStillPreventsNewCleanupDispatch(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        for exception in [KeyboardInterrupt('cancelled after exit'),SystemExit(130)]:
+            with self.subTest(exception=type(exception).__name__),tempfile.TemporaryDirectory() as folder:
+                gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+                gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[]
+                with patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=0) as called,patch('run_swiftui_acceptance.save',side_effect=exception):
+                    with self.assertRaises(type(exception)):gate.command('build',['owned-build'],720,simulator=False)
+                    self.assertEqual(gate.events[0]['exit_code'],0);self.assertTrue(gate.uncertain)
+                    gate.cleanup();self.assertEqual(called.call_count,1)
+
+    def testActualMainCancellationInFinalReceiptOrBetweenCommandsNeverDispatchesCleanup(self):
+        import os
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as diagnostic
+        real_read=Path.read_text;admission={'product_sha':host.PRODUCT_SHA}
+        def read(path,*args,**kwargs):
+            if path==diagnostic.ROOT/'build/final-photos-host-source-before.json':return json.dumps(admission)
+            return real_read(path,*args,**kwargs)
+        for where in ['dispatch-timing','between-commands']:
+            for failure in [KeyboardInterrupt('cancelled'),SystemExit(130)]:
+                with self.subTest(where=where,failure=type(failure).__name__),tempfile.TemporaryDirectory() as folder:
+                    gate=object.__new__(diagnostic.HostDiagnostic);gate.started=0;gate.deadline=2280
+                    gate.source='a'*40;gate.source_tree='b'*40;gate.device='owned';gate.uncertain=False;gate.failures=[];gate.events=[];final=[]
+                    def run():
+                        if where=='between-commands':raise failure
+                        gate.command('install-owned-app',['owned-command'],210,simulator=True)
+                    gate.run=run
+                    def save(path,value):
+                        if path.name=='install-owned-app-dispatch-timing.json':raise failure
+                        if path.name=='acceptance.json':final.append(value)
+                    with patch.object(diagnostic,'admit_probe',return_value=admission),patch.object(diagnostic,'HostDiagnostic',return_value=gate),patch.object(diagnostic,'OUT',Path(folder)),patch('run_swiftui_acceptance.OUT',Path(folder)),patch.object(Path,'read_text',read),patch.object(diagnostic,'save',side_effect=save),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=0) as called,patch.object(diagnostic.signal,'signal'),patch.object(diagnostic.os,'chdir'):
+                        self.assertEqual(diagnostic.main(),1)
+                    self.assertTrue(gate.uncertain);self.assertEqual(gate.device,'owned');self.assertEqual(called.call_count,1 if where=='dispatch-timing' else 0)
+                    self.assertEqual(len(final),1);self.assertTrue(final[0]['simulator_uncertain']);self.assertFalse(final[0]['actual_host_diagnostic_passed'])
+
+    def testExactSplitRemovalRestoresAllHistoricalWrapperBytes(self):
+        import hashlib
+        source=(Path(__file__).resolve().parents[1]/'Scripts/run_bounded.py').read_text()
+        def restore(value):
+            for fragment in [PHOTOS_INSTALL_SPLIT_PREFIX,PHOTOS_INSTALL_SPLIT_HELPER,PHOTOS_INSTALL_SPLIT_NATIVE]:
+                if value.count(fragment)!=1:raise ValueError('Split fragment changed/duplicated')
+            restored=value.replace(PHOTOS_INSTALL_SPLIT_PREFIX,'').replace(PHOTOS_INSTALL_SPLIT_HELPER,'').replace(PHOTOS_INSTALL_SPLIT_NATIVE,'refuse_expired_parent()\ntry:\n')
+            # Rebinding the one existing parent-deadline route is the only
+            # intentional difference from this historical wrapper checksum.
+            if restored.count(host.PROBE_BRANCH)!=1:raise ValueError('Unexpected route rebinding')
+            return restored.replace(host.PROBE_BRANCH,'cell-ios-photos-host-final')
+        self.assertEqual(hashlib.sha256(restore(source).encode()).hexdigest(),'798a18065939c9787dcf27d42ab1917ee8d7dd4835d9ff48ef6b52e8b4cf1acd')
+        changed=source.replace('photos_cleanup_started + 10','photos_cleanup_started + 20');self.assertNotEqual(hashlib.sha256(restore(changed).encode()).hexdigest(),hashlib.sha256(restore(source).encode()).hexdigest())
+    def testNoDiagnosticCollectorsOrAppChangeAndFiveStrictStagesRemain(self):
+        import hashlib
+        root=Path(__file__).resolve().parents[1];driver=(root/'Scripts/run_ios_photos_host_diagnostic.py').read_text();wrapper=(root/'Scripts/run_bounded.py').read_text()
+        for token in ['ios_install_observer','InstallObservation','sample_receipt','install-device-log','install-only']:self.assertNotIn(token,driver+wrapper)
+        for name in ['ios_install_observer.py','run_ios_install_diagnostic.py','test_ios_install_observer.py','test_ios_install_diagnostic.py']:self.assertFalse((root/'Scripts'/name).exists())
+        self.assertEqual(host.product_control(root),(424,host.PRODUCT_CONTROL_SHA256))
+        for path,digest in host.PROBE_FIXED_FILES.items():self.assertEqual(hashlib.sha256((root/path).read_bytes()).hexdigest(),digest)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45]);self.assertIn("self.command('actual-photos-host', command, 630",driver);self.assertIn("command, 750, simulator=True",driver);self.assertIn("'work_budget_seconds': 2280",driver)
+
+
+
+class ManagedHostedDeploymentTests(unittest.TestCase):
+    def summary(self):
+        return {'totalTestCount':1,'passedTests':1,'failedTests':0,'skippedTests':0,'expectedFailures':0,
+                'result':'Passed','testFailures':[],'runtimeWarnings':[],
+                'devicesAndConfigurations':[{'device':{'deviceId':'owned'}}], 'startTime':101.0,'finishTime':109.0}
+    def log(self):
+        return "Test Case '-[CelluloidTests.PhoneEntryDesignTests testOriginalUIKitStyleMeasurementsAreRetained]' started.\nTest Case '-[CelluloidTests.PhoneEntryDesignTests testOriginalUIKitStyleMeasurementsAreRetained]' passed (0.001 seconds).\n** TEST EXECUTE SUCCEEDED **\n"
+    def testExactOneMethodSummaryAndFreshWallIntervalAccept(self):
+        import run_ios_photos_host_diagnostic as d
+        d.validate_hosted_deployment(self.summary(),self.log(),'owned',100,110)
+    def testWrongCountsSkipsWarningsOrDeviceNeverQualify(self):
+        import run_ios_photos_host_diagnostic as d
+        mutations=[('totalTestCount',0),('totalTestCount',True),('passedTests',0),('skippedTests',1),('failedTests',1),('expectedFailures',1),('result','Failed'),('runtimeWarnings',None),('runtimeWarnings',[{'message':'unrelated system warning'}]),('devicesAndConfigurations',[{'device':{'deviceId':'other'}}])]
+        for key,value in mutations:
+            s=self.summary();s[key]=value
+            with self.subTest(key=key,value=value),self.assertRaises(ValueError):d.validate_hosted_deployment(s,self.log(),'owned',100,110)
+    def testWrongOrMissingDuplicateMethodCannotBorrowOnePassSummary(self):
+        import run_ios_photos_host_diagnostic as d
+        for log in ['',self.log()*2,self.log().replace('testOriginalUIKitStyleMeasurementsAreRetained','testOther'),self.log().replace('CelluloidTests.PhoneEntryDesignTests','Other.Tests'),self.log().replace(' passed ',' failed '),self.log().replace("' started.\n","' skipped.\n"),self.log().splitlines()[1]+'\n** TEST EXECUTE SUCCEEDED **\n',self.log()+'Retrying after unexpected exit\n',self.log().replace('SUCCEEDED','FAILED'),self.log()+"Test Case '-[Other method]' started.\n"]:
+            with self.subTest(log=log),self.assertRaises(ValueError):d.validate_hosted_deployment(self.summary(),log,'owned',100,110)
+    def testStructuredToolDiagnosticsAndMalformedAdditionalCaseRowsReject(self):
+        import run_ios_photos_host_diagnostic as d
+        for line in ['xcodebuild: error: diagnostic sentinel','xcodebuild: warning: diagnostic sentinel',
+                     '--- xcodebuild: WARNING: Using the first of multiple matching destinations:',
+                     '--- xcodebuild: ERROR: diagnostic sentinel',
+                     'warning: diagnostic sentinel','error: diagnostic sentinel',
+                     '/tmp/Example.swift:12:3: warning: diagnostic sentinel',
+                     '/tmp/Example.swift:12: error: diagnostic sentinel','Example.m:12:3: fatal error: sentinel',
+                     "Test Case malformed extra event", "Test case 'Other.method()' passed on 'Other'", "  Test Case '-[Other method]' started."]:
+            with self.subTest(line=line),self.assertRaises(ValueError):d.validate_hosted_deployment(self.summary(),self.log()+line+'\n','owned',100,110)
+        # Known historical ordinary diagnostics are retained for review, not
+        # relabelled as compiler failures by a broad substring search.
+        for line in ['fopen failed for data file: errno = 2 (No such file or directory)',
+                     '[XPCErrors] non-launching port is incompatible with service identifier',
+                     'PHOTOS_OUTPUT_OWNED_STAGING_CLEANUP_FAILED domain=NSPOSIXErrorDomain code=13']:
+            d.validate_hosted_deployment(self.summary(),self.log()+line+'\n','owned',100,110)
+    def testStaleFutureMissingOrNonfiniteSummaryCannotMixOldResult(self):
+        import run_ios_photos_host_diagnostic as d
+        for key,value in [('startTime',99),('finishTime',111),('startTime',None),('finishTime',float('nan')),('startTime',True),('finishTime',100)]:
+            s=self.summary();s[key]=value
+            with self.subTest(key=key,value=value),self.assertRaises(ValueError):d.validate_hosted_deployment(s,self.log(),'owned',100,110)
+    def exercise(self,mode='success',remaining=500):
+        from unittest.mock import patch
+        import os
+        import run_ios_photos_host_diagnostic as d
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);binary=root/'Celluloid.app/Celluloid';binary.parent.mkdir();binary.write_bytes(b'original')
+            binding={'source_sha':'a'*40,'source_tree':'b'*40};(root/'build-binding.json').write_text(json.dumps(binding))
+            result=root/'hosted-deployment-123-1.xcresult';target=root/'foreign';target.mkdir()
+            if mode=='stale':result.mkdir()
+            if mode=='stale-symlink':result.symlink_to(target,target_is_directory=True)
+            gate=object.__new__(d.HostDiagnostic);gate.device='owned';gate.source='a'*40;gate.source_tree='b'*40;gate.uncertain=False;gate.deadline=100+remaining
+            calls=[]
+            base=['xcodebuild','-project','Celluloid.xcodeproj','-scheme','Celluloid','-configuration','Debug','-destination','platform=iOS Simulator,id=owned','-derivedDataPath','same-derived','CODE_SIGNING_ALLOWED=NO','CODE_SIGNING_REQUIRED=NO','COMPILER_INDEX_STORE_ENABLE=NO']
+            def command(name,argv,seconds,**kwargs):
+                calls.append((name,argv,seconds,kwargs))
+                if name=='deploy-hosted-app':
+                    if mode=='cancel':gate.uncertain=True;raise KeyboardInterrupt('cancelled')
+                    if mode=='timeout':gate.uncertain=True;return 124,'BOUNDED_COMMAND_TIMEOUT'
+                    if mode=='denied':gate.uncertain=True;return 124,'CLEANUP_UNCONFIRMED'
+                    if mode=='watchdog':return 65,'Test execution timed out'
+                    if mode=='ordinary-failure':return 65,'Assertion failed'
+                    if mode=='overflow':return 1,'OUTPUT_LIMIT'
+                    if mode!='missing-result':
+                        if mode=='foreign-result':result.symlink_to(target,target_is_directory=True)
+                        else:result.mkdir()
+                    return 0,self.log()
+                self.assertEqual(name,'deploy-hosted-app-summary')
+                return 0,json.dumps(self.summary())
+            gate.command=command
+            with patch.object(d,'OUT',root),patch.dict(os.environ,{'GITHUB_RUN_ID':'123','GITHUB_RUN_ATTEMPT':'1'}),patch.object(d,'check_build') as checked,patch.object(d,'check_owned_versions') as versions,patch.object(d.time,'time',side_effect=[100,110]),patch.object(d.time,'monotonic',return_value=100):
+                if mode=='success':gate.deploy_hosted_app(base,binary)
+                elif mode=='cancel':
+                    with self.assertRaises(KeyboardInterrupt):gate.deploy_hosted_app(base,binary)
+                else:
+                    with self.assertRaises(ValueError):gate.deploy_hosted_app(base,binary)
+            receipt=json.loads((root/'hosted-deployment.json').read_text()) if (root/'hosted-deployment.json').exists() else None
+            return calls,receipt,checked.call_count,versions.call_count,gate.uncertain,str(result),base
+    def testWhole300Plus30PackageMustFitBeforeAnyNative(self):
+        for remaining in [315,344.999]:
+            with self.subTest(remaining=remaining):
+                calls,receipt,*_=self.exercise('package-unfunded',remaining=remaining)
+                self.assertEqual(calls,[]);self.assertIsNone(receipt)
+        calls,receipt,*_=self.exercise(remaining=345)
+        self.assertEqual([item[2] for item in calls],[300,30]);self.assertIsNotNone(receipt)
+
+    def testOnlyOneManagedCommandThenOfficialSummaryAndTwiceBoundPayload(self):
+        calls,receipt,checks,versions,uncertain,result,base=self.exercise()
+        self.assertEqual(checks,2);self.assertEqual(versions,2);self.assertFalse(uncertain)
+        self.assertEqual(calls,[('deploy-hosted-app',base+['-resultBundlePath',result,'-parallel-testing-enabled','NO','-collect-test-diagnostics','never','-only-testing:CelluloidTests/PhoneEntryDesignTests/testOriginalUIKitStyleMeasurementsAreRetained','test-without-building'],300,{'simulator':True,'allow_failure':True}),('deploy-hosted-app-summary',['xcrun','xcresulttool','get','test-results','summary','--path',result],30,{})])
+        self.assertEqual((receipt['source_sha'],receipt['source_tree'],receipt['run_id'],receipt['run_attempt'],receipt['device_id']),('a'*40,'b'*40,'123','1','owned'))
+        self.assertEqual(receipt['photos_host_methods_executed'],0);self.assertIs(receipt['manual_simctl_install'],False)
+    def testStaleResultRefusesBeforeNativeAndMissingForeignResultBeforeSummary(self):
+        for mode,count in [('stale',0),('stale-symlink',0),('missing-result',1),('foreign-result',1)]:
+            with self.subTest(mode=mode):
+                calls,receipt,*_=self.exercise(mode);self.assertEqual(len(calls),count);self.assertIsNone(receipt)
+    def testTimeoutDenialCancellationWatchdogFailureOrOverflowNeverRequestsSummary(self):
+        for mode in ['timeout','denied','cancel','watchdog','ordinary-failure','overflow']:
+            with self.subTest(mode=mode):
+                calls,receipt,checks,versions,uncertain,*_=self.exercise(mode);self.assertEqual(len(calls),1);self.assertIsNone(receipt)
+                if mode in ['timeout','denied','cancel','watchdog']:self.assertTrue(uncertain)
+    def testRealManagedCommandSignalAndLateZeroBlockSummaryAndCleanup(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as d
+        for code in [-15,-2,130,137,143,124]:
+            with self.subTest(code=code),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);gate=object.__new__(d.HostDiagnostic);gate.device='owned';gate.source='a'*40;gate.source_tree='b'*40;gate.started=0;gate.deadline=2280;gate.uncertain=False;gate.events=[];gate.failures=[]
+                with patch.object(d,'OUT',root),patch('run_swiftui_acceptance.OUT',root),patch('time.monotonic',return_value=100),patch('subprocess.call',return_value=code) as called:
+                    gate.command('deploy-hosted-app',['owned-xcodebuild'],300,simulator=True,allow_failure=True)
+                    self.assertTrue(gate.uncertain)
+                    with self.assertRaisesRegex(ValueError,'blocks further'):gate.command('deploy-hosted-app-summary',['must-not-dispatch'],30)
+                    gate.cleanup();self.assertEqual(called.call_count,1)
+        with tempfile.TemporaryDirectory() as folder:
+            gate=object.__new__(d.HostDiagnostic);gate.uncertain=False;gate.failures=[];clock=[100.0]
+            def late(self,*args,**kwargs):clock[0]=400.01;return 0,'late zero'
+            with patch.object(d,'OUT',Path(folder)),patch.object(d.time,'monotonic',side_effect=lambda:clock[0]),patch.object(d.Acceptance,'command',late):
+                with self.assertRaisesRegex(ValueError,'deadline exceeded'):gate.command('deploy-hosted-app',['owned-xcodebuild'],300,simulator=True)
+                self.assertTrue(gate.uncertain)
+                with self.assertRaisesRegex(ValueError,'blocks further'):gate.command('deploy-hosted-app-summary',['must-not-dispatch'],30)
+    def testSummaryReservesItsWholeCapAndCleanupBeforeDispatch(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as d
+        gate=object.__new__(d.HostDiagnostic);gate.uncertain=False;gate.failures=[];gate.events=[];gate.deadline=144
+        with tempfile.TemporaryDirectory() as folder,patch.object(d,'OUT',Path(folder)),patch('time.monotonic',return_value=100),patch('subprocess.call') as called:
+            with self.assertRaisesRegex(ValueError,'full phase and cleanup'):gate.command('deploy-hosted-app-summary',['xcresulttool'],30)
+            called.assert_not_called()
+    def testLiveDriverUsesHostedDeploymentOnceBeforeUnchangedBootstrapWithoutInstall(self):
+        import ast
+        root=Path(__file__).resolve().parents[1];source=(root/'Scripts/run_ios_photos_host_diagnostic.py').read_text();tree=ast.parse(source)
+        run=next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='run')
+        calls=[n for n in ast.walk(run) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute)]
+        deployment=[n for n in calls if n.func.attr=='deploy_hosted_app'];bootstrap=[n for n in calls if n.func.attr=='bootstrap']
+        self.assertEqual(len(deployment),1);self.assertEqual(len(bootstrap),1);self.assertLess(deployment[0].lineno,bootstrap[0].lineno)
+        self.assertNotIn("'simctl', 'install'",source);self.assertNotIn("'install-owned-app'",source)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45]);self.assertIn("self.command('actual-photos-host', command, 630",source);self.assertIn("command, 750, simulator=True",source);self.assertIn("'work_budget_seconds': 2280",source)
+
+
+# Exact observed More→Extensions level; removing this literal must recover the
+# entire published parent, including all five assertions and public filename.
+EXTENSIONS_MENU_BLOCK = '        // Run37954719871: More presents a public Extensions submenu first.\n        // Keep direct extension selection when already exposed; never guess\n        // another extension, tap a coordinate or dismiss the keyboard tutorial.\n        if photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0 {\n            stage = "open-observed-extensions-menu"\n            try withinBudget()\n            guard photos.alerts.count == 0,\n                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {\n                throw failure("Unknown alert before Extensions; no action taken")\n            }\n            let entry = photos.buttons.matching(NSPredicate(format: "label == %@", "Extensions"))\n            guard entry.count == 1 else { throw failure("Expected one observed Extensions entry") }\n            let button = try unique(entry)\n            guard entry.count == 1, button.label == "Extensions",\n                  button.isHittable, button.isEnabled,\n                  photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0 else {\n                throw failure("Observed Extensions entry changed; no action taken")\n            }\n            print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(button.label) identifier=\\(button.identifier)")\n            try withinBudget()\n            guard photos.alerts.count == 0,\n                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0,\n                  entry.count == 1, button.label == "Extensions",\n                  button.isHittable, button.isEnabled,\n                  photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0 else {\n                throw failure("Observed Extensions state changed before tap; no action taken")\n            }\n            button.tap()\n            checkpoint("observed-extensions-opened")\n        }\n'
+
+def restore_observed_extensions_delta(source):
+    if source.count(EXTENSIONS_MENU_BLOCK)!=1:raise ValueError('Missing/changed/duplicate observed Extensions branch')
+    restored=source.replace(EXTENSIONS_MENU_BLOCK,'')
+    if restored.count('        stage = "invoke-celluloid-extension"\n        try tap(photos.buttons.matching(identifier: "CelluloidPhotoExtension"))')!=1:raise ValueError('Original exact extension selection changed')
+    return restored
+
+class ObservedExtensionsMenuTests(unittest.TestCase):
+    def setUp(self):self.source=restore_late_intro_delta(restore_late_notification_delta(restore_readiness_notification_delta(read_prior_reviewed_ui_source())))
+    def testSingleObservedBranchRestoresEveryPublishedParentByte(self):
+        import hashlib
+        self.assertEqual(hashlib.sha256(restore_observed_extensions_delta(self.source).encode()).hexdigest(), 'a60ced7ebf2460013d7686fd326efe392e2e9426f688e7e7866b2fddadd1fc23')
+        validate_observed_notification_navigation_source(self.source)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45])
+        self.assertEqual(EXTENSIONS_MENU_BLOCK.count('button.tap()'),1)
+    def testPresentOrAmbiguousExtensionCannotTriggerAnAlternativeSelection(self):
+        for old,new in [(').count == 0 {',').count > 0 {'),(').count == 0 else {',').count >= 0 else {'),('"CelluloidPhotoExtension"','"Celluloid"'),('"label == %@"','"label CONTAINS %@"')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_observed_extensions_delta(self.source.replace(old,new))
+        for old,new in [('entry.count == 1','entry.count > 0'),('entry.count == 1','true'),('button.label == "Extensions"','true'),('"Extensions"','"More"')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_observed_extensions_delta(self.source.replace(old,new))
+    def testMissingDisabledOccludedOrUnknownAlertEntryCannotBeTapped(self):
+        for old,new in [('button.isHittable','true'),('button.isEnabled','true'),('photos.alerts.count == 0','true'),('XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0','true'),('let button = try unique(entry)','let button = entry.firstMatch'),('try withinBudget()','try withinBudgetBypass()')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_observed_extensions_delta(self.source.replace(old,new))
+    def testFreshFencesAfterWaitAndReceiptBeforeOnlyTap(self):
+        block=EXTENSIONS_MENU_BLOCK
+        positions=[block.index(token) for token in ['let button = try unique(entry)', 'print("IOS_PHOTOS_HOST_ACTION', '            try withinBudget()', '            button.tap()'] if token != '            try withinBudget()']
+        self.assertEqual(positions,sorted(positions))
+        after_receipt=block.split('print("IOS_PHOTOS_HOST_ACTION',1)[1]
+        before_tap=after_receipt.split('            button.tap()',1)[0]
+        required=['try withinBudget()', 'photos.alerts.count == 0', 'XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0', 'entry.count == 1', 'button.label == "Extensions"', 'button.isHittable', 'button.isEnabled', 'photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0']
+        for token in required:
+            self.assertEqual(before_tap.count(token),1)
+            changed=block.replace(before_tap,before_tap.replace(token,'true',1),1)
+            with self.subTest(token=token),self.assertRaises(ValueError):restore_observed_extensions_delta(self.source.replace(block,changed))
+    def testExtraClickCoordinatesKeyboardActionOrExactTargetChangeRejects(self):
+        for old,new in [('button.tap()','button.tap()\n            button.tap()'),('button.tap()','button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()'),('button.tap()','photos.buttons["Continue"].tap()'),('checkpoint("observed-extensions-opened")','checkpoint("observed-extensions-opened")\n            try tap(photos.buttons.matching(identifier: "Other"))'),('try tap(photos.buttons.matching(identifier: "CelluloidPhotoExtension"))','try tap(photos.buttons.matching(identifier: "Other"))')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_observed_extensions_delta(self.source.replace(old,new))
+
+
+# Strict new-source inverse before the five historical source-test fixture loaders.
+# Every original test method and every earlier source validator remains intact.
+LATE_INTRO_REPLACEMENTS = [('    private var didLaunchOwnedPhotos = false\n', '    private var didLaunchOwnedPhotos = false\n    private var didAttemptObservedWhatsNew = false\n'), ('    private func dismissObservedWhatsNewIfPresent() throws {\n        // Observed on run 37887244922 / iOS 27.0 (24A434): this informational\n        // sheet appears after Collections opens. It contains no permission or\n        // agreement. Accept only the exact observed page, never any Continue.\n        let title = photos.staticTexts.matching(NSPredicate(format: "label == %@", "What’s New in Photos"))\n        guard title.count > 0 else { return }\n        stage = "dismiss-observed-photos-whats-new"\n        try withinBudget()\n        guard photos.alerts.count == 0,\n              XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {\n            throw failure("Unexpected alert over Photos introduction; no action taken")\n        }\n        _ = try unique(title)\n        let observedSections = [\n            "Improved Shared Albums, Share photos and videos in their original resolution with all of your friends and family, even if they don’t have an Apple device.",\n            "New Ways to Organize, Quickly locate photos with Captured by Me and Identity Documents in Utilities. Use star ratings and keywords to mark your best shots.",\n            "New Ways to Enjoy, Play a selection of photos and videos as a slideshow, and save the best frame of a video as a still photo."\n        ]\n        for label in observedSections {\n            let section = photos.otherElements.matching(NSPredicate(format: "label == %@", label))\n            guard section.count == 1, section.element.isHittable else {\n                throw failure("Photos introduction differs from observed page; no action taken")\n            }\n        }\n        let proceed = try unique(photos.buttons.matching(NSPredicate(format: "label == %@", "Continue")))\n        checkpoint("observed-photos-whats-new")\n        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(proceed.label) identifier=\\(proceed.identifier)")\n        proceed.tap()\n        guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),\n                    object: title.element)], timeout: 8) == .completed else {\n            throw failure("Observed Photos introduction did not close")\n        }\n        checkpoint("observed-photos-whats-new-dismissed")\n    }\n', '    @discardableResult\n    private func dismissObservedWhatsNewIfPresent(recognitionDeadline: TimeInterval? = nil, wallDeadline: TimeInterval? = nil) throws -> TimeInterval {\n        // Observed on run 37887244922 / iOS 27.0 (24A434): this informational\n        // sheet appears after Collections opens. It contains no permission or\n        // agreement. Accept only the exact observed page, never any Continue.\n        let title = photos.staticTexts.matching(NSPredicate(format: "label == %@", "What’s New in Photos"))\n        guard title.count > 0 else { return 0 }\n        guard !didAttemptObservedWhatsNew else { throw failure("Repeated Photos introduction; no action taken") }\n        var activeDeadline = recognitionDeadline ?? (started + 120)\n        func remaining() throws -> TimeInterval {\n            try withinBudget()\n            guard didLaunchOwnedPhotos, photos.state == .runningForeground else {\n                throw failure("Owned Photos introduction lost foreground")\n            }\n            let available = min(activeDeadline, started + 120) - ProcessInfo.processInfo.systemUptime\n            guard available > 0 else { throw failure("Photos introduction exhausted its absolute deadline") }\n            return min(8, available)\n        }\n        stage = "dismiss-observed-photos-whats-new"\n        try withinBudget()\n        guard photos.alerts.count == 0,\n              XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {\n            throw failure("Unexpected alert over Photos introduction; no action taken")\n        }\n        _ = try unique(title, timeout: remaining())\n        let observedSections = [\n            "Improved Shared Albums, Share photos and videos in their original resolution with all of your friends and family, even if they don’t have an Apple device.",\n            "New Ways to Organize, Quickly locate photos with Captured by Me and Identity Documents in Utilities. Use star ratings and keywords to mark your best shots.",\n            "New Ways to Enjoy, Play a selection of photos and videos as a slideshow, and save the best frame of a video as a still photo."\n        ]\n        for label in observedSections {\n            let section = photos.otherElements.matching(NSPredicate(format: "label == %@", label))\n            guard section.count == 1, section.element.isHittable else {\n                throw failure("Photos introduction differs from observed page; no action taken")\n            }\n        }\n        let actions = photos.buttons.matching(NSPredicate(format: "label == %@", "Continue"))\n        let proceed = try unique(actions, timeout: remaining())\n        guard title.count == 1, title.element.label == "What’s New in Photos", title.element.isHittable,\n              actions.count == 1, proceed.label == "Continue", proceed.isHittable, proceed.isEnabled,\n              photos.alerts.count == 0,\n              XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {\n            throw failure("Exact Photos introduction recognition failed; no action taken")\n        }\n        // Recognition, including the three exact sections above, consumes the\n        // original Collections wait. Only a recognized page may use one 24-second\n        // handling allocation, with a caller-supplied 32-second whole-window bound.\n        _ = try remaining()\n        let handlingStarted = ProcessInfo.processInfo.systemUptime\n        if let recognitionDeadline = recognitionDeadline {\n            guard let wallDeadline = wallDeadline, handlingStarted < recognitionDeadline,\n                  recognitionDeadline <= wallDeadline else {\n                throw failure("Late or invalid Photos introduction recognition")\n            }\n            activeDeadline = min(min(handlingStarted + 24, wallDeadline), started + 120)\n            print("IOS_PHOTOS_HOST_INTRO_TIMING phase=recognized started=\\(handlingStarted) recognitionDeadline=\\(recognitionDeadline) handlingDeadline=\\(activeDeadline) wallDeadline=\\(wallDeadline)")\n        }\n        checkpoint("observed-photos-whats-new")\n        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(proceed.label) identifier=\\(proceed.identifier)")\n        // Evidence and AX calls spend the same handling allocation. Resolve\n        // all observed identities again before the one permitted tap.\n        for label in observedSections {\n            let section = photos.otherElements.matching(NSPredicate(format: "label == %@", label))\n            guard section.count == 1, section.element.isHittable else {\n                throw failure("Photos introduction changed before tap; no action taken")\n            }\n        }\n        guard title.count == 1, title.element.label == "What’s New in Photos", title.element.isHittable,\n              actions.count == 1, proceed.label == "Continue", proceed.isHittable, proceed.isEnabled,\n              photos.alerts.count == 0,\n              XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0,\n              !didAttemptObservedWhatsNew else {\n            throw failure("Photos introduction owner or public controls changed; no action taken")\n        }\n        _ = try remaining()\n        didAttemptObservedWhatsNew = true\n        proceed.tap()\n        guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),\n                    object: title.element)], timeout: try remaining()) == .completed else {\n            throw failure("Observed Photos introduction did not close")\n        }\n        _ = try remaining()\n        checkpoint("observed-photos-whats-new-dismissed")\n        _ = try remaining()\n        if recognitionDeadline != nil {\n            print("IOS_PHOTOS_HOST_INTRO_TIMING phase=handled elapsed=\\(ProcessInfo.processInfo.systemUptime - handlingStarted) handlingDeadline=\\(activeDeadline)")\n        }\n        _ = try remaining()\n        return ProcessInfo.processInfo.systemUptime - handlingStarted\n    }\n'), ('    private func selectObservedCollections() throws {', '    private func observedCollectionsWithinOriginalWait(_ query: XCUIElementQuery) throws -> XCUIElement {\n        // Run37959948655: the exact introduction appeared after the first\n        // title check and occluded an already-selected Collections tab.\n        let waitingStarted = ProcessInfo.processInfo.systemUptime\n        let wallDeadline = min(waitingStarted + 32, started + 120)\n        var deadline = min(waitingStarted + 8, wallDeadline)\n        var handlingElapsed: TimeInterval = 0\n        while ProcessInfo.processInfo.systemUptime < deadline {\n            try withinBudget()\n            let handled = try dismissObservedWhatsNewIfPresent(recognitionDeadline: deadline, wallDeadline: wallDeadline)\n            guard handled.isFinite, handled >= 0, handled <= 24 else {\n                throw failure("Photos introduction handling allocation exceeded")\n            }\n            if handled > 0 {\n                guard handlingElapsed == 0, didAttemptObservedWhatsNew else {\n                    throw failure("Repeated Photos introduction handling allocation")\n                }\n                handlingElapsed = handled\n                // Restore only the time actually spent handling the known\n                // page; recognition and all other observations spend the 8 seconds.\n                deadline = min(deadline + handled, wallDeadline)\n                print("IOS_PHOTOS_HOST_INTRO_TIMING phase=resume readinessElapsed=\\(ProcessInfo.processInfo.systemUptime - waitingStarted - handlingElapsed) handlingElapsed=\\(handlingElapsed) readinessDeadline=\\(deadline) wallDeadline=\\(wallDeadline)")\n            }\n            stage = "select-observed-collections"\n            guard didLaunchOwnedPhotos, photos.state == .runningForeground,\n                  photos.alerts.count == 0,\n                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {\n                throw failure("Unexpected Photos interruption during Collections wait; no action taken")\n            }\n            guard query.count == 1 else { throw failure("Observed Collections identity changed during wait") }\n            let element = query.element\n            if element.isHittable, element.isEnabled {\n                guard ProcessInfo.processInfo.systemUptime < deadline else {\n                    throw failure("Original Collections wait deadline reached")\n                }\n                return element\n            }\n            let remaining = deadline - ProcessInfo.processInfo.systemUptime\n            guard remaining > 0 else { throw failure("Original Collections wait deadline reached") }\n            Thread.sleep(forTimeInterval: min(0.1, remaining))\n        }\n        throw failure("Expected one visible enabled public control at " + stage)\n    }\n    private func selectObservedCollections() throws {'), ('        let collections = try unique(query)\n', '        let collections = try observedCollectionsWithinOriginalWait(query)\n')]
+
+def restore_late_intro_delta(source):
+    for old,new in reversed(LATE_INTRO_REPLACEMENTS):
+        if source.count(new)!=1:raise ValueError('Missing/changed/duplicated bounded late-introduction delta')
+        source=source.replace(new,old)
+    return source
+
+class LateIntroductionSourceTests(unittest.TestCase):
+    def setUp(self):self.source=restore_late_notification_delta(restore_readiness_notification_delta(read_prior_reviewed_ui_source()))
+    def testExactInversePreservesEntirePublishedUIAndAllFiveMethods(self):
+        import hashlib
+        restored=restore_late_intro_delta(self.source)
+        self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'5c5f20f750f311459bde4707b54012653c75542487ebf8ada2d8862b94c9ead2')
+        validate_observed_notice_source(restored);validate_observed_notification_navigation_source(restored)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45])
+    def testOnlyOneOriginalEightSecondWindowAndInheritedDeadlineForAllHandlerWaits(self):
+        helper=LATE_INTRO_REPLACEMENTS[2][1]
+        self.assertEqual(helper.count('waitingStarted + 8'),1)
+        self.assertLess(helper.index('var deadline ='),helper.index('while ProcessInfo'))
+        self.assertEqual(helper.count('waitingStarted + 8'),1);self.assertEqual(helper.count('waitingStarted + 32'),1)
+        self.assertEqual(helper.count('deadline = min(deadline + handled, wallDeadline)'),1)
+        handler=LATE_INTRO_REPLACEMENTS[1][1]
+        self.assertEqual(handler.count('timeout: remaining()')+handler.count('timeout: try remaining()'),3)
+        self.assertNotIn('timeout: 8',handler)
+        for old,new in [('recognitionDeadline: deadline','recognitionDeadline: nil'),('min(8, available)','max(8, available)'),('timeout: remaining()','timeout: 8'),('waitingStarted + 8','waitingStarted + 16'),('handlingStarted + 24','handlingStarted + 48'),('deadline + handled','ProcessInfo.processInfo.systemUptime + 8'),('handlingStarted < recognitionDeadline','true'),('recognitionDeadline <= wallDeadline','true'),('Thread.sleep(forTimeInterval: min(0.1, remaining))','Thread.sleep(forTimeInterval: 8)')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_late_intro_delta(self.source.replace(old,new))
+    def testNoUnknownChangedDuplicatePageOrPermissionCanAuthorizeAction(self):
+        for old,new in [('title.count == 1','title.count > 0'),('section.count == 1','section.count > 0'),('actions.count == 1','actions.count > 0'),('proceed.label == "Continue"','true'),('proceed.isHittable','true'),('proceed.isEnabled','true'),('photos.alerts.count == 0','true'),('XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0','true'),('didLaunchOwnedPhotos','true'),('photos.state == .runningForeground','true')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_late_intro_delta(self.source.replace(old,new))
+        for label in [NOTICE_TITLE,*NOTICE_SECTIONS,'Continue']:
+            with self.subTest(label=label),self.assertRaises(ValueError):restore_late_intro_delta(self.source.replace('"'+label+'"','"Wrong page"'))
+    def testOnceLatchAndDeadlineRemainImmediatelyBeforeOnlyIntroductionTap(self):
+        handler=LATE_INTRO_REPLACEMENTS[1][1]
+        self.assertEqual(handler.count('proceed.tap()'),1)
+        required='        _ = try remaining()\n        didAttemptObservedWhatsNew = true\n        proceed.tap()'
+        self.assertEqual(handler.count(required),1)
+        self.assertLess(handler.index('checkpoint("observed-photos-whats-new")'),handler.index('for label in observedSections {',handler.index('checkpoint("observed-photos-whats-new")')))
+        for old,new in [('!didAttemptObservedWhatsNew','true'),('didAttemptObservedWhatsNew = true','didAttemptObservedWhatsNew = false'),(required,required.replace('        _ = try remaining()\n','')),(required,required.replace('        didAttemptObservedWhatsNew = true\n','')+'\n        didAttemptObservedWhatsNew = true')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_late_intro_delta(self.source.replace(old,new))
+    def testLateHandlerDoesNotGrantOrDismissPermissionAndExistingCollectionsAssertionsRemain(self):
+        helper=LATE_INTRO_REPLACEMENTS[2][1]
+        self.assertNotIn('.tap()',helper);self.assertNotIn('declineObservedPhotosNotificationsIfPresent',helper);self.assertNotIn('"Allow"',helper)
+        for old,new in [('try dismissObservedWhatsNewIfPresent(recognitionDeadline: deadline, wallDeadline: wallDeadline)','try tap(photos.buttons.matching(identifier: "Continue"))'),('guard query.count == 1','guard query.count > 0'),('let element = query.element','let element = query.firstMatch')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_late_intro_delta(self.source.replace(old,new))
+
+    def testClockAllocationPreservesUnusedReadinessAndRejectsSlowReceiptsLateRecognitionOrCaseEnd(self):
+        # Portable arithmetic/source-boundary regression, not execution of Swift AX.
+        handler=LATE_INTRO_REPLACEMENTS[1][1];wait=LATE_INTRO_REPLACEMENTS[2][1]
+        for token in ['handlingStarted < recognitionDeadline','min(min(handlingStarted + 24, wallDeadline), started + 120)','_ = try remaining()\n        didAttemptObservedWhatsNew = true']:
+            self.assertIn(token,handler)
+        self.assertIn('deadline = min(deadline + handled, wallDeadline)',wait)
+        def allocate(recognized,segments,case_end=120):
+            began=0;ready=min(began+8,case_end);wall=min(began+32,case_end)
+            if not 0 <= recognized < ready:raise ValueError('late recognition')
+            handling_deadline=min(recognized+24,wall,case_end);now=recognized;tap=False
+            for name,cost in segments:
+                now+=cost
+                if now >= handling_deadline:raise ValueError('handling deadline before '+name)
+                if name=='tap':tap=True
+            handled=now-recognized;resumed=min(ready+handled,wall)
+            if not now < resumed:raise ValueError('original readiness exhausted')
+            return resumed-now,handled,resumed,tap
+        self.assertEqual(allocate(3,[('evidence',2),('fresh-identity',2),('tap',0.1),('close',2),('receipt',0.4)]),(5.0,6.5,14.5,True))
+        self.assertEqual(allocate(7,[('tap',0.1),('close',0.9)]),(1.0,1.0,9.0,True))
+        for recognized,segments,case_end in [(8,[],120),(8.01,[],120),(1,[('evidence',24),('tap',0)],120),(1,[('fresh-identity',24.01),('tap',0)],120),(1,[('tap',0.1),('close',23.9)],120),(1,[('tap',0.1),('receipt',1)],2)]:
+            with self.subTest(recognized=recognized,segments=segments,case_end=case_end),self.assertRaises(ValueError):allocate(recognized,segments,case_end)
+
+# Exact post-late-introduction notification scope; all inherited tests consume
+# the strict inverse before their existing source assertions.
+LATE_NOTIFICATION_REPLACEMENTS = [('    private var didAttemptObservedWhatsNew = false\n', '    private var didAttemptObservedWhatsNew = false\n    private var didCompleteLateObservedWhatsNew = false\n    private var didAttemptObservedNotificationDenial = false\n'), ('        try selectObservedCollections()\n', '        try selectObservedCollections()\n        try declineLateObservedNotificationsIfNeeded()\n'), ('    private func declineObservedPhotosNotificationsIfPresent() throws {\n        // Run37912970403 screenshot after the introduction: only this exact\n        // Photos notification request may be denied. Never grant notifications.\n        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")\n        let alerts = springboard.alerts\n        guard alerts.firstMatch.waitForExistence(timeout: 2) else {\n            guard photos.alerts.count == 0 else { throw failure("Unknown Photos alert; no action taken") }\n            return\n        }\n        stage = "decline-observed-photos-notifications"\n        try withinBudget()\n        guard alerts.count == 1, photos.alerts.count == 0 else {\n            throw failure("Multiple or unexpected Photos notification prompts; no action taken")\n        }\n        let proof = XCTAttachment(string: String(alerts.element.debugDescription.prefix(80_000)))\n        proof.name = "ios-photos-host-notification-candidate-ax"; proof.lifetime = .keepAlways; add(proof)\n        // Keep the action query scoped to this title and body even if the\n        // system replaces its alert between observation and tap resolution.\n        let observed = alerts.containing(.staticText, identifier: "“Photos” Would Like to Send You Notifications")\n            .containing(.staticText, identifier: "Notifications may include alerts, sounds, and icon badges. These can be configured in Settings.")\n        guard observed.count == 1 else { throw failure("Unknown notification prompt; no action taken") }\n        let alert = observed.element\n        let title = alert.staticTexts.matching(NSPredicate(format: "label == %@", "“Photos” Would Like to Send You Notifications"))\n        let body = alert.staticTexts.matching(NSPredicate(format: "label == %@", "Notifications may include alerts, sounds, and icon badges. These can be configured in Settings."))\n        let deny = alert.buttons.matching(NSPredicate(format: "label == %@", "Don’t Allow"))\n        let allow = alert.buttons.matching(NSPredicate(format: "label == %@", "Allow"))\n        guard title.count == 1, body.count == 1, deny.count == 1, allow.count == 1,\n              alert.buttons.count == 2, title.element.isHittable, body.element.isHittable else {\n            throw failure("Notification prompt differs from observed Photos request; no action taken")\n        }\n        let decline = try unique(deny)\n        _ = try unique(allow)\n        // Retain one prompt screenshot and the alert AX above; avoid a second\n        // full Photos AX traversal on this 120-second critical path.\n        let screenshot = XCTAttachment(screenshot: photos.screenshot())\n        screenshot.name = "ios-photos-host-observed-photos-notifications"; screenshot.lifetime = .keepAlways; add(screenshot)\n        print("IOS_PHOTOS_HOST_CHECKPOINT observed-photos-notifications stage=\\(stage)")\n        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(decline.label) identifier=\\(decline.identifier)")\n        decline.tap()\n        guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),\n                    object: alert)], timeout: 8) == .completed,\n              springboard.alerts.count == 0, photos.alerts.count == 0 else {\n            throw failure("Observed notification denial did not close the sole prompt")\n        }\n        print("IOS_PHOTOS_HOST_CHECKPOINT observed-photos-notifications-declined stage=\\(stage)")\n    }\n', '    private func declineObservedPhotosNotificationsIfPresent(appearanceDeadline: TimeInterval? = nil, wallDeadline: TimeInterval? = nil) throws {\n        // Run37912970403 screenshot after the introduction: only this exact\n        // Photos notification request may be denied. Never grant notifications.\n        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")\n        let alerts = springboard.alerts\n        var actionDeadline = started + 120\n        func remaining() throws -> TimeInterval {\n            try withinBudget()\n            guard didLaunchOwnedPhotos, photos.state == .runningForeground else {\n                throw failure("Owned Photos notification context lost foreground")\n            }\n            let available = min(actionDeadline, started + 120) - ProcessInfo.processInfo.systemUptime\n            guard available > 0 else { throw failure("Photos notification handling deadline reached") }\n            return min(8, available)\n        }\n        let appearanceTimeout: TimeInterval\n        if let appearanceDeadline = appearanceDeadline {\n            guard let wallDeadline = wallDeadline, appearanceDeadline <= wallDeadline,\n                  ProcessInfo.processInfo.systemUptime < appearanceDeadline else {\n                throw failure("Invalid or expired late notification appearance window")\n            }\n            appearanceTimeout = min(8, appearanceDeadline - ProcessInfo.processInfo.systemUptime)\n            guard appearanceTimeout > 0 else { throw failure("Late notification appearance window expired") }\n        } else { appearanceTimeout = 2 }\n        guard alerts.firstMatch.waitForExistence(timeout: appearanceTimeout) else {\n            guard photos.alerts.count == 0 else { throw failure("Unknown Photos alert; no action taken") }\n            if let wallDeadline = wallDeadline {\n                guard alerts.count == 0, ProcessInfo.processInfo.systemUptime < min(wallDeadline, started + 120) else {\n                    throw failure("Late notification absence observation became uncertain")\n                }\n                print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=absent observed=\\(ProcessInfo.processInfo.systemUptime) wallDeadline=\\(wallDeadline)")\n            }\n            return\n        }\n        guard !didAttemptObservedNotificationDenial else { throw failure("Repeated notification denial; no action taken") }\n        let observedAt = ProcessInfo.processInfo.systemUptime\n        if let appearanceDeadline = appearanceDeadline {\n            guard let wallDeadline = wallDeadline, observedAt < appearanceDeadline else {\n                throw failure("Photos notification appeared after its authorized window")\n            }\n            actionDeadline = min(min(observedAt + 12, wallDeadline), started + 120)\n            print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=appeared observed=\\(observedAt) appearanceDeadline=\\(appearanceDeadline) handlingDeadline=\\(actionDeadline) wallDeadline=\\(wallDeadline)")\n        }\n        stage = "decline-observed-photos-notifications"\n        try withinBudget()\n        guard alerts.count == 1, photos.alerts.count == 0 else {\n            throw failure("Multiple or unexpected Photos notification prompts; no action taken")\n        }\n        let proof = XCTAttachment(string: String(alerts.element.debugDescription.prefix(80_000)))\n        proof.name = "ios-photos-host-notification-candidate-ax"; proof.lifetime = .keepAlways; add(proof)\n        // Keep the action query scoped to this title and body even if the\n        // system replaces its alert between observation and tap resolution.\n        let observed = alerts.containing(.staticText, identifier: "“Photos” Would Like to Send You Notifications")\n            .containing(.staticText, identifier: "Notifications may include alerts, sounds, and icon badges. These can be configured in Settings.")\n        guard observed.count == 1 else { throw failure("Unknown notification prompt; no action taken") }\n        let alert = observed.element\n        let title = alert.staticTexts.matching(NSPredicate(format: "label == %@", "“Photos” Would Like to Send You Notifications"))\n        let body = alert.staticTexts.matching(NSPredicate(format: "label == %@", "Notifications may include alerts, sounds, and icon badges. These can be configured in Settings."))\n        let deny = alert.buttons.matching(NSPredicate(format: "label == %@", "Don’t Allow"))\n        let allow = alert.buttons.matching(NSPredicate(format: "label == %@", "Allow"))\n        guard title.count == 1, body.count == 1, deny.count == 1, allow.count == 1,\n              alert.buttons.count == 2, title.element.isHittable, body.element.isHittable else {\n            throw failure("Notification prompt differs from observed Photos request; no action taken")\n        }\n        let decline = try unique(deny, timeout: remaining())\n        _ = try unique(allow, timeout: remaining())\n        // Retain one prompt screenshot and the alert AX above; avoid a second\n        // full Photos AX traversal on this 120-second critical path.\n        let screenshot = XCTAttachment(screenshot: photos.screenshot())\n        screenshot.name = "ios-photos-host-observed-photos-notifications"; screenshot.lifetime = .keepAlways; add(screenshot)\n        print("IOS_PHOTOS_HOST_CHECKPOINT observed-photos-notifications stage=\\(stage)")\n        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(decline.label) identifier=\\(decline.identifier)")\n        // The exact owner-scoped prompt may change while evidence is saved.\n        // Revalidate every observed field, then spend the same absolute clock.\n        if appearanceDeadline != nil {\n            let tabs = photos.buttons.matching(identifier: "CollectionsTab").matching(NSPredicate(format: "label == %@", "Collections"))\n            guard didCompleteLateObservedWhatsNew, tabs.count == 1, tabs.element.isSelected else {\n                throw failure("Late notification stage changed before denial; no action taken")\n            }\n        }\n        guard alerts.count == 1, photos.alerts.count == 0, observed.count == 1,\n              title.count == 1, body.count == 1, deny.count == 1, allow.count == 1,\n              alert.buttons.count == 2,\n              title.element.label == "“Photos” Would Like to Send You Notifications",\n              body.element.label == "Notifications may include alerts, sounds, and icon badges. These can be configured in Settings.",\n              title.element.isHittable, body.element.isHittable,\n              decline.label == "Don’t Allow", decline.isHittable, decline.isEnabled,\n              allow.element.label == "Allow", allow.element.isHittable, allow.element.isEnabled,\n              !didAttemptObservedNotificationDenial else {\n            throw failure("Observed notification changed before denial; no action taken")\n        }\n        _ = try remaining()\n        didAttemptObservedNotificationDenial = true\n        decline.tap()\n        guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),\n                    object: alert)], timeout: try remaining()) == .completed,\n              springboard.alerts.count == 0, photos.alerts.count == 0 else {\n            throw failure("Observed notification denial did not close the sole prompt")\n        }\n        _ = try remaining()\n        print("IOS_PHOTOS_HOST_CHECKPOINT observed-photos-notifications-declined stage=\\(stage)")\n        if appearanceDeadline != nil {\n            print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=denied elapsed=\\(ProcessInfo.processInfo.systemUptime - observedAt) handlingDeadline=\\(actionDeadline)")\n        }\n        _ = try remaining()\n    }\n'), ('    private func observedCollectionsWithinOriginalWait(', '    private func declineLateObservedNotificationsIfNeeded() throws {\n        guard didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial else { return }\n        // Only the observed post-introduction, selected-Collections stage.\n        // No notification is required; absence after eight seconds continues\n        // the original Albums action, whose generic monitor remains active.\n        let windowStarted = ProcessInfo.processInfo.systemUptime\n        let wallDeadline = min(windowStarted + 20, started + 120)\n        let appearanceDeadline = min(windowStarted + 8, wallDeadline)\n        try withinBudget()\n        let tabs = photos.buttons.matching(identifier: "CollectionsTab").matching(NSPredicate(format: "label == %@", "Collections"))\n        guard didLaunchOwnedPhotos, photos.state == .runningForeground,\n              tabs.count == 1, tabs.element.isSelected, photos.alerts.count == 0 else {\n            throw failure("Late notification route lacks completed introduction or selected Collections")\n        }\n        print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=window started=\\(windowStarted) appearanceDeadline=\\(appearanceDeadline) wallDeadline=\\(wallDeadline)")\n        try declineObservedPhotosNotificationsIfPresent(appearanceDeadline: appearanceDeadline, wallDeadline: wallDeadline)\n        try withinBudget()\n        guard ProcessInfo.processInfo.systemUptime < wallDeadline else {\n            throw failure("Late notification window exhausted")\n        }\n    }\n    private func observedCollectionsWithinOriginalWait('), ('                handlingElapsed = handled\n', '                handlingElapsed = handled\n                didCompleteLateObservedWhatsNew = true\n')]
+
+def restore_late_notification_delta(source):
+    for old,new in reversed(LATE_NOTIFICATION_REPLACEMENTS):
+        if source.count(new)!=1:raise ValueError('Missing/changed/duplicated late notification delta')
+        source=source.replace(new,old)
+    return source
+
+class LateNotificationSourceTests(unittest.TestCase):
+    def setUp(self):self.source=restore_readiness_notification_delta(read_prior_reviewed_ui_source())
+    def testEntireParentRecoveredAndFiveMethodsBudgetsRetained(self):
+        import hashlib
+        restored=restore_late_notification_delta(self.source)
+        self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'ca74c5e9df72228528bbdf3a27bbd0c0bcc9143ae30ee045b48a1435e7e6bc71')
+        validate_observed_notification_navigation_source(restore_late_intro_delta(restored))
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45])
+    def testOnlyCompletedLateIntroductionAndUniqueSelectedCollectionsCanEnter(self):
+        for old,new in [('didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial','true'),('tabs.count == 1','tabs.count > 0'),('tabs.element.isSelected','true'),('didLaunchOwnedPhotos','true'),('photos.state == .runningForeground','true'),('didCompleteLateObservedWhatsNew = true','didCompleteLateObservedWhatsNew = false')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_late_notification_delta(self.source.replace(old,new))
+    def testAppearanceEightHandlingTwelveWallTwentyAndCaseRemainAbsolute(self):
+        handler=LATE_NOTIFICATION_REPLACEMENTS[2][1];window=LATE_NOTIFICATION_REPLACEMENTS[3][1]
+        self.assertEqual(window.count('windowStarted + 8'),1);self.assertEqual(window.count('windowStarted + 20'),1)
+        self.assertIn('else { appearanceTimeout = 2 }',handler);self.assertEqual(handler.count('observedAt + 12'),1)
+        self.assertEqual(handler.count('timeout: remaining()')+handler.count('timeout: try remaining()'),3)
+        for old,new in [('windowStarted + 8','windowStarted + 16'),('windowStarted + 20','windowStarted + 40'),('observedAt + 12','observedAt + 24'),('observedAt < appearanceDeadline','true'),('timeout: try remaining()','timeout: 8'),('started + 120','started + 240')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_late_notification_delta(self.source.replace(old,new))
+    def testWrongOwnerTitleBodyButtonCountOrUnknownAlertNeverAuthorizesDenial(self):
+        for old,new in [('alerts.count == 1','alerts.count > 0'),('photos.alerts.count == 0','true'),('observed.count == 1','observed.count > 0'),('title.count == 1','title.count > 0'),('body.count == 1','body.count > 0'),('deny.count == 1','deny.count > 0'),('allow.count == 1','allow.count > 0'),('alert.buttons.count == 2','alert.buttons.count >= 2'),('"com.apple.springboard"','"wrong.owner"'),('“Photos” Would Like to Send You Notifications','Other title'),('Notifications may include alerts, sounds, and icon badges. These can be configured in Settings.','Other body')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_late_notification_delta(self.source.replace(old,new))
+    def testOnlyOneDenialWithFreshIdentityThenDeadlineThenLatchBeforeTap(self):
+        handler=LATE_NOTIFICATION_REPLACEMENTS[2][1]
+        self.assertEqual(handler.count('decline.tap()'),1);self.assertNotIn('allow.element.tap()',handler)
+        sequence='_ = try remaining()\n        didAttemptObservedNotificationDenial = true\n        decline.tap()'
+        self.assertEqual(handler.count(sequence),1)
+        for old,new in [('!didAttemptObservedNotificationDenial','true'),('didAttemptObservedNotificationDenial = true','didAttemptObservedNotificationDenial = false'),('decline.tap()','allow.element.tap()'),('decline.isEnabled','true'),('decline.isHittable','true'),('decline.label == "Don’t Allow"','true'),(sequence,sequence.replace('_ = try remaining()\n        ',''))]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_late_notification_delta(self.source.replace(old,new))
+    def testAbsenceContinuesOriginalAlbumsWithoutGenericPromptHandlerChanges(self):
+        handler=LATE_NOTIFICATION_REPLACEMENTS[2][1];window=LATE_NOTIFICATION_REPLACEMENTS[3][1]
+        absent=handler.split('guard alerts.firstMatch.waitForExistence(timeout: appearanceTimeout) else {',1)[1].split('        stage =',1)[0]
+        self.assertIn('phase=absent',absent);self.assertIn('alerts.count == 0',absent);self.assertIn('return',absent);self.assertNotIn('.tap()',absent)
+        self.assertNotIn('.tap()',window)
+        self.assertIn('try selectObservedCollections()\n        try declineLateObservedNotificationsIfNeeded()\n        stage = "open-albums"',self.source)
+        self.assertIn('fatalError("IOS_PHOTOS_HOST_UNKNOWN_ALERT no action taken")',self.source)
+    def testSlowEvidenceRecognitionOrCloseCannotCreateFreshAllowance(self):
+        # Pure arithmetic tied to the exact source tokens; not native AX proof.
+        def permitted(appearance,handling,case_remaining=120):
+            wall=min(20,case_remaining);appearance_end=min(8,wall)
+            if not 0 <= appearance < appearance_end:return False
+            end=min(appearance+12,wall,case_remaining)
+            return appearance+handling < end
+        self.assertTrue(permitted(4.68,7.0));self.assertTrue(permitted(7.9,11.9))
+        for values in [(8,0),(8.01,0),(4,12),(4,12.01),(1,2,2),(7,0,7)]:self.assertFalse(permitted(*values))
+        handler=LATE_NOTIFICATION_REPLACEMENTS[2][1]
+        self.assertIn('min(min(observedAt + 12, wallDeadline), started + 120)',handler)
+        self.assertTrue(handler.rstrip().endswith('_ = try remaining()\n    }'))
+
+
+# Exact inverse for this one readiness-stage relocation. No earlier assertion changes.
+READINESS_NOTIFICATION_REPLACEMENTS = [('    private var didAttemptObservedNotificationDenial = false\n', '    private var didAttemptObservedNotificationDenial = false\n    private var didUseLateObservedNotificationWindow = false\n'), ('        try declineLateObservedNotificationsIfNeeded()\n', '        _ = try declineLateObservedNotificationsIfNeeded()\n'), ('    private func declineLateObservedNotificationsIfNeeded() throws {\n        guard didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial else { return }\n', '    private func declineLateObservedNotificationsIfNeeded() throws -> TimeInterval {\n        guard didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial,\n              !didUseLateObservedNotificationWindow else { return 0 }\n'), ('        let appearanceDeadline = min(windowStarted + 8, wallDeadline)\n        try withinBudget()\n', '        let appearanceDeadline = min(windowStarted + 8, wallDeadline)\n        // Consume this one route-wide window even when the prompt is absent.\n        // The readiness and pre-Albums call sites must never renew it.\n        didUseLateObservedNotificationWindow = true\n        try withinBudget()\n'), ('            throw failure("Late notification window exhausted")\n        }\n    }\n', '            throw failure("Late notification window exhausted")\n        }\n        return ProcessInfo.processInfo.systemUptime - windowStarted\n    }\n'), ('        let wallDeadline = min(waitingStarted + 32, started + 120)\n        var deadline = min(waitingStarted + 8, wallDeadline)\n', '        let wallDeadline = min(waitingStarted + 32, started + 120)\n        // Relocate the existing single 20-second post-Collections notification\n        // allocation here when its selected-tab identity is already observed.\n        // The introduction keeps its original 32-second wall; combined readiness is 52 seconds.\n        let readinessWallDeadline = min(waitingStarted + 52, started + 120)\n        var deadline = min(waitingStarted + 8, wallDeadline)\n'), ('            stage = "select-observed-collections"\n            guard didLaunchOwnedPhotos, photos.state == .runningForeground,\n', '            if didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial,\n               !didUseLateObservedNotificationWindow {\n                guard query.count == 1 else { throw failure("Observed Collections identity changed before notification") }\n                if query.element.isSelected {\n                    guard ProcessInfo.processInfo.systemUptime < deadline else {\n                        throw failure("Original Collections wait expired before notification window")\n                    }\n                    let notificationElapsed = try declineLateObservedNotificationsIfNeeded()\n                    guard notificationElapsed.isFinite, notificationElapsed >= 0, notificationElapsed <= 20 else {\n                        throw failure("Photos notification allocation exceeded")\n                    }\n                    // Resume the original effective 8 seconds with only actual handling\n                    // time restored. Absence also consumes the once-only window.\n                    deadline = min(deadline + notificationElapsed, readinessWallDeadline)\n                    print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=readiness-resume elapsed=\\(notificationElapsed) readinessDeadline=\\(deadline) wallDeadline=\\(readinessWallDeadline)")\n                }\n            }\n            stage = "select-observed-collections"\n            guard didLaunchOwnedPhotos, photos.state == .runningForeground,\n')]
+
+def restore_readiness_notification_delta(source):
+    for old,new in reversed(READINESS_NOTIFICATION_REPLACEMENTS):
+        if source.count(new)!=1:raise ValueError('Missing/changed/duplicated readiness notification delta')
+        source=source.replace(new,old)
+    return source
+
+class ReadinessNotificationSourceTests(unittest.TestCase):
+    def setUp(self):self.source=read_prior_reviewed_ui_source()
+    def reject(self,pairs):
+        for old,new in pairs:
+            self.assertIn(old,self.source)
+            with self.subTest(token=old),self.assertRaises(ValueError):restore_readiness_notification_delta(self.source.replace(old,new))
+    def testEntirePublishedParentRecoveredAndExistingExactHandlerPreserved(self):
+        import hashlib
+        restored=restore_readiness_notification_delta(self.source)
+        self.assertEqual(hashlib.sha256(restored.encode()).hexdigest(),'e12bd10e98f15c8e7b001ff8606b969b821dd610232bd8596b1c45c85d862436')
+        # Every original denial predicate/action and all business/pixel assertions
+        # are outside these seven edits and recovered byte-for-byte.
+        self.assertEqual(self.source.count('decline.tap()'),1)
+        self.assertEqual([x[2] for x in host.STEPS],[45,165,45,165,45])
+    def testOnlyCompletedIntroductionAndCurrentUniqueSelectedTabMayEnterEarly(self):
+        self.reject([('if didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial,','if true,'),('guard query.count == 1 else { throw failure("Observed Collections identity changed before notification") }',''),('if query.element.isSelected {','if true {'),('guard ProcessInfo.processInfo.systemUptime < deadline else {','guard true else {')])
+    def testReadinessAndPreAlbumsShareSingleWindowEvenWhenAbsent(self):
+        window=self.source.split('    private func declineLateObservedNotificationsIfNeeded()',1)[1].split('    private func observedCollectionsWithinOriginalWait',1)[0]
+        self.assertEqual(window.count('let windowStarted ='),1)
+        self.assertEqual(window.count('didUseLateObservedNotificationWindow = true'),1)
+        self.assertLess(window.index('didUseLateObservedNotificationWindow = true'),window.index('let tabs ='))
+        self.assertEqual(self.source.count('try declineLateObservedNotificationsIfNeeded()'),2)
+        self.assertIn('try selectObservedCollections()\n        _ = try declineLateObservedNotificationsIfNeeded()\n        stage = "open-albums"',self.source)
+        self.reject([('!didUseLateObservedNotificationWindow','true'),('didUseLateObservedNotificationWindow = true','didUseLateObservedNotificationWindow = false'),('else { return 0 }\n        // Only the observed post-introduction','else { return 20 }\n        // Only the observed post-introduction')])
+    def testOriginalIntro32Combined52AndCase120RemainFixed(self):
+        self.reject([('waitingStarted + 52','waitingStarted + 72'),('waitingStarted + 32','waitingStarted + 52'),('min(waitingStarted + 52, started + 120)','waitingStarted + 52'),('min(deadline + notificationElapsed, readinessWallDeadline)','ProcessInfo.processInfo.systemUptime + 8'),('deadline + notificationElapsed','deadline + 20'),('notificationElapsed.isFinite','true'),('notificationElapsed >= 0','true'),('notificationElapsed <= 20','true')])
+        self.assertEqual(self.source.count('let readinessWallDeadline ='),1)
+        self.assertIn('deadline = min(deadline + handled, wallDeadline)',self.source)
+    def testOriginalUnknownAlertGuardStillRunsAfterSharedWindow(self):
+        block=READINESS_NOTIFICATION_REPLACEMENTS[-1][1]
+        self.assertLess(block.index('try declineLateObservedNotificationsIfNeeded()'),block.index('stage = "select-observed-collections"'))
+        restored=restore_readiness_notification_delta(self.source)
+        marker='throw failure("Unexpected Photos interruption during Collections wait; no action taken")'
+        self.assertEqual(self.source.count(marker),1);self.assertEqual(restored.count(marker),1)
+        self.assertIn('fatalError("IOS_PHOTOS_HOST_UNKNOWN_ALERT no action taken")',self.source)
+        self.assertNotIn('allow.element.tap()',self.source)
+    def testNoSecondWindowAfterAbsenceDenialOrNewLoopIteration(self):
+        # State model tied above to exact Swift latch/call sites; not AX proof.
+        def enter(done,denied,used):return done and not denied and not used
+        self.assertTrue(enter(True,False,False))
+        for done,denied,used in [(False,False,False),(True,True,False),(True,False,True),(True,True,True)]:self.assertFalse(enter(done,denied,used))
+        used=False;dispatches=0
+        for present in [False,True,True]:
+            if enter(True,False,used):used=True;dispatches+=1
+        self.assertEqual(dispatches,1)
+    def testActualElapsedRelocationDoesNotRestartEffectiveEight(self):
+        def resume(recognition,intro,observation,case_remaining=120):
+            intro_wall=min(32,case_remaining);deadline=min(8,intro_wall)
+            if not 0<=recognition<deadline or not 0<=intro<24:raise ValueError('intro')
+            now=recognition+intro;deadline=min(deadline+intro,intro_wall)
+            if now>=deadline or not 0<=observation<20:raise ValueError('notification')
+            now+=observation;deadline=min(deadline+observation,52,case_remaining)
+            if now>=deadline:raise ValueError('overrun')
+            return now,deadline-now
+        now,remaining=resume(3.744413708332104,4.774757666667028,8.1)
+        self.assertAlmostEqual(remaining,4.255586291667896);self.assertLess(now,52)
+        for args in [(8,1,1),(3,24,1),(3,4,20),(3,4,-1),(3,4,float('inf')),(3,4,8,10)]:
+            with self.subTest(args=args),self.assertRaises(ValueError):resume(*args)
+    def testMissingDuplicatedRelocationOrExtraActionFailsSourceAdmission(self):
+        old,new=READINESS_NOTIFICATION_REPLACEMENTS[-1]
+        for changed in [self.source.replace(new,old),self.source.replace(new,new+new),self.source.replace(new,new.replace('let notificationElapsed = try declineLateObservedNotificationsIfNeeded()','let notificationElapsed = try declineLateObservedNotificationsIfNeeded()\n                    photos.buttons["Allow"].tap()'))]:
+            with self.assertRaises(ValueError):restore_readiness_notification_delta(changed)
+
+
+# Late owned-album introduction is a single exact, reversible test-only delta.
+LATE_ALBUM_OLD_BLOCK = "        _ = try unique(heading)\n        _ = try unique(count)\n        // Add Photo is a separate Button. Header artwork has no grid identifier.\n        // Only this album's sole grid Image may be tapped by the caller, which\n        // still verifies the exact public fixture filename before editing.\n        return try unique(items)\n"
+LATE_ALBUM_NEW_BLOCK = '        // Run38410163549: the exact known introduction arrived only after\n        // opening this owned album. Reuse its unspent, route-wide one-shot\n        // handling allocation; never weaken static-text or photo readiness.\n        let waitingStarted = ProcessInfo.processInfo.systemUptime\n        let wallDeadline = min(waitingStarted + 32, started + 120)\n        var deadline = min(waitingStarted + 8, wallDeadline)\n        var handlingElapsed: TimeInterval = 0\n        func remaining() throws -> TimeInterval {\n            try withinBudget()\n            let available = min(deadline, wallDeadline) - ProcessInfo.processInfo.systemUptime\n            guard available > 0 else { throw failure("Original owned album wait deadline reached") }\n            return min(8, available)\n        }\n        while true {\n            _ = try remaining()\n            let handled = try dismissObservedWhatsNewIfPresent(recognitionDeadline: deadline, wallDeadline: wallDeadline)\n            guard handled.isFinite, handled >= 0, handled <= 24 else {\n                throw failure("Owned album introduction handling allocation exceeded")\n            }\n            if handled > 0 {\n                guard handlingElapsed == 0, didAttemptObservedWhatsNew else {\n                    throw failure("Repeated owned album introduction handling allocation")\n                }\n                handlingElapsed = handled\n                deadline = min(deadline + handled, wallDeadline)\n                print("IOS_PHOTOS_HOST_INTRO_TIMING phase=owned-album-resume handlingElapsed=\\(handlingElapsed) readinessDeadline=\\(deadline) wallDeadline=\\(wallDeadline)")\n            }\n            stage = "open-owned-album"\n            _ = try remaining()\n            guard didLaunchOwnedPhotos, photos.state == .runningForeground,\n                  photos.alerts.count == 0,\n                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0,\n                  pages.count == 1, page.exists,\n                  heading.count == 1, count.count == 1, items.count == 1,\n                  heading.element.label == title, count.element.label == "1 Item" else {\n                throw failure("Owned album identity changed during introduction readiness")\n            }\n            if heading.element.isHittable, heading.element.isEnabled,\n               count.element.isHittable, count.element.isEnabled,\n               items.element.isHittable, items.element.isEnabled { break }\n            Thread.sleep(forTimeInterval: min(0.1, try remaining()))\n        }\n        _ = try unique(heading, timeout: remaining())\n        _ = try unique(count, timeout: remaining())\n        // Add Photo is a separate Button. Header artwork has no grid identifier.\n        // Only this album\'s sole grid Image may be tapped by the caller, which\n        // still verifies the exact public fixture filename before editing.\n        return try unique(items, timeout: remaining())\n'
+def restore_late_album_intro_delta(source):
+    if source.count(LATE_ALBUM_NEW_BLOCK) != 1:
+        raise ValueError('Missing, duplicate or altered late owned-album introduction delta')
+    return source.replace(LATE_ALBUM_NEW_BLOCK,LATE_ALBUM_OLD_BLOCK,1)
+# Exact reversible navigation-wait delta; historical validators keep their original inputs.
+NAVIGATION_REPLACEMENTS = [['        try tap(photos.buttons.matching(identifier: "Albums"))\n', '        let albums = try observedAlbumsWithinOriginalWait()\n        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(albums.label) identifier=\\(albums.identifier)")\n        albums.tap()\n'], ['        let titleNode = try unique(photos.staticTexts.matching(NSPredicate(format: "label == %@", title)))\n', '        let titles = photos.staticTexts.matching(NSPredicate(format: "label == %@", title))\n        let titleNode = try observedNavigationWithinOriginalWait(navigationStage: "open-owned-album") { remaining in\n            guard titles.count <= 1 else { throw self.failure("Owned album title became ambiguous") }\n            guard titles.count == 1 else { return nil }\n            let node = titles.element\n            guard node.label == title else { throw self.failure("Owned album title changed") }\n            guard node.isHittable, node.isEnabled else { return nil }\n            _ = try remaining()\n            return node\n        }\n'], ['        // Run38410163549: the exact known introduction arrived only after\n        // opening this owned album. Reuse its unspent, route-wide one-shot\n        // handling allocation; never weaken static-text or photo readiness.\n        let waitingStarted = ProcessInfo.processInfo.systemUptime\n        let wallDeadline = min(waitingStarted + 32, started + 120)\n        var deadline = min(waitingStarted + 8, wallDeadline)\n        var handlingElapsed: TimeInterval = 0\n        func remaining() throws -> TimeInterval {\n            try withinBudget()\n            let available = min(deadline, wallDeadline) - ProcessInfo.processInfo.systemUptime\n            guard available > 0 else { throw failure("Original owned album wait deadline reached") }\n            return min(8, available)\n        }\n        while true {\n            _ = try remaining()\n            let handled = try dismissObservedWhatsNewIfPresent(recognitionDeadline: deadline, wallDeadline: wallDeadline)\n            guard handled.isFinite, handled >= 0, handled <= 24 else {\n                throw failure("Owned album introduction handling allocation exceeded")\n            }\n            if handled > 0 {\n                guard handlingElapsed == 0, didAttemptObservedWhatsNew else {\n                    throw failure("Repeated owned album introduction handling allocation")\n                }\n                handlingElapsed = handled\n                deadline = min(deadline + handled, wallDeadline)\n                print("IOS_PHOTOS_HOST_INTRO_TIMING phase=owned-album-resume handlingElapsed=\\(handlingElapsed) readinessDeadline=\\(deadline) wallDeadline=\\(wallDeadline)")\n            }\n            stage = "open-owned-album"\n            _ = try remaining()\n            guard didLaunchOwnedPhotos, photos.state == .runningForeground,\n                  photos.alerts.count == 0,\n                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0,\n                  pages.count == 1, page.exists,\n                  heading.count == 1, count.count == 1, items.count == 1,\n                  heading.element.label == title, count.element.label == "1 Item" else {\n                throw failure("Owned album identity changed during introduction readiness")\n            }\n            if heading.element.isHittable, heading.element.isEnabled,\n               count.element.isHittable, count.element.isEnabled,\n               items.element.isHittable, items.element.isEnabled { break }\n            Thread.sleep(forTimeInterval: min(0.1, try remaining()))\n        }\n        _ = try unique(heading, timeout: remaining())\n        _ = try unique(count, timeout: remaining())\n        // Add Photo is a separate Button. Header artwork has no grid identifier.\n        // Only this album\'s sole grid Image may be tapped by the caller, which\n        // still verifies the exact public fixture filename before editing.\n        return try unique(items, timeout: remaining())\n    }', '        // Keep the exact owned container, full title, one-item count and sole\n        // grid Image after any recognized interruption. No generic relaxation.\n        return try observedNavigationWithinOriginalWait(navigationStage: "open-owned-album") { remaining in\n            guard pages.count == 1, page.exists,\n                  heading.count == 1, count.count == 1, items.count == 1,\n                  heading.element.label == title, count.element.label == "1 Item" else {\n                throw self.failure("Owned album identity changed during introduction readiness")\n            }\n            guard heading.element.isHittable, heading.element.isEnabled,\n                  count.element.isHittable, count.element.isEnabled,\n                  items.element.isHittable, items.element.isEnabled else { return nil }\n            // Add Photo is a separate Button. Header artwork has no grid identifier.\n            // Only this album\'s sole grid Image may be tapped by the caller, which\n            // still verifies the exact public fixture filename before editing.\n            _ = try remaining()\n            return items.element\n        }\n    }\n'], ['    private func observedCollectionsWithinOriginalWait(_ query: XCUIElementQuery) throws -> XCUIElement {\n        // Run37959948655: the exact introduction appeared after the first\n        // title check and occluded an already-selected Collections tab.\n        let waitingStarted = ProcessInfo.processInfo.systemUptime\n        let wallDeadline = min(waitingStarted + 32, started + 120)\n        // Relocate the existing single 20-second post-Collections notification\n        // allocation here when its selected-tab identity is already observed.\n        // The introduction keeps its original 32-second wall; combined readiness is 52 seconds.\n        let readinessWallDeadline = min(waitingStarted + 52, started + 120)\n        var deadline = min(waitingStarted + 8, wallDeadline)\n        var handlingElapsed: TimeInterval = 0\n        while ProcessInfo.processInfo.systemUptime < deadline {\n            try withinBudget()\n            let handled = try dismissObservedWhatsNewIfPresent(recognitionDeadline: deadline, wallDeadline: wallDeadline)\n            guard handled.isFinite, handled >= 0, handled <= 24 else {\n                throw failure("Photos introduction handling allocation exceeded")\n            }\n            if handled > 0 {\n                guard handlingElapsed == 0, didAttemptObservedWhatsNew else {\n                    throw failure("Repeated Photos introduction handling allocation")\n                }\n                handlingElapsed = handled\n                didCompleteLateObservedWhatsNew = true\n                // Restore only the time actually spent handling the known\n                // page; recognition and all other observations spend the 8 seconds.\n                deadline = min(deadline + handled, wallDeadline)\n                print("IOS_PHOTOS_HOST_INTRO_TIMING phase=resume readinessElapsed=\\(ProcessInfo.processInfo.systemUptime - waitingStarted - handlingElapsed) handlingElapsed=\\(handlingElapsed) readinessDeadline=\\(deadline) wallDeadline=\\(wallDeadline)")\n            }\n            if didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial,\n               !didUseLateObservedNotificationWindow {\n                guard query.count == 1 else { throw failure("Observed Collections identity changed before notification") }\n                if query.element.isSelected {\n                    guard ProcessInfo.processInfo.systemUptime < deadline else {\n                        throw failure("Original Collections wait expired before notification window")\n                    }\n                    let notificationElapsed = try declineLateObservedNotificationsIfNeeded()\n                    guard notificationElapsed.isFinite, notificationElapsed >= 0, notificationElapsed <= 20 else {\n                        throw failure("Photos notification allocation exceeded")\n                    }\n                    // Resume the original effective 8 seconds with only actual handling\n                    // time restored. Absence also consumes the once-only window.\n                    deadline = min(deadline + notificationElapsed, readinessWallDeadline)\n                    print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=readiness-resume elapsed=\\(notificationElapsed) readinessDeadline=\\(deadline) wallDeadline=\\(readinessWallDeadline)")\n                }\n            }\n            stage = "select-observed-collections"\n            guard didLaunchOwnedPhotos, photos.state == .runningForeground,\n                  photos.alerts.count == 0,\n                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {\n                throw failure("Unexpected Photos interruption during Collections wait; no action taken")\n            }\n            guard query.count == 1 else { throw failure("Observed Collections identity changed during wait") }\n            let element = query.element\n            if element.isHittable, element.isEnabled {\n                guard ProcessInfo.processInfo.systemUptime < deadline else {\n                    throw failure("Original Collections wait deadline reached")\n                }\n                return element\n            }\n            let remaining = deadline - ProcessInfo.processInfo.systemUptime\n            guard remaining > 0 else { throw failure("Original Collections wait deadline reached") }\n            Thread.sleep(forTimeInterval: min(0.1, remaining))\n        }\n        throw failure("Expected one visible enabled public control at " + stage)\n    }\n', '    private func observedNavigationWithinOriginalWait(navigationStage: String,\n            observe: (() throws -> TimeInterval) throws -> XCUIElement?) throws -> XCUIElement {\n        // Runs37959948655,38410163549,38421747828 observed the same exact\n        // introduction arriving during Collections, owned album, or Albums readiness.\n        // Each original wait keeps eight effective seconds. The existing route-wide\n        // introduction24s and notification20s allocations may be consumed once only.\n        let waitingStarted = ProcessInfo.processInfo.systemUptime\n        let wallDeadline = min(waitingStarted + 32, started + 120)\n        let readinessWallDeadline = min(waitingStarted + 52, started + 120)\n        var deadline = min(waitingStarted + 8, wallDeadline)\n        var handlingElapsed: TimeInterval = 0\n        func remaining() throws -> TimeInterval {\n            try withinBudget()\n            let available = min(deadline, readinessWallDeadline) - ProcessInfo.processInfo.systemUptime\n            guard available > 0 else { throw failure("Original navigation wait deadline reached") }\n            return min(8, available)\n        }\n        while true {\n            _ = try remaining()\n            guard didLaunchOwnedPhotos, photos.state == .runningForeground else {\n                throw failure("Owned Photos navigation lost foreground")\n            }\n            let handled = try dismissObservedWhatsNewIfPresent(recognitionDeadline: min(deadline, wallDeadline), wallDeadline: wallDeadline)\n            guard handled.isFinite, handled >= 0, handled <= 24 else {\n                throw failure("Photos introduction handling allocation exceeded")\n            }\n            if handled > 0 {\n                guard handlingElapsed == 0, didAttemptObservedWhatsNew else {\n                    throw failure("Repeated Photos introduction handling allocation")\n                }\n                handlingElapsed = handled\n                didCompleteLateObservedWhatsNew = true\n                deadline = min(deadline + handled, wallDeadline)\n                print("IOS_PHOTOS_HOST_INTRO_TIMING phase=navigation-resume navigation=\\(navigationStage) handlingElapsed=\\(handlingElapsed) readinessDeadline=\\(deadline) wallDeadline=\\(wallDeadline)")\n            }\n            if didCompleteLateObservedWhatsNew, !didAttemptObservedNotificationDenial,\n               !didUseLateObservedNotificationWindow {\n                let tabs = photos.buttons.matching(identifier: "CollectionsTab").matching(NSPredicate(format: "label == %@", "Collections"))\n                guard tabs.count == 1 else { throw failure("Observed Collections identity changed before notification") }\n                if tabs.element.isSelected {\n                    _ = try remaining()\n                    let notificationElapsed = try declineLateObservedNotificationsIfNeeded()\n                    guard notificationElapsed.isFinite, notificationElapsed >= 0, notificationElapsed <= 20 else {\n                        throw failure("Photos notification allocation exceeded")\n                    }\n                    deadline = min(deadline + notificationElapsed, readinessWallDeadline)\n                    print("IOS_PHOTOS_HOST_NOTIFICATION_TIMING phase=navigation-resume navigation=\\(navigationStage) elapsed=\\(notificationElapsed) readinessDeadline=\\(deadline) wallDeadline=\\(readinessWallDeadline)")\n                }\n            }\n            stage = navigationStage\n            _ = try remaining()\n            guard didLaunchOwnedPhotos, photos.state == .runningForeground,\n                  photos.alerts.count == 0,\n                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {\n                throw failure("Unexpected Photos interruption during navigation wait; no action taken")\n            }\n            // The caller resolves its full original identity and readiness anew,\n            // including after dismissal. A sheet arriving during observation is\n            // handled by this same loop, never by a new retry clock.\n            if let element = try observe(remaining) {\n                _ = try remaining()\n                let introduction = photos.staticTexts.matching(NSPredicate(format: "label == %@", "What’s New in Photos"))\n                if introduction.count > 0 { continue }\n                _ = try remaining()\n                guard didLaunchOwnedPhotos, photos.state == .runningForeground,\n                      photos.alerts.count == 0,\n                      XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {\n                    throw failure("Owned Photos navigation changed before target return")\n                }\n                _ = try remaining()\n                return element\n            }\n            Thread.sleep(forTimeInterval: min(0.1, try remaining()))\n        }\n    }\n    private func observedCollectionsWithinOriginalWait(_ query: XCUIElementQuery) throws -> XCUIElement {\n        try observedNavigationWithinOriginalWait(navigationStage: "select-observed-collections") { _ in\n            guard query.count == 1 else { throw self.failure("Observed Collections identity changed during wait") }\n            let element = query.element\n            return element.isHittable && element.isEnabled ? element : nil\n        }\n    }\n    private func observedAlbumsWithinOriginalWait() throws -> XCUIElement {\n        // Run38421747828 exposes this exact Albums disclosure under the selected\n        // Collections tab; a similarly named control is never an alternative.\n        let tabs = photos.buttons.matching(identifier: "CollectionsTab").matching(NSPredicate(format: "label == %@", "Collections"))\n        let query = photos.buttons.matching(identifier: "albums-shelf-details-disclosure").matching(NSPredicate(format: "label == %@", "Albums"))\n        return try observedNavigationWithinOriginalWait(navigationStage: "open-albums") { remaining in\n            guard tabs.count == 1, tabs.element.isSelected, query.count <= 1 else {\n                throw self.failure("Observed Albums or selected Collections identity changed")\n            }\n            guard query.count == 1 else { return nil }\n            let element = query.element\n            guard element.label == "Albums", element.identifier == "albums-shelf-details-disclosure" else {\n                throw self.failure("Observed Albums disclosure differs")\n            }\n            guard element.isHittable, element.isEnabled else { return nil }\n            _ = try remaining()\n            return element\n        }\n    }\n'], ['        // original Collections wait. Only a recognized page may use one 24-second\n', '        // original navigation wait. Only a recognized page may use one 24-second\n'], ['        try tap(photos.buttons.matching(identifier: "Collections"))\n', '        let initialCollections = try observedCollectionsWithinOriginalWait(photos.buttons.matching(identifier: "CollectionsTab")\n            .matching(NSPredicate(format: "label == %@", "Collections")))\n        stage = "open-collections"\n        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(initialCollections.label) identifier=\\(initialCollections.identifier)")\n        initialCollections.tap()\n'], ['        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in\n            pages.count == 1 && pages.element.exists\n        }, object: nil)\n        guard XCTWaiter.wait(for: [ready], timeout: 8) == .completed else {\n            throw failure("Expected one observed owned album page")\n        }\n        let page = pages.element\n', '        let page = try observedNavigationWithinOriginalWait(navigationStage: "open-owned-album") { remaining in\n            guard pages.count <= 1 else { throw self.failure("Expected one observed owned album page") }\n            guard pages.count == 1, pages.element.exists else { return nil }\n            _ = try remaining()\n            return pages.element\n        }\n'], ['        guard XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in collections.isSelected },\n                    object: nil)], timeout: 8) == .completed else {\n            throw failure("Observed Collections tab did not become selected")\n        }\n', '        _ = try observedNavigationWithinOriginalWait(navigationStage: "select-observed-collections") { remaining in\n            guard query.count == 1, library.count == 1 else { throw self.failure("Observed Photos tab identity changed") }\n            let selected = query.element\n            guard selected.isSelected, selected.isHittable, selected.isEnabled else { return nil }\n            _ = try remaining()\n            return selected\n        }\n'], ['            guard try unique(library).isSelected else { throw failure("Expected observed Library selection before Collections") }\n            print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(collections.label) identifier=\\(collections.identifier)")\n            collections.tap()\n', '            let observedCollections = try observedNavigationWithinOriginalWait(navigationStage: "select-observed-collections") { remaining in\n                guard query.count == 1, library.count == 1 else { throw self.failure("Observed Photos tab identity changed") }\n                let libraryTab = library.element\n                guard libraryTab.isSelected else { throw self.failure("Expected observed Library selection before Collections") }\n                let target = query.element\n                guard libraryTab.isHittable, libraryTab.isEnabled,\n                      target.isHittable, target.isEnabled else { return nil }\n                _ = try remaining()\n                return target\n            }\n            print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(observedCollections.label) identifier=\\(observedCollections.identifier)")\n            observedCollections.tap()\n'], ['        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(initialCollections.label) identifier=\\(initialCollections.identifier)")\n        initialCollections.tap()\n', '        try tapObservedNavigationTarget(initialCollections)\n'], ['        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(albums.label) identifier=\\(albums.identifier)")\n        albums.tap()\n', '        try tapObservedNavigationTarget(albums)\n'], ['        titleNode.tap()\n', '        try tapObservedNavigationTarget(titleNode)\n'], ['        cell.tap()\n', '        try tapObservedNavigationTarget(cell)\n'], ['        let page = try observedNavigationWithinOriginalWait(navigationStage: "open-owned-album") { remaining in', '        let observedPage = try observedNavigationWithinOriginalWait(navigationStage: "open-owned-album") { remaining in'], ['        let heading = page.staticTexts.matching(identifier: "collectionTitle")', '        let page = observedPage.element\n        let heading = page.staticTexts.matching(identifier: "collectionTitle")'], ['    private func observedOwnedAlbumItem(title: String) throws -> XCUIElement {', '    private func observedOwnedAlbumItem(title: String) throws -> ObservedNavigationTarget {'], ['    private func observedNavigationWithinOriginalWait(navigationStage: String,\n            observe: (() throws -> TimeInterval) throws -> XCUIElement?) throws -> XCUIElement {', '    private typealias ObservedNavigationTarget = (element: XCUIElement, deadline: TimeInterval)\n    private func tapObservedNavigationTarget(_ target: ObservedNavigationTarget) throws {\n        // Logs and checkpoint evidence spend the SAME returned wait deadline.\n        // No new readiness timer is opened between resolving a target and tapping.\n        let element = target.element\n        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(element.label) identifier=\\(element.identifier)")\n        try withinBudget()\n        guard ProcessInfo.processInfo.systemUptime < target.deadline,\n              didLaunchOwnedPhotos, photos.state == .runningForeground,\n              photos.alerts.count == 0,\n              XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0,\n              element.exists, element.isHittable, element.isEnabled,\n              photos.staticTexts.matching(NSPredicate(format: "label == %@", "What’s New in Photos")).count == 0 else {\n            throw failure("Observed navigation target changed or expired before tap")\n        }\n        try withinBudget()\n        guard ProcessInfo.processInfo.systemUptime < target.deadline else {\n            throw failure("Original navigation wait deadline reached before tap")\n        }\n        element.tap()\n    }\n    private func observedNavigationWithinOriginalWait(navigationStage: String,\n            observe: (() throws -> TimeInterval) throws -> XCUIElement?) throws -> ObservedNavigationTarget {'], ['                _ = try remaining()\n                return element\n            }\n            Thread.sleep', '                _ = try remaining()\n                return (element: element, deadline: min(deadline, readinessWallDeadline))\n            }\n            Thread.sleep'], ['    private func observedCollectionsWithinOriginalWait(_ query: XCUIElementQuery) throws -> XCUIElement {', '    private func observedCollectionsWithinOriginalWait(_ query: XCUIElementQuery) throws -> ObservedNavigationTarget {'], ['    private func observedAlbumsWithinOriginalWait() throws -> XCUIElement {', '    private func observedAlbumsWithinOriginalWait() throws -> ObservedNavigationTarget {'], ['        if !collections.isSelected {\n', '        if !collections.element.isSelected {\n'], ['            print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(observedCollections.label) identifier=\\(observedCollections.identifier)")\n            observedCollections.tap()\n', '            try tapObservedNavigationTarget(observedCollections)\n'], ['        let initialCollections = try observedCollectionsWithinOriginalWait(photos.buttons.matching(identifier: "CollectionsTab")\n            .matching(NSPredicate(format: "label == %@", "Collections")))\n', '        let initialTabs = photos.buttons.matching(identifier: "CollectionsTab").matching(NSPredicate(format: "label == %@", "Collections"))\n        let initialCollections = try observedNavigationWithinOriginalWait(navigationStage: "open-collections") { remaining in\n            guard initialTabs.count <= 1 else { throw self.failure("Initial Collections identity is ambiguous") }\n            guard initialTabs.count == 1 else { return nil }\n            let target = initialTabs.element\n            guard target.isHittable, target.isEnabled else { return nil }\n            _ = try remaining()\n            return target\n        }\n'], ['        _ = try observedNavigationWithinOriginalWait(navigationStage: "select-observed-collections") { remaining in\n            guard query.count == 1, library.count == 1 else { throw self.failure("Observed Photos tab identity changed") }\n            let selected = query.element\n', '        _ = try observedNavigationWithinOriginalWait(navigationStage: "select-observed-collections") { remaining in\n            guard query.count <= 1, library.count <= 1 else { throw self.failure("Observed Photos tab identity became ambiguous") }\n            guard query.count == 1, library.count == 1 else { return nil }\n            let selected = query.element\n']]
+# The exact observed extension-cell helper is inverted before historical navigation validation.
+EXTENSION_CELL_OLD = '    private func openCelluloidExtension() throws {\n        stage = "photos-edit"\n        try tap(photos.buttons.matching(identifier: "Edit"))\n        stage = "photos-more"\n        try tap(photos.buttons.matching(identifier: "More"))\n        checkpoint("editing-extensions-menu")\n        // Run37954719871: More presents a public Extensions submenu first.\n        // Keep direct extension selection when already exposed; never guess\n        // another extension, tap a coordinate or dismiss the keyboard tutorial.\n        if photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0 {\n            stage = "open-observed-extensions-menu"\n            try withinBudget()\n            guard photos.alerts.count == 0,\n                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {\n                throw failure("Unknown alert before Extensions; no action taken")\n            }\n            let entry = photos.buttons.matching(NSPredicate(format: "label == %@", "Extensions"))\n            guard entry.count == 1 else { throw failure("Expected one observed Extensions entry") }\n            let button = try unique(entry)\n            guard entry.count == 1, button.label == "Extensions",\n                  button.isHittable, button.isEnabled,\n                  photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0 else {\n                throw failure("Observed Extensions entry changed; no action taken")\n            }\n            print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(button.label) identifier=\\(button.identifier)")\n            try withinBudget()\n            guard photos.alerts.count == 0,\n                  XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0,\n                  entry.count == 1, button.label == "Extensions",\n                  button.isHittable, button.isEnabled,\n                  photos.buttons.matching(identifier: "CelluloidPhotoExtension").count == 0 else {\n                throw failure("Observed Extensions state changed before tap; no action taken")\n            }\n            button.tap()\n            checkpoint("observed-extensions-opened")\n        }\n        stage = "invoke-celluloid-extension"\n        try tap(photos.buttons.matching(identifier: "CelluloidPhotoExtension"))\n        _ = try unique(photos.buttons.matching(identifier: "tool-filter"), timeout: 15)\n        _ = try unique(photos.buttons.matching(identifier: "tool-bubble"))\n        guard photos.state == .runningForeground else { throw failure("Real Photos host lost foreground") }\n        checkpoint("actual-extension-ready")\n    }\n'
+EXTENSION_CELL_NEW = '    private func openCelluloidExtension() throws {\n        stage = "photos-edit"\n        try tap(photos.buttons.matching(identifier: "Edit"))\n        stage = "photos-more"\n        try tap(photos.buttons.matching(identifier: "More"))\n        checkpoint("editing-extensions-menu")\n        // The supported iOS27 route was observed in runs37954719871 and38495973294:\n        // More -> Extensions -> its Celluloid shareCell, never a guessed button.\n        stage = "open-observed-extensions-menu"\n        try withinBudget()\n        guard photos.alerts.count == 0,\n              XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0 else {\n            throw failure("Unknown alert before Extensions; no action taken")\n        }\n        let entry = photos.buttons.matching(NSPredicate(format: "label == %@", "Extensions"))\n        guard entry.count == 1 else { throw failure("Expected one observed Extensions entry") }\n        let button = try unique(entry)\n        guard entry.count == 1, button.label == "Extensions",\n              button.isHittable, button.isEnabled else {\n            throw failure("Observed Extensions entry changed; no action taken")\n        }\n        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(button.label) identifier=\\(button.identifier)")\n        try withinBudget()\n        guard photos.alerts.count == 0,\n              XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0,\n              entry.count == 1, button.label == "Extensions",\n              button.isHittable, button.isEnabled else {\n            throw failure("Observed Extensions state changed before tap; no action taken")\n        }\n        button.tap()\n        checkpoint("observed-extensions-opened")\n        stage = "invoke-celluloid-extension"\n        // Run38495973294 PNG/AX: this is a Cell inside the sole Extensions\n        // popover/activity list, not Button CelluloidPhotoExtension. Keep the\n        // original eight-second wait, including all final AX/logging before tap.\n        let deadline = min(ProcessInfo.processInfo.systemUptime + 8, started + 120)\n        func remaining() throws -> TimeInterval {\n            try withinBudget()\n            let available = deadline - ProcessInfo.processInfo.systemUptime\n            guard available > 0 else { throw failure("Observed extension selection deadline reached") }\n            return min(8, available)\n        }\n        let popovers = photos.popovers\n        let lists = popovers.otherElements.matching(NSPredicate(format: "identifier == %@", "ActivityListView"))\n            .containing(.navigationBar, identifier: "Extensions")\n        let collections = lists.collectionViews.matching(NSPredicate(format: "identifier == %@", "activityCollectionView"))\n        let cells = collections.cells.matching(NSPredicate(format: "identifier == %@ AND label == %@", "shareCell", "Celluloid"))\n        let cell = try unique(cells, timeout: remaining())\n        guard didLaunchOwnedPhotos, photos.state == .runningForeground,\n              photos.alerts.count == 0,\n              XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.count == 0,\n              popovers.count == 1, lists.count == 1,\n              collections.count == 1, cells.count == 1 else {\n            throw failure("Observed Extensions Celluloid cell changed; no action taken")\n        }\n        // Exact query constraints and unique() already establish the target\'s\n        // label/id and enabled/hittable state. Do not repeat those AX reads.\n        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) target=Extensions/shareCell/Celluloid")\n        _ = try remaining()\n        cell.tap()\n        _ = try unique(photos.buttons.matching(identifier: "tool-filter"), timeout: 15)\n        _ = try unique(photos.buttons.matching(identifier: "tool-bubble"))\n        guard photos.state == .runningForeground else { throw failure("Real Photos host lost foreground") }\n        checkpoint("actual-extension-ready")\n    }\n'
+# Exact inverse for the reviewed synchronous readiness and final clock fence.
+READINESS_DEADLINE_PATCH = {'old': '    private func unique(_ query: XCUIElementQuery, timeout: TimeInterval = 8) throws -> XCUIElement {\n        try withinBudget()\n        var ready: XCUIElement?\n        let usable = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in\n            let visible = query.allElementsBoundByIndex.filter { $0.isHittable }\n            guard visible.count == 1, let element = visible.first, element.isEnabled else { return false }\n            ready = element\n            return true\n        }, object: nil)\n        // The real toolbar appears while asynchronous source decoding is still\n        // loading. Its disabled state must become usable within this same bound.\n        guard XCTWaiter.wait(for: [usable], timeout: timeout) == .completed, let element = ready else {\n            throw failure("Expected one visible enabled public control at " + stage)\n        }\n        return element\n    }\n    private func tap(_ query: XCUIElementQuery) throws {\n        let element = try unique(query)\n        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) label=\\(element.label) identifier=\\(element.identifier)")\n        element.tap()\n    }\n', 'new': '    private func unique(_ query: XCUIElementQuery, timeout: TimeInterval = 8) throws -> XCUIElement {\n        try withinBudget()\n        let deadline = min(ProcessInfo.processInfo.systemUptime + timeout, started + 120)\n        func resolveReady() -> XCUIElement? {\n            guard ProcessInfo.processInfo.systemUptime < deadline else { return nil }\n            let visible = query.allElementsBoundByIndex.filter { $0.isHittable }\n            guard visible.count == 1, let element = visible.first, element.isEnabled,\n                  ProcessInfo.processInfo.systemUptime < deadline else { return nil }\n            return element\n        }\n        // Check the same readiness predicate now. XCTWaiter can defer its first\n        // evaluation by about one second even when this control is already ready.\n        var ready = resolveReady()\n        if ready == nil {\n            try withinBudget()\n            let remaining = deadline - ProcessInfo.processInfo.systemUptime\n            guard remaining > 0 else { throw failure("Public control wait deadline reached at " + stage) }\n            let usable = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in\n                ready = resolveReady()\n                return ready != nil\n            }, object: nil)\n            // Asynchronous decoding must still become usable inside the SAME\n            // original wait, including time spent in the initial AX observation.\n            guard XCTWaiter.wait(for: [usable], timeout: remaining) == .completed else {\n                throw failure("Expected one visible enabled public control at " + stage)\n            }\n        }\n        try withinBudget()\n        guard ProcessInfo.processInfo.systemUptime < deadline, let element = ready else {\n            throw failure("Public control wait deadline reached at " + stage)\n        }\n        return element\n    }\n    private func tap(_ query: XCUIElementQuery) throws {\n        try withinBudget()\n        let deadline = min(ProcessInfo.processInfo.systemUptime + 8, started + 120)\n        let element = try unique(query, timeout: deadline - ProcessInfo.processInfo.systemUptime)\n        // Keep logging source-only; label/identifier reads would resolve AX again.\n        print("IOS_PHOTOS_HOST_ACTION stage=\\(stage) target=resolved-public-control")\n        try withinBudget()\n        guard ProcessInfo.processInfo.systemUptime < deadline else {\n            throw failure("Public control wait deadline reached before tap at " + stage)\n        }\n        element.tap()\n    }\n', 'extension_menu_old': '            throw failure("Observed Extensions state changed before tap; no action taken")\n        }\n        button.tap()\n', 'extension_menu_new': '            throw failure("Observed Extensions state changed before tap; no action taken")\n        }\n        try withinBudget()\n        button.tap()\n'}
+def restore_readiness_deadline_delta(source):
+    import hashlib
+    for old,new in [(READINESS_DEADLINE_PATCH['new'],READINESS_DEADLINE_PATCH['old']),
+                    (READINESS_DEADLINE_PATCH['extension_menu_new'],READINESS_DEADLINE_PATCH['extension_menu_old'])]:
+        if source.count(old)!=1:raise ValueError('Missing, duplicated or changed readiness/deadline delta')
+        source=source.replace(old,new,1)
+    if hashlib.sha256(source.encode()).hexdigest()!='d3014c67d9e406beef0a72cc5323becf2b65cf91a73885281877a348c4ced220':
+        raise ValueError('Readiness/deadline delta altered protected source')
+    return source
+
+def restore_extension_cell_delta(source):
+    source=restore_readiness_deadline_delta(source)
+    import hashlib
+    if source.count(EXTENSION_CELL_NEW)!=1:raise ValueError('Missing, duplicated or changed extension-cell delta')
+    source=source.replace(EXTENSION_CELL_NEW,EXTENSION_CELL_OLD,1)
+    if hashlib.sha256(source.encode()).hexdigest()!='7c220bac901de6e8cbb25a3c6f807c96b56f605c874cc530ad45470990e57730':
+        raise ValueError('Extension-cell delta altered protected navigation or functional source')
+    return source
+
+def restore_navigation_delta(source):
+    source=restore_extension_cell_delta(source)
+    import hashlib
+    for old,new in reversed(NAVIGATION_REPLACEMENTS):
+        if source.count(new)!=1:raise ValueError('Missing, duplicate or changed navigation delta')
+        source=source.replace(new,old,1)
+    if hashlib.sha256(source.encode()).hexdigest()!='4fbf0b2f4ef4976020d9cc4ba94759ae7ac6a6e0e194618fc8e860f9e04d0d24':
+        raise ValueError('Navigation delta changed protected baseline source')
+    return source
+
+def read_prior_reviewed_ui_source():
+    return restore_late_album_intro_delta(restore_navigation_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()))
+
+class LateOwnedAlbumIntroductionTests(unittest.TestCase):
+    def testExactOneShotDeltaRestoresReviewedSwiftSource(self):
+        import hashlib
+        self.assertEqual(hashlib.sha256(read_prior_reviewed_ui_source().encode()).hexdigest(),'46661053de21edfedef281385c6325d5ca18e72e908843dfd9c16043d5f10c39')
+    def testUnknownRepeatedExpandedOrWeakenedDeltaRejects(self):
+        source=restore_navigation_delta((Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text())
+        for old,new in [('waitingStarted + 32','waitingStarted + 33'),('waitingStarted + 8','waitingStarted + 9'),('handled <= 24','handled <= 25'),('handlingElapsed == 0','true'),('didAttemptObservedWhatsNew','true'),('heading.element.label == title','true'),('count.element.label == "1 Item"','true'),('pages.count == 1','pages.count > 0'),('items.count == 1','items.count > 0'),('count.element.isEnabled','true'),('count.element.isHittable','true'),('timeout: remaining()','timeout: 8')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_late_album_intro_delta(source.replace(old,new))
+        with self.assertRaises(ValueError):restore_late_album_intro_delta(source.replace(LATE_ALBUM_NEW_BLOCK,LATE_ALBUM_NEW_BLOCK+LATE_ALBUM_NEW_BLOCK))
+    def testTransferredHandlerTimeNeverRestartsEightOrCaseBudget(self):
+        def budget(recognition,handling,case_remaining=120):
+            wall=min(32,case_remaining);deadline=min(8,wall)
+            if not 0 <= recognition < deadline or not 0 <= handling <= 24:raise ValueError('outside recognition or handler')
+            now=recognition+handling;deadline=min(deadline+handling,wall)
+            if now >= deadline:raise ValueError('deadline exhausted')
+            return deadline-now
+        self.assertEqual(budget(3,10),5);self.assertEqual(budget(3,24),5)
+        for args in [(8,1),(3,25),(3,-1),(3,24,20)]:
+            with self.assertRaises(ValueError):budget(*args)
+
+class PhotosFullBudgetTests(unittest.TestCase):
+    def testDedicatedConstructorRetainsInheritedAbsoluteDeadline(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as d
+        def inherited(obj):obj.started=100.0;obj.deadline=2380.0
+        with patch.object(d.Acceptance,'__init__',inherited):
+            gate=d.HostDiagnostic();self.assertEqual(gate.started,100.0);self.assertEqual(gate.deadline,2380.0)
+        def tighter(obj):obj.started=100.0;obj.deadline=1200.0
+        with patch.object(d.Acceptance,'__init__',tighter):self.assertEqual(d.HostDiagnostic().deadline,1200.0)
+    def testWrongOrExpandedOwnerClockFailsDedicatedBootstrap(self):
+        import os
+        from unittest.mock import patch
+        import swiftui_photos_gate as g
+        for delta in [1500.0,2281.0,2610.0,True,float('nan')]:
+            with tempfile.TemporaryDirectory() as folder:
+                env,owner,parent,path,timing=BootstrapQueryBudgetTests().context(Path(folder))
+                owner['work_deadline_monotonic']=owner['job_started_monotonic']+delta
+                path.write_text(json.dumps(owner))
+                with patch.dict(os.environ,env),self.assertRaises(ValueError):g.photos_bootstrap_parent_deadline(path,now=110.0)
+    def testCompleteNewJobAndCleanupCeilingsStayBelowNewApproval(self):
+        root=Path(__file__).resolve().parents[1]
+        driver=(root/'Scripts/run_ios_photos_host_diagnostic.py').read_text()
+        workflow=(root/'.github/workflows/ios-photos-readiness-deadline-20261015.yml').read_text()
+        self.assertIn('deadline=min(self.started+2370,time.monotonic()+90)',driver)
+        self.assertIn('    timeout-minutes: 45',workflow)
+        self.assertIn('        timeout-minutes: 40',workflow)
+        self.assertEqual(45*60-2370,330)
+        self.assertEqual(2370-2280,90)
+
+class PhotosRestoredAllocationTests(unittest.TestCase):
+    def testFullCapsCannotDispatchWhenEntireNextPhaseDoesNotFit(self):
+        from unittest.mock import patch
+        import run_ios_photos_host_diagnostic as d
+        for phase,cap in [('deploy-hosted-app',300),('deploy-hosted-app-summary',30),('photos-bootstrap',750),('actual-photos-host',630)]:
+            for elapsed,admitted in [(2280-cap-15,True),(2280-cap-15+0.001,False)]:
+                gate=object.__new__(d.HostDiagnostic);gate.uncertain=False;gate.deadline=2280
+                with patch.object(d.time,'monotonic',return_value=elapsed):
+                    if admitted:gate.admit(phase,cap,simulator=True)
+                    else:
+                        with self.assertRaises(ValueError):gate.admit(phase,cap,simulator=True)
+    def testObservedPriorTimingsAndFullDeploymentReallocationFit(self):
+        observed_bootstrap=467.8378992500001;observed_actual_host=545.2138551250001
+        # Conservative sensitivity scenario: add the whole90s cap difference,
+        # not a claim that changing a timeout repairs the native environment.
+        self.assertGreater(2280-(observed_bootstrap+90)-750-15,0)
+        self.assertGreater(2280-(observed_actual_host+90)-630-15,0)
+        self.assertLess(1200-observed_bootstrap-750-15,0)
+    def testLiveDeploymentAndReceiptShare300WithSummary30(self):
+        import inspect
+        import run_ios_photos_host_diagnostic as d
+        source=inspect.getsource(d.HostDiagnostic.deploy_hosted_app)
+        self.assertIn("'test-without-building'], 300, simulator=True",source)
+        self.assertIn("'deployment_phase_seconds': 300, 'summary_phase_seconds': 30",source)
+        self.assertNotIn("'simctl', 'install'",source)
+
+class SharedNavigationSourceTests(unittest.TestCase):
+    def testExactNavigationDeltaRestoresProtectedBaseline(self):
+        import hashlib
+        source=(Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+        self.assertEqual(hashlib.sha256(restore_navigation_delta(source).encode()).hexdigest(),'4fbf0b2f4ef4976020d9cc4ba94759ae7ac6a6e0e194618fc8e860f9e04d0d24')
+    def testClockIdentityLatchOrTapFenceMutationsAreRejected(self):
+        source=(Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+        for old,new in [('waitingStarted + 8','waitingStarted + 9'),('handled <= 24','handled <= 25'),('notificationElapsed <= 20','notificationElapsed <= 21'),('!didUseLateObservedNotificationWindow','true'),('ProcessInfo.processInfo.systemUptime < target.deadline','true'),('heading.element.label == title','true'),('count.element.label == "1 Item"','true'),('items.count == 1','items.count > 0'),('element.isHittable, element.isEnabled','true, true')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_navigation_delta(source.replace(old,new))
+
+class ObservedExtensionCellSourceTests(unittest.TestCase):
+    def testExactCellDeltaPreservesWholeReviewedNavigationSource(self):
+        import hashlib
+        source=(Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+        self.assertEqual(hashlib.sha256(restore_extension_cell_delta(source).encode()).hexdigest(),'7c220bac901de6e8cbb25a3c6f807c96b56f605c874cc530ad45470990e57730')
+    def testScopeOwnerAndFixedDeadlineMutationsReject(self):
+        source=(Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+        for old,new in [('let popovers = photos.popovers','let popovers = photos.otherElements'),('.containing(.navigationBar, identifier: "Extensions")',''),('identifier == %@ AND label == %@','label == %@ OR label == %@'),('popovers.count == 1','true'),('lists.count == 1','true'),('collections.count == 1','true'),('cells.count == 1','true'),('systemUptime + 8','systemUptime + 9'),('_ = try remaining()\n        cell.tap()','cell.tap()')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):restore_extension_cell_delta(source.replace(old,new))
+
+"""Source and abstract readiness/clock checks only; not native XCTest proof."""
+import hashlib, itertools, json, pathlib, unittest
+
+BASE_SHA = 'd3014c67d9e406beef0a72cc5323becf2b65cf91a73885281877a348c4ced220'
+NEW_SHA = '9ac4b1393165f216d6b9dcc896b7f5fd3d6de4ec2cff37775ab4b3327f654979'
+
+def readiness(elements):
+    visible = [e for e in elements if e['hittable']]
+    return visible[0] if len(visible) == 1 and visible[0]['enabled'] else None
+
+def simulate(observations, *, start=0, case_start=0, timeout=8, log_cost=0,
+             return_cost=0, wait_result=True):
+    """Observations are (observation_start, AX_cost, elements).
+    A waiter may observe late; a predicate's readiness must never authorize a
+    late return or tap. This model does not predict real AX or XCTest latency.
+    """
+    case_deadline = case_start + 120
+    if start >= case_deadline:
+        return {'tap': False, 'waiter': False, 'reason': 'case-before-start'}
+    deadline = min(start + timeout, case_deadline)
+    waiter = False
+    for index, (now, cost, elements) in enumerate(observations):
+        waiter = index > 0
+        if now >= deadline:
+            return {'tap': False, 'waiter': waiter, 'reason': 'before-observation'}
+        ready = readiness(elements)
+        now += cost
+        if now >= deadline:
+            return {'tap': False, 'waiter': waiter, 'reason': 'after-AX'}
+        if ready is None:
+            continue
+        if waiter and not wait_result:
+            return {'tap': False, 'waiter': waiter, 'reason': 'waiter-not-completed'}
+        now += return_cost
+        if now >= deadline:
+            return {'tap': False, 'waiter': waiter, 'reason': 'return-expired'}
+        now += log_cost
+        return {'tap': now < deadline, 'waiter': waiter,
+                'reason': 'ready' if now < deadline else 'log-expired'}
+    return {'tap': False, 'waiter': True, 'reason': 'not-ready'}
+
+READY = {'hittable': True, 'enabled': True}
+DISABLED = {'hittable': True, 'enabled': False}
+HIDDEN = {'hittable': False, 'enabled': True}
+
+class ReadinessDeadlineTests(unittest.TestCase):
+    def test_exact_source_and_inverse(self):
+        source = (Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+        change = READINESS_DEADLINE_PATCH
+        self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), NEW_SHA)
+        self.assertEqual(source.count(change['new']), 1)
+        baseline = source.replace(change['new'], change['old'], 1).replace(change['extension_menu_new'], change['extension_menu_old'], 1)
+        self.assertEqual(hashlib.sha256(baseline.encode()).hexdigest(), BASE_SHA)
+        self.assertEqual(hashlib.sha256(baseline.encode()).hexdigest(), BASE_SHA)
+
+    def test_only_two_helpers_and_final_extension_fence_changed(self):
+        source = (Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+        baseline = restore_readiness_deadline_delta(source)
+        change = READINESS_DEADLINE_PATCH
+        source = source.replace(change['extension_menu_new'], change['extension_menu_old'], 1)
+        self.assertEqual(source.split('    private func unique(')[0], baseline.split('    private func unique(')[0])
+        self.assertEqual(source.split('    private func waitGone(')[1], baseline.split('    private func waitGone(')[1])
+
+    def test_extension_menu_has_clock_check_after_ax(self):
+        source = (Path(__file__).resolve().parents[1]/'CelluloidUITests/IOSPhotosHostUITests.swift').read_text()
+        change = READINESS_DEADLINE_PATCH
+        self.assertEqual(source.count(change['extension_menu_new']), 1)
+        self.assertTrue(change['extension_menu_new'].endswith('        try withinBudget()\n        button.tap()\n'))
+
+    def test_fast_and_waiting_paths_use_identical_predicate(self):
+        source = READINESS_DEADLINE_PATCH['new']
+        self.assertEqual(source.count('query.allElementsBoundByIndex.filter { $0.isHittable }'), 1)
+        self.assertIn('visible.count == 1, let element = visible.first, element.isEnabled', source)
+        self.assertIn('var ready = resolveReady()', source)
+        self.assertIn('ready = resolveReady()\n                return ready != nil', source)
+
+    def test_no_guessed_controls_or_new_poll_loop(self):
+        source = READINESS_DEADLINE_PATCH['new']
+        for banned in ['.firstMatch', '.coordinate(', 'Thread.sleep', 'while ', 'repeat {', '.label', '.identifier']:
+            self.assertNotIn(banned, source)
+
+    def test_budgets_and_immediate_pre_tap_fence(self):
+        source = READINESS_DEADLINE_PATCH['new']
+        self.assertIn('timeout: TimeInterval = 8', source)
+        self.assertIn('systemUptime + timeout, started + 120', source)
+        self.assertIn('systemUptime + 8, started + 120', source)
+        self.assertIn('timeout: deadline - ProcessInfo.processInfo.systemUptime', source)
+        self.assertIn('timeout: remaining', source)
+        tap = source.split('    private func tap(')[1]
+        self.assertLess(tap.index('print('), tap.index('try withinBudget()', tap.index('print(')))
+        self.assertIn('guard ProcessInfo.processInfo.systemUptime < deadline else {\n            throw failure("Public control wait deadline reached before tap at " + stage)\n        }\n        element.tap()', tap)
+
+    def test_ready_is_synchronous(self):
+        r = simulate([(0, .1, [READY])])
+        self.assertTrue(r['tap']); self.assertFalse(r['waiter'])
+
+    def test_delayed_ready_keeps_original_deadline(self):
+        r = simulate([(0, .2, []), (7.8, .1, [READY])])
+        self.assertTrue(r['tap']); self.assertTrue(r['waiter'])
+
+    def test_ambiguous_never_ready(self):
+        self.assertFalse(simulate([(0, .1, [READY, READY]), (1, .1, [READY, READY])])['tap'])
+
+    def test_disabled_never_ready(self):
+        self.assertFalse(simulate([(0, .1, [DISABLED]), (1, .1, [DISABLED])])['tap'])
+
+    def test_missing_and_hidden_never_ready(self):
+        for elements in [[], [HIDDEN], [HIDDEN, HIDDEN]]:
+            self.assertFalse(simulate([(0, .1, elements)])['tap'])
+
+    def test_hidden_duplicates_preserve_visible_contract(self):
+        self.assertTrue(simulate([(0, .1, [READY, HIDDEN])])['tap'])
+
+    def test_exhaustive_old_new_readiness_equivalence(self):
+        # All lists of up to three hittable/enabled combinations.
+        states = [{'hittable': h, 'enabled': e} for h, e in itertools.product([False, True], repeat=2)]
+        for n in range(4):
+            for values in itertools.product(states, repeat=n):
+                visible = [e for e in values if e['hittable']]
+                old = len(visible) == 1 and visible[0]['enabled']
+                self.assertEqual(simulate([(0, .1, values)])['tap'], old)
+
+    def test_initial_ax_cost_cannot_reset_wait(self):
+        self.assertFalse(simulate([(0, 7.9, []), (8, .1, [READY])])['tap'])
+
+    def test_initial_ready_ax_crosses_deadline(self):
+        self.assertFalse(simulate([(0, 8, [READY])])['tap'])
+
+    def test_waiter_ready_ax_crosses_deadline(self):
+        self.assertFalse(simulate([(0, .1, []), (7.9, .2, [READY])])['tap'])
+
+    def test_case_remaining_clips_query_wait(self):
+        self.assertFalse(simulate([(119, .1, []), (120, .1, [READY])], start=119)['tap'])
+
+    def test_return_after_case_cap_rejected(self):
+        self.assertFalse(simulate([(119, .5, [READY])], start=119, return_cost=.6)['tap'])
+
+    def test_logging_delay_cannot_authorize_late_tap(self):
+        self.assertFalse(simulate([(119, .5, [READY])], start=119, log_cost=.5)['tap'])
+
+    def test_start_at_cap_rejected_without_waiting(self):
+        self.assertFalse(simulate([(120, 0, [READY])], start=120)['tap'])
+
+    def test_waiter_failure_cannot_use_stale_readiness(self):
+        self.assertFalse(simulate([(0, .1, []), (1, .1, [READY])], wait_result=False)['tap'])
+
+
+
+if __name__ == '__main__': unittest.main()
