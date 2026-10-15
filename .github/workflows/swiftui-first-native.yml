@@ -1,8 +1,8 @@
 # Exact-source, unsigned migration validation. This branch is activated only after root review.
-name: Celluloid SwiftUI first unsigned slice
+name: Celluloid final iOS full regression
 on:
   push:
-    branches: [swiftui-first-native]
+    branches: [cell-ios-final-full-20261015]
 permissions:
   contents: read
 concurrency:
@@ -10,12 +10,15 @@ concurrency:
   cancel-in-progress: false
 jobs:
   first-slice:
+    # CLOSED integration candidate; activation requires fresh exact-source review.
+    if: ${{ false }}
     runs-on: xcode-27
     timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
       EXPECTED_COMMIT: ${{ github.sha }}
       TZ: UTC
+      CELLULOID_PREVIEW_CONTINUATION: ''
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         timeout-minutes: 3
@@ -28,7 +31,7 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = 100mango/Celluloid
           test "$GITHUB_EVENT_NAME" = push
-          test "$GITHUB_REF" = refs/heads/swiftui-first-native
+          test "$GITHUB_REF" = refs/heads/cell-ios-final-full-20261015
           [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
           test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
@@ -38,7 +41,11 @@ jobs:
           git rev-parse HEAD 'HEAD^{tree}' > build/swiftui-source.txt
       - name: Same-build picker and legacy PhotoKit acceptance
         timeout-minutes: 40
-        run: /bin/bash Scripts/verify_swiftui_native.sh
+        run: |
+          set -euo pipefail
+          test -z "${CELLULOID_PREVIEW_CONTINUATION:-}"
+          /bin/bash Scripts/verify_swiftui_native.sh
+          python3 -S -c 'import json; r=json.load(open("build/swiftui-acceptance/acceptance.json")); ok=r.get("validation_scope")=="full_acceptance" and r.get("all_required_phases_accepted") is True and r.get("not_executed_in_this_slice")==[]; raise SystemExit(0 if ok else "Final full regression cannot accept a continuation slice")'
       - name: Verify source remained unchanged
         timeout-minutes: 1
         if: always()

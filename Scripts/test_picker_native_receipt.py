@@ -14,6 +14,8 @@ RUN = "a530ecbd-ff51-48cc-8aeb-6123f07363b6"
 INSTANCE = "d1203fb7-070b-4b3d-b907-e46963f2e650"
 SHA = "a" * 40
 TREE = "b" * 40
+SESSION = "767739c9-d084-4142-9822-fb238552c9f8"
+PREVIEW = "3ba648df-6151-4d35-aaea-573fd618a48a"
 WALL = 1791513700.0
 UPTIME = 1700.0
 
@@ -55,7 +57,11 @@ def example(selected=False, native_delay=0, ax_delay=0, queue_delay=0):
                  app("picker-selection-delegate" if selected else "picker-cancel-delegate", command_time+.1, "0x123abc")]
     if selected:
         app_lines += [app("picker-selected-identities", command_time+.11, details=identities(["synthetic-fixture-1"])),
-                      app("resolved-original-identities", command_time+.4, details=identities(["synthetic-fixture-1"]))]
+                      app("resolved-original-identities", command_time+.4, details=identities(["synthetic-fixture-1"])),
+                      app("photokit-input-request-begin", command_time+.41),
+                      app("photokit-input-received", command_time+.45),
+                      app("preview-render-completed", command_time+.5, details=f"editor_session={SESSION} preview={PREVIEW}"),
+                      app("canvas-preview-candidate", command_time+.55, details=f"editor_session={SESSION} preview={PREVIEW}")]
     app_lines += [app("picker-representable-dismantle", command_time+.4, "0x123abc"),
                   app("picker-coordinator-released", command_time+.5),
                   app("root-cover-dismissal-completed", command_time+.9)]
@@ -65,6 +71,8 @@ def example(selected=False, native_delay=0, ax_delay=0, queue_delay=0):
                     ui("selection-command-start" if selected else "cancel-command-start", command_time),
                     native("ViewDidDisappear", command_time+.3)]
     if selected:
+        runner_lines.append(ui("editor-preview-screenshot-confirmed", command_time+.6,
+            details=f"instance={INSTANCE} editor_session={SESSION} preview={PREVIEW} pixel_match=true sample_count=3 max_channel_error=0 source_width=803 source_height=600 screenshot_attachment=celluloid-first-preview-{INSTANCE}-{PREVIEW}"))
         runner_lines.append(ui("editor-interactive-after-selection", command_time+.7,
                                details="editor_exists=true editor_enabled=true editor_hittable=true picker_candidates_exist=false"))
     runner_lines += [ui("home-interactive-after-dismiss", command_time+1,
@@ -100,6 +108,50 @@ class ReceiptTests(unittest.TestCase):
         proof = result["presentations"][0]["selected_original_proof"]
         self.assertTrue(proof["synthetic_fixture_membership"])
         self.assertNotIn("synthetic-fixture-1", json.dumps(result))
+
+    def test_first_preview_is_pixel_observed_upper_bound_without_invented_budget(self):
+        proof = self.validate(selected=True)["presentations"][0]["first_preview_observation"]
+        self.assertEqual(proof["kind"], "screenshot_confirmed_display_upper_bound")
+        self.assertEqual(proof["performance_budget"], "not_set")
+        self.assertAlmostEqual(proof["selection_to_input_seconds"], .35)
+        self.assertAlmostEqual(proof["input_to_preview_render_seconds"], .05)
+        self.assertGreater(proof["selection_to_observed_display_upper_seconds"], .5)
+        self.assertIsNone(self.validate()["presentations"][0]["first_preview_observation"])
+
+    def test_done_enabled_and_onappear_do_not_replace_any_display_stage(self):
+        for event in ("photokit-input-request-begin", "photokit-input-received", "preview-render-completed",
+                      "canvas-preview-candidate", "editor-preview-screenshot-confirmed"):
+            logs = example(True)
+            for key in logs:
+                logs[key] = "\n".join(line for line in logs[key].splitlines() if "event="+event not in line)
+            self.rejects(logs, selected=True)
+
+    def test_screenshot_rejects_stale_identity_missing_pixels_wrong_fixture_and_attachment(self):
+        for old, new in ((f"preview={PREVIEW}", f"preview={RUN}"),
+                         (f"instance={INSTANCE}", f"instance={RUN}"),
+                         ("pixel_match=true", "pixel_match=false"),
+                         ("sample_count=3", "sample_count=0"),
+                         ("max_channel_error=0", "max_channel_error=13"),
+                         ("source_width=803", "source_width=640"),
+                         ("screenshot_attachment=celluloid-first-preview", "screenshot_attachment=unbound")):
+            logs = example(True)
+            # Only mutate the screenshot assertion, preserving render/candidate truth.
+            logs["runner.log"] = "\n".join(line.replace(old, new) if "event=editor-preview-screenshot-confirmed" in line else line
+                                              for line in logs["runner.log"].splitlines())
+            self.rejects(logs, selected=True)
+
+    def test_screenshot_before_candidate_and_forged_runner_fail(self):
+        for delta in (.54, .8):
+            logs = example(True)
+            line = next(line for line in logs["runner.log"].splitlines() if "event=editor-preview-screenshot-confirmed" in line)
+            changed = line.replace(f"uptime_seconds={UPTIME+3.6:.6f}", f"uptime_seconds={UPTIME+3+delta:.6f}")
+            changed = changed.replace(f"wall_seconds={WALL+3.6:.6f}", f"wall_seconds={WALL+3+delta:.6f}")
+            logs["runner.log"] = logs["runner.log"].replace(line, changed)
+            self.rejects(logs, "stage ordering", selected=True)
+        logs = example(True)
+        logs["runner.log"] = "\n".join(line.replace("CelluloidUITests-Runner[44681", "Celluloid[44733")
+            if "event=editor-preview-screenshot-confirmed" in line else line for line in logs["runner.log"].splitlines())
+        self.rejects(logs, "bound XCTest runner", selected=True)
 
     def test_input_delivery_queue_delay_is_never_removed_from_acceptance(self):
         result = self.validate(example(queue_delay=2.5))

@@ -11,6 +11,44 @@ final class SwiftUIEditorSessionTests: XCTestCase {
             UIColor.red.setFill(); context.fill(CGRect(origin: .zero, size: size))
         }
     }
+    func testFirstPreviewObservationRejectsLoadingAndCancellation() async throws {
+        let session = CelluloidEditingSession()
+        var events: [String] = []
+        session.firstFrameEvent = { event, _, _ in events.append(event) }
+        session.startCopy(image: image())
+        XCTAssertNil(session.completedPreviewForObservation)
+        XCTAssertTrue(events.isEmpty, "Starting a session does not prove rendering or display")
+        let ready = expectation(description: "Background preview completed")
+        session.firstFrameEvent = { event, _, _ in
+            events.append(event)
+            if event == "preview-render-completed" { ready.fulfill() }
+        }
+        await fulfillment(of: [ready], timeout: 5)
+        XCTAssertNotNil(session.completedPreviewForObservation)
+        XCTAssertEqual(events, ["preview-render-completed"])
+        session.cancel()
+        XCTAssertNil(session.completedPreviewForObservation)
+        XCTAssertNil(session.previewViewForTesting.accessibilityValue)
+    }
+
+    func testAttachedCanvasCandidateNeverClaimsScreenPixelsAndClearsOnCancel() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let surface = CelluloidCanvasSurface(frame: window.bounds)
+        window.addSubview(surface)
+        let session = UUID(), preview = UUID(), trace = UUID().uuidString
+        var events: [String] = []
+        surface.firstFrameObservation = (trace, session, preview, CGSize(width: 803, height: 600))
+        surface.firstFrameEvent = { event, _, _ in events.append(event) }
+        surface.update(image: image(), recipe: AdjustmentData(), revision: UUID(), session: session, editable: true)
+        surface.layoutIfNeeded()
+        XCTAssertEqual(events, ["canvas-preview-candidate"])
+        XCTAssertEqual(surface.imageView.accessibilityIdentifier, "editor-preview-pixel-candidate")
+        surface.clearFirstFrameCandidate()
+        XCTAssertNil(surface.imageView.accessibilityValue)
+        XCTAssertFalse(surface.imageView.isAccessibilityElement)
+        XCTAssertFalse(events.contains("editor-preview-screenshot-confirmed"))
+    }
+
     func testReadOnlyRecipeIsOpaqueAndRejectsEveryMutation() {
         let session = CelluloidEditingSession()
         session.startCopy(image: image())

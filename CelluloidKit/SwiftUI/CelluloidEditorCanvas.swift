@@ -13,6 +13,9 @@ struct CelluloidEditorCanvas: UIViewRepresentable {
     static func dismantleUIView(_ view: CelluloidCanvasSurface, coordinator: ()) {
         view.didChange = nil; view.didRequestText = nil; view.didEstablishCanvas = nil
         view.isUserInteractionEnabled = false
+        #if DEBUG
+        view.clearFirstFrameCandidate()
+        #endif
     }
     func updateUIView(_ view: CelluloidCanvasSurface, context: Context) {
         let token = session.sessionIdentity, revision = session.revision
@@ -26,6 +29,14 @@ struct CelluloidEditorCanvas: UIViewRepresentable {
                 session?.establishCanvas(size, revision: revision)
             }
         }
+        #if DEBUG
+        view.firstFrameObservation = (session.canEdit && !session.previewIsLoading ? session.firstFrameTraceID : nil).flatMap { traceID in
+            session.completedPreviewForObservation.map { preview in
+                (traceID, token, preview, session.firstFrameSourcePixels)
+            }
+        }
+        view.firstFrameEvent = session.firstFrameEvent
+        #endif
         view.update(image: session.previewImage, recipe: session.adjustment, revision: revision,
                     logicalImageSize: session.sourceImage?.size, session: token, editable: session.canEdit,
                     scene: session.canvasIdentity)
@@ -59,6 +70,42 @@ final class CelluloidCanvasSurface: UIView {
     var didEstablishCanvas: ((CGSize) -> Void)?
     var didChange: ((AdjustmentData, CelluloidEditingSession.Layer?, UUID, UUID) -> Void)?
     var didRequestText: ((CelluloidEditingSession.Layer, String, UUID) -> Void)?
+
+    #if DEBUG
+    // Candidate means only that the completed preview is installed in an attached
+    // canvas. It is NOT a displayed-frame claim. XCTest must inspect real pixels.
+    var firstFrameObservation: (String, UUID, UUID, CGSize)?
+    var firstFrameEvent: ((String, UUID, UUID) -> Void)?
+    private var announcedPreview: UUID?
+    func clearFirstFrameCandidate() {
+        firstFrameObservation = nil; announcedPreview = nil
+        imageView.isAccessibilityElement = false
+        imageView.accessibilityIdentifier = nil; imageView.accessibilityValue = nil
+    }
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            imageView.isAccessibilityElement = false
+            imageView.accessibilityIdentifier = nil; imageView.accessibilityValue = nil
+        } else { setNeedsLayout() }
+    }
+    private func exposeFirstFrameCandidate() {
+        guard let (trace, session, preview, pixels) = firstFrameObservation,
+              session == sessionIdentity, window != nil, !isHidden, alpha > 0,
+              imageView.image != nil, imageView.bounds.width > 0, imageView.bounds.height > 0 else {
+            imageView.isAccessibilityElement = false
+            imageView.accessibilityIdentifier = nil; imageView.accessibilityValue = nil
+            return
+        }
+        imageView.isAccessibilityElement = true
+        imageView.accessibilityIdentifier = "editor-preview-pixel-candidate"
+        imageView.accessibilityValue = "\(trace)|\(session)|\(preview)|\(Int(pixels.width))|\(Int(pixels.height))"
+        if announcedPreview != preview {
+            announcedPreview = preview
+            firstFrameEvent?("canvas-preview-candidate", session, preview)
+        }
+    }
+    #endif
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -113,6 +160,9 @@ final class CelluloidCanvasSurface: UIView {
         }
         overlay.adjustFrame()
         configuring = false
+        #if DEBUG
+        exposeFirstFrameCandidate()
+        #endif
         if recipe.referenceCanvasSize == nil, let size = overlay.referenceCanvasSize { didEstablishCanvas?(size) }
         guard restoresRecipe || oldCanvasSize != overlay.referenceCanvasSize else { return }
         // Layout can occur while SwiftUI is updating its view tree. Commit only

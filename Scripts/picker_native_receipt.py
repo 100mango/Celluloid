@@ -450,6 +450,48 @@ def selected_identity(record):
     return value
 
 
+def first_preview_evidence(app, ui, delegate, returned, presentation, runner_pid, uncertainty):
+    """Only source-bound XCTest pixel assertions support observed display.
+
+    Rendering/canvas installation is not display. This clock is a screenshot
+    observation upper bound; no physical frame timestamp or new SLO is claimed.
+    """
+    request = event(app, "photokit-input-request-begin")
+    received = event(app, "photokit-input-received")
+    rendered = event(app, "preview-render-completed")
+    candidate = event(app, "canvas-preview-candidate")
+    displayed = event(ui, "editor-preview-screenshot-confirmed")
+    prefix = displayed["prefix"]
+    require(prefix and prefix["process"].endswith("UITests-Runner") and prefix["pid"] == runner_pid,
+            "Screenshot assertion did not originate in the bound XCTest runner")
+    require(identifier(displayed.get("instance"), "display instance") == presentation,
+            "Screenshot belongs to another presentation")
+    for key in ("editor_session", "preview"):
+        values = [identifier(row.get(key), key) for row in (rendered, candidate, displayed)]
+        require(len(set(values)) == 1, "Stale screenshot/editor preview identity")
+    require(displayed.get("pixel_match") == "true" and displayed.get("sample_count") == "3",
+            "Missing successful screenshot pixel assertions")
+    error = number(displayed.get("max_channel_error"), "screenshot pixel error")
+    require(error <= 12, "Screenshot pixels differ from the independent synthetic fixture")
+    require(displayed.get("source_width") in ("800", "801", "802", "803")
+            and displayed.get("source_height") == "600", "Unqualified first-frame fixture")
+    expected_attachment = "celluloid-first-preview-" + displayed["instance"] + "-" + displayed["preview"]
+    require(displayed.get("screenshot_attachment") == expected_attachment,
+            "Screenshot attachment is not bound to this preview")
+    stages = [delegate, request, received, rendered, candidate, displayed, returned]
+    require(all(a["uptime"] <= b["uptime"] and a["wall"] <= b["wall"] for a, b in zip(stages, stages[1:])),
+            "First-preview stage ordering is invalid")
+    return {"kind": "screenshot_confirmed_display_upper_bound", "performance_budget": "not_set",
+            "selection_to_input_seconds": received["uptime"] - delegate["uptime"],
+            "input_to_preview_render_seconds": rendered["uptime"] - received["uptime"],
+            "render_to_canvas_candidate_seconds": candidate["uptime"] - rendered["uptime"],
+            "selection_to_observed_display_upper_seconds": displayed["wall"] - delegate["wall"] + uncertainty,
+            "sample_count": 3, "maximum_channel_error": error,
+            "screenshot_attachment": expected_attachment,
+            "evidence": [{"event": row["event"], "source_locations": row["source_locations"]} for row in stages[:-1]],
+            "limitations": "Includes capture/automation overhead; not physical first scanout, frame rate, or library readiness"}
+
+
 def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identifiers=None):
     traces, native, historical = parse_logs(logs)
     synthesis = extract_synthesis_events(logs)
@@ -515,6 +557,7 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
             dismissed = event(instance_records, "root-cover-dismissal-completed")
             require(delegate["uptime"] <= dismissed["uptime"] <= final_home["uptime"], "Root dismissal ordering is invalid")
             selection_proof = None
+            preview_proof = None
             if selected:
                 require(fixture_identifiers, "Selected run requires verified synthetic fixture manifest")
                 picked = event(instance_records, "picker-selected-identities")
@@ -523,6 +566,8 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
                 require(picked_ids == resolved_ids, "Picker/resolved original identity mismatch or ordering mismatch")
                 require(all(value in fixture_identifiers for value in picked_ids), "Selected identity is outside verified synthetic fixtures")
                 require(delegate["uptime"] <= picked["uptime"] <= resolved["uptime"] <= returned["uptime"], "Selected original resolution ordering is invalid")
+                preview_proof = first_preview_evidence(instance_records, local, delegate, returned,
+                    action["instance"], runner_pid, drift + max(anchor_errors) + 0.001)
                 selection_proof = {"verified_original_count": len(picked_ids), "synthetic_fixture_membership": True,
                                    "identity_array_sha256": hashlib.sha256(json.dumps(picked_ids, separators=(",", ":")).encode()).hexdigest()}
             require(action["uptime"] <= construction["uptime"] <= command["uptime"] <= delegate["uptime"] <= returned["uptime"], "Invalid app/command/return ordering")
@@ -577,7 +622,7 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
             input_ax_status = "passed" if input_ax_upper <= BUDGET_SECONDS else "inconclusive_interactivity_budget"
             receipts.append({"run_id": run, "iteration": iteration, "presentation_id": action["instance"], "app_pid": int(action["pid"]),
                              "picker_pointer": construction["picker"], "native_instance_binding": "same PID and unique serialized presentation window; native notification has no object pointer",
-                             "return": "selected_editor" if selected else "cancel_home", "return_verified": True, "selected_original_proof": selection_proof,
+                             "return": "selected_editor" if selected else "cancel_home", "return_verified": True, "selected_original_proof": selection_proof, "first_preview_observation": preview_proof,
                              "input_synthesis_evidence": {"file": input_event["path"], "line": input_event["line"], "activity": input_event["activity"]},
                              "tap_command_to_input_synthesis_seconds": input_wall - start["wall"],
                              "input_synthesis_to_app_action_seconds": action["wall"] - input_wall,
@@ -617,7 +662,7 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
             "historical_metric_is_acceptance_gate": False,
             "acceptance_start": "XCTest runner input synthesis start; includes delivery and app input-queue delay",
             "app_action_metrics_are_secondary": True,
-            "scope": "Input synthesis + native appearance + actual control queries + delegate/return; not photo-library readiness, frame time, or a freeze diagnosis"}
+            "scope": "Input synthesis + native appearance + actual control queries + delegate/return; plus required selected-preview screenshot pixels; not photo-library readiness, physical frame time, or a freeze diagnosis"}
 
 
 def parse_expected_run(value):

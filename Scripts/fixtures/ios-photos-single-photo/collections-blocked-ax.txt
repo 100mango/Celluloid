@@ -1,0 +1,169 @@
+Attributes: Application, 0x106248140, pid: 40989, label: 'Photos'
+Element subtree:
+ →Application, 0x106248140, pid: 40989, label: 'Photos'
+    Window (Main), 0x106248280, {{0.0, 0.0}, {375.0, 667.0}}
+      Other, 0x1062483c0, {{0.0, 0.0}, {375.0, 667.0}}
+      Other, 0x106248000, {{0.0, 0.0}, {375.0, 667.0}}
+        Other, 0x1062488c0, {{0.0, 0.0}, {375.0, 667.0}}
+          Other, 0x106248a00, {{0.0, 0.0}, {375.0, 667.0}}
+            Other, 0x106248b40, {{0.0, 0.0}, {375.0, 667.0}}
+              Other, 0x106248c80, {{0.0, 0.0}, {375.0, 667.0}}
+                Other, 0x106248dc0, {{0.0, 0.0}, {375.0, 667.0}}
+                  NavigationBar, 0x106248f00, {{0.0, 20.0}, {375.0, 54.0}}, identifier: 'Collections'
+                    StaticText, 0x106249cc0, {{16.0, 21.5}, {179.0, 41.0}}, label: 'Collections'
+                    Other, 0x106249e00, {{263.0, 24.0}, {36.0, 36.0}}
+                      Other, 0x106249f40, {{263.0, 24.0}, {36.0, 36.0}}
+                        Other, 0x10624a080, {{267.0, 24.0}, {28.0, 36.0}}
+                        Button, 0x10624a300, {{267.0, 24.0}, {28.0, 36.0}}, label: 'View Options and Reorder'
+                          Button, 0x10624aa80, {{267.0, 24.0}, {28.0, 36.0}}
+                            Image, 0x10624abc0, {{271.0, 40.0}, {20.0, 4.5}}, identifier: 'ellipsis', label: 'More'
+                    Other, 0x10624b700, {{315.0, 28.0}, {44.0, 28.0}}
+                      Other, 0x106248500, {{315.0, 28.0}, {44.0, 28.0}}
+                        Button, 0x10624be80, {{321.5, 26.5}, {31.5, 31.5}}, identifier: 'person.fill', label: 'Profile'
+                        Other, 0x10624bd40, {{325.5, 30.5}, {23.5, 23.5}}, label: 'Profile'
+                  Other, 0x10624bc00, {{0.0, 0.0}, {375.0, 667.0}}
+                    Other, 0x10624b840, {{0.0, 0.0}, {375.0, 667.0}}
+                      Other, 0x10624bac0, {{0.0, 0.0}, {375.0, 667.0}}
+                        Other, 0x10624b980, {{0.0, 0.0}, {375.0, 667.0}}
+                          Other, 0x10624ad00, {{0.0, 74.0}, {375.0, 510.0}}
+                          ScrollView, 0x10624b200, {{0.0, 0.0}, {375.0, 667.0}}, identifier: 'LemonadeRootScrollView'
+                            Other, 0x10624b5c0, {{0.0, 0.0}, {375.0, 667.0}}
+                              Other, 0x10624b480, {{0.0, 0.0}, {375.0, 114.0}}
+                              Other, 0x10624b340, {{0.0, 534.0}, {375.0, 133.0}}
+                            Other, 0x10624b0c0, {{0.0, 0.0}, {375.0, 667.0}}
+                              Other, 0x10624af80, {{0.0, 534.0}, {375.0, 133.0}}
+                            Other, 0x10624ae40, {{0.0, 74.0}, {375.0, 2163.0}}
+                              Button, 0x10624a800, {{24.0, 2166.0}, {79.5, 26.5}}, label: 'Reorder'
+                              StaticText, 0x10624a940, {{96.0, 2205.8}, {160.5, 18.0}}, label: 'Optimizing Library 0%'
+                              Other, 0x10624a440, {{0.0, 74.0}, {423.0, 2158.0}}
+                                Other, 0x10624a6c0, {{0.0, 74.0}, {375.0, 222.5}}
+                                  StaticText, 0x10624a580, {{24.0, 87.8}, {102.0, 26.5}}, identifier: 'memories-shelf-details-disclosure', label: 'Memories'
+                                  Button, 0x10624a1c0, {{323.0, 87.0}, {28.0, 28.0}}, identifier: 'memories-shelf-details-disclosure', label: 'Collapse'
+                                  Image, 0x106249040, {{326.5, 95.5}, {22.0, 11.0}}, identifier: 'memories-shelf-details-disclosure', label: 'Drag'
+                                  StaticText, 0x106249900, {{43.5, 145.5}, {279.0, 116.5}}, label: 'No Memories Available, Memories will appear here when more photos and videos are added to the library.'
+                                    Image, 0x106249a40, {{43.5, 145.5}, {25.0, 22.5}}, identifier: 'memories', label: 'Memories'
+                                    StaticText, 0x106249b80, {{44.0, 210.0}, {162.5, 18.0}}, label: 'No Memories Available'
+                                    StaticText, 0x1062492c0, {{44.0, 230.0}, {278.5, 32.0}}, label: 'Memories will appear here when more photos and videos are added to the library.'
+                                Other, 0x106249400, {{0.0, 296.0}, {423.0, 167.0}}
+                                  Button, 0x106249540, {{24.0, 310.0}, {89.5, 26.5}}, identifier: 'bookmark-shelf-details-disclosure', label: 'Pinned'
+                                    StaticText, 0x106249680, {{24.0, 310.0}, {71.5, 26.5}}, label: 'Pinned'
+                                    Image, 0x1062497c0, {{103.0, 315.0}, {9.5, 16.0}}, identifier: 'chevron.forward', label: 'Forward'
+                                  Other, 0x106249180, {{265.5, 309.0}, {49.5, 28.0}}, identifier: 'bookmark-shelf-details-disclosure'
+                                  Button, 0x106248780, {{265.5, 309.0}, {49.5, 28.0}}, identifier: 'bookmark-shelf-details-disclosure', label: 'Edit'
+                                  Button, 0x102ff8b40, {{323.0, 309.0}, {28.0, 28.0}}, identifier: 'bookmark-shelf-details-disclosure', label: 'Collapse'
+                                  Image, 0x102ff9f40, {{326.5, 317.5}, {22.0, 11.0}}, identifier: 'bookmark-shelf-details-disclosure', label: 'Drag'
+                                  ScrollView, 0x102ff9cc0, {{0.0, 345.5}, {375.0, 101.0}}, identifier: 'bookmark-shelf-scrollView'
+                                    Other, 0x102ffa1c0, {{24.0, 345.5}, {666.0, 101.0}}
+                                      Other, 0x102ffa440, {{24.0, 345.5}, {666.0, 101.0}}
+                                        Other, 0x102ffa300, {{24.0, 345.5}, {666.0, 101.0}}
+                                          Button, 0x102ffae40, {{24.0, 345.5}, {101.0, 101.0}}, identifier: 'bookmarks', label: 'Favorites'
+                                            Other, 0x102ffaf80, {{24.0, 345.5}, {101.0, 101.0}}
+                                            Other, 0x102ffb700, {{24.0, 345.5}, {101.0, 101.0}}
+                                            Image, 0x102ff8500, {{96.5, 357.0}, {16.5, 15.5}}, identifier: 'heart.fill', label: 'Love'
+                                            StaticText, 0x102ff8640, {{34.0, 422.5}, {56.5, 16.0}}, label: 'Favorites'
+                                          Button, 0x102ffbd40, {{137.0, 345.5}, {101.0, 101.0}}, identifier: 'bookmarks', label: 'Recently Saved'
+                                            Other, 0x102ffbac0, {{137.0, 345.5}, {101.0, 101.0}}
+                                            StaticText, 0x102ffbe80, {{137.0, 345.5}, {101.0, 101.0}}, label: 'Recently Saved'
+                                          Button, 0x102ffbc00, {{250.0, 345.5}, {101.0, 101.0}}, identifier: 'bookmarks', label: 'Map'
+                                            Other, 0x102ffad00, {{250.0, 345.5}, {101.0, 101.0}}
+                                            StaticText, 0x102ffb200, {{250.0, 345.5}, {101.0, 101.0}}, label: 'Map'
+                                          Button, 0x102ffb980, {{363.0, 345.5}, {101.0, 101.0}}, identifier: 'bookmarks', label: 'Videos'
+                                            Other, 0x102ffb840, {{363.0, 345.5}, {101.0, 101.0}}
+                                            StaticText, 0x102ffb5c0, {{363.0, 345.5}, {101.0, 101.0}}, label: 'Videos'
+                                          Button, 0x102ffb480, {{476.0, 345.5}, {101.0, 101.0}}, identifier: 'bookmarks', label: 'Screenshots'
+                                            Other, 0x102ffb340, {{476.0, 345.5}, {101.0, 101.0}}
+                                            StaticText, 0x102ffb0c0, {{476.0, 345.5}, {101.0, 101.0}}, label: 'Screenshots'
+                                          Button, 0x102ffa800, {{589.0, 345.5}, {101.0, 101.0}}, identifier: 'bookmarks', label: 'Recently Deleted'
+                                            Other, 0x102ffabc0, {{589.0, 345.5}, {101.0, 101.0}}
+                                            Image, 0x102ffa6c0, {{628.5, 384.0}, {22.0, 24.5}}, identifier: 'trash', label: 'Trash'
+                                            StaticText, 0x102ffaa80, {{599.0, 406.5}, {57.5, 32.0}}, label: 'Recently Deleted'
+                                Other, 0x102ffa940, {{0.0, 462.5}, {423.0, 167.0}}
+                                  Button, 0x102ffa080, {{24.0, 476.5}, {96.5, 26.5}}, identifier: 'albums-shelf-details-disclosure', label: 'Albums'
+                                    StaticText, 0x102ff9900, {{24.0, 476.5}, {78.5, 26.5}}, label: 'Albums'
+                                    Image, 0x102ff9a40, {{110.0, 481.5}, {9.5, 16.0}}, identifier: 'chevron.forward', label: 'Forward'
+                                  Button, 0x102ff9b80, {{323.0, 475.5}, {28.0, 28.0}}, identifier: 'albums-shelf-details-disclosure', label: 'Collapse'
+                                  Image, 0x102ff9e00, {{326.5, 484.0}, {22.0, 11.0}}, identifier: 'albums-shelf-details-disclosure', label: 'Drag'
+                                  ScrollView, 0x102ff9180, {{0.0, 512.0}, {375.0, 101.0}}, identifier: 'albums-shelf-scrollView'
+                                    Other, 0x102ff9040, {{24.0, 512.0}, {101.0, 101.0}}
+                                      Other, 0x102ff8dc0, {{24.0, 512.0}, {101.0, 101.0}}
+                                        Other, 0x102ff97c0, {{24.0, 512.0}, {101.0, 101.0}}
+                                          Button, 0x102ff92c0, {{24.0, 512.0}, {101.0, 101.0}}, identifier: 'album', label: 'Celluloid Host 62e84523-3272-4cd9-8677-1f7d5624836b Album, 1 asset.'
+                                            Other, 0x102ff8f00, {{24.0, 512.0}, {101.0, 101.0}}
+                                            StaticText, 0x102e2b340, {{24.0, 512.0}, {101.0, 101.0}}, label: 'Celluloid Host 62e84523-3272-4cd9-8677-1f7d5624836b'
+                                Other, 0x102e2b480, {{0.0, 629.0}, {375.0, 235.5}}
+                                  StaticText, 0x102e2b840, {{24.0, 642.8}, {141.0, 26.5}}, identifier: 'people-shelf-details-disclosure', label: 'People & Pets'
+                                  Button, 0x102e2b980, {{323.0, 642.0}, {28.0, 28.0}}, identifier: 'people-shelf-details-disclosure', label: 'Collapse'
+                                  Image, 0x102e2b700, {{326.5, 650.5}, {22.0, 11.0}}, identifier: 'people-shelf-details-disclosure', label: 'Drag'
+                                  StaticText, 0x102e288c0, {{44.0, 700.5}, {283.0, 129.5}}, label: 'Finding People…, Photos organizes people and pets into albums and groups when iPhone is locked, charging, and connected to Wi-Fi.'
+                                    Image, 0x102e29040, {{46.5, 700.5}, {18.5, 19.5}}, identifier: 'person.fill', label: 'Person Silhouette, Filled'
+                                    StaticText, 0x102e2b5c0, {{44.0, 762.0}, {119.0, 18.0}}, label: 'Finding People…'
+                                    StaticText, 0x102e2b0c0, {{44.0, 782.0}, {283.0, 48.0}}, label: 'Photos organizes people and pets into albums and groups when iPhone is locked, charging, and connected to Wi-Fi.'
+                                Other, 0x10623c000, {{0.0, 864.0}, {375.0, 236.0}}
+                                  StaticText, 0x10623c140, {{24.0, 877.8}, {169.0, 26.5}}, identifier: 'featured-photos-shelf-details-disclosure', label: 'Featured Photos'
+                                  Button, 0x10623c280, {{323.0, 877.0}, {28.0, 28.0}}, identifier: 'featured-photos-shelf-details-disclosure', label: 'Collapse'
+                                  Image, 0x10623c3c0, {{326.5, 885.5}, {22.0, 11.0}}, identifier: 'featured-photos-shelf-details-disclosure', label: 'Drag'
+                                  StaticText, 0x10623c500, {{44.0, 935.5}, {279.0, 130.0}}, label: 'No Featured Photos Available, Featured Photos will appear here when more photos and videos are added to the library, or synced with iCloud.'
+                                    Image, 0x10623c640, {{46.5, 935.5}, {25.5, 20.0}}, identifier: 'photo.fill', label: 'Photo'
+                                    StaticText, 0x10623c780, {{44.0, 997.5}, {209.5, 18.0}}, label: 'No Featured Photos Available'
+                                    StaticText, 0x10623c8c0, {{44.0, 1017.5}, {279.0, 48.0}}, label: 'Featured Photos will appear here when more photos and videos are added to the library, or synced with iCloud.'
+                                Other, 0x10623ca00, {{0.0, 1099.5}, {375.0, 242.0}}
+                                  StaticText, 0x10623cb40, {{24.0, 1113.2}, {157.0, 26.5}}, identifier: 'shared-albums-shelf-details-disclosure', label: 'Shared Albums'
+                                  Button, 0x10623cc80, {{323.0, 1112.5}, {28.0, 28.0}}, identifier: 'shared-albums-shelf-details-disclosure', label: 'Collapse'
+                                  Image, 0x10623cdc0, {{326.5, 1121.0}, {22.0, 11.0}}, identifier: 'shared-albums-shelf-details-disclosure', label: 'Drag'
+                                  Other, 0x10623cf00, {{44.0, 1169.0}, {287.0, 138.0}}
+                                    Image, 0x10623d040, {{46.5, 1171.0}, {29.5, 26.0}}, identifier: 'rectangle.stack.and.person.fill', label: 'rectangle.stack.and.person.fill'
+                                    Button, 0x10623d180, {{223.0, 1169.0}, {108.0, 30.0}}, label: 'Start Sharing'
+                                    StaticText, 0x10623d2c0, {{44.0, 1239.0}, {109.0, 18.0}}, label: 'Shared Albums'
+                                    StaticText, 0x10623d400, {{44.0, 1259.0}, {279.0, 48.0}}, label: 'Share photos and videos with just the people you choose, and let them add photos, videos, and comments.'
+                              Button, 0x10623d540, {{252.5, 2197.5}, {34.5, 34.5}}, identifier: 'info.circle', label: 'Info'
+                            Other, 0x10623d680, {{342.0, 74.0}, {30.0, 510.0}}, label: 'Vertical scroll bar, 5 pages', value: 0%
+                              Other, 0x10623d7c0, {{369.0, 574.0}, {3.0, 7.0}}
+                            Other, 0x10623d900, {{342.0, 74.0}, {30.0, 510.0}}, label: 'Vertical scroll bar, 5 pages', value: 0%
+                              Other, 0x10623da40, {{369.0, 574.0}, {3.0, 7.0}}
+                  Toolbar, 0x10623db80, {{0.0, 0.0}, {375.0, 667.0}}, identifier: 'Toolbar', label: 'Toolbar'
+                    Other, 0x10623dcc0, {{0.0, 0.0}, {375.0, 667.0}}
+            Other, 0x10623de00, {{0.0, 0.0}, {375.0, 667.0}}
+              Other, 0x10623df40, {{0.0, 584.0}, {375.0, 83.0}}
+                Other, 0x10623e080, {{0.0, 0.0}, {375.0, 667.0}}
+                  TabBar, 0x10623e1c0, {{0.0, 584.0}, {375.0, 83.0}}, label: 'Tab Bar'
+                    Other, 0x10623e300, {{21.0, 584.0}, {191.0, 62.0}}
+                      Other, 0x10623e440, {{21.0, 584.0}, {95.5, 54.0}}
+                      Other, 0x10623e580, {{21.0, 584.0}, {191.0, 62.0}}
+                        Button, 0x10623e6c0, {{25.0, 588.0}, {95.5, 54.0}}, identifier: 'LibraryTab', label: 'Library'
+                          Image, 0x10623e800, {{55.5, 594.0}, {34.5, 29.0}}, identifier: 'photo.fill.on.rectangle.fill', label: 'Photo on a rectangle, filled'
+                        Button, 0x10623e940, {{112.5, 588.0}, {95.5, 54.0}}, identifier: 'CollectionsTab', label: 'Collections', Selected
+                          Image, 0x10623ea80, {{145.5, 593.0}, {30.0, 31.5}}, identifier: 'rectangle.stack.fill', label: 'Album'
+                      Other, 0x10623ebc0, {{21.0, 584.0}, {191.0, 62.0}}
+                      Other, 0x10623ed00, {{112.5, 588.0}, {95.5, 54.0}}
+                        Other, 0x10623ee40, {{112.5, 588.0}, {95.5, 54.0}}
+                          Other, 0x10623ef80, {{112.5, 588.0}, {95.5, 54.0}}
+                          Other, 0x10623f0c0, {{112.5, 588.0}, {95.5, 54.0}}
+                            Other, 0x10623f200, {{112.5, 588.0}, {95.5, 54.0}}
+                              Other, 0x10623f340, {{112.5, 588.0}, {95.5, 54.0}}
+                                Other, 0x10623f480, {{112.5, 588.0}, {95.5, 54.0}}
+                              Other, 0x10623f5c0, {{112.5, 588.0}, {95.5, 54.0}}
+                            Other, 0x10623f700, {{112.5, 588.0}, {95.5, 54.0}}
+                    Other, 0x10623f840, {{292.0, 584.0}, {62.0, 62.0}}
+                      Other, 0x10623f980, {{292.0, 584.0}, {62.0, 62.0}}
+                        Other, 0x10623fac0, {{292.0, 584.0}, {62.0, 62.0}}
+                          Button, 0x10623fc00, {{292.0, 584.0}, {62.0, 62.0}}, identifier: 'SearchTab', label: 'Search'
+                            Image, 0x10623fd40, {{309.5, 602.0}, {27.5, 26.5}}, identifier: 'magnifyingglass', label: 'Search'
+                        Other, 0x10623fe80, {{292.0, 584.0}, {62.0, 62.0}}
+                Other, 0x106240000, {{0.0, 584.0}, {375.0, 83.0}}
+                  Other, 0x106240140, {{0.0, 584.0}, {375.0, 83.0}}
+                    Other, 0x106240280, {{0.0, 584.0}, {375.0, 83.0}}
+                      Other, 0x1062403c0, {{0.0, 584.0}, {375.0, 83.0}}
+                        Other, 0x106240500, {{0.0, 584.0}, {375.0, 83.0}}
+                          Other, 0x106240640, {{0.0, 584.0}, {375.0, 83.0}}
+                      Other, 0x106240780, {{0.0, 584.0}, {375.0, 83.0}}
+                        Other, 0x1062408c0, {{0.0, 584.0}, {375.0, 83.0}}
+    Window, 0x106240a00, {{0.0, 0.0}, {375.0, 667.0}}
+      Other, 0x106240b40, {{0.0, 0.0}, {375.0, 667.0}}
+        Other, 0x106240c80, {{0.0, 0.0}, {375.0, 667.0}}
+Path to element:
+ →Application, 0x106248140, pid: 40989, label: 'Photos'
+Query chain:
+ →Find: Application 'com.apple.mobileslideshow'
+  Output: {
+    Application, 0x106240dc0, pid: 40989, label: 'Photos'
+  }

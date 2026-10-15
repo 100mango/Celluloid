@@ -3,6 +3,17 @@ import Foundation
 /// Opt-in DEBUG scalar diagnostics. No library reads, IO or view-tree inspection.
 /// Real PHPicker lifecycle comes from native XCTest events, never these markers.
 enum PickerEntryDiagnostics {
+    // Only a disposable, verified synthetic-library observation may expose
+    // pixel dimensions/preview tokens. Release and ordinary DEBUG sessions do not.
+    static var firstFrameObservationEnabled: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("--picker-entry-observation")
+            && ProcessInfo.processInfo.arguments.contains("--picker-seeded-identity")
+            && ProcessInfo.processInfo.environment["CELLULOID_PICKER_TRACE_RUN"].flatMap(UUID.init(uuidString:)) != nil
+        #else
+        return false
+        #endif
+    }
     static func record(_ event: String, instance: String = "root", picker: String = "none", details: String = "") {
         #if DEBUG
         guard ProcessInfo.processInfo.arguments.contains("--picker-entry-observation"),
@@ -10,7 +21,7 @@ enum PickerEntryDiagnostics {
               UUID(uuidString: run) != nil else { return }
         let uptime = ProcessInfo.processInfo.systemUptime
         let wall = Date().timeIntervalSince1970
-        print("PICKER_APP_TRACE run=\(run) event=\(event) instance=\(instance) picker=\(picker) pid=\(ProcessInfo.processInfo.processIdentifier) uptime_seconds=\(uptime) wall_seconds=\(wall) \(details)")
+        NSLog("%@", "PICKER_APP_TRACE run=\(run) event=\(event) instance=\(instance) picker=\(picker) pid=\(ProcessInfo.processInfo.processIdentifier) uptime_seconds=\(uptime) wall_seconds=\(wall) \(details)")
         #endif
     }
 

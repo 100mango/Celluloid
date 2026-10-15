@@ -123,6 +123,133 @@ final class CelluloidUITests: XCTestCase {
     /// Product timing begins at the genuine runner input-synthesis event and
     /// retains app input-queue delay before PHPicker appears. Whole-XCTest duration
     /// remains a separate diagnostic, including its historical 3-second misses.
+    /// First *observed* display upper bound, not physical first scanout. The
+    /// actual screenshot can lag the render and includes XCTest capture cost.
+    /// Only four independently defined composition fixtures are accepted here;
+    /// an unrecognized asset fails closed rather than guessing an expected image.
+    private func confirmDisplayedPreviewPixels() -> String? {
+        let candidate = app.descendants(matching: .any)["editor-preview-pixel-candidate"]
+        let deadline = ProcessInfo.processInfo.systemUptime + 15
+        repeat {
+            if candidate.exists, let value = candidate.value as? String {
+                let fields = value.split(separator: "|").map(String.init)
+                guard fields.count == 5, fields.prefix(3).allSatisfy({ UUID(uuidString: $0) != nil }),
+                      let width = Int(fields[3]), (800...803).contains(width), fields[4] == "600" else {
+                    XCTFail("First-frame observation requires a verified asymmetric composition fixture")
+                    return nil
+                }
+                let frame = candidate.frame, appFrame = app.frame
+                guard frame.width > 0, frame.height > 0, appFrame.contains(frame) else {
+                    XCTFail("Preview candidate has no complete visible canvas frame"); return nil
+                }
+                let screenshot = app.screenshot()
+                let palette = [[235, 45, 40], [40, 200, 70], [30, 60, 230], [235, 190, 25]]
+                let probes: [(CGFloat, CGFloat, [Int])] = [
+                    (20 / CGFloat(width), CGFloat(20) / 600, [255, 255, 255]),
+                    (0.5, 0.5, palette[width - 800]),
+                    (1 - 15 / CGFloat(width), 1 - CGFloat(15) / 600, [0, 0, 0])
+                ]
+                var errors: [Int] = []
+                for (x, y, expected) in probes {
+                    let point = CGPoint(x: frame.minX + frame.width * x, y: frame.minY + frame.height * y)
+                    guard let actual = screenshotRGB(screenshot.image, point: point, appFrame: appFrame) else {
+                        XCTFail("Cannot inspect actual preview screenshot pixels"); return nil
+                    }
+                    errors.append(zip(actual, expected).map { abs($0.0 - $0.1) }.max() ?? 256)
+                }
+                // Re-read to reject replacement/cancel/layout races during capture.
+                if let maximum = errors.max(), maximum <= 12,
+                   candidate.exists, candidate.value as? String == value, candidate.frame == frame, app.frame == appFrame {
+                    let name = "celluloid-first-preview-\(fields[0])-\(fields[2])"
+                    let attachment = XCTAttachment(screenshot: screenshot)
+                    attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+                    return "instance=\(fields[0]) editor_session=\(fields[1]) preview=\(fields[2]) pixel_match=true sample_count=3 max_channel_error=\(maximum) screenshot_attachment=\(name) source_width=\(width) source_height=600"
+                }
+            }
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+        } while ProcessInfo.processInfo.systemUptime < deadline
+        XCTFail("No completed preview was confirmed in actual screenshot pixels; Done/onAppear are not display evidence")
+        return nil
+    }
+
+    private func screenshotRGB(_ image: UIImage, point: CGPoint, appFrame: CGRect) -> [Int]? {
+        guard image.imageOrientation == .up, let cg = image.cgImage,
+              appFrame.width > 0, appFrame.height > 0 else { return nil }
+        let x = Int((point.x - appFrame.minX) * CGFloat(cg.width) / appFrame.width)
+        let y = Int((point.y - appFrame.minY) * CGFloat(cg.height) / appFrame.height)
+        guard (0..<cg.width).contains(x), (0..<cg.height).contains(y),
+              let pixel = cg.cropping(to: CGRect(x: x, y: y, width: 1, height: 1)),
+              let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        var bytes = [UInt8](repeating: 0, count: 4)
+        let success = bytes.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: 1, height: 1,
+                bitsPerComponent: 8, bytesPerRow: 4, space: space,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue) else { return false }
+            context.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            return true
+        }
+        return success ? bytes.prefix(3).map(Int.init) : nil
+    }
+
+    /// Seeded observation only: keep the existing first dated candidate, but do
+    /// not ask six elements for hit points inside a nested predicate waiter.
+    /// A dated label is not fixture identity. The existing receipt must still
+    /// match the selected original UUID to the manifest and verify preview pixels.
+    private func selectSeededSystemPhoto(_ app: XCUIApplication) -> Bool {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateFormat = "MMMM d"
+        let date = formatter.string(from: Date())
+        formatter.dateFormat = "MMMM dd"
+        let paddedDate = formatter.string(from: Date())
+        let candidates = app.images.matching(NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@ OR label CONTAINS[c] %@", date, paddedDate, "Today"))
+        let deadline = ProcessInfo.processInfo.systemUptime + 15
+        func inTime() -> Bool { ProcessInfo.processInfo.systemUptime < deadline }
+        repeat {
+            let photo = candidates.element(boundBy: 0)
+            let exists = photo.exists
+            guard inTime() else { break }
+            if exists {
+                let frame = photo.frame
+                guard inTime() else { break }
+                guard frame.minX.isFinite, frame.minY.isFinite,
+                      frame.width.isFinite, frame.height.isFinite,
+                      frame.width >= 40, frame.height >= 40 else {
+                    XCTFail("First dated picker target has no valid image frame"); return false
+                }
+                let hittable = photo.isHittable
+                guard inTime() else { break }
+                guard hittable else {
+                    XCTFail("The first dated picker target is not hittable"); return false
+                }
+                let foreground = app.state == .runningForeground
+                guard inTime() else { break }
+                let hasAlert = app.alerts.firstMatch.exists
+                guard inTime() else { break }
+                guard foreground, !hasAlert else {
+                    XCTFail("Seeded picker foreground changed or an unexpected alert appeared"); return false
+                }
+                guard inTime() else { break }
+                photo.tap()
+                // Preserve the original single/multiple-selection public
+                // confirmation path and its existing ten-second bound.
+                let transitioned = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                    if app.buttons["editor-done"].exists || app.buttons["collage-done"].exists || app.staticTexts["photos-state"].exists { return true }
+                    let done = app.navigationBars["Photos"].buttons.matching(NSPredicate(format: "label == 'Done' OR label == 'Add' OR label BEGINSWITH 'Add ('"))
+                    if done.count == 1, done.element.isEnabled, done.element.isHittable { done.element.tap(); return true }
+                    return false
+                }, object: nil)
+                let outcome = XCTWaiter.wait(for: [transitioned], timeout: 10)
+                XCTAssertEqual(outcome, .completed)
+                return outcome == .completed
+            }
+            let remaining = deadline - ProcessInfo.processInfo.systemUptime
+            if remaining > 0 { RunLoop.current.run(until: Date(timeIntervalSinceNow: min(0.05, remaining))) }
+        } while inTime()
+        XCTFail("The first dated picker target was not safely selectable within the original 15-second bound")
+        return false
+    }
+
     func testBeautifyOpensSystemPickerAndCancelsRepeatedly() {
         observeSystemPicker(phase: "stock", selectLast: false)
     }
@@ -221,7 +348,11 @@ final class CelluloidUITests: XCTestCase {
             let selecting = selectLast && iteration == 3
             if selecting {
                 trace("selection-command-start", iteration: iteration)
-                selectSystemPhotos(app, indices: [0])
+                guard selectSeededSystemPhoto(app) else { return }
+                // The renderer candidate is never sufficient. Confirm known
+                // synthetic pixels in a genuine compositor screenshot first.
+                guard let pixelEvidence = confirmDisplayedPreviewPixels() else { return }
+                trace("editor-preview-screenshot-confirmed", iteration: iteration, details: pixelEvidence)
                 let done = app.buttons["editor-done"]
                 let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
                     done.exists && done.isEnabled && done.isHittable

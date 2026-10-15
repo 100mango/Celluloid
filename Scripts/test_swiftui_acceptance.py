@@ -85,6 +85,98 @@ class AcceptanceTests(unittest.TestCase):
             gate = main.Acceptance(); gate.deadline += 1000
             with self.assertRaises(KeyboardInterrupt): gate.command('fixture', ['false'], 1, simulator=True)
             self.assertTrue(gate.uncertain)
+    def test_continuation_requires_exact_historical_identity_and_independent_full_budget(self):
+        self.assertFalse(main.continuation_scope({}))
+        self.assertTrue(main.continuation_scope({'CELLULOID_PREVIEW_CONTINUATION': main.PREVIEW_CONTINUATION}))
+        with self.assertRaises(ValueError): main.continuation_scope({'CELLULOID_PREVIEW_CONTINUATION': 'anything'})
+        with tempfile.TemporaryDirectory() as tmp, patch.object(main, 'OUT', Path(tmp)), patch.dict(main.os.environ,
+                {'CELLULOID_PREVIEW_CONTINUATION': main.PREVIEW_CONTINUATION}):
+            gate = main.Acceptance()
+            self.assertEqual(gate.work_seconds, 2280)
+            self.assertAlmostEqual(gate.deadline - gate.started, 2280, places=6)
+
+    def test_continuation_has_fresh_build_install_bootstrap_pristine_and_seeded(self):
+        source = 'a' * 40; tree = 'b' * 40; phases = []
+        environment = {**ENV, 'CELLULOID_PREVIEW_CONTINUATION': main.PREVIEW_CONTINUATION,
+            'GITHUB_SHA': source, 'GITHUB_WORKFLOW_SHA': source, 'GITHUB_REPOSITORY': '100mango/Celluloid',
+            'GITHUB_REF': 'refs/heads/cell-ios-final-full-20261015', 'GITHUB_EVENT_NAME': 'push',
+            'DEVELOPER_DIR': '/Applications/Xcode_27.app/Contents/Developer'}
+        responses = {'toolchain': 'Xcode 27.0', 'topology': '{"checks": []}',
+            'devices-before': '{"devices": {}}', 'create-owned-device': DEVICE + ' iPhone SE (3rd generation)',
+            'devices-after-create': json.dumps(self.after())}
+        with tempfile.TemporaryDirectory() as tmp, patch.object(main, 'ROOT', Path(tmp)), patch.object(main, 'OUT', Path(tmp)/'build/acceptance'), \
+                patch.dict(main.os.environ, environment, clear=True), patch.object(main.sys, 'platform', 'darwin'), \
+                patch.object(main.subprocess, 'check_output', side_effect=lambda args, **kw: source if args[-1] == 'HEAD' else tree), \
+                patch.object(main, 'build_binding', return_value={}), patch.object(main, 'save'):
+            gate = main.Acceptance()
+            gate.command = lambda name, *a, **kw: (phases.append(name) or (0, responses.get(name, '')))
+            gate.deploy_hosted_app = lambda base, binary: phases.append('deploy-hosted-app')
+            gate.photos = lambda stage, cap: (phases.append('photos-' + stage) or 0)
+            gate.picker = lambda stage: (phases.append('picker-' + stage) or 0)
+            gate.run()
+        self.assertEqual(phases[-5:], ['deploy-hosted-app', 'photos-bootstrap', 'photos-pristine', 'picker-seeded', 'clean-end'])
+        self.assertIn('build', phases); self.assertIn('create-owned-device', phases)
+        for absent in ['units', 'picker-stock', 'photos-legacy', 'photos-preservation', 'package-core', 'package-rendering']:
+            self.assertNotIn(absent, phases)
+
+    def test_preview_wrapper_signals_or_missing_exit_block_all_dispatch_and_cleanup(self):
+        for code in [-9, -15, -2, 130, None, True]:
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as tmp, patch.object(main, 'OUT', Path(tmp)), \
+                    patch.dict(main.os.environ, {'CELLULOID_PREVIEW_CONTINUATION': main.PREVIEW_CONTINUATION}), \
+                    patch.object(main.subprocess, 'call', return_value=code) as dispatched:
+                gate = main.Acceptance(); gate.device = DEVICE
+                try: gate.command('owned-wrapper', ['owned'], 10, simulator=True, allow_failure=True)
+                except ValueError: pass
+                self.assertTrue(gate.uncertain)
+                with self.assertRaisesRegex(ValueError, 'Uncertain native state'):
+                    gate.command('summary', ['must-not-dispatch'], 5)
+                gate.cleanup()
+                self.assertEqual(dispatched.call_count, 1)
+
+    def test_preview_late_zero_blocks_cleanup_before_log_io(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(main, 'OUT', Path(tmp)), \
+                patch.dict(main.os.environ, {'CELLULOID_PREVIEW_CONTINUATION': main.PREVIEW_CONTINUATION}), \
+                patch.object(main.subprocess, 'call', return_value=0) as dispatched:
+            gate = main.Acceptance(); gate.device = DEVICE
+            with patch.object(main.time, 'monotonic', side_effect=[100, 100, 100, 111]):
+                with self.assertRaisesRegex(ValueError, 'parent dispatch deadline'):
+                    gate.command('late', ['owned'], 10, simulator=True)
+            self.assertTrue(gate.uncertain); gate.cleanup(); self.assertEqual(dispatched.call_count, 1)
+
+    def test_preview_main_cancellation_never_dispatches_simulator_cleanup(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(main, 'OUT', Path(tmp)), \
+                patch.dict(main.os.environ, {'CELLULOID_PREVIEW_CONTINUATION': main.PREVIEW_CONTINUATION}), \
+                patch.object(main.os, 'chdir'), patch.object(main.signal, 'signal'), \
+                patch.object(main.subprocess, 'call') as dispatched:
+            gate = main.Acceptance(); gate.device = DEVICE
+            with patch.object(main, 'Acceptance', return_value=gate), patch.object(gate, 'run', side_effect=KeyboardInterrupt('stopped')):
+                self.assertEqual(main.main(), 1)
+            self.assertTrue(gate.uncertain); dispatched.assert_not_called()
+            self.assertEqual(json.loads((Path(tmp)/'acceptance.json').read_text())['pending_owned_device'], DEVICE)
+
+    def test_managed_deployment_requires_exact_method_summary_and_no_retries(self):
+        summary = {**self.summary(), 'totalTestCount': 1, 'passedTests': 1, 'startTime': 101.0, 'finishTime': 109.0}
+        log = "Test Case '-[CelluloidTests.PhoneEntryDesignTests testOriginalUIKitStyleMeasurementsAreRetained]' started.\nTest Case '-[CelluloidTests.PhoneEntryDesignTests testOriginalUIKitStyleMeasurementsAreRetained]' passed (0.001 seconds).\n** TEST EXECUTE SUCCEEDED **\n"
+        main.validate_hosted_deployment(summary, log, DEVICE, 100, 110)
+        for key, value in [('passedTests', 2), ('skippedTests', 1), ('startTime', 99), ('finishTime', 111), ('runtimeWarnings', [{}])]:
+            with self.assertRaises(ValueError): main.validate_hosted_deployment({**summary, key: value}, log, DEVICE, 100, 110)
+        for bad in [log + log, log.replace('testOriginalUIKitStyleMeasurementsAreRetained', 'other'), log + 'Retrying after unexpected exit\n']:
+            with self.assertRaises(ValueError): main.validate_hosted_deployment(summary, bad, DEVICE, 100, 110)
+
+    def test_successful_continuation_never_claims_whole_acceptance(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(main, 'OUT', Path(tmp)), \
+                patch.dict(main.os.environ, {'CELLULOID_PREVIEW_CONTINUATION': main.PREVIEW_CONTINUATION}), \
+                patch.object(main.Acceptance, 'run'), patch.object(main.Acceptance, 'cleanup'), \
+                patch.object(main.os, 'chdir'), patch.object(main.signal, 'signal'):
+            self.assertEqual(main.main(), 0)
+            result = json.loads((Path(tmp) / 'acceptance.json').read_text())
+            self.assertEqual(result['status'], 'preview_observation_passed')
+            self.assertTrue(result['current_slice_accepted'])
+            self.assertFalse(result['all_required_phases_accepted'])
+            self.assertFalse(result['historical_reference_is_current_source_acceptance'])
+            self.assertFalse(result['release_qualification'])
+            self.assertIn('legacy48', result['not_executed_in_this_slice'])
+
     def test_stale_evidence_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp)/'receipt.json'; picker.write(path, {'status':'fixture'})

@@ -1,0 +1,88 @@
+Attributes: Application, 0x1113bc780, pid: 37336, label: 'Photos'
+Element subtree:
+ →Application, 0x1113bc780, pid: 37336, label: 'Photos'
+    Window (Main), 0x1113bc8c0, {{0.0, 0.0}, {375.0, 667.0}}
+      Other, 0x1113bca00, {{0.0, 0.0}, {375.0, 667.0}}
+        Other, 0x1113bcb40, {{0.0, 0.0}, {375.0, 667.0}}
+      Other, 0x1113bcc80, {{0.0, 0.0}, {375.0, 667.0}}
+        Other, 0x1113bcdc0, {{0.0, 0.0}, {375.0, 667.0}}
+          NavigationBar, 0x1113bcf00, {{0.0, 20.0}, {375.0, 54.0}}, identifier: 'PUOneUpView'
+            Button, 0x1113bd040, {{16.0, 20.0}, {44.0, 44.0}}, identifier: 'BackButton', label: 'Back'
+            Other, 0x1113bd180, {{107.5, 20.0}, {160.0, 44.0}}
+              Other, 0x1113bd2c0, {{107.5, 20.0}, {160.0, 44.0}}
+                Other, 0x1113bd400, {{107.5, 20.0}, {160.0, 44.0}}
+                  Other, 0x1113bd540, {{107.5, 20.0}, {160.0, 44.0}}
+                    Other, 0x1113bd680, {{107.5, 20.0}, {160.0, 44.0}}
+                      Other, 0x1113bd7c0, {{107.5, 20.0}, {160.0, 44.0}}
+                        Other, 0x1113bd900, {{107.5, 20.0}, {160.0, 44.0}}
+                          Other, 0x1113bda40, {{107.5, 20.0}, {160.0, 44.0}}
+                            Other, 0x1113bdb80, {{107.5, 20.0}, {160.0, 44.0}}
+                        Other, 0x1113bdcc0, {{107.5, 20.0}, {160.0, 44.0}}
+                          Other, 0x1113bde00, {{107.5, 20.0}, {160.0, 44.0}}
+                  StaticText, 0x1113bdf40, {{129.5, 26.0}, {116.0, 17.9}}, label: 'Today'
+                  StaticText, 0x1113be080, {{129.5, 44.9}, {116.0, 13.1}}, label: '3:26 AM'
+            Button, 0x1113be1c0, {{319.0, 24.0}, {36.0, 36.0}}, identifier: 'PUOneUpBarButtonItemIdentifierActionsMenu', label: 'More'
+          Other, 0x1113be300, {{0.0, 0.0}, {375.0, 667.0}}
+            Other, 0x1113be440, {{0.0, 0.0}, {375.0, 667.0}}
+              Other, 0x1113be580, {{0.0, 0.0}, {375.0, 667.0}}
+                Other, 0x1113be6c0, {{0.0, 0.0}, {375.0, 667.0}}
+                  ScrollView, 0x1113be800, {{0.0, 0.0}, {375.0, 667.0}}, identifier: 'OneUpMainPagingView'
+                    Other, 0x1113be940, {{-187.5, -333.5}, {750.0, 1334.0}}
+                    Other, 0x1113bea80, {{0.0, 0.0}, {375.0, 667.0}}
+                      Other, 0x1113bebc0, {{0.0, 0.0}, {375.0, 114.0}}
+                      Other, 0x1113bed00, {{0.0, 541.0}, {375.0, 126.0}}
+                    Other, 0x1113bee40, {{0.0, 0.0}, {375.0, 667.0}}
+                      ScrollView, 0x1113bef80, {{0.0, 0.0}, {375.0, 667.0}}
+                        Other, 0x1113bf0c0, {{0.0, 192.9}, {375.0, 281.2}}
+                          Other, 0x1113bf200, {{0.0, 192.9}, {375.0, 281.2}}
+                    Other, 0x1113bf340, {{0.0, 0.0}, {375.0, 667.0}}
+                      Other, 0x1113bf480, {{0.0, 0.0}, {375.0, 114.0}}
+                      Other, 0x1113bf5c0, {{0.0, 541.0}, {375.0, 126.0}}
+                    Other, 0x1113bf700, {{235.0, 0.0}, {140.0, 80.0}}
+                    Other, 0x1113bf840, {{0.0, 193.0}, {375.0, 281.5}}
+                      Image, 0x1113bf980, {{0.0, 193.0}, {375.0, 281.5}}, label: 'Photo, October 15, 3:26 AM'
+                    Other, 0x1113bfac0, {{325.0, 424.5}, {44.0, 44.0}}
+                    Other, 0x1113bfc00, {{10.0, 440.5}, {154.0, 24.0}}
+                Other, 0x1113bfd40, {{0.0, 0.0}, {375.0, 667.0}}
+                  Other, 0x1113bfe80, {{0.0, 0.0}, {375.0, 667.0}}
+                    Other, 0x11008a080, {{0.0, 0.0}, {375.0, 667.0}}
+                      Other, 0x11008a6c0, {{20.0, 541.0}, {335.0, 32.0}}, label: 'Photo chooser', value: Photo 1 of 1
+          Toolbar, 0x11137b5c0, {{0.0, 0.0}, {375.0, 667.0}}, identifier: 'Toolbar', label: 'Toolbar'
+            Other, 0x11137b480, {{0.0, 0.0}, {375.0, 667.0}}
+              Other, 0x10f6b2e40, {{0.0, 20.0}, {375.0, 647.0}}
+                Other, 0x10f6b3840, {{0.0, 20.0}, {375.0, 647.0}}
+                  Other, 0x10f6b2580, {{0.0, 20.0}, {0.0, 0.0}}
+                    Other, 0x10f6b0c80, {{28.0, 591.0}, {48.0, 48.0}}
+                      Other, 0x10f6b3700, {{28.0, 591.0}, {48.0, 48.0}}
+                        Other, 0x10f6b0dc0, {{33.0, 596.0}, {38.0, 38.0}}
+                          Other, 0x10f6b1a40, {{33.0, 596.0}, {38.0, 38.0}}
+                            Button, 0x10f6b0f00, {{33.0, 596.0}, {38.0, 38.0}}, identifier: 'PUOneUpBarButtonItemIdentifierShare', label: 'Share'
+                    Other, 0x103226f80, {{107.0, 591.0}, {161.5, 48.0}}
+                      Other, 0x103227480, {{107.0, 591.0}, {52.5, 48.0}}
+                        Other, 0x1032270c0, {{112.0, 596.0}, {42.5, 38.0}}
+                          Other, 0x103227840, {{112.0, 596.0}, {42.5, 38.0}}
+                            Switch, 0x103227340, {{112.0, 596.0}, {42.5, 38.0}}, identifier: 'PUOneUpBarButtonItemIdentifierFavorite', label: 'Favorite', value: 0
+                      Other, 0x1032275c0, {{163.5, 591.0}, {48.0, 48.0}}
+                        Other, 0x103227700, {{168.5, 596.0}, {38.0, 38.0}}
+                          Other, 0x103224780, {{168.5, 596.0}, {38.0, 38.0}}
+                            Button, 0x103224f00, {{168.5, 596.0}, {38.0, 38.0}}, identifier: 'PUOneUpBarButtonItemIdentifierToggleDetails', label: 'Info'
+                              Button, 0x110806300, {{168.5, 596.0}, {38.0, 38.0}}, identifier: 'com.apple.mobileslideshow.infoButton', label: 'info'
+                      Other, 0x110807d40, {{215.5, 591.0}, {53.0, 48.0}}
+                        Other, 0x110806580, {{220.5, 596.0}, {43.0, 38.0}}
+                          Other, 0x110807700, {{220.5, 596.0}, {43.0, 38.0}}
+                            Button, 0x110807480, {{220.5, 596.0}, {43.0, 38.0}}, identifier: 'PUOneUpBarButtonItemIdentifierEdit', label: 'Edit'
+                    Other, 0x110807340, {{299.0, 591.0}, {48.0, 48.0}}
+                      Other, 0x110807200, {{299.0, 591.0}, {48.0, 48.0}}
+                        Other, 0x110806800, {{304.0, 596.0}, {38.0, 38.0}}
+                          Other, 0x110807840, {{304.0, 596.0}, {38.0, 38.0}}
+                            Button, 0x110807c00, {{304.0, 596.0}, {38.0, 38.0}}, identifier: 'PUOneUpBarButtonItemIdentifierTrashBin', label: 'Delete'
+    Window, 0x1108075c0, {{0.0, 0.0}, {375.0, 667.0}}
+      Other, 0x110806940, {{0.0, 0.0}, {375.0, 667.0}}
+        Other, 0x110807e80, {{0.0, 0.0}, {375.0, 667.0}}
+Path to element:
+ →Application, 0x1113bc780, pid: 37336, label: 'Photos'
+Query chain:
+ →Find: Application 'com.apple.mobileslideshow'
+  Output: {
+    Application, 0x1108066c0, pid: 37336, label: 'Photos'
+  }
