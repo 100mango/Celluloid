@@ -1,0 +1,73 @@
+name: Celluloid passive Vision responder diagnostic only
+'on':
+  push:
+    branches: [celluloid-vision-focus-diagnostic]
+    paths:
+    - .github/vision-passive-focus.json
+    - .github/workflows/vision-passive-focus.yml
+    - Scripts/vision_passive_focus.py
+    - Scripts/test_vision_passive_focus.py
+    - Platforms/Shared/EditorInspector.swift
+    - Platforms/VisionUITests/NativeVisionUITests.swift
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-vision-focus-diagnostic
+  cancel-in-progress: false
+jobs:
+  diagnostic:
+    if: ${{ true && github.event_name == 'push' && github.ref == 'refs/heads/celluloid-vision-focus-diagnostic' && github.run_attempt == 1 }}
+    runs-on: xcode-27
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      PYTHONDONTWRITEBYTECODE: '1'
+      TZ: UTC
+    steps:
+    - name: Start fixed diagnostic clock before checkout
+      run: |
+        python3 -B -S - <<'PY'
+        import json,os,time
+        from pathlib import Path
+        row={'schema':'Celluloid.VisionPassiveFocusClock.1','control_sha':os.environ['GITHUB_SHA'],
+             'run_id':os.environ['GITHUB_RUN_ID'],'run_attempt':os.environ['GITHUB_RUN_ATTEMPT'],
+             'started_monotonic':time.monotonic(),'started_unix':time.time()}
+        Path(os.environ['RUNNER_TEMP'],'vision-passive-focus-clock.json').write_text(json.dumps(row))
+        PY
+    - name: Checkout exact reviewed diagnostic source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      timeout-minutes: 2
+      with:
+        persist-credentials: false
+        fetch-depth: 2
+        ref: ${{ github.sha }}
+    - name: Verify source and diagnostic-only scope
+      id: source_before
+      timeout-minutes: 1
+      run: python3 -B -S Scripts/vision_passive_focus.py before
+    - name: Test minimal diagnostic contracts
+      timeout-minutes: 1
+      run: |
+        python3 -B -S Scripts/test_vision_passive_focus.py
+        python3 -B -O -S Scripts/test_vision_passive_focus.py
+    - name: Observe real responder then plain control
+      timeout-minutes: 27
+      run: python3 -B -S Scripts/vision_passive_focus.py run
+    - name: Verify exact source after diagnostic
+      if: ${{ always() && steps.source_before.outcome == 'success' }}
+      timeout-minutes: 1
+      run: python3 -B -S Scripts/vision_passive_focus.py after
+    - name: Retain diagnostic receipts including genuine failures
+      if: ${{ always() && steps.source_before.outcome == 'success' }}
+      id: collect
+      timeout-minutes: 1
+      run: python3 -B -S Scripts/vision_passive_focus.py collect
+    - name: Upload current diagnostic evidence
+      if: ${{ always() && steps.collect.outcome == 'success' }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      timeout-minutes: 1
+      with:
+        name: celluloid-vision-focus-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/focus-evidence
+        if-no-files-found: error
+        retention-days: 1

@@ -447,3 +447,129 @@ extension NativeVisionUITests {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
 }
+// VISION_PASSIVE_FOCUS_BEGIN:ui-tests
+#if os(visionOS) && DEBUG && CELLULOID_VISION_FOCUS_DIAGNOSTIC
+extension NativeVisionUITests {
+    func testVisionPassiveFocusTargetAndControl() throws {
+        // Preserve every real XCTest issue, including typeText's own failures,
+        // while permitting the independent control arm after a failed target.
+        continueAfterFailure = true
+        let nonce = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_VISION_FOCUS_NONCE"])
+        guard nonce.count == 36, let parsed = UUID(uuidString: nonce), parsed.uuidString.lowercased() == nonce.lowercased() else {
+            XCTFail("The passive diagnostic requires one canonical UUID nonce"); return
+        }
+        for mode in ["target", "control"] {
+            XCTContext.runActivity(named: "Passive native focus " + mode) { _ in
+                do { try runPassiveFocus(mode: mode, nonce: nonce) }
+                catch { XCTFail("Passive focus \(mode) stopped at a prerequisite: \(error.localizedDescription)") }
+            }
+        }
+    }
+
+    private func runPassiveFocus(mode: String, nonce: String) throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchEnvironment["CELLULOID_VISION_FOCUS_MODE"] = mode
+        app.launchEnvironment["CELLULOID_VISION_FOCUS_NONCE"] = nonce
+        let fixture = mode == "target" ? "VisionFocusTarget" : "VisionFocusControl"
+        passiveFocusMarker("before_launch", mode: mode, nonce: nonce, fixture: fixture)
+        app.launch()
+        defer {
+            passiveFocusMarker("before_terminate", mode: mode, nonce: nonce, fixture: fixture)
+            app.terminate()
+        }
+        try openPassiveFocusDocument(in: app, named: fixture)
+        try requirePassiveFocus(app.staticTexts["120 × 80 px"].waitForExistence(timeout: 20), "Synthetic source dimensions")
+        let layers = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'layer.'"))
+        try requirePassiveFocus(layers.count == 0, "The named image-only fixture must start with zero overlays")
+        let addBubble = app.buttons["editor.add-bubble"]
+        try requirePassiveFocus(addBubble.exists && addBubble.isEnabled && addBubble.isHittable, "Ordinary Bubble button")
+        addBubble.tap()
+        let bubble = app.buttons["asset.say1"]
+        try requirePassiveFocus(bubble.waitForExistence(timeout: 10) && bubble.isHittable, "Ordinary bubble asset")
+        bubble.tap()
+        try requirePassiveFocus(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: bubble)], timeout: 10) == .completed,
+                                "Asset palette dismissal")
+        let fields = app.textViews.matching(identifier: "editor.bubble-text")
+        let field = fields.firstMatch
+        try requirePassiveFocus(field.waitForExistence(timeout: 10) && fields.count == 1, "Exactly one accessible editor slot")
+        try requirePassiveFocus(field.isEnabled && field.isHittable && field.value as? String == "Hello", "Initial synthetic editable value")
+        try requirePassiveFocus(layers.count == 1, "Exactly one inserted layer")
+        let layerIdentifier = layers.firstMatch.identifier
+        try requirePassiveFocus(layerIdentifier.hasPrefix("layer.") && UUID(uuidString: String(layerIdentifier.dropFirst(6))) != nil,
+                                "Inserted layer UUID")
+        try requirePassiveFocus(layers.firstMatch.label == "Select layer: Hello", "Initial recipe-backed synthetic text")
+        let frame = field.frame
+        let point = field.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 20))
+        let windows = app.windows.containing(.textView, identifier: "editor.bubble-text")
+        try requirePassiveFocus(frame.width > 40 && frame.height > 40 && frame.contains(point.screenPoint), "Fixed relative text-line point")
+        try requirePassiveFocus(windows.count == 1 && windows.firstMatch.frame.contains(point.screenPoint), "Text-line point inside its sole window")
+        passiveFocusMarker("before_tap", mode: mode, nonce: nonce, fixture: fixture, layer: layerIdentifier)
+        point.tap() // Exactly one real tap at the same fixed relative (20, 20).
+        passiveFocusMarker("after_tap", mode: mode, nonce: nonce, fixture: fixture, layer: layerIdentifier)
+        // This is a bounded quiet observation interval, not a focus guarantee.
+        // No UI query, screenshot, injected text, or readiness request occurs.
+        Thread.sleep(forTimeInterval: 2)
+        passiveFocusMarker("before_A", mode: mode, nonce: nonce, fixture: fixture, layer: layerIdentifier)
+        field.typeText("A") // One genuine XCTest attempt; never retry or paste.
+        passiveFocusMarker("after_A", mode: mode, nonce: nonce, fixture: fixture, layer: layerIdentifier)
+        let value = field.value as? String ?? ""
+        let synthetic = value.count == 6 && value.filter { $0 != "A" } == "Hello"
+        let modelRows = app.buttons.matching(identifier: layerIdentifier)
+        let modelUnique = modelRows.count == 1
+        let modelLabel = modelUnique ? modelRows.firstMatch.label : "missing_or_ambiguous"
+        let modelPrefix = "Select layer: "
+        let modelValue = modelLabel.hasPrefix(modelPrefix) ? String(modelLabel.dropFirst(modelPrefix.count)) : ""
+        let modelSynthetic = modelValue == "Hello" || (modelValue.count == 6 && modelValue.filter { $0 != "A" } == "Hello")
+        passiveFocusMarker("observed_after_A", mode: mode, nonce: nonce, fixture: fixture, layer: layerIdentifier,
+                           value: (value == "Hello" || synthetic) ? value : "redacted",
+                           modelLabel: modelSynthetic ? modelLabel : "redacted")
+        XCTAssertTrue(synthetic, "One genuine A must be retained by the synthetic text view")
+        XCTAssertTrue(modelUnique && modelLabel == modelPrefix + (mode == "target" ? value : "Hello"),
+                      "The target model must follow its observed draft; the plain control must leave the model at Hello")
+        // AX uniqueness above only locates the user action. Host analysis may
+        // interpret focus ONLY when the separate native mapping is proven.
+    }
+
+    private func openPassiveFocusDocument(in app: XCUIApplication, named name: String) throws {
+        let documents = app.navigationBars.buttons["Documents"].firstMatch
+        if documents.exists && documents.isHittable { documents.tap() }
+        let locations = app.cells.matching(identifier: "DOC.sidebar.item.On My Apple Vision Pro")
+        let local = locations.firstMatch
+        try requirePassiveFocus(local.waitForExistence(timeout: 10) && locations.count == 1 && local.isHittable,
+                                "Observed local document-browser location")
+        local.tap()
+        let folders = app.cells.matching(identifier: "Celluloid, Container")
+        let folder = folders.firstMatch
+        try requirePassiveFocus(folder.waitForExistence(timeout: 20) && folders.count == 1 && folder.staticTexts["Celluloid"].exists
+                                && folder.isEnabled && folder.isHittable, "Owned Celluloid document folder")
+        folder.tap()
+        let files = app.cells.matching(identifier: name + ", celluloid")
+        let file = files.firstMatch
+        try requirePassiveFocus(file.waitForExistence(timeout: 20) && files.count == 1 && file.staticTexts[name].exists
+                                && file.isEnabled && file.isHittable, "Exact named fresh synthetic document")
+        file.tap()
+        try requirePassiveFocus(app.buttons["editor.import-files"].waitForExistence(timeout: 30), "Real document editor")
+    }
+
+    private func requirePassiveFocus(_ condition: Bool, _ checkpoint: String) throws {
+        if !condition { throw NSError(domain: "Celluloid.VisionPassiveFocus.Prerequisite", code: 1,
+                                      userInfo: [NSLocalizedDescriptionKey: checkpoint]) }
+    }
+
+    private func passiveFocusMarker(_ stage: String, mode: String, nonce: String, fixture: String, layer: String? = nil,
+                                    value: String? = nil, modelLabel: String? = nil) {
+        var row: [String: Any] = ["schema": "Celluloid.VisionFocusUI.1", "stage": stage, "mode": mode, "nonce": nonce,
+            "fixture": fixture, "unix_seconds": Date().timeIntervalSince1970, "system_uptime": ProcessInfo.processInfo.systemUptime,
+            "runner_pid": ProcessInfo.processInfo.processIdentifier, "native_mapping_gate": "posthoc_only"]
+        if let layer { row["layer_identifier"] = layer }
+        if let value { row["text_synthetic"] = value }
+        if let modelLabel { row["layer_label_synthetic"] = modelLabel }
+        guard let data = try? JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]) else {
+            XCTFail("Passive focus marker encoding failed"); return
+        }
+        print("VISION_PASSIVE_FOCUS_UI_JSON " + String(decoding: data, as: UTF8.self))
+    }
+}
+#endif
+// VISION_PASSIVE_FOCUS_END:ui-tests

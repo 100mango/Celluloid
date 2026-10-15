@@ -1,0 +1,12 @@
+{
+  "schema": "Celluloid.VisionPassiveFocusConfig.1",
+  "READY": true,
+  "base_sha": "b9e30f0441b96db23be1e702b93cb97ca6be2831",
+  "base_tree": "a09eb6f8159069565dc189b8a33e3e848b62437d",
+  "maximum_additional_spend_usd": 0,
+  "ui_seconds": 600,
+  "whole_seconds": 1800,
+  "diagnostic_only": true,
+  "qualification_eligible": false,
+  "automatic_rerun_allowed": false
+}
