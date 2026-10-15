@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 """CLOSED, diagnostic-only Vision responder observation. Never release qualification."""
 from pathlib import Path
-import argparse, hashlib, json, math, os, plistlib, re, subprocess, sys, time, uuid
+import argparse, hashlib, json, math, os, plistlib, re, subprocess, sys, time, uuid, stat
 import final_vision_wave as original
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = 'b9e30f0441b96db23be1e702b93cb97ca6be2831'
 BASE_TREE = 'a09eb6f8159069565dc189b8a33e3e848b62437d'
+PARENT = 'a25a6676d016c1a8006cd3bc08a878c9dded70f5'
+PARENT_TREE = 'a00aae98927d11cdcc0675b47937bb5ecf0ce5fd'
 CONFIG = '.github/vision-passive-focus.json'
 WORKFLOW = '.github/workflows/vision-passive-focus.yml'
 BRANCH = 'celluloid-vision-focus-diagnostic'
 MODIFIED = ('Platforms/Shared/EditorInspector.swift', 'Platforms/VisionUITests/NativeVisionUITests.swift')
 ADDED = (CONFIG, WORKFLOW, 'Scripts/vision_passive_focus.py', 'Scripts/test_vision_passive_focus.py')
-METHOD = 'testVisionPassiveFocusTargetAndControl'
+METHODS = ('testVisionPassiveFocus01Target', 'testVisionPassiveFocus02Control')
 FLAG = 'CELLULOID_VISION_FOCUS_DIAGNOSTIC'
 CLOCK = 'vision-passive-focus-clock.json'
 UI_SECONDS = 600
-LATEST_UI_START = 825
+LATEST_UI_START = 780 # Keep 45 s to resolve the current app container before 120 s owned cleanup.
 NATIVE_SECONDS = 1560
 FINAL_SECONDS = 1740
 CAP = 524288
@@ -50,7 +52,8 @@ def source(phase, env, closed=False):
     head = git('rev-parse', 'HEAD').decode().strip()
     need(head == env['GITHUB_SHA'] and env['GITHUB_RUN_ATTEMPT'] == '1', 'source-run-identity')
     need(git('rev-parse', BASE + '^{tree}').decode().strip() == BASE_TREE, 'base-tree')
-    need(git('show', '-s', '--format=%P', head).decode().strip() == BASE, 'actual-sole-parent')
+    need(git('show', '-s', '--format=%P', head).decode().strip() == PARENT, 'actual-sole-parent')
+    need(git('rev-parse', PARENT + '^{tree}').decode().strip() == PARENT_TREE, 'actual-parent-tree')
     need(not git('status', '--porcelain', '--untracked-files=all'), 'worktree-not-clean')
     changes = git('diff', '--name-only', BASE, head).decode().splitlines()
     need(set(changes) == set(MODIFIED + ADDED), 'exact-diagnostic-paths')
@@ -74,6 +77,7 @@ def source(phase, env, closed=False):
         need(git('ls-tree', head, '--', rel).split(b' ')[0] == b'100644', 'diagnostic-regular-mode')
     row = {'schema': 'Celluloid.VisionPassiveFocusSource.1', 'phase': phase, 'control_sha': head,
            'tree': git('rev-parse', 'HEAD^{tree}').decode().strip(), 'base_sha': BASE, 'base_tree': BASE_TREE,
+           'parent_sha': PARENT, 'parent_tree': PARENT_TREE,
            'run_id': env['GITHUB_RUN_ID'], 'run_attempt': '1', 'diagnostic_only': True,
            'qualification_eligible': False, 'shipping_binary_unchanged': False,
            'baseline_paths': len(fingerprints), 'baseline_fingerprint': sha(packed(fingerprints)),
@@ -100,7 +104,7 @@ def clock(value, env, now=None):
 
 def admit_ui(start, now):
     need(original.number(start) and original.number(now) and start > 0 and now >= start, 'ui-clock')
-    deadline = start + NATIVE_SECONDS - 120
+    deadline = start + NATIVE_SECONDS - 165
     # Replay actual scheduler operation order; do not reassociate float arithmetic.
     need(now <= start + LATEST_UI_START and now + UI_SECONDS + 15 <= deadline, 'ui-full-window')
     return deadline
@@ -122,6 +126,42 @@ def copy_fixtures(producer, container):
             copied.append(dict(item))
         result[arm] = {'package_name': name, 'initial_overlays': 0, 'files': copied}
     return result
+
+
+def owned_container(raw, udid, home=None):
+    """Validate only the queried bundle's current container on our exact simulator."""
+    need(type(raw) is str and str(uuid.UUID(udid)).upper() == udid.upper(), 'owned-device')
+    path = Path(raw.strip()).resolve(strict=True)
+    expected = (Path.home() if home is None else Path(home)) / 'Library/Developer/CoreSimulator/Devices' / udid / 'data/Containers/Data/Application'
+    need(path.parent == expected.resolve(strict=True) and str(uuid.UUID(path.name)), 'owned-container-path')
+    return path
+
+
+def empty_command_log(path, receipt):
+    """Verify an owned zero-byte stdout file without changing the generic nonempty reader."""
+    need(type(receipt.get('log_bytes')) is int and receipt['log_bytes'] == 0
+         and type(receipt.get('bytes_read')) is int and receipt['bytes_read'] == 0
+         and receipt.get('log_sha256') == sha(b''), 'empty-command-receipt')
+    need(all(receipt.get(k) is True for k in ('finalized', 'child_reaped', 'pipe_eof'))
+         and all(receipt.get(k) is False for k in ('timed_out', 'overflow'))
+         and receipt.get('cleanup_error') is None and type(receipt.get('return_code')) is int
+         and receipt['return_code'] == 0, 'empty-command-finalization')
+    path = Path(path).absolute(); need(path.name == receipt.get('log'), 'empty-command-path')
+    parent = os.open('/', os.O_RDONLY | os.O_DIRECTORY); descriptor = None
+    try:
+        for part in path.parts[1:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            os.close(parent); parent = child
+        descriptor = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        before = os.fstat(descriptor)
+        need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and before.st_size == 0, 'unsafe-empty-command-log')
+        def identity(value):
+            return value.st_dev, value.st_ino, value.st_mode, value.st_nlink, value.st_size, value.st_mtime_ns, value.st_ctime_ns
+        need(identity(before) == identity(os.fstat(descriptor)) == identity(os.stat(path.name, dir_fd=parent, follow_symlinks=False)), 'changed-empty-command-log')
+        return b''
+    finally:
+        if descriptor is not None: os.close(descriptor)
+        os.close(parent)
 
 
 def validate_timeline(raw, nonce, mode):
@@ -283,9 +323,7 @@ def run(env):
         raw, _ = call(['xcrun', 'xcresulttool', 'get', 'test-results', 'summary', '--path', producer_bundle], 'producer-summary', 60)
         report['producer_case'] = original.inspect_case(producer_log, original.PRODUCER, decode(raw), 'producer', udid, '27.0')
         raw, _ = call(['xcrun', 'simctl', 'get_app_container', udid, 'Mango.Celluloid', 'data'], 'container', 45)
-        container = Path(raw.strip()).resolve(strict=True)
-        expected = Path.home() / 'Library/Developer/CoreSimulator/Devices' / udid / 'data/Containers/Data/Application'
-        need(container.parent == expected.resolve(strict=True) and str(uuid.UUID(container.name)), 'owned-container-path')
+        container = owned_container(raw, udid)
         producer = original.verify_producer(producer_log, container)
         report['fixture_packages'] = copy_fixtures(producer, container)
         report['owned_container'] = str(container)
@@ -294,7 +332,7 @@ def run(env):
         os.environ['TEST_RUNNER_CELLULOID_VISION_FOCUS_NONCE'] = nonce
         try:
             ui_log, ui_result = call(original.xctest_command(temp, udid, ui_bundle,
-                ['-only-testing:CelluloidVisionUITests/NativeVisionUITests/' + METHOD]), 'ui-tests',
+                ['-only-testing:CelluloidVisionUITests/NativeVisionUITests/' + method for method in METHODS]), 'ui-tests',
                 UI_SECONDS + 15, deadline=deadline, full=True, check_code=False)
         finally:
             if original_env is None: os.environ.pop('TEST_RUNNER_CELLULOID_VISION_FOCUS_NONCE', None)
@@ -304,10 +342,17 @@ def run(env):
         except (ValueError, TypeError, KeyError) as error:
             marker_rows = {'target': [], 'control': []}; report['errors'].append('UI markers: ' + str(error))
         report['ui_markers'] = marker_rows
-        # Only current owned files, after known process completion; no live IPC.
+        # XCTest installation may replace the producer's app container. Query the
+        # exact owned UDID/bundle once after UI completion, before device cleanup.
+        raw, _ = call(['xcrun', 'simctl', 'get_app_container', udid, 'Mango.Celluloid', 'data'],
+                      'current-container', 45, deadline=native_end - 120)
+        current_container = owned_container(raw, udid)
+        report['current_owned_container'] = str(current_container)
+        report['container_changed_during_ui'] = current_container != container
+        # Only current owned files and this run's UUID nonce; no scan or live IPC.
         for arm in ('target', 'control'):
             try:
-                path = container / 'Library/Caches/CelluloidVisionFocus' / nonce / (arm + '.ndjson')
+                path = current_container / 'Library/Caches/CelluloidVisionFocus' / nonce / (arm + '.ndjson')
                 raw = read(path, CAP)
                 output = temp / (prefix + '-' + arm + '.ndjson'); output.write_bytes(raw)
                 report['arms'][arm] = {'retained_file': output.name, 'bytes': len(raw), 'sha256': sha(raw),
@@ -351,22 +396,29 @@ def collect(env):
     c = clock(decode(read(temp / CLOCK, 16384)), env)
     need(time.monotonic() + 60 <= c['started_monotonic'] + FINAL_SECONDS, 'collection-upload-reserve')
     output = temp / 'focus-evidence'; output.mkdir()
-    names = [CLOCK, 'focus-source-before.json', 'focus-source-after.json', 'focus-report.json']
+    names = [CLOCK, 'focus-source-before.json', 'focus-source-after.json', 'focus-report.json']; command_logs = {}
     report = decode(read(temp / 'focus-report.json', 200000)) if (temp / 'focus-report.json').exists() else None
     if report:
         need(report.get('control_sha') == env['GITHUB_SHA'] and report.get('qualification_eligible') is False, 'report-identity')
-        names += [event['log'] for event in report['commands'] if 'log' in event and not event['label'].endswith(('runtimes', 'device-types'))]
+        for event in report['commands']:
+            if 'log' in event and not event['label'].endswith(('runtimes', 'device-types')):
+                need(event['log'] not in command_logs, 'duplicate-command-log')
+                command_logs[event['log']] = event; names.append(event['log'])
         names += [value['retained_file'] for value in report['arms'].values() if 'retained_file' in value]
     manifest = {'schema': 'Celluloid.VisionPassiveFocusManifest.1', 'diagnostic_only': True,
                 'qualification_eligible': False, 'files': [], 'omissions': []}; total = 0
     for name in names:
         need(type(name) is str and Path(name).name == name, 'retained-path')
-        try: raw = read(temp / name, 1048576)
+        receipt = command_logs.get(name)
+        empty = receipt is not None and type(receipt.get('log_bytes')) is int and receipt['log_bytes'] == 0
+        try: raw = empty_command_log(temp / name, receipt) if empty else read(temp / name, 1048576)
         except FileNotFoundError:
             manifest['omissions'].append({'name': name, 'reason': 'not-created'}); continue
         need(total + len(raw) <= original.MAX_EVIDENCE - 65536, 'evidence-cap')
         (output / name).write_bytes(raw); total += len(raw)
-        manifest['files'].append({'name': name, 'bytes': len(raw), 'sha256': sha(raw)})
+        entry = {'name': name, 'bytes': len(raw), 'sha256': sha(raw)}
+        if empty: entry['kind'] = 'verified-empty-command-output'
+        manifest['files'].append(entry)
     (output / 'manifest.json').write_bytes(packed(manifest))
     return manifest
 

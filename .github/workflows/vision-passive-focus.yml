@@ -39,7 +39,7 @@ jobs:
       timeout-minutes: 2
       with:
         persist-credentials: false
-        fetch-depth: 2
+        fetch-depth: 3
         ref: ${{ github.sha }}
     - name: Verify source and diagnostic-only scope
       id: source_before

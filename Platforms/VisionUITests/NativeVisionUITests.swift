@@ -450,19 +450,25 @@ extension NativeVisionUITests {
 // VISION_PASSIVE_FOCUS_BEGIN:ui-tests
 #if os(visionOS) && DEBUG && CELLULOID_VISION_FOCUS_DIAGNOSTIC
 extension NativeVisionUITests {
-    func testVisionPassiveFocusTargetAndControl() throws {
-        // Preserve every real XCTest issue, including typeText's own failures,
-        // while permitting the independent control arm after a failed target.
+    func testVisionPassiveFocus01Target() throws {
+        try runPassiveFocusCase(mode: "target")
+    }
+
+    func testVisionPassiveFocus02Control() throws {
+        try runPassiveFocusCase(mode: "control")
+    }
+
+    private func runPassiveFocusCase(mode: String) throws {
+        // Preserve every real XCTest issue. Separate cases let XCTest attempt
+        // control even when a native exception aborts the target case.
         continueAfterFailure = true
         let nonce = try XCTUnwrap(ProcessInfo.processInfo.environment["CELLULOID_VISION_FOCUS_NONCE"])
         guard nonce.count == 36, let parsed = UUID(uuidString: nonce), parsed.uuidString.lowercased() == nonce.lowercased() else {
             XCTFail("The passive diagnostic requires one canonical UUID nonce"); return
         }
-        for mode in ["target", "control"] {
-            XCTContext.runActivity(named: "Passive native focus " + mode) { _ in
-                do { try runPassiveFocus(mode: mode, nonce: nonce) }
-                catch { XCTFail("Passive focus \(mode) stopped at a prerequisite: \(error.localizedDescription)") }
-            }
+        XCTContext.runActivity(named: "Passive native focus " + mode) { _ in
+            do { try runPassiveFocus(mode: mode, nonce: nonce) }
+            catch { XCTFail("Passive focus \(mode) stopped at a prerequisite: \(error.localizedDescription)") }
         }
     }
 

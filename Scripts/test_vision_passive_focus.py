@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Offline contracts only; no Swift compilation, Simulator, or qualification claim."""
-import copy, json, math, tempfile, unittest, uuid
+import copy, json, math, tempfile, unittest, uuid, os, time
 from pathlib import Path
 import vision_passive_focus as focus
 
@@ -65,7 +65,9 @@ class FocusContracts(unittest.TestCase):
     def test_minimal_ui_source(self):
         ui = (focus.ROOT / focus.MODIFIED[1]).read_text().split('// VISION_PASSIVE_FOCUS_BEGIN:ui-tests\n', 1)[1]
         self.assertEqual(ui.count('.typeText("A")'), 1)
-        self.assertIn('for mode in ["target", "control"]', ui)
+        self.assertEqual(focus.METHODS, ('testVisionPassiveFocus01Target', 'testVisionPassiveFocus02Control'))
+        for name in focus.METHODS: self.assertIn('func ' + name + '() throws', ui)
+        self.assertNotIn('for mode in ["target", "control"]', ui)
         self.assertIn('continueAfterFailure = true', ui)
         for forbidden in ['.typeText("B")', 'XCTExpectFailure', '.screenshot(', '.paste(', 'UIPasteboard', 'becomeFirstResponder(', 'CFNotificationCenter']:
             self.assertNotIn(forbidden, ui)
@@ -82,9 +84,9 @@ class FocusContracts(unittest.TestCase):
     def test_deadlines_low_high_and_one_ulp(self):
         for start in (17.123456789, 8000000.123456789):
             at = start + focus.LATEST_UI_START
-            self.assertEqual(focus.admit_ui(start, at), start + 1440)
+            self.assertEqual(focus.admit_ui(start, at), start + focus.NATIVE_SECONDS - 165)
             with self.assertRaises(ValueError): focus.admit_ui(start, math.nextafter(at, math.inf))
-            self.assertEqual(focus.admit_ui(start, start), start + 1440)
+            self.assertEqual(focus.admit_ui(start, start), start + focus.NATIVE_SECONDS - 165)
         for bad in (True, float('nan'), float('inf'), -1):
             with self.assertRaises(ValueError): focus.admit_ui(bad, 1)
 
@@ -179,6 +181,91 @@ class FocusContracts(unittest.TestCase):
             result = focus.copy_fixtures({'files': files}, root)
             self.assertEqual(result['target']['files'], result['control']['files'])
             with self.assertRaises(FileExistsError): focus.copy_fixtures({'files': files}, root)
+
+    def test_checkout_preserves_three_generation_source_lineage(self):
+        workflow = (focus.ROOT/focus.WORKFLOW).read_text()
+        self.assertIn('fetch-depth: 3', workflow)
+        self.assertNotEqual(focus.PARENT, focus.BASE)
+        self.assertEqual(focus.git('show', '-s', '--format=%P', focus.PARENT).decode().strip(), focus.BASE)
+
+    def test_current_container_exact_owned_device_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory).resolve(); device = str(uuid.uuid4()).upper()
+            parent = home/'Library/Developer/CoreSimulator/Devices'/device/'data/Containers/Data/Application'
+            stale = parent/str(uuid.uuid4()).upper(); stale.mkdir(parents=True)
+            current = parent/str(uuid.uuid4()).upper(); current.mkdir()
+            stale.rmdir() # Match the observed stale producer UUID without guessing why it vanished.
+            self.assertEqual(focus.owned_container(str(current), device, home), current)
+            with self.assertRaises(FileNotFoundError): focus.owned_container(str(stale), device, home)
+            with self.assertRaises((OSError, ValueError)): focus.owned_container(str(current), str(uuid.uuid4()), home)
+            wrong = parent/'not-a-uuid'; wrong.mkdir()
+            with self.assertRaises(ValueError): focus.owned_container(str(wrong), device, home)
+
+    def test_current_container_query_follows_ui_before_cleanup(self):
+        source = (focus.ROOT/'Scripts/vision_passive_focus.py').read_text()
+        ui = source.index("report['ui_exit_code'] =")
+        query = source.index("'current-container', 45")
+        timeline = source.index("path = current_container / 'Library/Caches/CelluloidVisionFocus'")
+        cleanup = source.index("for action in ('shutdown', 'delete'):")
+        self.assertTrue(ui < query < timeline < cleanup)
+        self.assertEqual(source.count("'current-container', 45"), 1)
+        self.assertIn('deadline=native_end - 120', source)
+
+    def empty_receipt(self):
+        return dict(label='focus-offline-1-boot', log='boot.log', log_bytes=0, bytes_read=0,
+                    log_sha256=focus.sha(b''), return_code=0, finalized=True, child_reaped=True,
+                    pipe_eof=True, timed_out=False, overflow=False, cleanup_error=None)
+
+    def test_owned_empty_log_is_verified_without_weakening_reader(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory).resolve()/'boot.log'; p.write_bytes(b'')
+            self.assertEqual(focus.empty_command_log(p, self.empty_receipt()), b'')
+            with self.assertRaises(ValueError): focus.read(p, 1024)
+            p.write_bytes(b'x')
+            with self.assertRaises(ValueError): focus.empty_command_log(p, self.empty_receipt())
+
+    def test_empty_log_receipts_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory).resolve()/'boot.log'; p.write_bytes(b'')
+            for key, value in [('log_bytes', False), ('bytes_read', False), ('log_sha256', '0'*64),
+                               ('return_code', 65), ('finalized', False), ('pipe_eof', False),
+                               ('timed_out', True), ('overflow', True), ('cleanup_error', 'unknown'), ('log', 'other.log')]:
+                receipt = self.empty_receipt(); receipt[key] = value
+                with self.subTest(key=key), self.assertRaises(ValueError): focus.empty_command_log(p, receipt)
+
+    def test_empty_log_symlinks_and_hardlinks_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve(); real = root/'real'; real.mkdir(); p = real/'boot.log'; p.write_bytes(b'')
+            alias = root/'alias'; alias.symlink_to(real, target_is_directory=True)
+            with self.assertRaises((OSError, ValueError)): focus.empty_command_log(alias/'boot.log', self.empty_receipt())
+            link = root/'boot.log'; link.symlink_to(p)
+            with self.assertRaises((OSError, ValueError)): focus.empty_command_log(link, self.empty_receipt())
+            os.link(p, root/'hard')
+            with self.assertRaises(ValueError): focus.empty_command_log(p, self.empty_receipt())
+
+    def test_collect_retains_verified_empty_command_and_failure_receipts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory).resolve(); env = {'RUNNER_TEMP':str(temp), 'GITHUB_SHA':'a'*40, 'GITHUB_RUN_ID':'1'}
+            c = dict(schema='Celluloid.VisionPassiveFocusClock.1', control_sha='a'*40, run_id='1', run_attempt='1',
+                     started_monotonic=time.monotonic(), started_unix=time.time())
+            (temp/focus.CLOCK).write_bytes(focus.packed(c))
+            for phase in ('before', 'after'): (temp/('focus-source-'+phase+'.json')).write_bytes(focus.packed({'offline': True}))
+            report = {'control_sha':'a'*40, 'qualification_eligible':False, 'commands':[self.empty_receipt()],
+                      'arms':{'target':{'interpretation':'inconclusive'}}, 'ui_exit_code':65}
+            (temp/'focus-report.json').write_bytes(focus.packed(report)); (temp/'boot.log').write_bytes(b'')
+            manifest = focus.collect(env); output = temp/'focus-evidence'
+            self.assertEqual((output/'boot.log').read_bytes(), b'')
+            entry = next(r for r in manifest['files'] if r['name']=='boot.log')
+            self.assertEqual(entry, {'name':'boot.log','bytes':0,'sha256':focus.sha(b''),'kind':'verified-empty-command-output'})
+            self.assertEqual(focus.decode((output/'focus-report.json').read_bytes())['ui_exit_code'], 65)
+            self.assertTrue((output/'manifest.json').is_file())
+
+    def test_missing_control_or_after_A_never_becomes_complete(self):
+        rows = [marker('before_launch', uptime=1), marker('before_tap', uptime=2), marker('after_tap', uptime=3), marker('before_A', uptime=4)]
+        result = focus.ui_markers(log(rows), NONCE)
+        self.assertEqual(result['control'], [])
+        self.assertFalse(focus.interpret(timeline(), result['target'])['direct_evidence_usable'])
+        self.assertFalse(focus.interpret(timeline(), result['control'])['direct_evidence_usable'])
 
     def test_strict_reader_symlink_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
