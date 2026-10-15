@@ -1,8 +1,8 @@
-# Exact-source, unsigned migration validation. This branch is activated only after root review.
-name: Celluloid final iOS full regression
+# Original Full remains failed. This is its one remaining cold cancellation attempt.
+name: Celluloid cold early cancellation evidence
 on:
   push:
-    branches: [cell-ios-final-full-20261015]
+    branches: [cell-ios-early-cancel-20261015]
 permissions:
   contents: read
 concurrency:
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   first-slice:
-    # CLOSED integration candidate; activation requires fresh exact-source review.
+    # SOURCE and CLOSED do not dispatch. Root separately reviews activation.
     if: ${{ false }}
     runs-on: xcode-27
     timeout-minutes: 45
@@ -19,47 +19,49 @@ jobs:
       EXPECTED_COMMIT: ${{ github.sha }}
       TZ: UTC
       CELLULOID_PREVIEW_CONTINUATION: ''
+      CELLULOID_EARLY_CANCEL_SOURCE: CLOSED
+      CELLULOID_EARLY_CANCEL_SOURCE_TREE: CLOSED
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         timeout-minutes: 3
         with:
           persist-credentials: false
+          fetch-depth: 4
           ref: ${{ github.sha }}
-      - name: Verify exact source and unchanged generated memberships
+      - name: Verify exact one-attempt cold source
         timeout-minutes: 1
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = 100mango/Celluloid
           test "$GITHUB_EVENT_NAME" = push
-          test "$GITHUB_REF" = refs/heads/cell-ios-final-full-20261015
+          test "$GITHUB_REF" = refs/heads/cell-ios-early-cancel-20261015
+          test "$GITHUB_RUN_ATTEMPT" = 1
           [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
           test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
           test "$GITHUB_SHA" = "$EXPECTED_COMMIT"
+          test -z "${CELLULOID_PREVIEW_CONTINUATION:-}"
           git diff --exit-code HEAD --
           mkdir -p build
-          git rev-parse HEAD 'HEAD^{tree}' > build/swiftui-source.txt
-      - name: Same-build picker and legacy PhotoKit acceptance
-        timeout-minutes: 40
+          git rev-parse HEAD 'HEAD^{tree}' > build/early-cancel-source.txt
+      - name: Cold input-to-home cancellation evidence
+        timeout-minutes: 38
         run: |
           set -euo pipefail
-          test -z "${CELLULOID_PREVIEW_CONTINUATION:-}"
-          /bin/bash Scripts/verify_swiftui_native.sh
-          python3 -S -c 'import json; r=json.load(open("build/swiftui-acceptance/acceptance.json")); ok=r.get("validation_scope")=="full_acceptance" and r.get("all_required_phases_accepted") is True and r.get("not_executed_in_this_slice")==[]; raise SystemExit(0 if ok else "Final full regression cannot accept a continuation slice")'
+          python3 -S Scripts/run_early_cancel_acceptance.py
+          python3 -S -c 'import json; r=json.load(open("build/early-cancel-acceptance/acceptance.json")); ok=r.get("validation_scope")=="early_cancel_supplementary" and r.get("current_slice_accepted") is True and r.get("historical_full_38681904126_status")=="failed" and r.get("release_qualification") is False; raise SystemExit(0 if ok else "Supplementary receipt missing or invalid; original Full remains failed")'
       - name: Verify source remained unchanged
         timeout-minutes: 1
         if: always()
         run: git diff --exit-code HEAD --
-      - name: Retain native proof without signing material
+      - name: Retain native cancellation and cleanup proof
         timeout-minutes: 2
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: celluloid-swiftui-first-${{ github.run_id }}-${{ github.run_attempt }}
+          name: celluloid-early-cancel-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            build/swiftui-source.txt
-            build/swiftui-topology.json
-            build/swiftui-xcode-version.txt
-            build/swiftui-acceptance/
+            build/early-cancel-source.txt
+            build/early-cancel-acceptance/
           retention-days: 1
           if-no-files-found: error
