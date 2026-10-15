@@ -16,7 +16,8 @@ CONTROL_PATHS = frozenset((WORKFLOW, CONFIG, 'Scripts/qualify_final_vision_wave_
 
 DIAGNOSTIC_TEST = 'Platforms/VisionUITests/NativeVisionUITests.swift'
 PREVIOUS_DIAGNOSTIC_TEST_SHA256 = '7d0e9c3174e36ab34644d8e08cb7612578a6370974cd8c8ec6b7eb476e0b4c6e'
-DIAGNOSTIC_TEST_SHA256 = '9b49e45530f4ed3d05350fea26f362dfc3245bce71acc9d1760945fcfd90cf35'
+DEFERRED_DIAGNOSTIC_TEST_SHA256 = '9b49e45530f4ed3d05350fea26f362dfc3245bce71acc9d1760945fcfd90cf35'
+DIAGNOSTIC_TEST_SHA256 = '563a57cb6d5d03c8c93316ba4e734a506d48409ab3d8599d34b06cf626114848'
 ORIGINAL_TEST_SHA256 = 'ad973878bf33ae77d634679d76af545d2d0c1206fe3d1dfebff55c172746677d'
 QUALIFICATION_PATHS = CONTROL_PATHS | {DIAGNOSTIC_TEST}
 HOSTED_DIAGNOSTIC_TEST = 'Platforms/VisionTests/NativeVisionTests.swift'
@@ -30,8 +31,21 @@ DIAGNOSTIC_REPLACEMENTS = [('        // VISION_FILES_DIAG_BEGIN:failure-receipts
 # Exact additive deferral only; inversion restores the already reviewed diagnostic.
 CAPTURE_ORDER_ADDITIONS = ['    // VISION_FILES_CAPTURE_ORDER_BEGIN:state\n    private var filesFlowScreenshotsDeferred = false\n    // VISION_FILES_CAPTURE_ORDER_END:state\n', '        // VISION_FILES_CAPTURE_ORDER_BEGIN:enable\n        // Capture is synchronous. Finish the real workflow before requesting pixels.\n        filesFlowScreenshotsDeferred = true\n        defer { filesFlowScreenshotsDeferred = false }\n        // VISION_FILES_CAPTURE_ORDER_END:enable\n', '        // VISION_FILES_CAPTURE_ORDER_BEGIN:export-intent\n        print("VISION_FILES_EXPORT_BEGIN intent=true; not proof the exporter opened")\n        // VISION_FILES_CAPTURE_ORDER_END:export-intent\n', '        // VISION_FILES_CAPTURE_ORDER_BEGIN:export-observation\n        print("VISION_FILES_EXPORT_READBACK observed=\\(completed); whole XCTest result remains authoritative")\n        // VISION_FILES_CAPTURE_ORDER_END:export-observation\n', '        // VISION_FILES_CAPTURE_ORDER_BEGIN:guard\n        if filesFlowScreenshotsDeferred {\n            print("VISION_FILES_SCREENSHOT_DEFERRED name=\\(name); no image captured at this stage")\n            return\n        }\n        // VISION_FILES_CAPTURE_ORDER_END:guard\n', '        // VISION_FILES_CAPTURE_ORDER_BEGIN:final\n        // Reaching here does not erase an earlier continueAfterFailure assertion.\n        // This is the current post-reopen state, never an earlier frame.\n        print("VISION_FILES_FLOW_REACHED_END; inspect whole XCTest result for pass/fail")\n        filesFlowScreenshotsDeferred = false\n        print("VISION_FILES_FINAL_SCREENSHOT_BEGIN name=vision-files-after-reopen")\n        capture(app, name: "vision-files-after-reopen")\n        print("VISION_FILES_FINAL_SCREENSHOT_END name=vision-files-after-reopen")\n        // VISION_FILES_CAPTURE_ORDER_END:final\n']
 
+TEXT_HIT_REPLACEMENTS = [('        // VISION_TEXT_HIT_BEGIN:query\n        // The actual failure hierarchy exposes exactly one editable TextView.\n        let textViews = app.textViews.matching(identifier: "editor.bubble-text")\n        let text = textViews.firstMatch\n        // VISION_TEXT_HIT_END:query\n', '        let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch\n'), ('        // VISION_TEXT_HIT_BEGIN:tap\n        let paletteDismissed = XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: bubble)], timeout: 10) == .completed\n        XCTAssertTrue(paletteDismissed, "The asset palette must finish dismissing")\n        XCTAssertEqual(textViews.count, 1)\n        XCTAssertTrue(text.isEnabled); XCTAssertTrue(text.isHittable)\n        XCTAssertEqual(text.value as? String, "Hello")\n        let textFrame = text.frame\n        XCTAssertGreaterThan(textFrame.width, 40); XCTAssertGreaterThan(textFrame.height, 40)\n        // One ordinary tap inside the first text line, relative to this element.\n        // This tests a hit-target hypothesis, not a claim that tap() used its center.\n        let textLine = text.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))\n            .withOffset(CGVector(dx: 20, dy: 20))\n        let textWindows = app.windows.containing(.textView, identifier: "editor.bubble-text")\n        XCTAssertEqual(textWindows.count, 1)\n        XCTAssertTrue(textFrame.contains(textLine.screenPoint))\n        XCTAssertTrue(textWindows.firstMatch.frame.contains(textLine.screenPoint), "The text-line point must be visible in its window")\n        print("VISION_TEXT_HIT frame=\\(textFrame) point=\\(textLine.screenPoint); one initial user tap near expected first line")\n        textLine.tap()\n        // VISION_TEXT_HIT_END:tap\n        // VISION_FILES_DIAG_END:fixture-identity\n', '        text.tap()\n        // VISION_FILES_DIAG_END:fixture-identity\n')]
+
+def restore_deferred_diagnostic_test(raw):
+    require(hashlib.sha256(raw).hexdigest() == DIAGNOSTIC_TEST_SHA256, 'Unreviewed text hit test bytes')
+    source = raw.decode('utf8')
+    for added, original in TEXT_HIT_REPLACEMENTS:
+        require(source.count(added) == 1, 'Text hit inverse block missing or duplicated')
+        source = source.replace(added, original)
+    restored = source.encode('utf8')
+    require(hashlib.sha256(restored).hexdigest() == DEFERRED_DIAGNOSTIC_TEST_SHA256, 'Text hit inverse does not restore deferred diagnostic')
+    return restored
+
 def restore_previous_diagnostic_test(raw):
-    require(hashlib.sha256(raw).hexdigest() == DIAGNOSTIC_TEST_SHA256, 'Unreviewed deferred screenshot test bytes')
+    raw = restore_deferred_diagnostic_test(raw)
+    require(hashlib.sha256(raw).hexdigest() == DEFERRED_DIAGNOSTIC_TEST_SHA256, 'Unreviewed deferred screenshot test bytes')
     source = raw.decode('utf8')
     for added in CAPTURE_ORDER_ADDITIONS:
         require(source.count(added) == 1, 'Capture-order inverse block missing or duplicated')
@@ -113,7 +127,7 @@ def validate(context, facts, enabled=False):
 
 def verify_diagnostic_history(chain, read_blob):
     transitions = []
-    approved = [(ORIGINAL_TEST_SHA256, PREVIOUS_DIAGNOSTIC_TEST_SHA256), (PREVIOUS_DIAGNOSTIC_TEST_SHA256, DIAGNOSTIC_TEST_SHA256)]
+    approved = [(ORIGINAL_TEST_SHA256, PREVIOUS_DIAGNOSTIC_TEST_SHA256), (PREVIOUS_DIAGNOSTIC_TEST_SHA256, DEFERRED_DIAGNOSTIC_TEST_SHA256), (DEFERRED_DIAGNOSTIC_TEST_SHA256, DIAGNOSTIC_TEST_SHA256)]
     for commit in chain:
         if DIAGNOSTIC_TEST not in commit['changed_paths']:
             continue
@@ -124,7 +138,7 @@ def verify_diagnostic_history(chain, read_blob):
         require(hashlib.sha256(previous).hexdigest() == expected_previous, 'Unreviewed earlier diagnostic test history')
         require(hashlib.sha256(current).hexdigest() == expected_current, 'Unreviewed diagnostic transition')
         transitions.append(commit['sha'])
-    require(len(transitions) == len(approved), 'Exactly the original and deferred-screenshot diagnostic transitions are required')
+    require(len(transitions) == len(approved), 'Exactly the original, deferred-screenshot, and text-hit diagnostic transitions are required')
     return transitions[-1]
 
 

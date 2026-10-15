@@ -787,7 +787,7 @@ def read_fixture(initial, fixture_marker, *, deadline, ui_process, process_block
 # Fixed Files-method receipt/attachment projections, inserted into the reviewed driver.
 FILES_METHOD='testRealFilesImportBubbleAndPNGExport'
 FILES_EVIDENCE_CONTRACT={'schema': 'Celluloid.VisionFilesEvidenceContract.2', 'scope': 'single whole Files UI method diagnostics, not Store or full platform qualification', 'required_current_images': ['vision-files-after-reopen'], 'uncaptured_original_stages': ['vision-imported-editable-bubble', 'vision-png-export-verified', 'vision-saved-document-reopened'], 'image_state': 'actual current state after original reopen assertions; original availability-gated accessibility audit unchanged', 'functional_evidence': 'whole XCTest result plus unchanged model and owned-disk receipts; progress markers are not pass evidence', 'historical_run_requalified': False, 'earlier_visual_states_proven': False, 'store_qualification': False}
-FILES_DIAG_STAGES=('identity','post-redo','reopen-layer','reopen-identity')
+FILES_DIAG_STAGES=('identity','post-redo','reopen-layer','reopen-identity','automatic')
 FIXTURE_READ_SECONDS=10
 
 def files_marker_receipts(log):
@@ -807,10 +807,10 @@ def files_marker_receipts(log):
   need(model['document_name']==fixture['document_name'] and model['layer_identifier']==fixture['layer_identifier'],'files-model-fixture-mismatch')
  return {'fixture':fixture,'post_redo_model':model,'post_redo_model_matched':bool(model and model['matched'] and model['actual_label']=='Select layer: Vision 世界'),'save_completion_proven':False}
 
-def exported_files_diagnostics(folder,manifest):
+def exported_files_diagnostics(folder,manifest,*,retain_unmatched_image=False):
  need(type(manifest) is list and len(manifest)<=16 and all(type(r) is dict and type(r.get('attachments')) is list for r in manifest),'diagnostic-attachment-records')
  need(sum(len(r['attachments']) for r in manifest)<=1024,'diagnostic-attachment-count')
- names={'vision-files-diag-'+stage+'-'+kind for stage in FILES_DIAG_STAGES for kind in ['ax','screen']};found={};seen=set()
+ names={'vision-files-diag-'+stage+'-'+kind for stage in FILES_DIAG_STAGES for kind in ['ax','screen'] if stage!='automatic'};found={};seen=set()
  for record in manifest:
   for item in record['attachments']:
    need(type(item) is dict,'diagnostic-attachment-item');name=item.get('suggestedHumanReadableName','');file=item.get('exportedFileName')
@@ -822,6 +822,20 @@ def exported_files_diagnostics(folder,manifest):
    if ax:raw.decode('utf8');ext='.txt'
    else:need(raw.startswith(b'\x89PNG\r\n\x1a\n') or raw.startswith(b'\xff\xd8\xff'),'diagnostic-image-type');ext='.png' if raw.startswith(b'\x89PNG') else '.jpg'
    found[key]={'source':str(folder/file),'bytes':len(raw),'sha256':digest(raw),'extension':ext,'attachment_provenance':{'test_identifier':record['testIdentifier'],'attachment_name':name,'exported_file_name':file},'scope':'diagnostic only, never a substitute for original required screenshots'}
+ # Reuse an already exported same-case automatic image on a failed case only.
+ # No screenshot request is added. Its precise UI state is unknown; it cannot
+ # replace the mandatory current after-reopen image or prove an earlier stage.
+ if retain_unmatched_image and not found:
+  candidates=[]
+  for record in manifest:
+   if record.get('testIdentifier')!='NativeVisionUITests/'+FILES_METHOD+'()':continue
+   for item in record['attachments']:
+    name=item.get('suggestedHumanReadableName','');file=item['exportedFileName']
+    if type(name) is str and not name.startswith('vision-') and Path(file).suffix.lower() in {'.png','.jpg','.jpeg'}:candidates.append((name,file))
+  if candidates:
+   name,file=sorted(candidates)[0];raw=safe_read(folder/file,1000000)
+   need(raw.startswith(b'\x89PNG\r\n\x1a\n') or raw.startswith(b'\xff\xd8\xff'),'automatic-diagnostic-image-type')
+   found['vision-files-diag-automatic-screen']={'source':str(folder/file),'bytes':len(raw),'sha256':digest(raw),'extension':'.png' if raw.startswith(b'\x89PNG') else '.jpg','attachment_provenance':{'test_identifier':'NativeVisionUITests/'+FILES_METHOD+'()','attachment_name':name,'exported_file_name':file},'scope':'existing same-case automatic image; exact UI stage unknown; diagnostic only, never qualification evidence','selection':'lexicographically first same-case unmatched image','same_case_candidate_count':len(candidates)}
  need(len(found)<=2,'at-most-one-failure-stage-pair')
  if found:
   stages={key.removeprefix('vision-files-diag-').rsplit('-',1)[0] for key in found};need(len(stages)==1,'mixed-failure-stages')
@@ -974,7 +988,7 @@ def execute(env):
     call(['xcrun','xcresulttool','export','attachments','--path',bundle,'--output-path',folder],'attachments',75,deadline=final-45)
     attachment_manifest=strict_json(safe_read(folder/'manifest.json',262144))
     report['screenshots']=exported_images(folder,attachment_manifest,method)
-    if method==FILES_METHOD:report['files_diagnostic_attachments']=exported_files_diagnostics(folder,attachment_manifest)
+    if method==FILES_METHOD:report['files_diagnostic_attachments']=exported_files_diagnostics(folder,attachment_manifest,retain_unmatched_image=not report['selected_method_passed'])
     need(set(report['screenshots'])==set(SHOTS[method]),'required-screenshot-missing')
    except BaseException as e:report['errors'].append('screenshots: '+str(e))
  report['process_blocked']=commands.blocked

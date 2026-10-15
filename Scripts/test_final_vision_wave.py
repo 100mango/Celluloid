@@ -332,19 +332,20 @@ class WaveTests(unittest.TestCase):
    # adding this exact screenshot-order successor; direct skips must fail.
    current_test=original_test.read_bytes();original_test.write_bytes(g.restore_previous_diagnostic_test(current_test))
    git(origin,'add','.');git(origin,'commit','-qm','synthetic prior reviewed diagnostic')
+   original_test.write_bytes(g.restore_deferred_diagnostic_test(current_test));git(origin,'add','.');git(origin,'commit','-qm','synthetic deferred diagnostic')
    original_test.write_bytes(current_test)
    gatepath=origin/'Scripts/qualify_final_vision_wave_source.py';gatepath.write_text(gatepath.read_text().replace(g.SOURCE,product).replace(g.TREE,tree).replace('UNCHANGED_ORIGINAL_FILE_COUNT = 960','UNCHANGED_ORIGINAL_FILE_COUNT = 1'))
    fixture_config={**config(),'product_parent_sha':product,'product_parent_tree':tree};(origin/g.CONFIG).write_text(json.dumps(fixture_config));git(origin,'add','.');git(origin,'commit','-qm','synthetic control');head=git(origin,'rev-parse','HEAD')
-   for depth,expect in [(64,True),(3,True),(2,False),(1,False)]:
+   for depth,expect in [(64,True),(4,True),(3,False),(2,False),(1,False)]:
     clone=root/('depth'+str(depth));git(root,'clone','-q','--depth',str(depth),'--branch',g.BRANCH,origin.as_uri(),str(clone));self.assertEqual(git(clone,'rev-parse','--is-shallow-repository'),'true')
-    if depth<=2:git(clone,'fetch','-q','--depth','1','origin',product)
+    if depth<=3:git(clone,'fetch','-q','--depth','1','origin',product)
     temp=root/('temp'+str(depth));temp.mkdir()
     e={**os.environ,**env(),'GITHUB_SHA':head,'GITHUB_WORKFLOW_SHA':head,'GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_EVENT_NAME':'push','GITHUB_REF':'refs/heads/'+g.BRANCH,'GITHUB_WORKFLOW_REF':'100mango/Celluloid/'+g.WORKFLOW+'@refs/heads/'+g.BRANCH,'RUNNER_TEMP':str(temp),'PYTHONDONTWRITEBYTECODE':'1'}
     command=[sys.executable,'-B','-S',*(['-O'] if sys.flags.optimize else []),str(clone/'Scripts/qualify_final_vision_wave_source.py')]
     result=subprocess.run(command+['--phase','before'],env=e,text=True,capture_output=True);self.assertEqual(result.returncode==0,expect,(depth,result.stdout,result.stderr))
     if expect:
      result=subprocess.run(command+['--phase','after'],env=e,text=True,capture_output=True);self.assertEqual(result.returncode,0,result.stderr)
-     receipt=json.loads((temp/'combined-source-after.json').read_text());self.assertEqual(receipt['control_commit_count'],2);self.assertEqual(receipt['product_parent_sha'],product)
+     receipt=json.loads((temp/'combined-source-after.json').read_text());self.assertEqual(receipt['control_commit_count'],3);self.assertEqual(receipt['product_parent_sha'],product)
     else:self.assertTrue(any(len(row.split())==1 for row in git(clone,'rev-list','--parents','HEAD').splitlines()))
  def test_collection_preserves_failed_proof_when_required_image_exceeds_cap(self):
   with tempfile.TemporaryDirectory() as t:
@@ -656,10 +657,10 @@ class DeferredScreenshotTests(unittest.TestCase):
   self.assertLess(helper.index('if filesFlowScreenshotsDeferred'),helper.index('app.screenshot()'))
   self.assertLess(helper.index('return'),helper.index('app.screenshot()'))
   self.assertIn('return false // Report every real issue',method)
- def test_only_exact_two_step_history_is_admitted(self):
+ def test_only_exact_three_step_history_is_admitted(self):
   raw=self.source();prior=g.restore_previous_diagnostic_test(raw);original=g.verify_diagnostic_test(raw)
-  blobs={'original':original,'prior':prior,'current':raw}
-  chain=[{'sha':'prior','parents':['original'],'changed_paths':[g.DIAGNOSTIC_TEST]},{'sha':'current','parents':['prior'],'changed_paths':[g.DIAGNOSTIC_TEST]}]
+  blobs={'original':original,'prior':prior,'deferred':g.restore_deferred_diagnostic_test(raw),'current':raw}
+  chain=[{'sha':'prior','parents':['original'],'changed_paths':[g.DIAGNOSTIC_TEST]},{'sha':'deferred','parents':['prior'],'changed_paths':[g.DIAGNOSTIC_TEST]},{'sha':'current','parents':['deferred'],'changed_paths':[g.DIAGNOSTIC_TEST]}]
   read=lambda revision,path:blobs[revision]
   self.assertEqual(g.verify_diagnostic_history(chain,read),'current')
   bad_chains=[chain[:1],chain[1:],[{'sha':'current','parents':['original'],'changed_paths':[g.DIAGNOSTIC_TEST]}],chain+chain[1:],list(reversed(chain))]
@@ -701,5 +702,42 @@ class DeferredScreenshotTests(unittest.TestCase):
     report=json.loads((root/'vision-wave-failure-evidence/failure-receipts.json').read_text())
     self.assertFalse(report['wave_qualified']);self.assertFalse(report['source_after_verified'])
     for phase in ['before','after']:self.assertEqual(report['receipts']['combined-source-'+phase+'.json']['state'],expected_state)
+
+class TextHitHypothesisTests(unittest.TestCase):
+ def test_exact_hit_inverse_and_real_keys_without_retap(self):
+  raw=(HERE.parent/g.DIAGNOSTIC_TEST).read_bytes();prior=g.restore_deferred_diagnostic_test(raw)
+  self.assertEqual(w.digest(prior),g.DEFERRED_DIAGNOSTIC_TEST_SHA256)
+  source=raw.decode();method=source[source.index('    func '+w.FILES_METHOD+'()'):source.index('    func testSeededDocument')]
+  self.assertIn('app.textViews.matching(identifier: "editor.bubble-text")',method)
+  self.assertIn('XCTAssertTrue(paletteDismissed,',method);self.assertIn('NSPredicate(format: "exists == false"), evaluatedWith: bubble)], timeout: 10)',method)
+  self.assertIn('XCTAssertEqual(textViews.count, 1)',method)
+  self.assertIn('XCTAssertTrue(textWindows.firstMatch.frame.contains(textLine.screenPoint)',method)
+  self.assertIn('.withOffset(CGVector(dx: 20, dy: 20))',method)
+  a=method.index('text.typeText("A")');b=method.index('text.typeText("B")')
+  self.assertLess(method.index('textLine.tap()'),a);self.assertNotIn('.tap()',method[a:b]);self.assertNotIn('coordinate(',method[a:b])
+  self.assertEqual(method.count('textLine.tap()'),1);self.assertNotIn('hasKeyboardFocus',source);self.assertNotIn('setValue(',method)
+  for before,after in [(b'CGVector(dx: 20, dy: 20)',b'CGVector(dx: 1100, dy: 575)'),(b'textLine.tap()',b'text.tap()'),(b'text.typeText("B")',b'text.tap(); text.typeText("B")')]:
+   with self.subTest(before=before),self.assertRaises(ValueError):g.verify_diagnostic_test(raw.replace(before,after,1))
+ def test_existing_same_case_image_is_optional_and_never_required_image(self):
+  with tempfile.TemporaryDirectory() as t:
+   folder=Path(t).resolve();raw=b'\x89PNG\r\n\x1a\nsynthetic';(folder/'a.png').write_bytes(raw)
+   owner='NativeVisionUITests/'+w.FILES_METHOD+'()'
+   rows=[{'testIdentifier':owner,'attachments':[{'suggestedHumanReadableName':'Screenshot at failure','exportedFileName':'a.png'}]}]
+   self.assertEqual(w.exported_files_diagnostics(folder,rows),{})
+   found=w.exported_files_diagnostics(folder,rows,retain_unmatched_image=True);self.assertEqual(set(found),{'vision-files-diag-automatic-screen'})
+   item=found['vision-files-diag-automatic-screen'];self.assertEqual(item['sha256'],w.digest(raw));self.assertEqual(item['attachment_provenance']['test_identifier'],owner);self.assertIn('exact UI stage unknown',item['scope']);self.assertEqual(w.exported_images(folder,rows,w.FILES_METHOD),{})
+   wrong=copy.deepcopy(rows);wrong[0]['testIdentifier']='OtherTest/method()';self.assertEqual(w.exported_files_diagnostics(folder,wrong,retain_unmatched_image=True),{})
+   for name in ['vision-files-after-reopen','vision-imported-editable-bubble','vision-files-diag-automatic-screen','vision-files-diag-automatic-ax']:
+    reserved=copy.deepcopy(rows);reserved[0]['attachments'][0]['suggestedHumanReadableName']=name;self.assertEqual(w.exported_files_diagnostics(folder,reserved,retain_unmatched_image=True),{});self.assertEqual(w.exported_files_diagnostics(folder,reserved),{})
+   self.assertEqual(w.exported_files_diagnostics(folder,[],retain_unmatched_image=True),{})
+   for path in ['../a.png','/tmp/a.png']:
+    bad=copy.deepcopy(rows);bad[0]['attachments'][0]['exportedFileName']=path
+    with self.assertRaises(ValueError):w.exported_files_diagnostics(folder,bad,retain_unmatched_image=True)
+   (folder/'a.png').write_bytes(b'not an image')
+   with self.assertRaises(ValueError):w.exported_files_diagnostics(folder,rows,retain_unmatched_image=True)
+   (folder/'a.png').write_bytes(b'\x89PNG\r\n\x1a\n'+b'x'*1000000)
+   with self.assertRaises(ValueError):w.exported_files_diagnostics(folder,rows,retain_unmatched_image=True)
+   (folder/'a.png').unlink();(folder/'outside.png').write_bytes(raw);(folder/'a.png').symlink_to(folder/'outside.png')
+   with self.assertRaises((ValueError,OSError)):w.exported_files_diagnostics(folder,rows,retain_unmatched_image=True)
 
 if __name__=='__main__':unittest.main()

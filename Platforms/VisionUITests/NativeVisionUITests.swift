@@ -95,7 +95,11 @@ extension NativeVisionUITests {
         XCTAssertTrue(app.staticTexts["1200 × 800 px"].waitForExistence(timeout: 20))
         app.buttons["editor.add-bubble"].tap()
         let bubble = app.buttons["asset.say1"]; XCTAssertTrue(bubble.waitForExistence(timeout: 10)); bubble.tap()
-        let text = app.descendants(matching: .any)["editor.bubble-text"].firstMatch
+        // VISION_TEXT_HIT_BEGIN:query
+        // The actual failure hierarchy exposes exactly one editable TextView.
+        let textViews = app.textViews.matching(identifier: "editor.bubble-text")
+        let text = textViews.firstMatch
+        // VISION_TEXT_HIT_END:query
         // VISION_FILES_DIAG_BEGIN:fixture-identity
         XCTAssertTrue(text.waitForExistence(timeout: 10))
         let diagnosticLayers = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'layer.'"))
@@ -107,7 +111,25 @@ extension NativeVisionUITests {
         let fixtureReceipt: [String: Any] = ["schema": "Celluloid.VisionFilesFixture.1", "document_name": documentName, "layer_identifier": diagnosticLayerIdentifier]
         let fixtureReceiptBytes = try JSONSerialization.data(withJSONObject: fixtureReceipt, options: [.sortedKeys])
         print("VISION_FILES_FIXTURE_JSON " + String(decoding: fixtureReceiptBytes, as: UTF8.self))
-        text.tap()
+        // VISION_TEXT_HIT_BEGIN:tap
+        let paletteDismissed = XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: bubble)], timeout: 10) == .completed
+        XCTAssertTrue(paletteDismissed, "The asset palette must finish dismissing")
+        XCTAssertEqual(textViews.count, 1)
+        XCTAssertTrue(text.isEnabled); XCTAssertTrue(text.isHittable)
+        XCTAssertEqual(text.value as? String, "Hello")
+        let textFrame = text.frame
+        XCTAssertGreaterThan(textFrame.width, 40); XCTAssertGreaterThan(textFrame.height, 40)
+        // One ordinary tap inside the first text line, relative to this element.
+        // This tests a hit-target hypothesis, not a claim that tap() used its center.
+        let textLine = text.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+            .withOffset(CGVector(dx: 20, dy: 20))
+        let textWindows = app.windows.containing(.textView, identifier: "editor.bubble-text")
+        XCTAssertEqual(textWindows.count, 1)
+        XCTAssertTrue(textFrame.contains(textLine.screenPoint))
+        XCTAssertTrue(textWindows.firstMatch.frame.contains(textLine.screenPoint), "The text-line point must be visible in its window")
+        print("VISION_TEXT_HIT frame=\(textFrame) point=\(textLine.screenPoint); one initial user tap near expected first line")
+        textLine.tap()
+        // VISION_TEXT_HIT_END:tap
         // VISION_FILES_DIAG_END:fixture-identity
         print("VISION_TEXT_FOCUS value=\(text.value ?? "none") hittable=\(text.isHittable)")
         // Two separate ordinary key events must survive without retapping the
