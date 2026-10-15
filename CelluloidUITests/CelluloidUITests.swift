@@ -235,7 +235,7 @@ final class CelluloidUITests: XCTestCase {
                 // confirmation path and its existing ten-second bound.
                 let transitioned = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
                     if app.buttons["editor-done"].exists || app.buttons["collage-done"].exists || app.staticTexts["photos-state"].exists { return true }
-                    let done = app.navigationBars.buttons.matching(NSPredicate(format: "label == 'Done' OR label == 'Add' OR label BEGINSWITH 'Add ('"))
+                    let done = app.navigationBars["Photos"].buttons.matching(NSPredicate(format: "label == 'Done' OR label == 'Add' OR label BEGINSWITH 'Add ('"))
                     if done.count == 1, done.element.isEnabled, done.element.isHittable { done.element.tap(); return true }
                     return false
                 }, object: nil)
