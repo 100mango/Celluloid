@@ -648,7 +648,7 @@ class DeferredScreenshotTests(unittest.TestCase):
  def test_old_stage_names_cannot_satisfy_new_current_image_contract(self):
   self.assertEqual(w.SHOTS[w.FILES_METHOD],('vision-files-after-reopen',))
   with tempfile.TemporaryDirectory() as t:
-   folder=Path(t);(folder/'current.png').write_bytes(b'\x89PNG\r\n\x1a\ncurrent synthetic bytes')
+   folder=Path(t).resolve();(folder/'current.png').write_bytes(b'\x89PNG\r\n\x1a\ncurrent synthetic bytes')
    owner='NativeVisionUITests/'+w.FILES_METHOD+'()'
    def manifest(name,who=owner):return [{'testIdentifier':who,'attachments':[{'suggestedHumanReadableName':name,'exportedFileName':'current.png'}]}]
    for name in w.FILES_EVIDENCE_CONTRACT['uncaptured_original_stages']:
