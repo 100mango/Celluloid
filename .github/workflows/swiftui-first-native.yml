@@ -11,7 +11,7 @@ concurrency:
 jobs:
   first-slice:
     # CLOSED integration candidate; activation requires fresh exact-source review.
-    if: ${{ false }}
+    if: ${{ true }}
     runs-on: xcode-27
     timeout-minutes: 45
     env:
