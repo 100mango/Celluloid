@@ -1,6 +1,9 @@
 import XCTest
 
 final class NativeVisionUITests: XCTestCase {
+    // VISION_FILES_CAPTURE_ORDER_BEGIN:state
+    private var filesFlowScreenshotsDeferred = false
+    // VISION_FILES_CAPTURE_ORDER_END:state
     private var failClosedInterruption: NSObjectProtocol?
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -46,6 +49,11 @@ final class NativeVisionUITests: XCTestCase {
 
 extension NativeVisionUITests {
     func testRealFilesImportBubbleAndPNGExport() throws {
+        // VISION_FILES_CAPTURE_ORDER_BEGIN:enable
+        // Capture is synchronous. Finish the real workflow before requesting pixels.
+        filesFlowScreenshotsDeferred = true
+        defer { filesFlowScreenshotsDeferred = false }
+        // VISION_FILES_CAPTURE_ORDER_END:enable
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch(); defer { app.terminate() }
@@ -132,6 +140,9 @@ extension NativeVisionUITests {
         XCTAssertTrue(entered, "The real editor must retain the entire multilingual replacement")
         continueAfterFailure = false
         capture(app, name: "vision-imported-editable-bubble")
+        // VISION_FILES_CAPTURE_ORDER_BEGIN:export-intent
+        print("VISION_FILES_EXPORT_BEGIN intent=true; not proof the exporter opened")
+        // VISION_FILES_CAPTURE_ORDER_END:export-intent
         app.buttons["editor.export"].tap()
         let png = app.buttons["PNG…"]; XCTAssertTrue(png.waitForExistence(timeout: 10)); png.tap()
         // Actual 9b hierarchy exposed this Save control in the system exporter.
@@ -144,6 +155,9 @@ extension NativeVisionUITests {
         let verified = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Exported and verified '")).firstMatch
         let completed = verified.waitForExistence(timeout: 20)
         if !completed { capture(app, name: "vision-export-readback-failure"); print("VISION_EXPORT_RESULT_AX " + app.debugDescription) }
+        // VISION_FILES_CAPTURE_ORDER_BEGIN:export-observation
+        print("VISION_FILES_EXPORT_READBACK observed=\(completed); whole XCTest result remains authoritative")
+        // VISION_FILES_CAPTURE_ORDER_END:export-observation
         XCTAssertTrue(completed)
         capture(app, name: "vision-png-export-verified")
         let undo = app.buttons["editor.undo"], redo = app.buttons["editor.redo"]
@@ -193,6 +207,15 @@ extension NativeVisionUITests {
             print("NATIVE_ACCESSIBILITY_ISSUE description=\(issue.compactDescription) detail=\(issue.detailedDescription) element=\(issue.element?.debugDescription ?? "none")")
             return false // Report every real issue; this callback suppresses nothing.
         } }
+        // VISION_FILES_CAPTURE_ORDER_BEGIN:final
+        // Reaching here does not erase an earlier continueAfterFailure assertion.
+        // This is the current post-reopen state, never an earlier frame.
+        print("VISION_FILES_FLOW_REACHED_END; inspect whole XCTest result for pass/fail")
+        filesFlowScreenshotsDeferred = false
+        print("VISION_FILES_FINAL_SCREENSHOT_BEGIN name=vision-files-after-reopen")
+        capture(app, name: "vision-files-after-reopen")
+        print("VISION_FILES_FINAL_SCREENSHOT_END name=vision-files-after-reopen")
+        // VISION_FILES_CAPTURE_ORDER_END:final
     }
     func testSeededDocumentSequentialTextUndoRedoAndBrowserReopen() throws {
         continueAfterFailure = false
@@ -393,6 +416,12 @@ extension NativeVisionUITests {
         XCTAssertTrue(ready)
     }
     private func capture(_ app: XCUIApplication, name: String) {
+        // VISION_FILES_CAPTURE_ORDER_BEGIN:guard
+        if filesFlowScreenshotsDeferred {
+            print("VISION_FILES_SCREENSHOT_DEFERRED name=\(name); no image captured at this stage")
+            return
+        }
+        // VISION_FILES_CAPTURE_ORDER_END:guard
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
 }

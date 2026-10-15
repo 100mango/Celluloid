@@ -15,7 +15,8 @@ WORKFLOW = '.github/workflows/final-vision-wave.yml'
 CONTROL_PATHS = frozenset((WORKFLOW, CONFIG, 'Scripts/qualify_final_vision_wave_source.py', 'Scripts/final_vision_wave.py', 'Scripts/test_final_vision_wave.py'))
 
 DIAGNOSTIC_TEST = 'Platforms/VisionUITests/NativeVisionUITests.swift'
-DIAGNOSTIC_TEST_SHA256 = '7d0e9c3174e36ab34644d8e08cb7612578a6370974cd8c8ec6b7eb476e0b4c6e'
+PREVIOUS_DIAGNOSTIC_TEST_SHA256 = '7d0e9c3174e36ab34644d8e08cb7612578a6370974cd8c8ec6b7eb476e0b4c6e'
+DIAGNOSTIC_TEST_SHA256 = '9b49e45530f4ed3d05350fea26f362dfc3245bce71acc9d1760945fcfd90cf35'
 ORIGINAL_TEST_SHA256 = 'ad973878bf33ae77d634679d76af545d2d0c1206fe3d1dfebff55c172746677d'
 QUALIFICATION_PATHS = CONTROL_PATHS | {DIAGNOSTIC_TEST}
 HOSTED_DIAGNOSTIC_TEST = 'Platforms/VisionTests/NativeVisionTests.swift'
@@ -26,9 +27,22 @@ QUALIFICATION_PATHS = QUALIFICATION_PATHS | {HOSTED_DIAGNOSTIC_TEST}
 UNCHANGED_ORIGINAL_FILE_COUNT = 960
 DIAGNOSTIC_REPLACEMENTS = [('        // VISION_FILES_DIAG_BEGIN:failure-receipts\n        // Diagnostics observe this same document and never replace its original assertions.\n        func filesDiagnosticFailure(_ stage: String) {\n            let full = app.debugDescription\n            let bytes = Array(full.utf8), cap = 65536\n            let complete = bytes.count <= cap\n            let bounded = complete ? full : String(decoding: bytes.prefix(cap / 2), as: UTF8.self)\n                + "\\n[bounded middle omission]\\n" + String(decoding: bytes.suffix(cap / 2), as: UTF8.self)\n            let attachment = XCTAttachment(string: bounded)\n            attachment.name = "vision-files-diag-" + stage + "-ax"\n            attachment.lifetime = .keepAlways; add(attachment)\n            print("VISION_FILES_DIAGNOSTIC_AX stage=\\(stage) complete=\\(complete) fullBytes=\\(bytes.count) retainedBytes=\\(bounded.utf8.count)")\n            capture(app, name: "vision-files-diag-" + stage + "-screen")\n        }\n        // VISION_FILES_DIAG_END:failure-receipts\n', ''), ('        // VISION_FILES_DIAG_BEGIN:fixture-identity\n        XCTAssertTrue(text.waitForExistence(timeout: 10))\n        let diagnosticLayers = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH \'layer.\'"))\n        if diagnosticLayers.count != 1 { filesDiagnosticFailure("identity") }\n        XCTAssertEqual(diagnosticLayers.count, 1, "A fresh Files document must identify exactly its inserted layer")\n        let diagnosticLayerIdentifier = diagnosticLayers.firstMatch.identifier\n        XCTAssertTrue(diagnosticLayerIdentifier.hasPrefix("layer."))\n        XCTAssertNotNil(UUID(uuidString: String(diagnosticLayerIdentifier.dropFirst(6))))\n        let fixtureReceipt: [String: Any] = ["schema": "Celluloid.VisionFilesFixture.1", "document_name": documentName, "layer_identifier": diagnosticLayerIdentifier]\n        let fixtureReceiptBytes = try JSONSerialization.data(withJSONObject: fixtureReceipt, options: [.sortedKeys])\n        print("VISION_FILES_FIXTURE_JSON " + String(decoding: fixtureReceiptBytes, as: UTF8.self))\n        text.tap()\n        // VISION_FILES_DIAG_END:fixture-identity\n', '        XCTAssertTrue(text.waitForExistence(timeout: 10)); text.tap()\n'), ('        // VISION_FILES_DIAG_BEGIN:post-redo-model\n        let diagnosticModelRow = app.buttons.matching(identifier: diagnosticLayerIdentifier).firstMatch\n        let diagnosticExpectedLabel = "Select layer: Vision 世界"\n        let diagnosticModelMatched = XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "exists == true AND label == %@", diagnosticExpectedLabel), evaluatedWith: diagnosticModelRow)], timeout: 10) == .completed\n        let modelReceipt: [String: Any] = ["schema": "Celluloid.VisionFilesModel.1", "stage": "post-redo", "document_name": documentName, "layer_identifier": diagnosticLayerIdentifier, "expected_text": "Vision 世界", "matched": diagnosticModelMatched, "actual_label": diagnosticModelRow.exists ? String(diagnosticModelRow.label.prefix(256)) : "missing layer"]\n        let modelReceiptBytes = try JSONSerialization.data(withJSONObject: modelReceipt, options: [.sortedKeys])\n        print("VISION_FILES_MODEL_JSON " + String(decoding: modelReceiptBytes, as: UTF8.self))\n        if !diagnosticModelMatched { filesDiagnosticFailure("post-redo") }\n        XCTAssertTrue(diagnosticModelMatched, "The same recipe-backed layer UUID must retain exact multilingual text after Redo")\n        // Documents exposes no observed disk-save completion. Keep the original\n        // navigation/termination below; do not add a delay or claim a save barrier.\n        // VISION_FILES_DIAG_END:post-redo-model\n', ''), ('        // VISION_FILES_DIAG_BEGIN:reopen-failure\n        let diagnosticReopenedMatched = layer.waitForExistence(timeout: 10)\n        if !diagnosticReopenedMatched { filesDiagnosticFailure("reopen-layer") }\n        XCTAssertTrue(diagnosticReopenedMatched)\n        if layer.identifier != diagnosticLayerIdentifier { filesDiagnosticFailure("reopen-identity") }\n        XCTAssertEqual(layer.identifier, diagnosticLayerIdentifier, "Reopen must retain the same document layer identity")\n        layer.tap()\n        // VISION_FILES_DIAG_END:reopen-failure\n', '        XCTAssertTrue(layer.waitForExistence(timeout: 10)); layer.tap()\n')]
 
+# Exact additive deferral only; inversion restores the already reviewed diagnostic.
+CAPTURE_ORDER_ADDITIONS = ['    // VISION_FILES_CAPTURE_ORDER_BEGIN:state\n    private var filesFlowScreenshotsDeferred = false\n    // VISION_FILES_CAPTURE_ORDER_END:state\n', '        // VISION_FILES_CAPTURE_ORDER_BEGIN:enable\n        // Capture is synchronous. Finish the real workflow before requesting pixels.\n        filesFlowScreenshotsDeferred = true\n        defer { filesFlowScreenshotsDeferred = false }\n        // VISION_FILES_CAPTURE_ORDER_END:enable\n', '        // VISION_FILES_CAPTURE_ORDER_BEGIN:export-intent\n        print("VISION_FILES_EXPORT_BEGIN intent=true; not proof the exporter opened")\n        // VISION_FILES_CAPTURE_ORDER_END:export-intent\n', '        // VISION_FILES_CAPTURE_ORDER_BEGIN:export-observation\n        print("VISION_FILES_EXPORT_READBACK observed=\\(completed); whole XCTest result remains authoritative")\n        // VISION_FILES_CAPTURE_ORDER_END:export-observation\n', '        // VISION_FILES_CAPTURE_ORDER_BEGIN:guard\n        if filesFlowScreenshotsDeferred {\n            print("VISION_FILES_SCREENSHOT_DEFERRED name=\\(name); no image captured at this stage")\n            return\n        }\n        // VISION_FILES_CAPTURE_ORDER_END:guard\n', '        // VISION_FILES_CAPTURE_ORDER_BEGIN:final\n        // Reaching here does not erase an earlier continueAfterFailure assertion.\n        // This is the current post-reopen state, never an earlier frame.\n        print("VISION_FILES_FLOW_REACHED_END; inspect whole XCTest result for pass/fail")\n        filesFlowScreenshotsDeferred = false\n        print("VISION_FILES_FINAL_SCREENSHOT_BEGIN name=vision-files-after-reopen")\n        capture(app, name: "vision-files-after-reopen")\n        print("VISION_FILES_FINAL_SCREENSHOT_END name=vision-files-after-reopen")\n        // VISION_FILES_CAPTURE_ORDER_END:final\n']
+
+def restore_previous_diagnostic_test(raw):
+    require(hashlib.sha256(raw).hexdigest() == DIAGNOSTIC_TEST_SHA256, 'Unreviewed deferred screenshot test bytes')
+    source = raw.decode('utf8')
+    for added in CAPTURE_ORDER_ADDITIONS:
+        require(source.count(added) == 1, 'Capture-order inverse block missing or duplicated')
+        source = source.replace(added, '')
+    restored = source.encode('utf8')
+    require(hashlib.sha256(restored).hexdigest() == PREVIOUS_DIAGNOSTIC_TEST_SHA256, 'Capture-order inverse does not restore prior reviewed diagnostic')
+    return restored
+
 def verify_diagnostic_test(raw):
     require(hashlib.sha256(raw).hexdigest() == DIAGNOSTIC_TEST_SHA256, 'Unreviewed diagnostic test bytes')
-    source = raw.decode('utf8')
+    source = restore_previous_diagnostic_test(raw).decode('utf8')
     for added, original in DIAGNOSTIC_REPLACEMENTS:
         require(source.count(added) == 1, 'Diagnostic inverse block missing or duplicated')
         source = source.replace(added, original)
@@ -99,16 +113,19 @@ def validate(context, facts, enabled=False):
 
 def verify_diagnostic_history(chain, read_blob):
     transitions = []
+    approved = [(ORIGINAL_TEST_SHA256, PREVIOUS_DIAGNOSTIC_TEST_SHA256), (PREVIOUS_DIAGNOSTIC_TEST_SHA256, DIAGNOSTIC_TEST_SHA256)]
     for commit in chain:
         if DIAGNOSTIC_TEST not in commit['changed_paths']:
             continue
         previous = read_blob(commit['parents'][0], DIAGNOSTIC_TEST)
         current = read_blob(commit['sha'], DIAGNOSTIC_TEST)
-        require(hashlib.sha256(previous).hexdigest() == ORIGINAL_TEST_SHA256, 'Unreviewed earlier diagnostic test history')
-        require(hashlib.sha256(current).hexdigest() == DIAGNOSTIC_TEST_SHA256, 'Unreviewed diagnostic transition')
+        require(len(transitions) < len(approved), 'Unexpected additional diagnostic transition')
+        expected_previous, expected_current = approved[len(transitions)]
+        require(hashlib.sha256(previous).hexdigest() == expected_previous, 'Unreviewed earlier diagnostic test history')
+        require(hashlib.sha256(current).hexdigest() == expected_current, 'Unreviewed diagnostic transition')
         transitions.append(commit['sha'])
-    require(len(transitions) == 1, 'Exactly one original-to-reviewed diagnostic test transition required')
-    return transitions[0]
+    require(len(transitions) == len(approved), 'Exactly the original and deferred-screenshot diagnostic transitions are required')
+    return transitions[-1]
 
 
 def verify_hosted_diagnostic_history(chain, read_blob):

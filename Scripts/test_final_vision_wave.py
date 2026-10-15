@@ -291,6 +291,13 @@ class WaveTests(unittest.TestCase):
     e['GITHUB_OUTPUT']=str(temp/'github-output')
     with patch.object(Path,'home',return_value=root),patch.dict(os.environ,e):retained=w.collect(e)
     self.assertTrue(retained['wave_qualified']);self.assertTrue((temp/'vision-wave-evidence/report.json').is_file());self.assertLessEqual(sum(p.stat().st_size for p in (temp/'vision-wave-evidence').iterdir()),w.MAX_EVIDENCE)
+    if method==w.FILES_METHOD:
+     self.assertEqual(retained['files_evidence_contract'],w.FILES_EVIDENCE_CONTRACT)
+     for field in w.FILES_EVIDENCE_CONTRACT:
+      bad=copy.deepcopy(retained);bad['files_evidence_contract'][field]='altered'
+      with self.subTest(field=field),self.assertRaises(ValueError):w.validate_report_identity(bad,e)
+     bad=copy.deepcopy(retained);bad.pop('files_evidence_contract')
+     with self.assertRaises(ValueError):w.validate_report_identity(bad,e)
  def test_real_git_shallow_workflow_topology_and_separate_parent_trap(self):
   with tempfile.TemporaryDirectory() as t:
    root=Path(t).resolve();origin=root/'origin';origin.mkdir()
@@ -301,19 +308,24 @@ class WaveTests(unittest.TestCase):
    product=parent;git(origin,'update-ref','refs/heads/'+g.BRANCH,product);git(origin,'symbolic-ref','HEAD','refs/heads/'+g.BRANCH)
    for rel in g.QUALIFICATION_PATHS:
     dest=origin/rel;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(HERE.parent/rel,dest)
+   # Preserve the already reviewed original-to-diagnostic transition before
+   # adding this exact screenshot-order successor; direct skips must fail.
+   current_test=original_test.read_bytes();original_test.write_bytes(g.restore_previous_diagnostic_test(current_test))
+   git(origin,'add','.');git(origin,'commit','-qm','synthetic prior reviewed diagnostic')
+   original_test.write_bytes(current_test)
    gatepath=origin/'Scripts/qualify_final_vision_wave_source.py';gatepath.write_text(gatepath.read_text().replace(g.SOURCE,product).replace(g.TREE,tree).replace('UNCHANGED_ORIGINAL_FILE_COUNT = 960','UNCHANGED_ORIGINAL_FILE_COUNT = 1'))
    fixture_config={**config(),'product_parent_sha':product,'product_parent_tree':tree};(origin/g.CONFIG).write_text(json.dumps(fixture_config));git(origin,'add','.');git(origin,'commit','-qm','synthetic control');head=git(origin,'rev-parse','HEAD')
-   for depth,expect in [(64,True),(2,True),(1,False)]:
+   for depth,expect in [(64,True),(3,True),(2,False),(1,False)]:
     clone=root/('depth'+str(depth));git(root,'clone','-q','--depth',str(depth),'--branch',g.BRANCH,origin.as_uri(),str(clone));self.assertEqual(git(clone,'rev-parse','--is-shallow-repository'),'true')
-    if depth==1:git(clone,'fetch','-q','--depth','1','origin',product)
+    if depth<=2:git(clone,'fetch','-q','--depth','1','origin',product)
     temp=root/('temp'+str(depth));temp.mkdir()
     e={**os.environ,**env(),'GITHUB_SHA':head,'GITHUB_WORKFLOW_SHA':head,'GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_EVENT_NAME':'push','GITHUB_REF':'refs/heads/'+g.BRANCH,'GITHUB_WORKFLOW_REF':'100mango/Celluloid/'+g.WORKFLOW+'@refs/heads/'+g.BRANCH,'RUNNER_TEMP':str(temp),'PYTHONDONTWRITEBYTECODE':'1'}
     command=[sys.executable,'-B','-S',*(['-O'] if sys.flags.optimize else []),str(clone/'Scripts/qualify_final_vision_wave_source.py')]
     result=subprocess.run(command+['--phase','before'],env=e,text=True,capture_output=True);self.assertEqual(result.returncode==0,expect,(depth,result.stdout,result.stderr))
     if expect:
      result=subprocess.run(command+['--phase','after'],env=e,text=True,capture_output=True);self.assertEqual(result.returncode,0,result.stderr)
-     receipt=json.loads((temp/'combined-source-after.json').read_text());self.assertEqual(receipt['control_commit_count'],1);self.assertEqual(receipt['product_parent_sha'],product)
-    else:self.assertEqual(len(git(clone,'rev-list','--parents','-n','1','HEAD').split()),1)
+     receipt=json.loads((temp/'combined-source-after.json').read_text());self.assertEqual(receipt['control_commit_count'],2);self.assertEqual(receipt['product_parent_sha'],product)
+    else:self.assertTrue(any(len(row.split())==1 for row in git(clone,'rev-list','--parents','HEAD').splitlines()))
  def test_collection_preserves_failed_proof_when_required_image_exceeds_cap(self):
   with tempfile.TemporaryDirectory() as t:
    temp=Path(t).resolve();method=w.UI_METHODS[0];e={**env(method),'RUNNER_TEMP':str(temp),'GITHUB_OUTPUT':str(temp/'output')};c=clock();c['selected_method']=method
@@ -600,5 +612,74 @@ class WaveTests(unittest.TestCase):
    for mutation in mutations:
     bad=copy.deepcopy(r);mutation(bad)
     with patch.object(Path,'home',return_value=root),self.assertRaises(ValueError):w.validate_managed_files_claim(bad)
+
+class DeferredScreenshotTests(unittest.TestCase):
+ def source(self):return (HERE.parent/g.DIAGNOSTIC_TEST).read_bytes()
+ def test_additive_inverse_keeps_every_prior_assertion_and_action(self):
+  raw=self.source();prior=g.restore_previous_diagnostic_test(raw)
+  self.assertEqual(hashlib.sha256(prior).hexdigest(),g.PREVIOUS_DIAGNOSTIC_TEST_SHA256)
+  self.assertEqual(hashlib.sha256(g.verify_diagnostic_test(raw)).hexdigest(),g.ORIGINAL_TEST_SHA256)
+  # Whole-file exact inversion is stronger than an assertion-count comparison.
+  # Also reject weakening or retargeting any existing assertion or user action.
+  for old,new in [(b'XCTAssertTrue(completed)',b'XCTAssertTrue(true)'),(b'text.typeText("B")',b'text.typeText("C")'),(b'save.tap()',b'png.tap()')]:
+   with self.subTest(old=old),self.assertRaises(ValueError):g.verify_diagnostic_test(raw.replace(old,new,1))
+ def test_no_requested_screenshot_precedes_the_whole_files_flow(self):
+  source=self.source().decode();start=source.index('    func '+w.FILES_METHOD+'()');end=source.index('    func testSeededDocument',start);method=source[start:end]
+  self.assertNotIn('app.screenshot()',method)
+  self.assertLess(method.index('filesFlowScreenshotsDeferred = true'),method.index('app.launch()'))
+  self.assertEqual(method.count('filesFlowScreenshotsDeferred = false'),2) # Reset defer and final phase.
+  final=method.index('        filesFlowScreenshotsDeferred = false\n')
+  for checkpoint in ['XCTAssertTrue(completed)','XCTAssertTrue(diagnosticModelMatched','XCTAssertEqual(layer.identifier, diagnosticLayerIdentifier','VISION_NATIVE_DOCUMENT_REOPEN','try app.performAccessibilityAudit']:
+   self.assertLess(method.index(checkpoint),final)
+  self.assertLess(final,method.index('capture(app, name: "vision-files-after-reopen")'))
+  helper=source[source.index('    private func capture('):]
+  self.assertLess(helper.index('if filesFlowScreenshotsDeferred'),helper.index('app.screenshot()'))
+  self.assertLess(helper.index('return'),helper.index('app.screenshot()'))
+  self.assertIn('return false // Report every real issue',method)
+ def test_only_exact_two_step_history_is_admitted(self):
+  raw=self.source();prior=g.restore_previous_diagnostic_test(raw);original=g.verify_diagnostic_test(raw)
+  blobs={'original':original,'prior':prior,'current':raw}
+  chain=[{'sha':'prior','parents':['original'],'changed_paths':[g.DIAGNOSTIC_TEST]},{'sha':'current','parents':['prior'],'changed_paths':[g.DIAGNOSTIC_TEST]}]
+  read=lambda revision,path:blobs[revision]
+  self.assertEqual(g.verify_diagnostic_history(chain,read),'current')
+  bad_chains=[chain[:1],chain[1:],[{'sha':'current','parents':['original'],'changed_paths':[g.DIAGNOSTIC_TEST]}],chain+chain[1:],list(reversed(chain))]
+  for bad in bad_chains:
+   with self.subTest(chain=bad),self.assertRaises(ValueError):g.verify_diagnostic_history(bad,read)
+ def test_old_stage_names_cannot_satisfy_new_current_image_contract(self):
+  self.assertEqual(w.SHOTS[w.FILES_METHOD],('vision-files-after-reopen',))
+  with tempfile.TemporaryDirectory() as t:
+   folder=Path(t);(folder/'current.png').write_bytes(b'\x89PNG\r\n\x1a\ncurrent synthetic bytes')
+   owner='NativeVisionUITests/'+w.FILES_METHOD+'()'
+   def manifest(name,who=owner):return [{'testIdentifier':who,'attachments':[{'suggestedHumanReadableName':name,'exportedFileName':'current.png'}]}]
+   for name in w.FILES_EVIDENCE_CONTRACT['uncaptured_original_stages']:
+    self.assertEqual(w.exported_images(folder,manifest(name),w.FILES_METHOD),{})
+   current=w.SHOTS[w.FILES_METHOD][0]
+   self.assertEqual(set(w.exported_images(folder,manifest(current),w.FILES_METHOD)),{current})
+   with self.assertRaises(ValueError):w.exported_images(folder,manifest(current,'wrong case'),w.FILES_METHOD)
+ def test_closed_gate_and_fixed_budget_remain_enforced(self):
+  # A synthetic closed configuration must fail, whether this test is run in
+  # the CLOSED review package or a later separately authorized activation.
+  c=config();c['READY']=False
+  with self.assertRaises(ValueError):w.validate_config(c,env())
+  self.assertEqual((w.UI_SECONDS,w.NATIVE_SECONDS,w.FINAL_SECONDS,w.DEPLOYMENT_SUMMARY_SECONDS,w.FILES_PREPARATION_SECONDS),(720,1560,1740,60,10))
+  self.assertEqual(w.FILES_EVIDENCE_CONTRACT['historical_run_requalified'],False)
+  self.assertEqual(w.FILES_EVIDENCE_CONTRACT['earlier_visual_states_proven'],False)
+  self.assertEqual(w.FILES_EVIDENCE_CONTRACT['store_qualification'],False)
+ def test_workflow_failure_collector_retains_only_current_source_pin(self):
+  workflow=(HERE.parent/g.WORKFLOW).read_text()
+  begin=workflow.index('        # BEGIN_FAILURE_RECEIPT_COLLECTOR')
+  end=workflow.index('        # END_FAILURE_RECEIPT_COLLECTOR',begin)
+  code='\n'.join(line[8:] for line in workflow[begin:end].splitlines())
+  for diagnostic_hash,expected_state in [(g.DIAGNOSTIC_TEST_SHA256,'valid-shaped-unverified-receipt'),(g.PREVIOUS_DIAGNOSTIC_TEST_SHA256,'missing-or-invalid')]:
+   with self.subTest(hash=diagnostic_hash),tempfile.TemporaryDirectory() as t:
+    root=Path(t);e={**os.environ,**env(),'RUNNER_TEMP':t,'GITHUB_OUTPUT':str(root/'output'),'VISION_ADMISSION_OUTCOME':'success','VISION_CONTROL_TESTS_OUTCOME':'failure','VISION_WAVE_OUTCOME':'skipped','VISION_SOURCE_AFTER_OUTCOME':'success','VISION_TRUSTED_START':str(time.monotonic()),'VISION_TRUSTED_UNIX':str(time.time())}
+    for phase in ['before','after']:
+     receipt={'phase':phase,'source_sha':e['GITHUB_SHA'],'control_sha':e['GITHUB_SHA'],'product_parent_sha':w.SOURCE,'product_parent_tree':w.TREE,'run_id':e['GITHUB_RUN_ID'],'run_attempt':'1','selected_method':w.FILES_METHOD,'file_count':960,'hosted_diagnostic_test_sha256':g.HOSTED_DIAGNOSTIC_TEST_SHA256,'hosted_diagnostic_test_inverse_sha256':g.HOSTED_ORIGINAL_TEST_SHA256,'diagnostic_test_sha256':diagnostic_hash,'diagnostic_test_inverse_sha256':g.ORIGINAL_TEST_SHA256,'product_fingerprint':'d729946e1a7806ff397b2da4ac47bc442f3081213d9c2260ab5eb5477c573ebe'}
+     (root/('combined-source-'+phase+'.json')).write_text(json.dumps(receipt))
+    result=subprocess.run([sys.executable,'-I','-B','-S',*(['-O'] if sys.flags.optimize else []),'-c',code],env=e,text=True,capture_output=True,timeout=10)
+    self.assertEqual(result.returncode,0,result.stderr)
+    report=json.loads((root/'vision-wave-failure-evidence/failure-receipts.json').read_text())
+    self.assertFalse(report['wave_qualified']);self.assertFalse(report['source_after_verified'])
+    for phase in ['before','after']:self.assertEqual(report['receipts']['combined-source-'+phase+'.json']['state'],expected_state)
 
 if __name__=='__main__':unittest.main()

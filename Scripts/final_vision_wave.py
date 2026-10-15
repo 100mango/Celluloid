@@ -14,7 +14,7 @@ PRODUCER='testPrepareVisionRemainingDocumentFixture'
 DEPLOYMENT_METHOD='testNativeVisionExecutableAndSceneAreLive'
 DEPLOYMENT_SUMMARY_SECONDS=60 # 45 work +15 cleanup, within the original wave clock.
 FILES_PREPARATION_SECONDS=10 # One shared validation/PNG write/read/initial-receipt window.
-SHOTS={UI_METHODS[0]:('native-vision-launch','native-vision-editor-ready'),UI_METHODS[1]:('vision-imported-editable-bubble','vision-png-export-verified','vision-saved-document-reopened'),UI_METHODS[2]:(),UI_METHODS[3]:('vision-zh-Hans-privacy',)}
+SHOTS={UI_METHODS[0]:('native-vision-launch','native-vision-editor-ready'),UI_METHODS[1]:('vision-files-after-reopen',),UI_METHODS[2]:(),UI_METHODS[3]:('vision-zh-Hans-privacy',)}
 DEPENDENCIES={UI_METHODS[0]:'ui-created-document',UI_METHODS[1]:'own-generated-png',UI_METHODS[2]:'hosted-producer-package',UI_METHODS[3]:'ui-created-document'}
 def need(value,reason):
  if not value:raise ValueError(reason)
@@ -783,6 +783,7 @@ def read_fixture(initial, fixture_marker, *, deadline, ui_process, process_block
 
 # Fixed Files-method receipt/attachment projections, inserted into the reviewed driver.
 FILES_METHOD='testRealFilesImportBubbleAndPNGExport'
+FILES_EVIDENCE_CONTRACT={'schema': 'Celluloid.VisionFilesEvidenceContract.2', 'scope': 'single whole Files UI method diagnostics, not Store or full platform qualification', 'required_current_images': ['vision-files-after-reopen'], 'uncaptured_original_stages': ['vision-imported-editable-bubble', 'vision-png-export-verified', 'vision-saved-document-reopened'], 'image_state': 'actual current state after original reopen assertions; original availability-gated accessibility audit unchanged', 'functional_evidence': 'whole XCTest result plus unchanged model and owned-disk receipts; progress markers are not pass evidence', 'historical_run_requalified': False, 'earlier_visual_states_proven': False, 'store_qualification': False}
 FILES_DIAG_STAGES=('identity','post-redo','reopen-layer','reopen-identity')
 FIXTURE_READ_SECONDS=10
 
@@ -882,6 +883,7 @@ def execute(env):
  method=config['selected_method'];key=str(UI_METHODS.index(method)+1);prefix='vision-wave-'+key+'-'+env['GITHUB_RUN_ID']+'-'+env['GITHUB_RUN_ATTEMPT']
  commands=VisionCommands(temp);work=clock['started_monotonic']+NATIVE_SECONDS;final=clock['started_monotonic']+FINAL_SECONDS
  report={'schema':'Celluloid.FinalVisionSingleMethodWave.1','test_diagnostics':{'path':DIAGNOSTIC_TEST,'sha256':DIAGNOSTIC_TEST_SHA256,'inverse_original_sha256':ORIGINAL_TEST_SHA256,'unchanged_original_files':960,'hosted_path':HOSTED_DIAGNOSTIC_TEST,'hosted_sha256':HOSTED_DIAGNOSTIC_TEST_SHA256,'hosted_inverse_original_sha256':HOSTED_ORIGINAL_TEST_SHA256,'product_compiled_inputs_unchanged':True},'control_sha':env['GITHUB_SHA'],'product_sha':SOURCE,'product_tree':TREE,'run_id':env['GITHUB_RUN_ID'],'run_attempt':env['GITHUB_RUN_ATTEMPT'],'selected_method':method,'omitted_ui_methods':[m for m in UI_METHODS if m!=method],'original_hosted_inventory':list(HOSTED),'original_ui_inventory':list(UI_METHODS),'retained_hosted_evidence':{'run_id':37909497562,'control_sha':'46fc7a5a41efea647dc27099ab9883187b8814ec','passed_methods':list(HOSTED),'new_execution_claim':False},'retained_release_evidence':{'run_id':37909497562,'binary_sha256':'a03d12bfb39b98a372bf9ea2f7bab01ecef13996fd8ef316e628cb1fcaf21e85','fresh_release_build':False},'fixture_dependency':DEPENDENCIES[method],'fixture_producer_selected':bool(selectors_for(method)['producer']),'clock':clock,'ui_limit_seconds':UI_SECONDS,'selected_method_passed':False,'wave_qualified':False,'all_eight_qualified':False,'archive_qualified':False,'required_screenshots':list(SHOTS[method]),'screenshots':{},'commands':commands.events,'errors':[],'omissions':[]}
+ if method==FILES_METHOD:report['files_evidence_contract']=dict(FILES_EVIDENCE_CONTRACT)
  fixture_initial=None
  udid=None;bundle=temp/(prefix+'-ui.xcresult');ui_log=None;ui_result=None;summary=None
  def call(args,label,seconds,**kwargs):return commands.run(args,prefix+'-'+label,deadline=kwargs.pop('deadline',work-CLEANUP_RESERVE),seconds=seconds,**kwargs)
@@ -988,6 +990,7 @@ def validate_report_identity(report,env):
  need(report.get('original_hosted_inventory')==list(HOSTED) and report.get('original_ui_inventory')==list(UI_METHODS),'report-inventory')
  need(report.get('ui_limit_seconds')==UI_SECONDS and report.get('all_eight_qualified') is False and report.get('archive_qualified') is False,'report-claim')
  need(type(report.get('screenshots')) is dict and set(report['screenshots'])<=set(SHOTS[method]),'report-images')
+ if method==FILES_METHOD:need(report.get('files_evidence_contract')==FILES_EVIDENCE_CONTRACT,'files-evidence-contract-mismatch')
  need(type(report.get('selected_method_passed')) is bool and type(report.get('wave_qualified')) is bool and type(report.get('errors')) is list,'report-status')
  if report['wave_qualified']:
   need(report['selected_method_passed'] and not report['errors'] and set(report['screenshots'])==set(SHOTS[method]),'unsupported-wave-success')
