@@ -43,7 +43,7 @@ class FinalPhotosHostAdmissionTests(unittest.TestCase):
 
     def testOnlyExactFinalSourceLinearControlAndExplicitAuthorityAdmit(self):
         c,e,f=self.values();result=host.validate_probe_admission(c,e,f)
-        self.assertEqual(result['product_sha'],'13e9a1ed63c6e7744803419f27e429a759df1209');self.assertFalse(result['release_qualified'])
+        self.assertEqual(result['product_sha'],'7bd2e23afb0ad0805de6cdb8adb27b0df7153a66');self.assertFalse(result['release_qualified'])
         mutations=[lambda c,e,f:c.update(READY=False),lambda c,e,f:c.update(sourceReady=False),lambda c,e,f:c.update(nativeAuthorization=False),
             lambda c,e,f:c.update(product_sha='16970bd1dcb4fd01fcfa5b1a1cf117c24f21b562'),lambda c,e,f:c.update(product_tree='8d144ec388b72ccf71d67fbec1f284120629e471'),
             lambda c,e,f:c.update(maximum_additional_spend_usd=True),lambda c,e,f:c.update(schema=True),lambda c,e,f:c.update(extra=1),

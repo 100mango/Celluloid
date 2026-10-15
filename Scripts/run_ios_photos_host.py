@@ -15,7 +15,7 @@ from run_picker_acceptance import check_build, qualify_summary
 from swiftui_photos_gate import validate_owner, phase_budget, fresh_owned_device_observation
 
 ROOT = Path(__file__).resolve().parents[1]
-PRODUCT_CONTROL_TREE = 'f2c6d0f38c026957b0b34f22b916eb80ed5b20a8'
+PRODUCT_CONTROL_TREE = 'acd3c47970657cb3e50be198f0ac640cee29c4be'
 PRODUCT_CONTROL_FILES = 424
 PRODUCT_CONTROL_SHA256 = '8fb8b5d2f59884986f823e87256980b10a660bf8396cc40bc475f7036e055926'
 STEPS = [
@@ -28,7 +28,7 @@ STEPS = [
 def require(condition, message):
     if not condition: raise ValueError(message)
 
-PRODUCT_SHA = '13e9a1ed63c6e7744803419f27e429a759df1209'
+PRODUCT_SHA = '7bd2e23afb0ad0805de6cdb8adb27b0df7153a66'
 PROBE_BRANCH = 'cell-ios-final-photos-20261015'
 PROBE_CONFIG = '.github/ios-photos-readiness-deadline-20261015.json'
 PROBE_WORKFLOW = '.github/workflows/ios-photos-readiness-deadline-20261015.yml'
