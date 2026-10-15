@@ -12,7 +12,7 @@ concurrency:
 jobs:
   first-slice:
     # SOURCE and CLOSED do not dispatch. Root separately reviews activation.
-    if: ${{ false }}
+    if: ${{ true }}
     runs-on: xcode-27
     timeout-minutes: 45
     env:
