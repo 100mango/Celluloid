@@ -1,11 +1,11 @@
 {
   "schema": 2,
-  "READY": false,
-  "sourceReady": false,
-  "nativeAuthorization": false,
+  "READY": true,
+  "sourceReady": true,
+  "nativeAuthorization": true,
   "product_sha": "7bd2e23afb0ad0805de6cdb8adb27b0df7153a66",
   "product_tree": "acd3c47970657cb3e50be198f0ac640cee29c4be",
   "maximum_additional_spend_usd": 0,
-  "reviewed_candidate_sha": null,
-  "reviewed_candidate_tree": null
+  "reviewed_candidate_sha": "2a51ad0929c2aa56458a79ce3bb516c4b98a8e49",
+  "reviewed_candidate_tree": "09cb65ad86128571bee3eb978c7358a049cbb2b6"
 }

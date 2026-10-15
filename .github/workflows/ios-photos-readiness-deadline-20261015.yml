@@ -15,7 +15,7 @@ concurrency:
 jobs:
   actual-photos-host:
     # Root separately reviews source, permissions and capacity before opening all guards.
-    if: ${{ false && github.event_name == 'push' && github.ref == 'refs/heads/cell-ios-final-photos-20261015' }}
+    if: ${{ true && github.event_name == 'push' && github.ref == 'refs/heads/cell-ios-final-photos-20261015' }}
     runs-on: xcode-27
     timeout-minutes: 45
     env:
