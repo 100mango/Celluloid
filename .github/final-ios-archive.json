@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "enabled": true,
+  "scope": "unsigned-package-diagnostic",
+  "product": {
+    "commit": "7bd2e23afb0ad0805de6cdb8adb27b0df7153a66",
+    "tree": "acd3c47970657cb3e50be198f0ac640cee29c4be",
+    "version": "1.1.1",
+    "build": "3"
+  },
+  "qualification": {
+    "release": false,
+    "signing": false,
+    "store": false,
+    "native_ui": false,
+    "ios_photos_host": false,
+    "mac": false
+  }
+}
