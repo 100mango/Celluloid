@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Site-free route, fixture, single-case and native ownership regressions."""
-import contextlib,io,ast,copy,hashlib,importlib.util,json,os,re,shutil,subprocess,sys,tempfile,time,unittest
+import contextlib,io,ast,copy,hashlib,importlib.util,itertools,json,math,os,re,shutil,subprocess,sys,tempfile,time,unittest
 from pathlib import Path
 from unittest.mock import patch
 HERE=Path(__file__).resolve().parent
@@ -290,7 +290,7 @@ class WaveTests(unittest.TestCase):
     for phase in ['before','after']:(temp/('combined-source-'+phase+'.json')).write_text(json.dumps({**binding,'phase':phase}))
     e['GITHUB_OUTPUT']=str(temp/'github-output')
     with patch.object(Path,'home',return_value=root),patch.dict(os.environ,e):retained=w.collect(e)
-    self.assertTrue(retained['wave_qualified']);self.assertTrue((temp/'vision-wave-evidence/report.json').is_file());self.assertLessEqual(sum(p.stat().st_size for p in (temp/'vision-wave-evidence').iterdir()),w.MAX_EVIDENCE)
+    self.assertTrue(retained['wave_qualified'],retained['errors']);self.assertTrue((temp/'vision-wave-evidence/report.json').is_file());self.assertLessEqual(sum(p.stat().st_size for p in (temp/'vision-wave-evidence').iterdir()),w.MAX_EVIDENCE)
     if method==w.FILES_METHOD:
      self.assertEqual(retained['files_evidence_contract'],w.FILES_EVIDENCE_CONTRACT)
      for field in w.FILES_EVIDENCE_CONTRACT:
@@ -298,6 +298,26 @@ class WaveTests(unittest.TestCase):
       with self.subTest(field=field),self.assertRaises(ValueError):w.validate_report_identity(bad,e)
      bad=copy.deepcopy(retained);bad.pop('files_evidence_contract')
      with self.assertRaises(ValueError):w.validate_report_identity(bad,e)
+ def test_complete_synthetic_driver_replays_fractional_clocks_and_rejects_one_ulp(self):
+  original_collect=w.collect
+  for base in (0.1,151.1,246.1,400.1,1000.1,35000.1,10000000.1):
+   with self.subTest(monotonic_base=base):
+    ticks=itertools.count();retained=[]
+    def collect(e):
+     report=original_collect(e);retained.append(report)
+     if e['VISION_WAVE_METHOD']==w.FILES_METHOD:
+      self.assertTrue(report['wave_qualified'],report['errors'])
+      for field in ('work_deadline_monotonic','cleanup_deadline_monotonic','summary_deadline_monotonic','latest_ui_start_monotonic'):
+       for direction in (-math.inf,math.inf):
+        changed=copy.deepcopy(report);value=changed['deployment_budget'][field]
+        changed['deployment_budget'][field]=math.nextafter(value,direction)
+        with self.subTest(field=field,direction=direction),self.assertRaisesRegex(ValueError,'managed-absolute-budget-binding'):
+         w.validate_managed_files_claim(changed)
+     return report
+    with patch.object(w.time,'monotonic',side_effect=lambda:base+next(ticks)*1e-6),patch.object(w,'collect',side_effect=collect):
+     self.test_complete_synthetic_driver_each_method_selects_only_actual_dependency()
+    self.assertEqual([r['selected_method'] for r in retained],list(w.UI_METHODS))
+    self.assertTrue(all(r['wave_qualified'] for r in retained))
  def test_real_git_shallow_workflow_topology_and_separate_parent_trap(self):
   with tempfile.TemporaryDirectory() as t:
    root=Path(t).resolve();origin=root/'origin';origin.mkdir()

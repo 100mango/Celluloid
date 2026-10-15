@@ -337,8 +337,11 @@ def validate_managed_files_claim(report):
  need(initial['schema']==RECEIPT_SCHEMA and initial['container_path']==container and initial['owned_udid']==report['udid'] and initial['documents_path']==docs and initial['initial_names']==[PNG_NAME],'managed-files-initial-binding')
  need(initial['path_identity'][container]=={k:data[k] for k in ('device','inode')} and initial['path_identity'][docs]==initial['documents_identity'],'managed-files-initial-directory-binding')
  need(png['path']==str(Path(docs)/PNG_NAME) and png['bytes']==initial['png']['bytes']==8305 and png['sha256']==initial['png']['sha256']=='7a690cd2efee140bed38b96654a1fe2536c32c679fe3305816c59b968506b840' and png['width']==1200 and png['height']==800 and png['original_runner_algorithm_unchanged'] is True,'managed-files-exact-seed')
- b=report['deployment_budget'];f=report['files_preparation_budget'];start=report['clock']['started_monotonic'];latest=start+695
- need(b['work_deadline_monotonic']==start+610 and b['cleanup_deadline_monotonic']==start+625 and b['summary_deadline_monotonic']==start+685 and b['latest_ui_start_monotonic']==latest,'managed-absolute-budget-binding')
+ b=report['deployment_budget'];f=report['files_preparation_budget'];start=report['clock']['started_monotonic']
+ # Replay the scheduler's exact operation order; reassociation changes float bits.
+ latest=sample_ui_admission(report['clock'],start)['latest_start_monotonic']
+ summary_end=latest-FILES_PREPARATION_SECONDS;cleanup_end=summary_end-DEPLOYMENT_SUMMARY_SECONDS;work_end=cleanup_end-15
+ need(b['work_deadline_monotonic']==work_end and b['cleanup_deadline_monotonic']==cleanup_end and b['summary_deadline_monotonic']==summary_end and b['latest_ui_start_monotonic']==latest,'managed-absolute-budget-binding')
  need(b['available_work_seconds']==b['work_deadline_monotonic']-b['started_monotonic'] and b['process_cleanup_seconds']==15 and b['summary_total_seconds']==60 and b['files_preparation_seconds']==10 and b['dispatch_proven'] is False,'managed-budget-reserves')
  need(number(b.get('started_monotonic')) and start<=b['started_monotonic']<b['work_deadline_monotonic'] and number(b.get('completed_monotonic')) and b['started_monotonic']<=b['completed_monotonic']<b['summary_deadline_monotonic'],'managed-budget-time-range')
  deployed=[e for e in report['commands'] if e.get('label','').endswith('-deployment-tests')];summaries=[e for e in report['commands'] if e.get('label','').endswith('-deployment-summary')]
