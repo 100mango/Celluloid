@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 import math
 import uuid
@@ -88,11 +89,13 @@ def dump(path, value):
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + '\n')
 
 
-def validate_owner(receipt, device, environment, observed):
+def validate_owner(receipt, device, environment, observed, expected_ref='refs/heads/swiftui-first-native'):
     source = environment.get('GITHUB_SHA', '')
     if not re.fullmatch(r'[0-9a-f]{40}', source): raise ValueError('Exact source SHA is absent')
     if environment.get('GITHUB_REPOSITORY') != '100mango/Celluloid': raise ValueError('Wrong repository')
-    if environment.get('GITHUB_REF') != 'refs/heads/swiftui-first-native': raise ValueError('Wrong reviewed route')
+    if expected_ref not in ['refs/heads/swiftui-first-native', 'refs/heads/cell-ios-photos-extension-cell-20261014']:
+        raise ValueError('Unknown reviewed route')
+    if environment.get('GITHUB_REF') != expected_ref: raise ValueError('Wrong reviewed route')
     if environment.get('GITHUB_EVENT_NAME') != 'push': raise ValueError('Wrong event')
     if environment.get('GITHUB_WORKFLOW_SHA') != source: raise ValueError('Workflow source differs')
     if str(uuid.UUID(device)).upper() != device.upper(): raise ValueError('Invalid simulator identity')
@@ -129,16 +132,75 @@ def phase_budget(stage, receipt, now=None):
     return min(720 if stage == 'bootstrap' else 600, remaining)
 
 
-def admission(stage, device, derived, output, receipt_path):
+def photos_bootstrap_parent_deadline(receipt_path, now=None):
+    """Read the current Photos parent's pre-dispatch receipt; never reset its clock."""
+    now=time.monotonic() if now is None else now
+    environment=os.environ
+    expected={'GITHUB_REPOSITORY':'100mango/Celluloid','GITHUB_EVENT_NAME':'push',
+              'GITHUB_REF':'refs/heads/cell-ios-photos-extension-cell-20261014',
+              'GITHUB_WORKFLOW_REF':'100mango/Celluloid/.github/workflows/ios-photos-extension-cell-20261014.yml@refs/heads/cell-ios-photos-extension-cell-20261014',
+              'GITHUB_RUN_ATTEMPT':'1'}
+    if any(environment.get(key)!=value for key,value in expected.items()):raise ValueError('Wrong Photos bootstrap parent route')
+    owner=load(receipt_path);path=Path(receipt_path).parent/'photos-bootstrap-dispatch-timing.json'
+    if not path.is_file() or path.is_symlink() or path.stat().st_size>4096:raise ValueError('Missing bounded Photos bootstrap parent deadline')
+    parent=load(path)
+    fields={'phase','dispatch_started_monotonic','deadline_monotonic','limit_seconds','source_sha','run_id','run_attempt','device_id','state'}
+    if set(parent)!=fields or parent['phase']!='photos-bootstrap' or parent['state']!='dispatched' or type(parent['limit_seconds']) is not int or parent['limit_seconds']!=750:raise ValueError('Invalid Photos bootstrap parent receipt')
+    source=environment.get('GITHUB_SHA','');run=environment.get('GITHUB_RUN_ID','')
+    if not re.fullmatch('[0-9a-f]{40}',source) or environment.get('GITHUB_WORKFLOW_SHA')!=source or not re.fullmatch('[1-9][0-9]*',run):raise ValueError('Missing Photos bootstrap parent identity')
+    for key,value in {'source_sha':source,'run_id':run,'run_attempt':'1','device_id':owner.get('device_id')}.items():
+        if not value or parent[key]!=value or owner.get(key)!=value:raise ValueError('Mismatched Photos bootstrap parent '+key)
+    start=parent['dispatch_started_monotonic'];deadline=parent['deadline_monotonic']
+    job_start=owner.get('job_started_monotonic');work_deadline=owner.get('work_deadline_monotonic')
+    if not all(type(value) in [int,float] and math.isfinite(value) for value in [now,start,deadline,job_start,work_deadline]):raise ValueError('Invalid Photos bootstrap parent clock')
+    if not (0 <= job_start <= start <= now < deadline == start+750 and work_deadline==job_start+2280 and deadline+15 <= work_deadline):raise ValueError('Expired or expanded Photos bootstrap parent deadline')
+    return deadline
+
+
+def fresh_owned_device_observation(output, *, bootstrap_parent=None):
+    """One fresh query. Only admitted bootstrap preparation gets sixty seconds."""
+    output=Path(output);output.mkdir(parents=True,exist_ok=True)
+    log=output/'owned-device-observation.log';receipt=output/'owned-device-observation.json'
+    if log.exists() or receipt.exists():raise ValueError('Refuse stale owned-device observation')
+    started=time.monotonic();seconds=60 if bootstrap_parent is not None else 20
+    if bootstrap_parent is not None and (type(bootstrap_parent) not in [int,float] or not math.isfinite(bootstrap_parent) or started+seconds+10>bootstrap_parent):raise ValueError('Photos bootstrap parent cannot fit fresh query and cleanup; no dispatch')
+    deadline=started+seconds
+    command=[sys.executable,'-S','Scripts/run_bounded.py','--seconds',str(seconds),'--label','photos-owned-device-observation',
+             '--deadline-monotonic',str(deadline),'xcrun','simctl','list','devices','available','-j']
+    with log.open('wb') as stream:
+        code=subprocess.call(command,stdout=stream,stderr=subprocess.STDOUT)
+    elapsed=time.monotonic()-started;raw=log.read_text(errors='replace')
+    late=elapsed>seconds;unsafe=(code!=0 or late or 'BOUNDED_COMMAND_TIMEOUT' in raw or 'CLEANUP_UNCONFIRMED' in raw)
+    dump(receipt,{'schema':'Celluloid.PhotosOwnedDeviceObservation.1','source_sha':os.environ.get('GITHUB_SHA'),
+         'run_id':os.environ.get('GITHUB_RUN_ID'),'run_attempt':os.environ.get('GITHUB_RUN_ATTEMPT'),
+         'started_monotonic':started,'deadline_monotonic':deadline,'elapsed_seconds':elapsed,'limit_seconds':seconds,
+         'exit_code':code,'late_completion':late,'prohibit_further_native':unsafe,
+         'log_sha256':hashlib.sha256(log.read_bytes()).hexdigest(),'fresh_query_count':1})
+    if unsafe:raise ValueError('Fresh owned-device query failed or exceeded its parent deadline; no further native work')
+    rows=[]
+    for match in re.finditer(r'^\s*\{',raw,re.M):
+        try:value,_=json.JSONDecoder().raw_decode(raw[match.start():].lstrip())
+        except json.JSONDecodeError:continue
+        if isinstance(value,dict) and 'devices' in value:rows.append(value)
+    if len(rows)!=1:raise ValueError('Missing/ambiguous fresh device observation')
+    return rows[0]
+
+
+def admission(stage, device, derived, output, receipt_path, expected_ref='refs/heads/swiftui-first-native'):
     repository = Path.cwd().resolve()
     derived = Path(derived).resolve(); output = Path(output).resolve()
     derived.relative_to(repository / '.build'); output.relative_to(repository / 'build')
     source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     if source != os.environ.get('GITHUB_SHA'): raise ValueError('Checked-out source differs')
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--'], check=True)
-    observed = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], text=True, timeout=20))
     receipt = load(receipt_path)
-    binding = validate_owner(receipt, device, os.environ, observed)
+    phase_budget(stage, receipt)
+    if expected_ref == 'refs/heads/cell-ios-photos-extension-cell-20261014':
+        if stage != 'bootstrap':raise ValueError('Dedicated host route may only reuse the fixture bootstrap')
+        observed = fresh_owned_device_observation(output, bootstrap_parent=photos_bootstrap_parent_deadline(receipt_path))
+    else:
+        observed = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], text=True, timeout=20))
+    binding = validate_owner(receipt, device, os.environ, observed, expected_ref=expected_ref)
     phase_budget(stage, receipt)
     if stage == 'bootstrap' and (output / 'verified-library.json').exists(): raise ValueError('Bootstrap already succeeded; do not import twice')
     if stage in ['pristine', 'preservation']:
@@ -146,7 +208,7 @@ def admission(stage, device, derived, output, receipt_path):
         for key, value in binding.items():
             if manifest.get(key) != value: raise ValueError('Seeded manifest binding differs: ' + key)
         if manifest.get('authorization_read_write') != 'authorized': raise ValueError('Missing actual full Photos grant')
-    dump(output / f'{stage}-admission.json', {**binding, 'stage': stage, 'derived_data': str(derived),
+    dump(output / f'{stage}-admission.json', {**binding, 'stage': stage, 'source_ref': expected_ref, 'derived_data': str(derived),
          'only_owned_simulator': True, 'expected_methods': methods(stage) if stage in STAGES else []})
 
 
@@ -234,6 +296,8 @@ def main():
     elif options.action == 'budget':
         stage, receipt_path, kind = args
         now = time.monotonic(); seconds = phase_budget(stage, load(receipt_path), now=now)
+        if stage == 'bootstrap' and os.environ.get('GITHUB_REF') == 'refs/heads/cell-ios-photos-extension-cell-20261014':
+            seconds = min(seconds, photos_bootstrap_parent_deadline(receipt_path, now=now)-now)
         print(now + seconds if kind == 'deadline' else seconds)
     elif options.action == 'selectors':
         for item in methods(args[0]): print('-only-testing:' + item)
