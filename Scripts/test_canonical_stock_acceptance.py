@@ -12,6 +12,12 @@ import run_swiftui_acceptance as full
 
 SOURCE = 'a' * 40
 TREE = 'b' * 40
+# Exact toolchain.log shape retained by native attempt 39127891572.
+WRAPPED_TOOLCHAIN = '''BOUNDED_COMMAND_BEGIN {"label": "toolchain", "utc": "2026-10-18T12:35:17.994774+00:00", "seconds": 30.0, "command": ["xcodebuild", "-version"]}
+Xcode 27.0
+Build version 27A266a
+BOUNDED_COMMAND_END {"label": "toolchain", "exit_code": 0, "elapsed_seconds": 0.185}
+'''
 
 
 class StockRouteTests(unittest.TestCase):
@@ -59,7 +65,6 @@ class StockRouteTests(unittest.TestCase):
             'CelluloidUITests/CelluloidUITests/testPrivacyPolicyEntryRemainsAccessibleAndCanClose',
             'CelluloidUITests/PhoneEntryDesignUITests'])
         self.assertIs(stock.StockAcceptance.picker, full.Acceptance.picker)
-        self.assertIs(stock.StockAcceptance.cleanup, full.Acceptance.cleanup)
         self.assertEqual(picker.receipt.BUDGET_SECONDS, 3.0)
 
     def test_no_full_or_seeded_or_photos_native_execution(self):
@@ -85,12 +90,103 @@ class StockRouteTests(unittest.TestCase):
         self.assertNotIn('workflow_dispatch', workflow)
 
     def test_late_or_negative_wrapper_is_uncertain(self):
-        for code, moments in [(-9, [0, 1]), (0, [0, 11])]:
+        for code, moments in [(-9, [0, 1]), (129, [0, 1]), (124, [0, 1]), (0, [0, 11])]:
             with tempfile.TemporaryDirectory() as folder, patch.object(full, 'OUT', Path(folder)), patch.dict(stock.os.environ, {'CELLULOID_PREVIEW_CONTINUATION': ''}):
                 gate = stock.StockAcceptance()
                 with patch.object(full.Acceptance, 'command', return_value=(code, '')), patch.object(stock.time, 'monotonic', side_effect=moments):
                     with self.assertRaises(ValueError): gate.command('bounded', ['unused'], 10)
                 self.assertTrue(gate.uncertain)
+
+    def test_actual_parent_raised_exit_and_overrun_latch_before_cleanup(self):
+        for code, elapsed in [(-9, 1), (129, 1), (255, 1), (124, 1), (None, 1), (1, 11)]:
+            with self.subTest(code=code, elapsed=elapsed), tempfile.TemporaryDirectory() as folder, \
+                    patch.object(full, 'OUT', Path(folder)), \
+                    patch.dict(stock.os.environ, {'CELLULOID_PREVIEW_CONTINUATION': ''}):
+                gate = stock.StockAcceptance()
+                now = [gate.started]
+                def returned(*args, **kwargs):
+                    now[0] += elapsed
+                    return code
+                with patch.object(full.subprocess, 'call', side_effect=returned), \
+                        patch.object(stock.time, 'monotonic', side_effect=lambda: now[0]):
+                    with self.assertRaises(ValueError):
+                        gate.command('build', ['unused'], 10, simulator=True)
+                self.assertEqual(gate.events[-1]['exit_code'], code)
+                self.assertTrue(gate.uncertain)
+                gate.device = 'owned-device'
+                with patch.object(full.subprocess, 'call') as dispatch:
+                    gate.cleanup()
+                    dispatch.assert_not_called()
+                self.assertEqual(gate.device, 'owned-device')
+
+    def test_cleanup_late_invalid_and_nonzero_exits_forbid_next_action(self):
+        for code, elapsed in [(0, 31), (-9, 1), (129, 1), (1, 1), (None, 1), (False, 1)]:
+            with self.subTest(code=code, elapsed=elapsed), tempfile.TemporaryDirectory() as folder, \
+                    patch.object(full, 'OUT', Path(folder)), \
+                    patch.dict(stock.os.environ, {'CELLULOID_PREVIEW_CONTINUATION': ''}):
+                gate = stock.StockAcceptance()
+                gate.device = 'owned-device'
+                now = [gate.started]
+                def returned(*args, **kwargs):
+                    now[0] += elapsed
+                    return code
+                with patch.object(full.subprocess, 'call', side_effect=returned) as dispatch, \
+                        patch.object(stock.time, 'monotonic', side_effect=lambda: now[0]):
+                    gate.cleanup()
+                    self.assertEqual(dispatch.call_count, 1)
+                self.assertTrue(gate.uncertain)
+                self.assertEqual(gate.device, 'owned-device')
+
+    def test_cleanup_exception_is_latched_and_success_uses_only_owned_device(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(full, 'OUT', Path(folder)), \
+                patch.dict(stock.os.environ, {'CELLULOID_PREVIEW_CONTINUATION': ''}):
+            gate = stock.StockAcceptance()
+            gate.device = 'owned-device'
+            with patch.object(full.subprocess, 'call', side_effect=PermissionError('denied')) as dispatch:
+                with self.assertRaises(PermissionError): gate.cleanup()
+                self.assertEqual(dispatch.call_count, 1)
+            self.assertTrue(gate.uncertain)
+            self.assertEqual(gate.device, 'owned-device')
+            with patch.object(full.subprocess, 'call') as dispatch:
+                gate.cleanup()
+                dispatch.assert_not_called()
+            gate = stock.StockAcceptance()
+            gate.device = 'owned-device'
+            with patch.object(full.subprocess, 'call', return_value=0) as dispatch:
+                gate.cleanup()
+                self.assertEqual([call.args[0][-2:] for call in dispatch.call_args_list],
+                                 [['shutdown', 'owned-device'], ['delete', 'owned-device']])
+            self.assertIsNone(gate.device)
+            self.assertFalse(gate.uncertain)
+
+    def test_known_ordinary_nonzero_exit_does_not_become_unknown(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(full, 'OUT', Path(folder)), \
+                patch.dict(stock.os.environ, {'CELLULOID_PREVIEW_CONTINUATION': ''}):
+            gate = stock.StockAcceptance()
+            with patch.object(full.subprocess, 'call', return_value=1):
+                with self.assertRaises(ValueError): gate.command('build', ['unused'], 10, simulator=True)
+            self.assertFalse(gate.uncertain)
+
+    def test_actual_parent_returns_wrapped_toolchain_log(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(full, 'OUT', Path(folder)), \
+                patch.dict(stock.os.environ, {'CELLULOID_PREVIEW_CONTINUATION': ''}):
+            gate = stock.StockAcceptance()
+            def returned(*args, **kwargs):
+                kwargs['stdout'].write(WRAPPED_TOOLCHAIN.encode())
+                return 0
+            with patch.object(full.subprocess, 'call', side_effect=returned):
+                code, log = gate.command('toolchain', ['xcodebuild', '-version'], 30)
+            self.assertEqual(code, 0)
+            self.assertEqual(log, WRAPPED_TOOLCHAIN)
+            stock.validate_toolchain(log)
+
+    def test_wrong_missing_duplicate_toolchain_pairs_are_rejected(self):
+        for log in ['', WRAPPED_TOOLCHAIN.replace('27A266a', '27A999'),
+                    WRAPPED_TOOLCHAIN.replace('Xcode 27.0', 'Xcode 27.1'),
+                    WRAPPED_TOOLCHAIN + 'Xcode 27.0\n',
+                    WRAPPED_TOOLCHAIN + 'Build version 27A266a\n',
+                    WRAPPED_TOOLCHAIN.replace('Build version 27A266a\n', '')]:
+            with self.assertRaises(ValueError): stock.validate_toolchain(log)
 
     def test_missing_command_completion_receipt_is_uncertain(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(full, 'OUT', Path(folder)), patch.dict(stock.os.environ, {'CELLULOID_PREVIEW_CONTINUATION': ''}):

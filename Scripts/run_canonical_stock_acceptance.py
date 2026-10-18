@@ -6,6 +6,7 @@ invocation. This does not rerun or retroactively qualify historical Full/Photos.
 """
 from pathlib import Path
 import json
+import math
 import os
 import re
 import signal
@@ -27,6 +28,19 @@ CHANGED = {
     '.github/workflows/canonical-stock-readiness.yml',
 }
 need = full.require
+
+
+def validate_toolchain(log):
+    # Acceptance.command returns the complete bounded-wrapper log, not just
+    # xcodebuild stdout. Require one exact version/build pair inside that log.
+    lines = re.findall(r'^(?:Xcode |Build version ).+$', log, re.M)
+    need(lines == ['Xcode 27.0', 'Build version 27A266a'], 'Wrong stable Xcode')
+
+
+def uncertain_outcome(code, elapsed, seconds):
+    return (type(code) is not int or code < 0 or code == 124 or code >= 128
+            or type(elapsed) not in (int, float) or not math.isfinite(elapsed)
+            or elapsed < 0 or elapsed > seconds)
 
 
 def validate_route(env, git):
@@ -65,13 +79,20 @@ class StockAcceptance(full.Acceptance):
         # Preserve the canonical runner, and fail closed on a negative child
         # exit or a wrapper that returned beyond its advertised phase ceiling.
         began = time.monotonic()
+        previous_events = len(self.events)
         try:
             code, log = super().command(name, command, seconds, **kwargs)
         except BaseException:
-            if not self.events or self.events[-1].get('phase') != name:
+            # The parent records an event before raising for a nonzero exit.
+            # Inspect that raised path too; it must never authorize cleanup
+            # after an unknown native termination or an exceeded phase bound.
+            event = self.events[-1] if len(self.events) > previous_events else {}
+            if (event.get('phase') != name
+                    or uncertain_outcome(event.get('exit_code'), event.get('elapsed_seconds'), seconds)
+                    or time.monotonic() - began > seconds):
                 self.uncertain = True
             raise
-        if type(code) is not int or code < 0 or time.monotonic() - began > seconds:
+        if uncertain_outcome(code, time.monotonic() - began, seconds):
             self.uncertain = True
             raise ValueError('Unknown or over-deadline command outcome: ' + name)
         return code, log
@@ -82,7 +103,7 @@ class StockAcceptance(full.Acceptance):
         self.source_tree = self.source_proof['source_tree']
         full.save(full.OUT / 'stock-source-before.json', self.source_proof)
         _, version = self.command('toolchain', ['xcodebuild', '-version'], 30)
-        need(version.strip().splitlines() == ['Xcode 27.0', 'Build version 27A266a'], 'Wrong stable Xcode')
+        validate_toolchain(version)
         for filename in ['test_picker_native_receipt.py', 'test_canonical_stock_acceptance.py']:
             self.command(filename[:-3], [sys.executable, '-S', 'Scripts/' + filename], 30)
         _, before_text = self.command('devices-before', ['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], 20, simulator=True)
@@ -131,6 +152,29 @@ class StockAcceptance(full.Acceptance):
         if self.binding is not None:
             check_build(self.binding, self.binary, self.source, self.source_tree)
 
+    def cleanup(self):
+        # Match the original owned-device cleanup scope and 90-second ceiling,
+        # but stop before any next action after an invalid or late wrapper exit.
+        if not self.device or self.uncertain:
+            return
+        deadline = min(self.deadline + 90, time.monotonic() + 90)
+        for action in ['shutdown', 'delete']:
+            if deadline - time.monotonic() < 35:
+                return
+            dispatched = time.monotonic()
+            try:
+                with (full.OUT / ('cleanup-' + action + '.log')).open('wb') as output:
+                    code = subprocess.call([sys.executable, 'Scripts/run_bounded.py', '--seconds', '30',
+                        '--label', 'cleanup-' + action, 'xcrun', 'simctl', action, self.device],
+                        cwd=full.ROOT, stdout=output, stderr=subprocess.STDOUT)
+            except BaseException:
+                self.uncertain = True
+                raise
+            if code != 0 or uncertain_outcome(code, time.monotonic() - dispatched, 30):
+                self.uncertain = True
+                return
+        self.device = None
+
 
 def main():
     os.chdir(full.ROOT)
@@ -153,7 +197,7 @@ def main():
         except BaseException as failure:
             error = error or str(failure)
         try:
-            gate.cleanup()  # Existing helper acts only on this run's proven device.
+            gate.cleanup()  # Acts only on this run's proven device.
         except BaseException as failure:
             gate.uncertain = True
             error = error or str(failure)
