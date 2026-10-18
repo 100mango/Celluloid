@@ -1,0 +1,37 @@
+name: Celluloid canonical stock readiness repair
+on:
+  push:
+    branches: [cell-ios-canonical-readiness-20261018]
+permissions:
+  contents: read
+concurrency:
+  group: celluloid-canonical-stock-readiness
+  cancel-in-progress: false
+jobs:
+  stock:
+    if: ${{ github.run_attempt == 1 }}
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      TZ: UTC
+      CELLULOID_PREVIEW_CONTINUATION: ''
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+          fetch-depth: 8
+          ref: ${{ github.sha }}
+      - name: Run original four-method stock phase once
+        timeout-minutes: 35
+        run: python3 -S Scripts/run_canonical_stock_acceptance.py
+      - name: Retain canonical receipt and original native evidence
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: celluloid-canonical-stock-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/swiftui-acceptance/
+          retention-days: 1
+          if-no-files-found: error

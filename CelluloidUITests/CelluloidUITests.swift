@@ -272,7 +272,7 @@ final class CelluloidUITests: XCTestCase {
             // checks it against wall/uptime rather than assuming common clocks.
             NSLog("%@", "PICKER_UI_TRACE run=\(run) phase=\(phase) iteration=\(iteration) event=\(event) uptime_seconds=\(uptime) wall_seconds=\(wall) \(details)")
         }
-        trace("run-begin", iteration: 0)
+        trace("run-begin", iteration: 0, details: "readiness_query_contract=hittable-enabled-v1")
         let previousContinueAfterFailure = continueAfterFailure
         continueAfterFailure = true
         defer {
@@ -300,11 +300,15 @@ final class CelluloidUITests: XCTestCase {
                 return value
             }
             func observeUsablePicker() -> Bool {
-                guard measured("exists", { cancel.exists }) else { return false }
-                if firstExistsElapsed == nil { firstExistsElapsed = ProcessInfo.processInfo.systemUptime - started }
-                guard measured("isEnabled", { cancel.isEnabled }) else { return false }
+                // Apple's public contract says isHittable is false for a
+                // nonexistent element. A true result proves both existence
+                // and a real hit point, without an extra AX round trip.
+                // Keep the separate enabled check; hittability alone is not
+                // our complete readiness condition.
                 guard measured("isHittable", { cancel.isHittable }) else { return false }
+                if firstExistsElapsed == nil { firstExistsElapsed = ProcessInfo.processInfo.systemUptime - started }
                 firstHittableElapsed = ProcessInfo.processInfo.systemUptime - started
+                guard measured("isEnabled", { cancel.isEnabled }) else { return false }
                 return true
             }
             // Start the same real control queries immediately. XCTest's predicate

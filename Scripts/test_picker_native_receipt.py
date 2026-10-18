@@ -552,6 +552,117 @@ class ActualFailedRunFiveTests(unittest.TestCase):
         self.assertGreater(hit['wall']-input_wall, receipt.BUDGET_SECONDS)
 
 
+def two_query_example(selected=False, native_delay=0, ax_delay=0, queue_delay=0):
+    """Synthetic new contract only; never rewrite retained historical files."""
+    logs = example(selected, native_delay, ax_delay, queue_delay)
+    lines = []
+    for line in logs["runner.log"].splitlines():
+        if "event=run-begin " in line:
+            line = line.replace("event=run-begin ",
+                "event=run-begin readiness_query_contract=hittable-enabled-v1 ")
+        if "PICKER_AX_QUERY" in line:
+            if "property=isHittable " in line:
+                continue
+            line = line.replace("property=exists ", "property=isHittable ")
+        lines.append(line)
+    logs["runner.log"] = "\n".join(lines)
+    return logs
+
+
+class TwoQueryReadinessTests(unittest.TestCase):
+    def validate(self, logs=None, selected=False):
+        return receipt.validate_logs(logs or two_query_example(selected),
+            {RUN: (0, 1) if selected else (1, 0)},
+            fixture_identifiers={"synthetic-fixture-1"} if selected else None)
+
+    def test_positive_hittable_proves_existence_and_enabled_remains_required(self):
+        result = self.validate()
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["budget_seconds"], 3)
+        row = result["presentations"][0]
+        self.assertEqual(row["readiness_query_contract"], "hittable-enabled-v1")
+        self.assertEqual([q["property"] for q in row["readiness_query_evidence"]],
+                         ["isHittable", "isEnabled"])
+        # Endpoint is the later enabled read, not the earlier hit point.
+        self.assertAlmostEqual(row["input_synthesis_to_observed_readiness_seconds"], 1.15, places=5)
+        self.assertAlmostEqual(row["app_action_to_successful_hittable_upper_seconds"], 1.1, places=5)
+
+    def test_selected_identity_pixels_and_editor_return_remain_required(self):
+        result = self.validate(two_query_example(True), selected=True)
+        self.assertEqual(result["status"], "passed")
+        self.assertTrue(result["presentations"][0]["selected_original_proof"]["synthetic_fixture_membership"])
+        self.assertIsNotNone(result["presentations"][0]["first_preview_observation"])
+        logs = two_query_example(True)
+        logs["runner.log"] = logs["runner.log"].replace("pixel_match=true", "pixel_match=false")
+        with self.assertRaises(receipt.EvidenceError): self.validate(logs, selected=True)
+
+    def test_both_boolean_values_and_both_queries_are_mandatory(self):
+        for prop in ("isHittable", "isEnabled"):
+            for mutation in ("false", "missing"):
+                logs = two_query_example()
+                lines = logs["runner.log"].splitlines()
+                if mutation == "missing":
+                    lines = [line for line in lines if "property=" + prop + " " not in line]
+                else:
+                    lines = [line.replace("value=true", "value=false") if "property=" + prop + " " in line else line for line in lines]
+                logs["runner.log"] = "\n".join(lines)
+                with self.assertRaises(receipt.EvidenceError): self.validate(logs)
+
+    def test_new_order_requires_explicit_contract_and_old_logs_are_not_reinterpreted(self):
+        logs = two_query_example()
+        logs["runner.log"] = logs["runner.log"].replace("readiness_query_contract=hittable-enabled-v1 ", "")
+        with self.assertRaises(receipt.EvidenceError): self.validate(logs)
+        for contract in ("hittable-enabled-v1", "unsupported"):
+            logs = example()
+            logs["runner.log"] = logs["runner.log"].replace("event=run-begin ",
+                "event=run-begin readiness_query_contract=" + contract + " ")
+            with self.assertRaises(receipt.EvidenceError): self.validate(logs)
+        original = receipt.validate_logs(example(), {RUN: (1, 0)})
+        self.assertEqual(original["status"], "passed")
+        self.assertEqual(original["presentations"][0]["readiness_query_contract"], "exists-enabled-hittable-v1")
+
+    def test_latest_query_cost_and_input_queue_delay_still_count(self):
+        # Hit point is within 3 s; the subsequent enabled query is over 3 s.
+        result = self.validate(two_query_example(ax_delay=1.9))
+        self.assertEqual(result["status"], "not_accepted")
+        row = result["presentations"][0]
+        self.assertGreater(row["input_synthesis_to_observed_readiness_upper_seconds"], 3)
+        result = self.validate(two_query_example(queue_delay=2))
+        self.assertEqual(result["status"], "not_accepted")
+        self.assertGreater(result["presentations"][0]["input_synthesis_to_app_action_seconds"], 2)
+
+    def test_native_appearance_and_clock_uncertainty_still_count(self):
+        result = self.validate(two_query_example(native_delay=2.2))
+        self.assertEqual(result["status"], "not_accepted")
+        row = result["presentations"][0]
+        self.assertGreater(row["input_synthesis_to_observed_readiness_upper_seconds"], 3)
+        # The raw last read is just inside 3 s, but 1 ms clock uncertainty
+        # crosses the unchanged bound. Do not round or subtract it.
+        result = self.validate(two_query_example(ax_delay=1.8495))
+        self.assertEqual(result["status"], "not_accepted")
+
+    def test_failed_intervening_read_cannot_join_separate_positive_values(self):
+        logs = two_query_example()
+        logs["runner.log"] = logs["runner.log"].replace(ax("isEnabled", 2.2),
+            ax("isHittable", 2.15, value="false") + "\n" + ax("isEnabled", 2.2))
+        with self.assertRaises(receipt.EvidenceError): self.validate(logs)
+
+    def test_overlapping_or_reordered_queries_are_rejected(self):
+        for changed in (ax("isEnabled", 2.2, duration=.2),
+                        ax("isEnabled", 2.05)):
+            logs = two_query_example()
+            logs["runner.log"] = logs["runner.log"].replace(ax("isEnabled", 2.2), changed)
+            with self.assertRaises(receipt.EvidenceError): self.validate(logs)
+
+    def test_real_cancel_and_teardown_are_still_mandatory(self):
+        for required in ("event=picker-cancel-delegate", "event=root-cover-dismissal-completed",
+                         "event=home-interactive-after-dismiss"):
+            logs = two_query_example()
+            logs = {key: "\n".join(line for line in value.splitlines() if required not in line)
+                    for key, value in logs.items()}
+            with self.assertRaises(receipt.EvidenceError): self.validate(logs)
+
+
 class SourceIdentityAndPollingTests(unittest.TestCase):
     def test_presented_item_contains_immutable_action_id(self):
         source = (Path(__file__).resolve().parents[1]/'Celluloid/SwiftUI/PhoneRootView.swift').read_text()
@@ -564,8 +675,11 @@ class SourceIdentityAndPollingTests(unittest.TestCase):
     def test_same_real_checks_start_immediately_with_unchanged_bound(self):
         source = (Path(__file__).resolve().parents[1]/'CelluloidUITests/CelluloidUITests.swift').read_text()
         fragment = source.split('private func observeSystemPicker',1)[1].split('func testAccessibilityHomeAndDeniedPicker',1)[0]
-        for prop in ('exists','isEnabled','isHittable'):
+        for prop in ('isEnabled','isHittable'):
             self.assertIn(f'measured("{prop}", {{ cancel.{prop} }})', fragment)
+        self.assertNotIn('measured("exists", { cancel.exists })', fragment)
+        self.assertLess(fragment.index('measured("isHittable"'), fragment.index('measured("isEnabled"'))
+        self.assertIn('readiness_query_contract=hittable-enabled-v1', fragment)
         self.assertIn('observationDeadline = ProcessInfo.processInfo.systemUptime + 3', fragment)
         self.assertLess(fragment.index('if observeUsablePicker()'),fragment.index('RunLoop.current.run'))
         self.assertNotIn('XCTWaiter.wait(for: [usablePicker]',fragment)

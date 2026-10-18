@@ -32,6 +32,13 @@ Each tap window MUST contain exactly one genuine runner "started activity"
 New AX observations also retain start_uptime_seconds/start_wall_seconds, checked
   against the existing end and duration fields. Original failed observations
   remain failed; missing or ambiguous clocks and identity are never repaired.
+The explicit run-begin readiness_query_contract=hittable-enabled-v1 uses two
+  consecutive positive queries. Apple's public isHittable contract includes
+  existence; isEnabled is still independently read. Acceptance includes the
+  completion of BOTH queries and native appearance, with the same input origin
+  and three-second bound. Unmarked historical logs keep their original three
+  queries and results; query costs are never subtracted or backdated.
+  https://developer.apple.com/documentation/xcuiautomation/xcuielement/ishittable
 Official relevant raw diagnostics and their source/hash manifest are retained
   before parsing, so failed validation cannot destroy the underlying evidence.
 
@@ -503,6 +510,11 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
         ui = [t for t in records if t["kind"] == "PICKER_UI_TRACE"]
         ax = [t for t in records if t["kind"] == "PICKER_AX_QUERY"]
         begin, end = event(ui, "run-begin"), event(ui, "run-end")
+        query_contract = begin.get("readiness_query_contract", "exists-enabled-hittable-v1")
+        require(query_contract in ("exists-enabled-hittable-v1", "hittable-enabled-v1"),
+                "Unsupported readiness query contract")
+        query_properties = (["isHittable", "isEnabled"] if query_contract == "hittable-enabled-v1"
+                            else ["exists", "isEnabled", "isHittable"])
         require(begin["uptime"] < end["uptime"] and begin["wall"] < end["wall"], "Invalid run clock ordering")
         require(all(begin["uptime"] <= r["uptime"] <= end["uptime"] for r in records), "Event outside run clock anchors")
         offsets = [r["wall"] - r["uptime"] for r in records]
@@ -588,12 +600,15 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
             used_native.update((appeared[0], disappeared[0]))
             queries = sorted([r for r in ax if r["iteration"] == iteration], key=lambda r: r["uptime"])
             require(queries and all(tap_return["uptime"] <= q["uptime"] - q["duration"] <= q["uptime"] <= command["uptime"] for q in queries), "AX query outside observation window")
-            # Require the successful consecutive polling evaluation, not three
+            # Require the successful consecutive polling evaluation, not
             # unrelated true values straddling intervening failed evaluations.
-            successes = [queries[i:i+3] for i in range(max(0, len(queries)-2))
-                         if [q["property"] for q in queries[i:i+3]] == ["exists", "isEnabled", "isHittable"]
-                         and all(q["value"] == "true" for q in queries[i:i+3])]
-            require(successes, "No real consecutive exists/isEnabled/isHittable success")
+            count = len(query_properties)
+            require(all(q["property"] in query_properties for q in queries),
+                    "AX query does not match declared readiness contract")
+            successes = [queries[i:i+count] for i in range(max(0, len(queries)-count+1))
+                         if [q["property"] for q in queries[i:i+count]] == query_properties
+                         and all(q["value"] == "true" for q in queries[i:i+count])]
+            require(successes, "No real consecutive " + "/".join(query_properties) + " success")
             success = successes[0]
             # A system control can genuinely be hittable while the presentation
             # animation is still finishing, before ViewDidAppear is delivered.
@@ -601,7 +616,7 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
             # window; readiness is the later of appearance and positive AX.
             require(all(q["wall"] - q["duration"] >= input_wall for q in success),
                     "Successful AX observation precedes native input")
-            require(all(success[i]["uptime"] <= success[i+1]["uptime"] - success[i+1]["duration"] for i in range(2)), "Overlapping AX query clocks")
+            require(all(success[i]["uptime"] <= success[i+1]["uptime"] - success[i+1]["duration"] for i in range(count-1)), "Overlapping AX query clocks")
             native_elapsed = appeared[2] - action["wall"]
             uncertainty = drift + max(anchor_errors) + 0.001  # runner milliseconds
             native_upper = native_elapsed + uncertainty
@@ -635,7 +650,12 @@ def validate_logs(logs, expected_runs, log_timezone=timezone.utc, fixture_identi
                              "input_synthesis_to_observed_readiness_seconds": readiness_elapsed,
                              "input_synthesis_to_observed_readiness_upper_seconds": readiness_upper,
                              "readiness_evidence_rule": "later of actual native appearance and actual positive exists/enabled/hittable completion",
-                             "app_action_evidence": action["source_locations"], "successful_hittable_evidence": success[-1]["source_locations"],
+                             "readiness_query_contract": query_contract,
+                             "readiness_query_evidence": [{"property": q["property"], "source_locations": q["source_locations"]} for q in success],
+                             "readiness_endpoint_property": success[-1]["property"],
+                             "readiness_completion_evidence": success[-1]["source_locations"],
+                             "app_action_evidence": action["source_locations"],
+                             "successful_hittable_evidence": one([q for q in success if q["property"] == "isHittable"], "successful hit-point query")["source_locations"],
                              "root_dismissal_evidence": dismissed["source_locations"],
                              "app_action_to_native_appearance_seconds": native_elapsed,
                              "native_clock_uncertainty_seconds": uncertainty,
